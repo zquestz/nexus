@@ -60,6 +60,7 @@ pub struct NetworkConnection {
     pub tx: mpsc::UnboundedSender<nexus_common::protocol::ClientMessage>,
     pub session_id: String,
     pub connection_id: usize,
+    pub shutdown: Option<std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>>,
 }
 
 /// Text input IDs for focus management

@@ -37,6 +37,7 @@ struct NexusApp {
 
     // Network channels
     tx: Option<tokio::sync::mpsc::UnboundedSender<ClientMessage>>,
+    shutdown_handle: Option<std::sync::Arc<tokio::sync::Mutex<Option<network::ShutdownHandle>>>>,
 
     // Connection ID for subscription
     connection_id: Option<usize>,
@@ -57,6 +58,7 @@ impl Default for NexusApp {
             online_users: Vec::new(),
             message_input: String::new(),
             tx: None,
+            shutdown_handle: None,
             connection_id: None,
         }
     }
@@ -171,12 +173,20 @@ impl NexusApp {
                 Task::none()
             }
             Message::Disconnect => {
-                // Drop the tx channel to close the connection
-                // This will cause the network task to exit when cmd_rx.recv() returns None
-                if let Some(tx) = self.tx.take() {
-                    drop(tx);
+                // Signal the network task to shutdown (drops TCP writer)
+                if let Some(shutdown_arc) = self.shutdown_handle.take() {
+                    let shutdown_arc_clone = shutdown_arc.clone();
+                    tokio::spawn(async move {
+                        let mut guard = shutdown_arc_clone.lock().await;
+                        if let Some(shutdown) = guard.take() {
+                            shutdown.shutdown();
+                        }
+                    });
                 }
-
+                
+                // Drop the tx channel
+                self.tx = None;
+                
                 // Clean up the receiver from the global registry
                 if let Some(connection_id) = self.connection_id {
                     let registry = network::NETWORK_RECEIVERS.clone();
@@ -185,7 +195,7 @@ impl NexusApp {
                         receivers.remove(&connection_id);
                     });
                 }
-
+                
                 self.connection_state = ConnectionState::Disconnected;
                 self.session_id = None;
                 self.connection_id = None;
@@ -200,6 +210,7 @@ impl NexusApp {
                     self.connection_state = ConnectionState::Connected;
                     self.session_id = Some(conn.session_id.parse().unwrap_or(0));
                     self.tx = Some(conn.tx.clone());
+                    self.shutdown_handle = conn.shutdown.clone();
                     self.connection_id = Some(conn.connection_id);
                     self.connection_error = None;
 

@@ -21,6 +21,18 @@ pub static NETWORK_RECEIVERS: once_cell::sync::Lazy<
 pub static NEXT_CONNECTION_ID: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+/// Shutdown signal for the network task
+#[derive(Debug)]
+pub struct ShutdownHandle {
+    tx: tokio::sync::oneshot::Sender<()>,
+}
+
+impl ShutdownHandle {
+    pub fn shutdown(self) {
+        let _ = self.tx.send(());
+    }
+}
+
 /// Connect to the server, perform handshake and login
 pub async fn connect_to_server(
     server_address: String,
@@ -107,6 +119,7 @@ pub async fn connect_to_server(
     // Create channels for bidirectional communication
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
     let (msg_tx, msg_rx) = mpsc::unbounded_channel::<ServerMessage>();
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Spawn task to handle bidirectional communication
     tokio::spawn(async move {
@@ -135,6 +148,12 @@ pub async fn connect_to_server(
                         break;
                     }
                 }
+                // Shutdown signal
+                _ = &mut shutdown_rx => {
+                    // Explicitly drop writer to close TCP connection
+                    drop(writer);
+                    break;
+                }
             }
         }
     });
@@ -150,6 +169,7 @@ pub async fn connect_to_server(
         tx: cmd_tx,
         session_id: session_id.to_string(),
         connection_id,
+        shutdown: Some(std::sync::Arc::new(tokio::sync::Mutex::new(Some(ShutdownHandle { tx: shutdown_tx })))),
     })
 }
 
