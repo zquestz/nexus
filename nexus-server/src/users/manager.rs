@@ -60,7 +60,6 @@ impl UserManager {
 
     /// Get a user by session ID
 
-
     /// Get all connected users
     pub async fn get_all_users(&self) -> Vec<User> {
         let users = self.users.read().await;
@@ -77,7 +76,7 @@ impl UserManager {
     pub async fn broadcast(&self, message: ServerMessage) {
         let users = self.users.read().await;
         for user in users.values() {
-            // Ignore send errors (user might have disconnected)
+            // Silently ignore send errors (user might have disconnected)
             let _ = user.tx.send(message.clone());
         }
     }
@@ -87,7 +86,7 @@ impl UserManager {
         let users = self.users.read().await;
         for user in users.values() {
             if user.session_id != exclude_id {
-                // Ignore send errors (user might have disconnected)
+                // Silently ignore send errors (user might have disconnected)
                 let _ = user.tx.send(message.clone());
             }
         }
@@ -119,7 +118,10 @@ impl UserManager {
             }
 
             // Check if user has the required permission
-            let has_perm = match user_db.has_permission(user.db_user_id, required_permission).await {
+            let has_perm = match user_db
+                .has_permission(user.db_user_id, required_permission)
+                .await
+            {
                 Ok(has) => has,
                 Err(e) => {
                     eprintln!("Error checking permission for {}: {}", user.username, e);
@@ -131,10 +133,8 @@ impl UserManager {
                 continue;
             }
 
-            // Send message to this user
-            if let Err(e) = user.tx.send(message.clone()) {
-                eprintln!("Failed to send message to {}: {}", user.username, e);
-            }
+            // Send message to this user (silently ignore if channel is closed)
+            let _ = user.tx.send(message.clone());
         }
     }
 }

@@ -28,15 +28,15 @@ async fn main() {
     }
 
     // Determine database path (use provided path or platform default)
-    let db_path = args.database.unwrap_or_else(|| {
-        match db::default_database_path() {
+    let db_path = args
+        .database
+        .unwrap_or_else(|| match db::default_database_path() {
             Ok(path) => path,
             Err(e) => {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
-        }
-    });
+        });
 
     // Initialize database connection pool and run migrations
     let pool = match db::init_db(&db_path).await {
@@ -68,6 +68,7 @@ async fn main() {
     println!("Database: {}", db_path.display());
 
     // Main server loop - accept incoming connections
+    let debug = args.debug;
     loop {
         match listener.accept().await {
             Ok((socket, peer_addr)) => {
@@ -82,6 +83,7 @@ async fn main() {
                         peer_addr,
                         user_manager_clone,
                         user_db_clone,
+                        debug,
                     )
                     .await
                     {

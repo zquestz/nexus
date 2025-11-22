@@ -17,6 +17,7 @@ pub async fn handle_connection(
     peer_addr: SocketAddr,
     user_manager: UserManager,
     user_db: UserDb,
+    debug: bool,
 ) -> io::Result<()> {
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::new(reader);
@@ -52,6 +53,7 @@ pub async fn handle_connection(
                     &user_db,
                     peer_addr,
                     &tx,
+                    debug,
                 ).await {
                     eprintln!("Error handling message: {}", e);
                     break;
@@ -71,6 +73,9 @@ pub async fn handle_connection(
     // Remove user on disconnect
     if let Some(id) = session_id {
         if let Some(user) = user_manager.remove_user(id).await {
+            if debug {
+                println!("User '{}' disconnected", user.username);
+            }
             // Broadcast disconnection to all users
             user_manager
                 .broadcast(ServerMessage::UserDisconnected {
@@ -94,6 +99,7 @@ async fn handle_client_message(
     user_db: &UserDb,
     peer_addr: SocketAddr,
     tx: &mpsc::UnboundedSender<ServerMessage>,
+    debug: bool,
 ) -> io::Result<()> {
     let line = line.trim();
     // Ignore empty lines (e.g., from keepalive or client mistakes)
@@ -110,6 +116,7 @@ async fn handle_client_message(
         user_manager,
         user_db,
         tx,
+        debug,
     };
 
     match serde_json::from_str::<ClientMessage>(line) {
@@ -141,13 +148,22 @@ async fn handle_client_message(
                 is_admin,
                 permissions,
             } => {
-                handlers::handle_usercreate(username, password, is_admin, permissions, *session_id, &mut ctx)
-                    .await?;
+                handlers::handle_usercreate(
+                    username,
+                    password,
+                    is_admin,
+                    permissions,
+                    *session_id,
+                    &mut ctx,
+                )
+                .await?;
             }
             ClientMessage::UserDelete { username } => {
                 handlers::handle_userdelete(username, *session_id, &mut ctx).await?;
             }
-            ClientMessage::UserInfo { session_id: requested_session_id } => {
+            ClientMessage::UserInfo {
+                session_id: requested_session_id,
+            } => {
                 handlers::handle_userinfo(requested_session_id, *session_id, &mut ctx).await?;
             }
             ClientMessage::UserList => {
@@ -156,10 +172,7 @@ async fn handle_client_message(
         },
         Err(e) => {
             // NOTE: Don't log the raw message - it might contain passwords if malformed
-            eprintln!(
-                "Failed to parse message from {}: {}",
-                peer_addr, e
-            );
+            eprintln!("Failed to parse message from {}: {}", peer_addr, e);
             return ctx
                 .send_error_and_disconnect(&format!("Invalid message format: {}", e), None)
                 .await;

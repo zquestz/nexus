@@ -58,10 +58,7 @@ pub async fn handle_login(
     let authenticated_account = if let Some(account) = account {
         // User exists - verify password
         match db::verify_password(&password, &account.hashed_password) {
-            Ok(true) => {
-                println!("User '{}' logged in from {}", username, ctx.peer_addr);
-                account
-            }
+            Ok(true) => account,
             Ok(false) => {
                 eprintln!(
                     "Invalid password for user {} from {}",
@@ -140,6 +137,10 @@ pub async fn handle_login(
         error: None,
     };
     ctx.send_message(&response).await?;
+
+    if ctx.debug {
+        println!("User '{}' logged in from {}", username, ctx.peer_addr);
+    }
 
     // Broadcast user connected to all other users
     let user_info = UserInfo {

@@ -27,6 +27,7 @@ impl TestContext {
             user_manager: &self.user_manager,
             user_db: &self.user_db,
             tx: &self.tx,
+            debug: false, // Tests don't need debug logging
         }
     }
 }

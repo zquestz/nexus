@@ -19,4 +19,8 @@ pub struct Args {
     /// Database file path (overrides platform default)
     #[arg(short, long)]
     pub database: Option<PathBuf>,
+
+    /// Enable debug logging (shows user connect/disconnect messages)
+    #[arg(long, default_value = "false")]
+    pub debug: bool,
 }

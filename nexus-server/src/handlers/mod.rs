@@ -37,6 +37,7 @@ pub struct HandlerContext<'a> {
     pub user_manager: &'a UserManager,
     pub user_db: &'a UserDb,
     pub tx: &'a mpsc::UnboundedSender<ServerMessage>,
+    pub debug: bool,
 }
 
 impl<'a> HandlerContext<'a> {
