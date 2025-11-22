@@ -5,7 +5,7 @@ use nexus_common::protocol::ServerMessage;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 /// Manages all connected users
 #[derive(Debug, Clone)]
@@ -30,13 +30,14 @@ impl UserManager {
         session_id: String,
         address: SocketAddr,
         tx: mpsc::UnboundedSender<ServerMessage>,
+        features: Vec<String>,
     ) -> u32 {
         let mut next_id = self.next_id.write().await;
         let id = *next_id;
         *next_id += 1;
         drop(next_id);
 
-        let user = User::new(id, username, session_id, address, tx);
+        let user = User::new(id, username, session_id, address, tx, features);
         let mut users = self.users.write().await;
         users.insert(id, user);
 
@@ -56,10 +57,10 @@ impl UserManager {
     }
 
     /// Get a user by session ID
-    pub async fn get_user_by_session(&self, session_id: &str) -> Option<User> {
-        let users = self.users.read().await;
-        users.values().find(|u| u.session_id == session_id).cloned()
-    }
+    // pub async fn get_user_by_session(&self, session_id: &str) -> Option<User> {
+    //     let users = self.users.read().await;
+    //     users.values().find(|u| u.session_id == session_id).cloned()
+    // }
 
     /// Get all connected users
     pub async fn get_all_users(&self) -> Vec<User> {
@@ -68,10 +69,10 @@ impl UserManager {
     }
 
     /// Get the count of connected users
-    pub async fn user_count(&self) -> usize {
-        let users = self.users.read().await;
-        users.len()
-    }
+    // pub async fn user_count(&self) -> usize {
+    //     let users = self.users.read().await;
+    //     users.len()
+    // }
 
     /// Broadcast a message to all connected users
     pub async fn broadcast(&self, message: ServerMessage) {
@@ -94,12 +95,23 @@ impl UserManager {
     }
 
     /// Send a message to a specific user by ID
-    pub async fn send_to_user(&self, user_id: u32, message: ServerMessage) -> bool {
+    // pub async fn send_to_user(&self, user_id: u32, message: ServerMessage) -> bool {
+    //     let users = self.users.read().await;
+    //     if let Some(user) = users.get(&user_id) {
+    //         user.tx.send(message).is_ok()
+    //     } else {
+    //         false
+    //     }
+    // }
+
+    /// Broadcast a message to all users with a specific feature
+    pub async fn broadcast_to_feature(&self, feature: &str, message: ServerMessage) {
         let users = self.users.read().await;
-        if let Some(user) = users.get(&user_id) {
-            user.tx.send(message).is_ok()
-        } else {
-            false
+        for user in users.values() {
+            if user.has_feature(feature) {
+                // Ignore send errors (user might have disconnected)
+                let _ = user.tx.send(message.clone());
+            }
         }
     }
 }

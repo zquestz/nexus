@@ -1,9 +1,9 @@
 //! Nexus Common Library
-//! 
+//!
 //! Shared types, protocols, and utilities for the Nexus BBS system.
 
-pub mod yggdrasil;
 pub mod protocol;
+pub mod yggdrasil;
 
 /// Version information for the Nexus protocol
 pub const PROTOCOL_VERSION: &str = "0.1.0";

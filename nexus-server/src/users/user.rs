@@ -19,6 +19,8 @@ pub struct User {
     pub login_time: u64,
     /// Channel sender for sending messages to this user
     pub tx: mpsc::UnboundedSender<ServerMessage>,
+    /// Features enabled for this user
+    pub features: Vec<String>,
 }
 
 impl User {
@@ -29,6 +31,7 @@ impl User {
         session_id: String,
         address: SocketAddr,
         tx: mpsc::UnboundedSender<ServerMessage>,
+        features: Vec<String>,
     ) -> Self {
         Self {
             id,
@@ -37,7 +40,13 @@ impl User {
             address,
             login_time: current_timestamp(),
             tx,
+            features,
         }
+    }
+    
+    /// Check if user has a specific feature enabled
+    pub fn has_feature(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
     }
 }
 

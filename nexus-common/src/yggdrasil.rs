@@ -27,9 +27,13 @@ mod tests {
     fn test_yggdrasil_address_validation() {
         // Valid Yggdrasil addresses
         assert!(is_yggdrasil_address(&"0200::1".parse().unwrap()));
-        assert!(is_yggdrasil_address(&"0201:1234:5678::abcd".parse().unwrap()));
+        assert!(is_yggdrasil_address(
+            &"0201:1234:5678::abcd".parse().unwrap()
+        ));
         assert!(is_yggdrasil_address(&"0300::1".parse().unwrap()));
-        assert!(is_yggdrasil_address(&"03ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".parse().unwrap()));
+        assert!(is_yggdrasil_address(
+            &"03ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".parse().unwrap()
+        ));
 
         // Invalid addresses (not in Yggdrasil range)
         assert!(!is_yggdrasil_address(&"::1".parse().unwrap()));

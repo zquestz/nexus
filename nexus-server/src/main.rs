@@ -1,11 +1,13 @@
 //! Nexus BBS Server
 
+mod db;
 mod users;
 
 use clap::Parser;
 use nexus_common::protocol::{ClientMessage, ServerMessage, UserInfo};
 use nexus_common::yggdrasil::is_yggdrasil_address;
 use std::net::{Ipv6Addr, SocketAddrV6};
+use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -22,6 +24,16 @@ struct Args {
     /// Port to listen on
     #[arg(short, long, default_value = "7500")]
     port: u16,
+
+    /// Database file path (default: platform-specific data directory)
+    #[arg(short, long)]
+    database: Option<PathBuf>,
+}
+
+/// Get the default database path for the current platform
+fn default_database_path() -> PathBuf {
+    let data_dir = dirs::data_dir().expect("Unable to determine data directory");
+    data_dir.join("nexusd").join("nexus.db")
 }
 
 #[tokio::main]
@@ -30,13 +42,27 @@ async fn main() {
 
     // Validate that the address is in the Yggdrasil range
     if !is_yggdrasil_address(&args.bind) {
-        eprintln!("Error: Address {} is not in the Yggdrasil range (0200::/7)", args.bind);
+        eprintln!(
+            "Error: Address {} is not in the Yggdrasil range (0200::/7)",
+            args.bind
+        );
         eprintln!("Yggdrasil addresses must start with 02xx: or 03xx:");
         std::process::exit(1);
     }
 
-    println!("Nexus BBS Server v{}", env!("CARGO_PKG_VERSION"));
-    println!("Binding to [{}]:{}", args.bind, args.port);
+    // Determine database path
+    let db_path = args.database.unwrap_or_else(default_database_path);
+
+    // Initialize database
+    let pool = match db::init_db(&db_path).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            eprintln!("Failed to initialize database: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let user_db = db::UserDb::new(pool.clone());
 
     // Create user manager
     let user_manager = UserManager::new();
@@ -46,32 +72,31 @@ async fn main() {
 
     // Bind TCP listener
     let listener = match TcpListener::bind(addr).await {
-        Ok(listener) => {
-            println!("Successfully bound to {}", addr);
-            listener
-        }
+        Ok(listener) => listener,
         Err(e) => {
             eprintln!("Failed to bind to {}: {}", addr, e);
             std::process::exit(1);
         }
     };
 
-    println!("Waiting for connections...");
+    println!("Nexus BBS Server v{}", env!("CARGO_PKG_VERSION"));
+    println!("Listening on [{}]:{}", args.bind, args.port);
+    println!("Database: {}", db_path.display());
 
     // Accept connections in a loop
     loop {
         match listener.accept().await {
             Ok((socket, peer_addr)) => {
-                println!("New connection from: {}", peer_addr);
-
                 let user_manager = user_manager.clone();
+                let user_db = user_db.clone();
 
                 // Spawn a task to handle this connection
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(socket, peer_addr, user_manager).await {
+                    if let Err(e) =
+                        handle_connection(socket, peer_addr, user_manager, user_db).await
+                    {
                         eprintln!("Error handling connection from {}: {}", peer_addr, e);
                     }
-                    println!("Connection closed: {}", peer_addr);
                 });
             }
             Err(e) => {
@@ -86,13 +111,14 @@ async fn handle_connection(
     socket: tokio::net::TcpStream,
     peer_addr: std::net::SocketAddr,
     user_manager: UserManager,
+    user_db: db::UserDb,
 ) -> std::io::Result<()> {
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::new(reader);
-    
+
     // Create channel for receiving server messages to send to this client
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
-    
+
     // Send a welcome message
     writer.write_all(b"Welcome to Nexus BBS!\r\n").await?;
     writer.flush().await?;
@@ -107,12 +133,12 @@ async fn handle_connection(
             // Handle incoming client messages
             result = reader.read_line(&mut line) => {
                 let n = result?;
-                
+
                 // Connection closed
                 if n == 0 {
                     break;
                 }
-                
+
                 // Handle the message
                 if let Err(e) = handle_client_message(
                     &line,
@@ -120,16 +146,17 @@ async fn handle_connection(
                     &mut handshake_complete,
                     &mut writer,
                     &user_manager,
+                    &user_db,
                     peer_addr,
                     &tx,
                 ).await {
                     eprintln!("Error handling message: {}", e);
                     break;
                 }
-                
+
                 line.clear();
             }
-            
+
             // Handle outgoing server messages/events
             Some(msg) = rx.recv() => {
                 let json = serde_json::to_string(&msg).unwrap();
@@ -143,13 +170,13 @@ async fn handle_connection(
     // Remove user on disconnect
     if let Some(id) = user_id {
         if let Some(user) = user_manager.remove_user(id).await {
-            println!("User {} (ID {}) disconnected", user.username, id);
-            
             // Broadcast disconnection to all users
-            user_manager.broadcast(ServerMessage::UserDisconnected {
-                user_id: id,
-                username: user.username.clone(),
-            }).await;
+            user_manager
+                .broadcast(ServerMessage::UserDisconnected {
+                    user_id: id,
+                    username: user.username.clone(),
+                })
+                .await;
         }
     }
 
@@ -163,6 +190,7 @@ async fn handle_client_message(
     handshake_complete: &mut bool,
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
     user_manager: &UserManager,
+    user_db: &db::UserDb,
     peer_addr: std::net::SocketAddr,
     tx: &mpsc::UnboundedSender<ServerMessage>,
 ) -> std::io::Result<()> {
@@ -171,9 +199,8 @@ async fn handle_client_message(
         return Ok(());
     }
 
-    println!("Received message from {}: {}", peer_addr, line);
-
     // Try to parse as a client message
+    // NOTE: We don't log the raw message here to avoid leaking passwords
     match serde_json::from_str::<ClientMessage>(line) {
         Ok(msg) => {
             match msg {
@@ -186,10 +213,11 @@ async fn handle_client_message(
                             error: Some("Handshake already completed".to_string()),
                         };
                         send_message(writer, &response).await?;
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Duplicate handshake"));
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Duplicate handshake",
+                        ));
                     }
-
-                    println!("Handshake from {}: version={}", peer_addr, version);
 
                     // Check if version is compatible
                     let server_version = nexus_common::PROTOCOL_VERSION;
@@ -201,47 +229,156 @@ async fn handle_client_message(
                             error: None,
                         };
                         send_message(writer, &response).await?;
-                        println!("Handshake complete with {}", peer_addr);
                     } else {
                         let response = ServerMessage::HandshakeResponse {
                             success: false,
                             version: server_version.to_string(),
-                            error: Some(format!("Version mismatch: server uses {}, client uses {}", server_version, version)),
+                            error: Some(format!(
+                                "Version mismatch: server uses {}, client uses {}",
+                                server_version, version
+                            )),
                         };
                         send_message(writer, &response).await?;
                         eprintln!("Handshake failed with {}: version mismatch", peer_addr);
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Version mismatch"));
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Version mismatch",
+                        ));
                     }
                 }
-                ClientMessage::Login { username, password: _ } => {
+                ClientMessage::Login {
+                    username,
+                    password,
+                    features,
+                } => {
                     if !*handshake_complete {
                         eprintln!("Login attempt from {} without handshake", peer_addr);
-                        let response = ServerMessage::LoginResponse {
-                            success: false,
-                            session_id: None,
-                            error: Some("Handshake required".to_string()),
-                        };
-                        send_message(writer, &response).await?;
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Handshake required"));
+                        return send_error_and_disconnect(
+                            writer,
+                            "Handshake required",
+                            Some("Login"),
+                        )
+                        .await;
                     }
 
                     if user_id.is_some() {
                         eprintln!("Duplicate login attempt from {}", peer_addr);
-                        let response = ServerMessage::LoginResponse {
-                            success: false,
-                            session_id: None,
-                            error: Some("Already logged in".to_string()),
-                        };
-                        send_message(writer, &response).await?;
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Already logged in"));
+                        return send_error_and_disconnect(
+                            writer,
+                            "Already logged in",
+                            Some("Login"),
+                        )
+                        .await;
                     }
 
-                    println!("Login attempt from {}: username={}", peer_addr, username);
+                    // Check if this is the first user (will become admin)
+                    let is_first_user = match user_db.has_any_users().await {
+                        Ok(has_users) => !has_users,
+                        Err(e) => {
+                            eprintln!("Database error checking for users: {}", e);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Database error",
+                                Some("Login"),
+                            )
+                            .await;
+                        }
+                    };
 
-                    // TODO: Actually validate credentials
-                    // For now, accept any login
+                    // Check if user exists
+                    let account = match user_db.get_user_by_username(&username).await {
+                        Ok(acc) => acc,
+                        Err(e) => {
+                            eprintln!("Database error looking up user {}: {}", username, e);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Database error",
+                                Some("Login"),
+                            )
+                            .await;
+                        }
+                    };
+
+                    if let Some(account) = account {
+                        // User exists - verify password
+                        match db::verify_password(&password, &account.hashed_password) {
+                            Ok(true) => {
+                                println!("User '{}' logged in from {}", username, peer_addr);
+                            }
+                            Ok(false) => {
+                                eprintln!(
+                                    "Invalid password for user {} from {}",
+                                    username, peer_addr
+                                );
+                                return send_error_and_disconnect(
+                                    writer,
+                                    "Invalid username or password",
+                                    Some("Login"),
+                                )
+                                .await;
+                            }
+                            Err(e) => {
+                                eprintln!("Password verification error for {}: {}", username, e);
+                                return send_error_and_disconnect(
+                                    writer,
+                                    "Authentication error",
+                                    Some("Login"),
+                                )
+                                .await;
+                            }
+                        }
+                    } else if is_first_user {
+                        // First user - create as admin
+                        let hashed_password = match db::hash_password(&password) {
+                            Ok(hash) => hash,
+                            Err(e) => {
+                                eprintln!("Failed to hash password for {}: {}", username, e);
+                                return send_error_and_disconnect(
+                                    writer,
+                                    "Failed to create user",
+                                    Some("Login"),
+                                )
+                                .await;
+                            }
+                        };
+
+                        match user_db.create_user(&username, &hashed_password, true).await {
+                            Ok(_) => println!(
+                                "Created first user (admin): '{}' from {}",
+                                username, peer_addr
+                            ),
+                            Err(e) => {
+                                eprintln!("Failed to create admin user {}: {}", username, e);
+                                return send_error_and_disconnect(
+                                    writer,
+                                    "Failed to create user",
+                                    Some("Login"),
+                                )
+                                .await;
+                            }
+                        }
+                    } else {
+                        // User doesn't exist and not first user
+                        eprintln!("User {} does not exist", username);
+                        return send_error_and_disconnect(
+                            writer,
+                            "Invalid username or password",
+                            Some("Login"),
+                        )
+                        .await;
+                    }
+
+                    // User authenticated successfully - create session
                     let session_id = format!("{}-{}", username, rand_session_id());
-                    let id = user_manager.add_user(username.clone(), session_id.clone(), peer_addr, tx.clone()).await;
+                    let id = user_manager
+                        .add_user(
+                            username.clone(),
+                            session_id.clone(),
+                            peer_addr,
+                            tx.clone(),
+                            features,
+                        )
+                        .await;
                     *user_id = Some(id);
 
                     let response = ServerMessage::LoginResponse {
@@ -251,25 +388,27 @@ async fn handle_client_message(
                     };
                     send_message(writer, &response).await?;
 
-                    println!("User {} logged in as ID {}", username, id);
-                    
+                    // Broadcast user connected to all other users
                     // Broadcast user connected event to all other users (not to themselves)
                     let user_info = UserInfo {
                         id,
                         username: username.clone(),
                         login_time: current_timestamp(),
                     };
-                    user_manager.broadcast_except(id, ServerMessage::UserConnected {
-                        user: user_info,
-                    }).await;
+                    user_manager
+                        .broadcast_except(id, ServerMessage::UserConnected { user: user_info })
+                        .await;
                 }
                 ClientMessage::UserList => {
                     if user_id.is_none() {
                         eprintln!("UserList request from {} without login", peer_addr);
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Not logged in"));
+                        return send_error_and_disconnect(
+                            writer,
+                            "Not logged in",
+                            Some("UserList"),
+                        )
+                        .await;
                     }
-
-                    println!("UserList request from {}", peer_addr);
 
                     // Get all users from the manager
                     let all_users = user_manager.get_all_users().await;
@@ -282,22 +421,83 @@ async fn handle_client_message(
                         })
                         .collect();
 
-                    let response = ServerMessage::UserListResponse {
-                        users: user_infos,
-                    };
+                    let response = ServerMessage::UserListResponse { users: user_infos };
                     send_message(writer, &response).await?;
+                }
+                ClientMessage::ChatSend { message } => {
+                    if user_id.is_none() {
+                        eprintln!("ChatSend from {} without login", peer_addr);
+                        return send_error_and_disconnect(
+                            writer,
+                            "Not logged in",
+                            Some("ChatSend"),
+                        )
+                        .await;
+                    }
+
+                    // Check message length limit (1024 characters)
+                    if message.len() > 1024 {
+                        eprintln!(
+                            "ChatSend from {} exceeds length limit: {} chars",
+                            peer_addr,
+                            message.len()
+                        );
+                        return send_error_and_disconnect(
+                            writer,
+                            "Message too long (max 1024 characters)",
+                            Some("ChatSend"),
+                        )
+                        .await;
+                    }
+
+                    let id = user_id.unwrap();
+
+                    // Get the user to check if they have chat feature and get their username
+                    let user = user_manager.get_user(id).await;
+                    if let Some(user) = user {
+                        if !user.has_feature("chat") {
+                            eprintln!("ChatSend from {} without chat feature", peer_addr);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Chat feature not enabled",
+                                Some("ChatSend"),
+                            )
+                            .await;
+                        }
+
+                        // Broadcast to all users with chat feature
+                        user_manager
+                            .broadcast_to_feature(
+                                "chat",
+                                ServerMessage::ChatMessage {
+                                    user_id: id,
+                                    username: user.username.clone(),
+                                    message: message.clone(),
+                                },
+                            )
+                            .await;
+                    } else {
+                        return send_error_and_disconnect(
+                            writer,
+                            "User not found",
+                            Some("ChatSend"),
+                        )
+                        .await;
+                    }
                 }
             }
         }
         Err(e) => {
-            eprintln!("Failed to parse message from {}: {} - message was: {:?}", peer_addr, e, line);
-            let response = ServerMessage::LoginResponse {
-                success: false,
-                session_id: None,
-                error: Some(format!("Invalid message format: {}", e)),
-            };
-            send_message(writer, &response).await?;
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Parse error"));
+            eprintln!(
+                "Failed to parse message from {}: {} - message was: {:?}",
+                peer_addr, e, line
+            );
+            return send_error_and_disconnect(
+                writer,
+                &format!("Invalid message format: {}", e),
+                None,
+            )
+            .await;
         }
     }
 
@@ -314,6 +514,23 @@ async fn send_message(
     writer.write_all(b"\n").await?;
     writer.flush().await?;
     Ok(())
+}
+
+/// Send an error message to the client and return an error to trigger disconnection
+async fn send_error_and_disconnect(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    error_message: &str,
+    command: Option<&str>,
+) -> std::io::Result<()> {
+    let error_msg = ServerMessage::Error {
+        message: error_message.to_string(),
+        command: command.map(|s| s.to_string()),
+    };
+    let _ = send_message(writer, &error_msg).await;
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        error_message,
+    ))
 }
 
 /// Generate a random session ID
