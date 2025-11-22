@@ -2389,9 +2389,12 @@ dependencies = [
 name = "nexus-client"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "dirs 5.0.1",
  "iced",
  "nexus-common",
  "once_cell",
+ "serde",
  "serde_json",
  "tokio",
 ]

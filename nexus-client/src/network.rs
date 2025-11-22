@@ -109,9 +109,12 @@ pub async fn connect_to_server(
             error,
         }) => {
             if !success {
-                return Err(format!("Login failed: {}", error.unwrap_or_default()));
+                return Err(error.unwrap_or_else(|| "Login failed".to_string()));
             }
             session_id.ok_or_else(|| "No session ID received".to_string())?
+        }
+        Ok(ServerMessage::Error { message, .. }) => {
+            return Err(message);
         }
         _ => return Err("Unexpected login response".to_string()),
     };
@@ -184,13 +187,13 @@ pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
 
         if let Some(ref mut receiver) = rx {
             while let Some(msg) = receiver.recv().await {
-                let _ = output.send(Message::ServerMessageReceived(msg)).await;
+                let _ = output.send(Message::ServerMessageReceived(connection_id, msg)).await;
             }
         }
 
         // Connection closed
         let _ = output
-            .send(Message::NetworkError("Connection closed".to_string()))
+            .send(Message::NetworkError(connection_id, "Connection closed".to_string()))
             .await;
 
         // Keep the stream alive but do nothing

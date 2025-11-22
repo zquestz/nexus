@@ -17,6 +17,28 @@ pub async fn handle_usercreate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Validate username is not empty
+    if username.trim().is_empty() {
+        eprintln!("UserCreate from {} with empty username", ctx.peer_addr);
+        let error_msg = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some("Username cannot be empty".to_string()),
+        };
+        ctx.send_message(&error_msg).await?;
+        return Ok(());
+    }
+
+    // Validate password is not empty
+    if password.trim().is_empty() {
+        eprintln!("UserCreate from {} with empty password", ctx.peer_addr);
+        let error_msg = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some("Password cannot be empty".to_string()),
+        };
+        ctx.send_message(&error_msg).await?;
+        return Ok(());
+    }
+
     // Must be logged in
     let requesting_session_id = match session_id {
         Some(id) => id,
@@ -799,6 +821,84 @@ mod tests {
             result.is_err(),
             "User should not be able to grant permissions they don't have"
         );
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_empty_username() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin_user = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        let session_id = test_ctx
+            .user_manager
+            .add_user(
+                admin_user.id,
+                "admin".to_string(),
+                test_ctx.peer_addr,
+                admin_user.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to create user with empty username
+        let result = handle_usercreate(
+            "".to_string(),
+            "password123".to_string(),
+            false,
+            vec![],
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response, not disconnect");
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_empty_password() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin_user = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        let session_id = test_ctx
+            .user_manager
+            .add_user(
+                admin_user.id,
+                "admin".to_string(),
+                test_ctx.peer_addr,
+                admin_user.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to create user with empty password
+        let result = handle_usercreate(
+            "newuser".to_string(),
+            "".to_string(),
+            false,
+            vec![],
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response, not disconnect");
     }
 
     #[tokio::test]

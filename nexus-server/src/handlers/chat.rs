@@ -14,6 +14,14 @@ pub async fn handle_chat_send(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Check message is not empty
+    if message.trim().is_empty() {
+        eprintln!("ChatSend from {} with empty message", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect("Message cannot be empty", Some("ChatSend"))
+            .await;
+    }
+
     // Check message length limit (1024 characters)
     if message.len() > 1024 {
         eprintln!(
@@ -263,6 +271,62 @@ mod tests {
 
         // Should fail
         assert!(result.is_err(), "Chat should require chat feature");
+    }
+
+    #[tokio::test]
+    async fn test_chat_empty_message() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::ChatSend);
+            set
+        };
+        let user = test_ctx
+            .user_db
+            .create_user("alice", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        // Add user to UserManager with chat feature
+        let session_id = test_ctx
+            .user_manager
+            .add_user(
+                user.id,
+                "alice".to_string(),
+                test_ctx.peer_addr,
+                user.created_at,
+                test_ctx.tx.clone(),
+                vec!["chat".to_string()],
+            )
+            .await;
+
+        // Try to send empty message
+        let result = handle_chat_send(
+            "".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(result.is_err(), "Empty message should be rejected");
+
+        // Try to send whitespace-only message
+        let result = handle_chat_send(
+            "   ".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(result.is_err(), "Whitespace-only message should be rejected");
     }
 
     #[tokio::test]
