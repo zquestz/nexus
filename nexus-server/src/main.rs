@@ -344,9 +344,9 @@ async fn handle_client_message(
                             }
                         };
 
-                        // Admin gets all permissions
+                        // Admin gets all permissions automatically (no need to store in table)
                         match user_db
-                            .create_user(&username, &hashed_password, true, &db::Permissions::all())
+                            .create_user(&username, &hashed_password, true, &db::Permissions::new())
                             .await
                         {
                             Ok(account) => {

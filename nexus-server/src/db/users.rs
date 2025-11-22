@@ -58,7 +58,7 @@ impl Permissions {
         }
     }
 
-    /// Create a permission set with all permissions (for admins)
+    /// Create a permission set with all permissions
     pub fn all() -> Self {
         Self {
             permissions: Permission::all().into_iter().collect(),
@@ -162,12 +162,11 @@ impl UserDb {
 
     /// Get permissions for a user
     pub async fn get_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT permission FROM user_permissions WHERE user_id = ?"
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT permission FROM user_permissions WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let perms: Vec<Permission> = rows
             .into_iter()
@@ -178,14 +177,16 @@ impl UserDb {
     }
 
     /// Check if user has a specific permission (with admin override)
-    pub async fn has_permission(&self, user_id: i64, permission: Permission) -> Result<bool, sqlx::Error> {
+    pub async fn has_permission(
+        &self,
+        user_id: i64,
+        permission: Permission,
+    ) -> Result<bool, sqlx::Error> {
         // Check if user is admin (admins have all permissions)
-        let is_admin: Option<(bool,)> = sqlx::query_as(
-            "SELECT is_admin FROM users WHERE id = ?"
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let is_admin: Option<(bool,)> = sqlx::query_as("SELECT is_admin FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         // User doesn't exist
         let Some((is_admin,)) = is_admin else {
@@ -197,7 +198,7 @@ impl UserDb {
         }
 
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?"
+            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?",
         )
         .bind(user_id)
         .bind(permission.as_str())
@@ -208,7 +209,11 @@ impl UserDb {
     }
 
     /// Set permissions for a user (replaces all existing permissions)
-    pub async fn set_permissions(&self, user_id: i64, permissions: &Permissions) -> Result<(), sqlx::Error> {
+    pub async fn set_permissions(
+        &self,
+        user_id: i64,
+        permissions: &Permissions,
+    ) -> Result<(), sqlx::Error> {
         // Delete existing permissions
         sqlx::query("DELETE FROM user_permissions WHERE user_id = ?")
             .bind(user_id)
@@ -249,8 +254,11 @@ impl UserDb {
 
         let user_id = result.last_insert_rowid();
 
-        // Set permissions in separate table
-        self.set_permissions(user_id, permissions).await?;
+        // Only set permissions for non-admin users
+        // Admins automatically get all permissions via has_permission()
+        if !is_admin {
+            self.set_permissions(user_id, permissions).await?;
+        }
 
         Ok(UserAccount {
             id: user_id,
