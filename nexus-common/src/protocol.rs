@@ -25,6 +25,13 @@ pub enum ClientMessage {
         password: String,
         features: Vec<String>,
     },
+    /// Create a new user account
+    UserCreate {
+        username: String,
+        password: String,
+        is_admin: bool,
+        permissions: Vec<String>,
+    },
     /// Delete a user account
     UserDelete { username: String },
     /// Request information about a specific user
@@ -65,6 +72,12 @@ pub enum ServerMessage {
     },
     /// User connected event
     UserConnected { user: UserInfo },
+    /// User create response
+    UserCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// User delete response
     UserDeleteResponse {
         success: bool,
@@ -128,6 +141,13 @@ impl std::fmt::Debug for ClientMessage {
                 .field("username", username)
                 .field("password", &"<REDACTED>")
                 .field("features", features)
+                .finish(),
+            ClientMessage::UserCreate { username, is_admin, permissions, .. } => f
+                .debug_struct("UserCreate")
+                .field("username", username)
+                .field("is_admin", is_admin)
+                .field("permissions", permissions)
+                .field("password", &"<REDACTED>")
                 .finish(),
             ClientMessage::UserDelete { username } => f
                 .debug_struct("UserDelete")

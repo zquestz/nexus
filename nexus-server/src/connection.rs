@@ -135,6 +135,15 @@ async fn handle_client_message(
                 )
                 .await?;
             }
+            ClientMessage::UserCreate {
+                username,
+                password,
+                is_admin,
+                permissions,
+            } => {
+                handlers::handle_usercreate(username, password, is_admin, permissions, *session_id, &mut ctx)
+                    .await?;
+            }
             ClientMessage::UserDelete { username } => {
                 handlers::handle_userdelete(username, *session_id, &mut ctx).await?;
             }

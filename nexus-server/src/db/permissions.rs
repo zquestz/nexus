@@ -15,6 +15,8 @@ pub enum Permission {
     ChatSend,
     /// Permission to receive chat messages
     ChatReceive,
+    /// Permission to create users
+    UserCreate,
     /// Permission to delete users
     UserDelete,
 }
@@ -28,6 +30,23 @@ impl Permission {
     /// Returns `&str` with zero allocation and zero runtime cost.
     pub fn as_str(&self) -> &str {
         self.as_ref()
+    }
+
+    /// Parse a permission string into a Permission enum variant.
+    ///
+    /// Accepts snake_case strings like "user_list", "chat_send", etc.
+    ///
+    /// Returns Some(Permission) if the string is valid, None otherwise.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "user_list" => Some(Permission::UserList),
+            "user_info" => Some(Permission::UserInfo),
+            "chat_send" => Some(Permission::ChatSend),
+            "chat_receive" => Some(Permission::ChatReceive),
+            "user_create" => Some(Permission::UserCreate),
+            "user_delete" => Some(Permission::UserDelete),
+            _ => None,
+        }
     }
 }
 

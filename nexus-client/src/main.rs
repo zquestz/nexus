@@ -298,6 +298,21 @@ impl NexusApp {
                     });
                 }
             }
+            ServerMessage::UserCreateResponse { success, error } => {
+                if success {
+                    self.chat_messages.push(ChatMessage {
+                        session_id: 0,
+                        username: "System".to_string(),
+                        message: "User created successfully".to_string(),
+                    });
+                } else {
+                    self.chat_messages.push(ChatMessage {
+                        session_id: 0,
+                        username: "Error".to_string(),
+                        message: format!("Failed to create user: {}", error.unwrap_or_default()),
+                    });
+                }
+            }
             ServerMessage::Error { message, .. } => {
                 self.chat_messages.push(ChatMessage {
                     session_id: 0,
