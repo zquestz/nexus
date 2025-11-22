@@ -1,13 +1,21 @@
 //! Database module for persistent storage
 
 pub mod password;
+pub mod permissions;
 pub mod users;
 
 pub use password::{hash_password, verify_password};
-pub use users::{Permission, Permissions, UserDb};
+pub use permissions::{Permission, Permissions};
+pub use users::UserDb;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Get the default database path for the platform
+pub fn default_database_path() -> PathBuf {
+    let data_dir = dirs::data_dir().expect("Unable to determine data directory");
+    data_dir.join("nexusd").join("nexus.db")
+}
 
 /// Initialize the database connection pool and run migrations
 pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {

@@ -1,0 +1,72 @@
+//! Message handlers for client commands
+
+mod handshake;
+mod login;
+mod userlist;
+mod chat;
+
+pub use handshake::handle_handshake;
+pub use login::handle_login;
+pub use userlist::handle_userlist;
+pub use chat::handle_chat_send;
+
+use crate::db::UserDb;
+use crate::users::UserManager;
+use nexus_common::protocol::ServerMessage;
+use std::io;
+use std::net::SocketAddr;
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
+use tokio::sync::mpsc;
+
+/// Context passed to all handlers with shared resources
+pub struct HandlerContext<'a> {
+    pub writer: &'a mut OwnedWriteHalf,
+    pub peer_addr: SocketAddr,
+    pub user_manager: &'a UserManager,
+    pub user_db: &'a UserDb,
+    pub tx: &'a mpsc::UnboundedSender<ServerMessage>,
+}
+
+impl<'a> HandlerContext<'a> {
+    /// Send a message to the client
+    pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
+        let json = serde_json::to_string(message).unwrap();
+        self.writer.write_all(json.as_bytes()).await?;
+        self.writer.write_all(b"\n").await?;
+        self.writer.flush().await?;
+        Ok(())
+    }
+
+    /// Send an error message and disconnect
+    pub async fn send_error_and_disconnect(
+        &mut self,
+        message: &str,
+        command: Option<&str>,
+    ) -> io::Result<()> {
+        let error_msg = ServerMessage::Error {
+            message: message.to_string(),
+            command: command.map(|s| s.to_string()),
+        };
+        self.send_message(&error_msg).await?;
+        Err(io::Error::new(io::ErrorKind::Other, message))
+    }
+}
+
+/// Generate a random session ID
+pub fn rand_session_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    format!("{:x}", timestamp)
+}
+
+/// Get current Unix timestamp in seconds
+pub fn current_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
