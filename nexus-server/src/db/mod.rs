@@ -4,7 +4,7 @@ pub mod password;
 pub mod users;
 
 pub use password::{hash_password, verify_password};
-pub use users::UserDb;
+pub use users::{Permission, Permissions, UserDb};
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::Path;

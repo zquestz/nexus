@@ -299,11 +299,13 @@ async fn handle_client_message(
                         }
                     };
 
-                    if let Some(account) = account {
+                    // Verify password or create first user
+                    let authenticated_account = if let Some(account) = account {
                         // User exists - verify password
                         match db::verify_password(&password, &account.hashed_password) {
                             Ok(true) => {
                                 println!("User '{}' logged in from {}", username, peer_addr);
+                                account
                             }
                             Ok(false) => {
                                 eprintln!(
@@ -342,11 +344,18 @@ async fn handle_client_message(
                             }
                         };
 
-                        match user_db.create_user(&username, &hashed_password, true).await {
-                            Ok(_) => println!(
-                                "Created first user (admin): '{}' from {}",
-                                username, peer_addr
-                            ),
+                        // Admin gets all permissions
+                        match user_db
+                            .create_user(&username, &hashed_password, true, &db::Permissions::all())
+                            .await
+                        {
+                            Ok(account) => {
+                                println!(
+                                    "Created first user (admin): '{}' from {}",
+                                    username, peer_addr
+                                );
+                                account
+                            }
                             Err(e) => {
                                 eprintln!("Failed to create admin user {}: {}", username, e);
                                 return send_error_and_disconnect(
@@ -366,12 +375,15 @@ async fn handle_client_message(
                             Some("Login"),
                         )
                         .await;
-                    }
+                    };
 
                     // User authenticated successfully - create session
+                    // Note: Features are client preferences (what they want to subscribe to)
+                    // Permissions are checked when executing commands, not at login
                     let session_id = format!("{}-{}", username, rand_session_id());
                     let id = user_manager
                         .add_user(
+                            authenticated_account.id,
                             username.clone(),
                             session_id.clone(),
                             peer_addr,
@@ -400,11 +412,54 @@ async fn handle_client_message(
                         .await;
                 }
                 ClientMessage::UserList => {
-                    if user_id.is_none() {
-                        eprintln!("UserList request from {} without login", peer_addr);
+                    let id = match user_id {
+                        Some(id) => *id,
+                        None => {
+                            eprintln!("UserList request from {} without login", peer_addr);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Not logged in",
+                                Some("UserList"),
+                            )
+                            .await;
+                        }
+                    };
+
+                    // Get user and check permission
+                    let user = match user_manager.get_user(id).await {
+                        Some(u) => u,
+                        None => {
+                            eprintln!("UserList request from unknown user {}", peer_addr);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Authentication error",
+                                Some("UserList"),
+                            )
+                            .await;
+                        }
+                    };
+
+                    let has_perm = match user_db
+                        .has_permission(user.db_user_id, db::Permission::ListUsers)
+                        .await
+                    {
+                        Ok(has) => has,
+                        Err(e) => {
+                            eprintln!("UserList permission check error: {}", e);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Database error",
+                                Some("UserList"),
+                            )
+                            .await;
+                        }
+                    };
+
+                    if !has_perm {
+                        eprintln!("UserList request from {} without permission", peer_addr);
                         return send_error_and_disconnect(
                             writer,
-                            "Not logged in",
+                            "Permission denied",
                             Some("UserList"),
                         )
                         .await;
@@ -452,11 +507,37 @@ async fn handle_client_message(
 
                     let id = user_id.unwrap();
 
-                    // Get the user to check if they have chat feature and get their username
+                    // Get the user and check permissions
                     let user = user_manager.get_user(id).await;
                     if let Some(user) = user {
+                        let has_perm = match user_db
+                            .has_permission(user.db_user_id, db::Permission::SendChat)
+                            .await
+                        {
+                            Ok(has) => has,
+                            Err(e) => {
+                                eprintln!("ChatSend permission check error: {}", e);
+                                return send_error_and_disconnect(
+                                    writer,
+                                    "Database error",
+                                    Some("ChatSend"),
+                                )
+                                .await;
+                            }
+                        };
+
+                        if !has_perm {
+                            eprintln!("ChatSend from {} without permission", peer_addr);
+                            return send_error_and_disconnect(
+                                writer,
+                                "Permission denied",
+                                Some("ChatSend"),
+                            )
+                            .await;
+                        }
+
                         if !user.has_feature("chat") {
-                            eprintln!("ChatSend from {} without chat feature", peer_addr);
+                            eprintln!("ChatSend from {} without chat feature enabled", peer_addr);
                             return send_error_and_disconnect(
                                 writer,
                                 "Chat feature not enabled",

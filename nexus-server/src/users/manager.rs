@@ -26,6 +26,7 @@ impl UserManager {
     /// Add a new user and return their assigned ID
     pub async fn add_user(
         &self,
+        db_user_id: i64,
         username: String,
         session_id: String,
         address: SocketAddr,
@@ -37,7 +38,7 @@ impl UserManager {
         *next_id += 1;
         drop(next_id);
 
-        let user = User::new(id, username, session_id, address, tx, features);
+        let user = User::new(id, db_user_id, username, session_id, address, tx, features);
         let mut users = self.users.write().await;
         users.insert(id, user);
 
