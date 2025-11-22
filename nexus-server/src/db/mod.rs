@@ -12,9 +12,10 @@ use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 
 /// Get the default database path for the platform
-pub fn default_database_path() -> PathBuf {
-    let data_dir = dirs::data_dir().expect("Unable to determine data directory");
-    data_dir.join("nexusd").join("nexus.db")
+pub fn default_database_path() -> Result<PathBuf, String> {
+    let data_dir = dirs::data_dir()
+        .ok_or_else(|| "Unable to determine data directory for your platform".to_string())?;
+    Ok(data_dir.join("nexusd").join("nexus.db"))
 }
 
 /// Initialize the database connection pool and run migrations

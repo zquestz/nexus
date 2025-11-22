@@ -17,6 +17,8 @@ pub struct User {
     pub session_id: String,
     /// Remote address of the user's connection
     pub address: SocketAddr,
+    /// When the user account was created (Unix timestamp from database)
+    pub created_at: i64,
     /// When the user logged in (Unix timestamp)
     pub login_time: u64,
     /// Channel sender for sending messages to this user
@@ -33,6 +35,7 @@ impl User {
         username: String,
         session_id: String,
         address: SocketAddr,
+        created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
         features: Vec<String>,
     ) -> Self {
@@ -42,6 +45,7 @@ impl User {
             username,
             session_id,
             address,
+            created_at,
             login_time: current_timestamp(),
             tx,
             features,

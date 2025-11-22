@@ -28,7 +28,15 @@ async fn main() {
     }
 
     // Determine database path (use provided path or platform default)
-    let db_path = args.database.unwrap_or_else(db::default_database_path);
+    let db_path = args.database.unwrap_or_else(|| {
+        match db::default_database_path() {
+            Ok(path) => path,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    });
 
     // Initialize database connection pool and run migrations
     let pool = match db::init_db(&db_path).await {

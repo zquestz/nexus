@@ -1,6 +1,7 @@
 //! Chat message handler
+//! Handler for ChatSend command
 
-use super::HandlerContext;
+use super::{HandlerContext, ERR_NOT_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_PERMISSION_DENIED};
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
@@ -14,7 +15,7 @@ pub async fn handle_chat_send(
     if user_id.is_none() {
         eprintln!("ChatSend from {} without login", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Not logged in", Some("ChatSend"))
+            .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("ChatSend"))
             .await;
     }
 
@@ -37,21 +38,21 @@ pub async fn handle_chat_send(
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect("Authentication error", Some("ChatSend"))
+                .send_error_and_disconnect(ERR_AUTHENTICATION, Some("ChatSend"))
                 .await;
         }
     };
 
     let has_perm = match ctx
         .user_db
-        .has_permission(user.db_user_id, Permission::SendChat)
+        .has_permission(user.db_user_id, Permission::ChatSend)
         .await
     {
         Ok(has) => has,
         Err(e) => {
             eprintln!("ChatSend permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect("Database error", Some("ChatSend"))
+                .send_error_and_disconnect(ERR_DATABASE, Some("ChatSend"))
                 .await;
         }
     };
@@ -59,18 +60,21 @@ pub async fn handle_chat_send(
     if !has_perm {
         eprintln!("ChatSend from {} without permission", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Permission denied", Some("ChatSend"))
+            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("ChatSend"))
             .await;
     }
 
     if !user.has_feature("chat") {
-        eprintln!("ChatSend from {} without chat feature enabled", ctx.peer_addr);
+        eprintln!(
+            "ChatSend from {} without chat feature enabled",
+            ctx.peer_addr
+        );
         return ctx
             .send_error_and_disconnect("Chat feature not enabled", Some("ChatSend"))
             .await;
     }
 
-    // Broadcast to all users with chat feature
+    // Broadcast to all users with chat feature AND ChatReceive permission
     ctx.user_manager
         .broadcast_to_feature(
             "chat",
@@ -79,6 +83,8 @@ pub async fn handle_chat_send(
                 username: user.username.clone(),
                 message: message.clone(),
             },
+            ctx.user_db,
+            Permission::ChatReceive,
         )
         .await;
 

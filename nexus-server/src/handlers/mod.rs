@@ -1,13 +1,19 @@
 //! Message handlers for client commands
 
+mod errors;
 mod handshake;
 mod login;
 mod userlist;
+mod userinfo;
+mod userdelete;
 mod chat;
 
+pub use errors::*;
 pub use handshake::handle_handshake;
 pub use login::handle_login;
 pub use userlist::handle_userlist;
+pub use userinfo::handle_userinfo;
+pub use userdelete::handle_userdelete;
 pub use chat::handle_chat_send;
 
 use crate::db::UserDb;

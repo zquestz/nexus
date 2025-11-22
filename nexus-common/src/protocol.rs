@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
+    /// Send a chat message to #server
+    ChatSend { message: String },
     /// Handshake - must be sent first
     Handshake { version: String },
     /// Login request
@@ -23,16 +25,29 @@ pub enum ClientMessage {
         password: String,
         features: Vec<String>,
     },
+    /// Delete a user account
+    UserDelete { username: String },
+    /// Request information about a specific user
+    UserInfo { user_id: u32 },
     /// Request list of connected users
     UserList,
-    /// Send a chat message to #server
-    ChatSend { message: String },
 }
 
 /// Server response messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
+    /// Chat message
+    ChatMessage {
+        user_id: u32,
+        username: String,
+        message: String,
+    },
+    /// Error message
+    Error {
+        message: String,
+        command: Option<String>,
+    },
     /// Handshake response
     HandshakeResponse {
         success: bool,
@@ -48,27 +63,26 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
-    /// User list response
-    UserListResponse { users: Vec<UserInfo> },
     /// User connected event
     UserConnected { user: UserInfo },
+    /// User delete response
+    UserDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// User disconnected event
     UserDisconnected { user_id: u32, username: String },
-    /// Chat message from #server
-    ChatMessage {
-        user_id: u32,
-        username: String,
-        message: String,
+    /// User information response
+    UserInfoResponse {
+        user: Option<UserInfoDetailed>,
+        error: Option<String>,
     },
-    /// Generic error message (usually followed by disconnection)
-    Error {
-        message: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        command: Option<String>,
-    },
+    /// User list response
+    UserListResponse { users: Vec<UserInfo> },
 }
 
-/// Information about a connected user
+/// Information about a connected user (basic info for lists)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub id: u32,
@@ -76,10 +90,32 @@ pub struct UserInfo {
     pub login_time: u64,
 }
 
+/// Detailed information about a user (for UserInfo command)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfoDetailed {
+    pub id: u32,
+    pub username: String,
+    pub session_id: String,
+    pub login_time: u64,
+    pub features: Vec<String>,
+    /// When the account was created (Unix timestamp)
+    pub created_at: i64,
+    /// Only included for admins viewing the info
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_admin: Option<bool>,
+    /// Only included for admins viewing the info
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+}
+
 // Custom Debug implementation that redacts passwords
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ClientMessage::ChatSend { message } => f
+                .debug_struct("ChatSend")
+                .field("message", message)
+                .finish(),
             ClientMessage::Handshake { version } => f
                 .debug_struct("Handshake")
                 .field("version", version)
@@ -94,11 +130,15 @@ impl std::fmt::Debug for ClientMessage {
                 .field("password", &"<REDACTED>")
                 .field("features", features)
                 .finish(),
-            ClientMessage::UserList => f.debug_struct("UserList").finish(),
-            ClientMessage::ChatSend { message } => f
-                .debug_struct("ChatSend")
-                .field("message", message)
+            ClientMessage::UserDelete { username } => f
+                .debug_struct("UserDelete")
+                .field("username", username)
                 .finish(),
+            ClientMessage::UserInfo { user_id } => f
+                .debug_struct("UserInfo")
+                .field("user_id", user_id)
+                .finish(),
+            ClientMessage::UserList => f.debug_struct("UserList").finish(),
         }
     }
 }

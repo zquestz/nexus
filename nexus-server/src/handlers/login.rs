@@ -1,6 +1,7 @@
 //! Login message handler
 
-use super::{current_timestamp, rand_session_id, HandlerContext};
+use super::{HandlerContext, current_timestamp, rand_session_id};
+use super::{ERR_HANDSHAKE_REQUIRED, ERR_ALREADY_LOGGED_IN, ERR_DATABASE, ERR_INVALID_CREDENTIALS, ERR_AUTHENTICATION, ERR_FAILED_TO_CREATE_USER};
 use crate::db;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
@@ -17,14 +18,14 @@ pub async fn handle_login(
     if !handshake_complete {
         eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Handshake required", Some("Login"))
+            .send_error_and_disconnect(ERR_HANDSHAKE_REQUIRED, Some("Login"))
             .await;
     }
 
     if user_id.is_some() {
         eprintln!("Duplicate login attempt from {}", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Already logged in", Some("Login"))
+            .send_error_and_disconnect(ERR_ALREADY_LOGGED_IN, Some("Login"))
             .await;
     }
 
@@ -34,7 +35,7 @@ pub async fn handle_login(
         Err(e) => {
             eprintln!("Database error checking for users: {}", e);
             return ctx
-                .send_error_and_disconnect("Database error", Some("Login"))
+                .send_error_and_disconnect(ERR_DATABASE, Some("Login"))
                 .await;
         }
     };
@@ -45,7 +46,7 @@ pub async fn handle_login(
         Err(e) => {
             eprintln!("Database error looking up user {}: {}", username, e);
             return ctx
-                .send_error_and_disconnect("Database error", Some("Login"))
+                .send_error_and_disconnect(ERR_DATABASE, Some("Login"))
                 .await;
         }
     };
@@ -64,13 +65,13 @@ pub async fn handle_login(
                     username, ctx.peer_addr
                 );
                 return ctx
-                    .send_error_and_disconnect("Invalid username or password", Some("Login"))
+                    .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
                     .await;
             }
             Err(e) => {
                 eprintln!("Password verification error for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect("Authentication error", Some("Login"))
+                    .send_error_and_disconnect(ERR_AUTHENTICATION, Some("Login"))
                     .await;
             }
         }
@@ -81,7 +82,7 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect("Failed to create user", Some("Login"))
+                    .send_error_and_disconnect(ERR_FAILED_TO_CREATE_USER, Some("Login"))
                     .await;
             }
         };
@@ -102,7 +103,7 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to create admin user {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect("Failed to create user", Some("Login"))
+                    .send_error_and_disconnect(ERR_FAILED_TO_CREATE_USER, Some("Login"))
                     .await;
             }
         }
@@ -110,7 +111,7 @@ pub async fn handle_login(
         // User doesn't exist and not first user
         eprintln!("User {} does not exist", username);
         return ctx
-            .send_error_and_disconnect("Invalid username or password", Some("Login"))
+            .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
             .await;
     };
 
@@ -122,9 +123,10 @@ pub async fn handle_login(
         .user_manager
         .add_user(
             authenticated_account.id,
-            username.clone(),
+            authenticated_account.username,
             session_id.clone(),
             ctx.peer_addr,
+            authenticated_account.created_at,
             ctx.tx.clone(),
             features,
         )
@@ -141,7 +143,7 @@ pub async fn handle_login(
     // Broadcast user connected to all other users
     let user_info = UserInfo {
         id,
-        username: username.clone(),
+        username,
         login_time: current_timestamp(),
     };
     ctx.user_manager

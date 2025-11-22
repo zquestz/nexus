@@ -1,6 +1,7 @@
 //! User manager for tracking connected users
 
 use super::user::User;
+use crate::db::{Permission, UserDb};
 use nexus_common::protocol::ServerMessage;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -30,6 +31,7 @@ impl UserManager {
         username: String,
         session_id: String,
         address: SocketAddr,
+        created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
         features: Vec<String>,
     ) -> u32 {
@@ -38,7 +40,7 @@ impl UserManager {
         *next_id += 1;
         drop(next_id);
 
-        let user = User::new(id, db_user_id, username, session_id, address, tx, features);
+        let user = User::new(id, db_user_id, username, session_id, address, created_at, tx, features);
         let mut users = self.users.write().await;
         users.insert(id, user);
 
@@ -105,13 +107,37 @@ impl UserManager {
     //     }
     // }
 
-    /// Broadcast a message to all users with a specific feature
-    pub async fn broadcast_to_feature(&self, feature: &str, message: ServerMessage) {
+    /// Broadcast a message to all users with a specific feature and permission
+    pub async fn broadcast_to_feature(
+        &self,
+        feature: &str,
+        message: ServerMessage,
+        user_db: &UserDb,
+        required_permission: Permission,
+    ) {
         let users = self.users.read().await;
         for user in users.values() {
-            if user.has_feature(feature) {
-                // Ignore send errors (user might have disconnected)
-                let _ = user.tx.send(message.clone());
+            // Check if user has the required feature
+            if !user.has_feature(feature) {
+                continue;
+            }
+
+            // Check if user has the required permission
+            let has_perm = match user_db.has_permission(user.db_user_id, required_permission).await {
+                Ok(has) => has,
+                Err(e) => {
+                    eprintln!("Error checking permission for {}: {}", user.username, e);
+                    continue; // Skip this user on error
+                }
+            };
+
+            if !has_perm {
+                continue;
+            }
+
+            // Send message to this user
+            if let Err(e) = user.tx.send(message.clone()) {
+                eprintln!("Failed to send message to {}: {}", user.username, e);
             }
         }
     }

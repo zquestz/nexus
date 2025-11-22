@@ -18,10 +18,7 @@ pub async fn handle_handshake(
             error: Some("Handshake already completed".to_string()),
         };
         ctx.send_message(&response).await?;
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Duplicate handshake",
-        ));
+        return Err(io::Error::new(io::ErrorKind::Other, "Duplicate handshake"));
     }
 
     // Check if version is compatible
@@ -45,10 +42,7 @@ pub async fn handle_handshake(
         };
         ctx.send_message(&response).await?;
         eprintln!("Handshake failed with {}: version mismatch", ctx.peer_addr);
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Version mismatch",
-        ));
+        return Err(io::Error::new(io::ErrorKind::Other, "Version mismatch"));
     }
 
     Ok(())

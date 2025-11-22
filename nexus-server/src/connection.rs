@@ -117,6 +117,9 @@ async fn handle_client_message(
 
     match serde_json::from_str::<ClientMessage>(line) {
         Ok(msg) => match msg {
+            ClientMessage::ChatSend { message } => {
+                handlers::handle_chat_send(message, *user_id, &mut ctx).await?;
+            }
             ClientMessage::Handshake { version } => {
                 handlers::handle_handshake(version, handshake_complete, &mut ctx).await?;
             }
@@ -135,11 +138,14 @@ async fn handle_client_message(
                 )
                 .await?;
             }
+            ClientMessage::UserDelete { username } => {
+                handlers::handle_userdelete(username, *user_id, &mut ctx).await?;
+            }
+            ClientMessage::UserInfo { user_id: requested_user_id } => {
+                handlers::handle_userinfo(requested_user_id, *user_id, &mut ctx).await?;
+            }
             ClientMessage::UserList => {
                 handlers::handle_userlist(*user_id, &mut ctx).await?;
-            }
-            ClientMessage::ChatSend { message } => {
-                handlers::handle_chat_send(message, *user_id, &mut ctx).await?;
             }
         },
         Err(e) => {

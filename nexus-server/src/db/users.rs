@@ -56,22 +56,6 @@ impl UserDb {
         ))
     }
 
-    /// Get permissions for a user
-    // pub async fn get_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
-    //     let rows: Vec<(String,)> =
-    //         sqlx::query_as("SELECT permission FROM user_permissions WHERE user_id = ?")
-    //             .bind(user_id)
-    //             .fetch_all(&self.pool)
-    //             .await?;
-
-    //     let perms: Vec<Permission> = rows
-    //         .into_iter()
-    //         .filter_map(|(perm_str,)| Permission::from_str(&perm_str))
-    //         .collect();
-
-    //     Ok(Permissions::from_vec(perms))
-    // }
-
     /// Check if user has a specific permission (with admin override)
     pub async fn has_permission(
         &self,
@@ -163,5 +147,48 @@ impl UserDb {
             is_admin,
             created_at,
         })
+    }
+
+    /// Get a user by ID
+    pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
+        let user: Option<(i64, String, String, bool, i64)> = sqlx::query_as(
+            "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user.map(
+            |(id, username, hashed_password, is_admin, created_at)| UserAccount {
+                id,
+                username,
+                hashed_password,
+                is_admin,
+                created_at,
+            },
+        ))
+    }
+
+    /// Delete a user account
+    /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
+    ///
+    /// This operation is atomic and prevents deleting the last admin via a SQL constraint.
+    /// If the target user is an admin and they are the last admin, the deletion will not occur.
+    pub async fn delete_user(&self, user_id: i64) -> Result<bool, sqlx::Error> {
+        // Atomic deletion: only delete if user is non-admin OR if they're not the last admin
+        // This prevents race conditions when multiple admins try to delete each other simultaneously
+        let result = sqlx::query(
+            "DELETE FROM users
+             WHERE id = ?
+             AND (
+                 is_admin = 0
+                 OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
+             )",
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 }

@@ -1,6 +1,6 @@
 //! UserList message handler
 
-use super::HandlerContext;
+use super::{HandlerContext, ERR_NOT_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_PERMISSION_DENIED};
 use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
@@ -15,7 +15,7 @@ pub async fn handle_userlist(
         None => {
             eprintln!("UserList request from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect("Not logged in", Some("UserList"))
+                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserList"))
                 .await;
         }
     };
@@ -26,21 +26,21 @@ pub async fn handle_userlist(
         None => {
             eprintln!("UserList request from unknown user {}", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect("Authentication error", Some("UserList"))
+                .send_error_and_disconnect(ERR_AUTHENTICATION, Some("UserList"))
                 .await;
         }
     };
 
     let has_perm = match ctx
         .user_db
-        .has_permission(user.db_user_id, Permission::ListUsers)
+        .has_permission(user.db_user_id, Permission::UserList)
         .await
     {
         Ok(has) => has,
         Err(e) => {
             eprintln!("UserList permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect("Database error", Some("UserList"))
+                .send_error_and_disconnect(ERR_DATABASE, Some("UserList"))
                 .await;
         }
     };
@@ -48,7 +48,7 @@ pub async fn handle_userlist(
     if !has_perm {
         eprintln!("UserList request from {} without permission", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Permission denied", Some("UserList"))
+            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("UserList"))
             .await;
     }
 
