@@ -1,20 +1,23 @@
 //! Message handlers for client commands
 
+mod chat;
 mod errors;
 mod handshake;
 mod login;
-mod userlist;
-mod userinfo;
 mod userdelete;
-mod chat;
+mod userinfo;
+mod userlist;
 
+#[cfg(test)]
+pub mod testing;
+
+pub use chat::handle_chat_send;
 pub use errors::*;
 pub use handshake::handle_handshake;
 pub use login::handle_login;
-pub use userlist::handle_userlist;
-pub use userinfo::handle_userinfo;
 pub use userdelete::handle_userdelete;
-pub use chat::handle_chat_send;
+pub use userinfo::handle_userinfo;
+pub use userlist::handle_userlist;
 
 use crate::db::UserDb;
 use crate::users::UserManager;
@@ -57,16 +60,6 @@ impl<'a> HandlerContext<'a> {
         self.send_message(&error_msg).await?;
         Err(io::Error::new(io::ErrorKind::Other, message))
     }
-}
-
-/// Generate a random session ID
-pub fn rand_session_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    format!("{:x}", timestamp)
 }
 
 /// Get current Unix timestamp in seconds

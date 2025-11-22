@@ -34,7 +34,7 @@ impl Permission {
 /// Set of permissions for a user
 #[derive(Debug, Clone)]
 pub struct Permissions {
-    permissions: HashSet<Permission>,
+    pub(crate) permissions: HashSet<Permission>,
 }
 
 impl Permissions {

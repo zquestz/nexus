@@ -7,14 +7,12 @@ use tokio::sync::mpsc;
 /// Represents a logged-in user
 #[derive(Debug, Clone)]
 pub struct User {
-    /// Unique user ID for this session
-    pub id: u32,
+    /// Session ID (unique identifier for this connection)
+    pub session_id: u32,
     /// Database user ID
     pub db_user_id: i64,
     /// Username
     pub username: String,
-    /// Session ID
-    pub session_id: String,
     /// Remote address of the user's connection
     pub address: SocketAddr,
     /// When the user account was created (Unix timestamp from database)
@@ -30,20 +28,18 @@ pub struct User {
 impl User {
     /// Create a new user
     pub fn new(
-        id: u32,
+        session_id: u32,
         db_user_id: i64,
         username: String,
-        session_id: String,
         address: SocketAddr,
         created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
         features: Vec<String>,
     ) -> Self {
         Self {
-            id,
+            session_id,
             db_user_id,
             username,
-            session_id,
             address,
             created_at,
             login_time: current_timestamp(),

@@ -1,6 +1,9 @@
 //! Handler for UserDelete command
 
-use super::{HandlerContext, ERR_NOT_LOGGED_IN, ERR_DATABASE, ERR_ACCOUNT_DELETED, ERR_CANNOT_DELETE_LAST_ADMIN};
+use super::{
+    ERR_ACCOUNT_DELETED, ERR_CANNOT_DELETE_LAST_ADMIN, ERR_CANNOT_DELETE_SELF, ERR_DATABASE,
+    ERR_NOT_LOGGED_IN, HandlerContext,
+};
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
@@ -8,18 +11,32 @@ use std::io;
 /// Handle UserDelete command
 pub async fn handle_userdelete(
     target_username: String,
-    requesting_user_id: Option<u32>,
+    session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
     // User must be logged in
-    let Some(requesting_user_id) = requesting_user_id else {
+    let Some(session_id) = session_id else {
         return ctx
             .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserDelete"))
             .await;
     };
 
+    // Get requesting user from UserManager to get their database ID
+    let requesting_user_session = match ctx.user_manager.get_user(session_id).await {
+        Some(user) => user,
+        None => {
+            return ctx
+                .send_error_and_disconnect("Session not found", Some("UserDelete"))
+                .await;
+        }
+    };
+
     // Get requesting user info from database to check permissions
-    let requesting_user = match ctx.user_db.get_user_by_id(requesting_user_id as i64).await {
+    let requesting_user = match ctx
+        .user_db
+        .get_user_by_id(requesting_user_session.db_user_id)
+        .await
+    {
         Ok(Some(user)) => user,
         Ok(None) => {
             return ctx
@@ -38,7 +55,7 @@ pub async fn handle_userdelete(
     let has_permission = requesting_user.is_admin
         || match ctx
             .user_db
-            .has_permission(requesting_user_id as i64, Permission::UserDelete)
+            .has_permission(requesting_user.id, Permission::UserDelete)
             .await
         {
             Ok(has_perm) => has_perm,
@@ -76,10 +93,19 @@ pub async fn handle_userdelete(
         }
     };
 
+    // Prevent users from deleting themselves
+    if target_user.id == requesting_user.id {
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(ERR_CANNOT_DELETE_SELF.to_string()),
+        };
+        return ctx.send_message(&response).await;
+    }
+
     // If the user is currently connected, notify and disconnect them first
     let all_users = ctx.user_manager.get_all_users().await;
     let online_user = all_users.iter().find(|u| u.db_user_id == target_user.id);
-    
+
     if let Some(online_user) = online_user {
         // Send error message to the user being deleted
         let disconnect_msg = ServerMessage::Error {
@@ -87,14 +113,14 @@ pub async fn handle_userdelete(
             command: None,
         };
         let _ = online_user.tx.send(disconnect_msg);
-        
+
         // Remove them from UserManager
-        let session_id = online_user.id;
+        let session_id = online_user.session_id;
         if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
             // Broadcast disconnection to all other users
             ctx.user_manager
                 .broadcast(ServerMessage::UserDisconnected {
-                    user_id: session_id,
+                    session_id: session_id,
                     username: removed_user.username.clone(),
                 })
                 .await;
@@ -125,5 +151,486 @@ pub async fn handle_userdelete(
             ctx.send_error_and_disconnect(ERR_DATABASE, Some("UserDelete"))
                 .await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db;
+    use crate::handlers::testing::create_test_context;
+    use tokio::io::AsyncReadExt;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_userdelete_requires_login() {
+        let mut test_ctx = create_test_context().await;
+
+        // Try to delete user without being logged in
+        let result =
+            handle_userdelete("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+
+        // Should fail with disconnect
+        assert!(result.is_err(), "UserDelete should require login");
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_requires_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITHOUT UserDelete permission (non-admin)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let user = test_ctx
+            .user_db
+            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add user to UserManager
+        let user_id = test_ctx
+            .user_manager
+            .add_user(
+                user.id,
+                "alice".to_string(),
+                test_ctx.peer_addr,
+                user.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Create target user
+        let target = test_ctx
+            .user_db
+            .create_user("bob", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Try to delete user without permission
+        let result = handle_userdelete(
+            "bob".to_string(),
+            Some(user_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed (no disconnect), but user should still exist
+        assert!(result.is_ok(), "Should send error response, not disconnect");
+
+        // Close writer and read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        // Parse and verify response
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        match response_msg {
+            ServerMessage::UserDeleteResponse { success, error } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("permission"),
+                    "Error should mention permission"
+                );
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        // Verify target user still exists
+        let still_exists = test_ctx.user_db.get_user_by_id(target.id).await.unwrap();
+        assert!(
+            still_exists.is_some(),
+            "User should not be deleted without permission"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_nonexistent_user() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add admin to UserManager
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(
+                admin.id,
+                "admin".to_string(),
+                test_ctx.peer_addr,
+                admin.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to delete non-existent user
+        let result = handle_userdelete(
+            "nonexistent".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed (sends error response, doesn't disconnect)
+        assert!(
+            result.is_ok(),
+            "Should send error response for non-existent user"
+        );
+
+        // Close writer and read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        // Parse and verify response
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        match response_msg {
+            ServerMessage::UserDeleteResponse { success, error } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("not found"),
+                    "Error should mention user not found"
+                );
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_cannot_delete_self() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add admin to UserManager
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(
+                admin.id,
+                "admin".to_string(),
+                test_ctx.peer_addr,
+                admin.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to delete self
+        let result = handle_userdelete(
+            "admin".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed (sends error response, doesn't disconnect)
+        assert!(
+            result.is_ok(),
+            "Should send error response when trying to delete self"
+        );
+
+        // Close writer and read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        // Parse and verify response
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        match response_msg {
+            ServerMessage::UserDeleteResponse { success, error } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("delete")
+                        && (error_msg.contains("yourself") || error_msg.contains("self")),
+                    "Error should mention not being able to delete self"
+                );
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        // Verify admin still exists
+        let still_exists = test_ctx.user_db.get_user_by_id(admin.id).await.unwrap();
+        assert!(
+            still_exists.is_some(),
+            "Admin should not be able to delete themselves"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_cannot_delete_last_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create one admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Create a non-admin user with UserDelete permission
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::UserDelete);
+            set
+        };
+        let deleter = test_ctx
+            .user_db
+            .create_user("deleter", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        // Add deleter to UserManager
+        let deleter_id = test_ctx
+            .user_manager
+            .add_user(
+                deleter.id,
+                "deleter".to_string(),
+                test_ctx.peer_addr,
+                deleter.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to delete the only admin
+        let result = handle_userdelete(
+            "admin".to_string(),
+            Some(deleter_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should send error response (not disconnect)
+        assert!(
+            result.is_ok(),
+            "Should send error response when trying to delete last admin"
+        );
+
+        // Close writer and read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        // Parse and verify response
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        match response_msg {
+            ServerMessage::UserDeleteResponse { success, error } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("Cannot delete"),
+                    "Error should mention cannot delete"
+                );
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        // Verify admin still exists
+        let still_exists = test_ctx.user_db.get_user_by_id(admin.id).await.unwrap();
+        assert!(still_exists.is_some(), "Cannot delete the last admin");
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_handles_online_and_offline_users() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let admin = test_ctx
+            .user_db
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Create offline user to delete
+        let offline_user = test_ctx
+            .user_db
+            .create_user("offline_user", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Create online user to delete
+        let online_user = test_ctx
+            .user_db
+            .create_user("online_user", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add admin to UserManager
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(
+                admin.id,
+                "admin".to_string(),
+                test_ctx.peer_addr,
+                admin.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Add online_user to UserManager (they're online)
+        let (online_tx, _online_rx) = mpsc::unbounded_channel();
+        let online_session_id = test_ctx
+            .user_manager
+            .add_user(
+                online_user.id,
+                "online_user".to_string(),
+                test_ctx.peer_addr,
+                online_user.created_at,
+                online_tx,
+                vec![],
+            )
+            .await;
+
+        // Verify online user is connected
+        let online_before = test_ctx.user_manager.get_user(online_session_id).await;
+        assert!(
+            online_before.is_some(),
+            "Online user should be connected before deletion"
+        );
+
+        // Delete offline user
+        let result1 = handle_userdelete(
+            "offline_user".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result1.is_ok(), "Should successfully delete offline user");
+        let deleted1 = test_ctx
+            .user_db
+            .get_user_by_id(offline_user.id)
+            .await
+            .unwrap();
+        assert!(
+            deleted1.is_none(),
+            "Offline user should be deleted from database"
+        );
+
+        // Delete online user
+        let result2 = handle_userdelete(
+            "online_user".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result2.is_ok(), "Should successfully delete online user");
+        let deleted2 = test_ctx
+            .user_db
+            .get_user_by_id(online_user.id)
+            .await
+            .unwrap();
+        assert!(
+            deleted2.is_none(),
+            "Online user should be deleted from database"
+        );
+
+        // Verify online user was disconnected from UserManager
+        let online_after = test_ctx.user_manager.get_user(online_session_id).await;
+        assert!(
+            online_after.is_none(),
+            "Online user should be disconnected from UserManager"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_with_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH UserDelete permission (not admin)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::UserDelete);
+            set
+        };
+        let deleter = test_ctx
+            .user_db
+            .create_user("deleter", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        // Create target user
+        let target = test_ctx
+            .user_db
+            .create_user("target", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add deleter to UserManager
+        let deleter_id = test_ctx
+            .user_manager
+            .add_user(
+                deleter.id,
+                "deleter".to_string(),
+                test_ctx.peer_addr,
+                deleter.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Delete target user
+        let result = handle_userdelete(
+            "target".to_string(),
+            Some(deleter_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed
+        assert!(
+            result.is_ok(),
+            "User with UserDelete permission should be able to delete users"
+        );
+
+        // Close writer and read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        // Parse and verify response
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        match response_msg {
+            ServerMessage::UserDeleteResponse { success, error } => {
+                assert!(success, "Response should indicate success");
+                assert!(error.is_none(), "Should have no error message on success");
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        // Verify target is deleted
+        let deleted = test_ctx.user_db.get_user_by_id(target.id).await.unwrap();
+        assert!(deleted.is_none(), "Target user should be deleted");
     }
 }

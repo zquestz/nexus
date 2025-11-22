@@ -24,6 +24,9 @@ pub const ERR_ALREADY_LOGGED_IN: &str = "Already logged in";
 /// Error message when trying to delete last admin
 pub const ERR_CANNOT_DELETE_LAST_ADMIN: &str = "Cannot delete the last admin";
 
+/// Error message when trying to delete yourself
+pub const ERR_CANNOT_DELETE_SELF: &str = "You cannot delete yourself";
+
 /// Error message for failed user creation
 pub const ERR_FAILED_TO_CREATE_USER: &str = "Failed to create user";
 

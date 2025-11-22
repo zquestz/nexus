@@ -24,7 +24,7 @@ pub async fn handle_connection(
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
 
     // Connection state
-    let mut user_id: Option<u32> = None; // Set after successful login
+    let mut session_id: Option<u32> = None; // Set after successful login
     let mut handshake_complete = false; // Set to true after successful handshake
     let mut line = String::new(); // Reusable buffer for reading lines
 
@@ -44,7 +44,7 @@ pub async fn handle_connection(
                 // Handle the message
                 if let Err(e) = handle_client_message(
                     &line,
-                    &mut user_id,
+                    &mut session_id,
                     &mut handshake_complete,
                     &mut writer,
                     &user_manager,
@@ -72,12 +72,12 @@ pub async fn handle_connection(
     }
 
     // Remove user on disconnect
-    if let Some(id) = user_id {
+    if let Some(id) = session_id {
         if let Some(user) = user_manager.remove_user(id).await {
             // Broadcast disconnection to all users
             user_manager
                 .broadcast(ServerMessage::UserDisconnected {
-                    user_id: id,
+                    session_id: id,
                     username: user.username.clone(),
                 })
                 .await;
@@ -90,7 +90,7 @@ pub async fn handle_connection(
 /// Handle a message from the client
 async fn handle_client_message(
     line: &str,
-    user_id: &mut Option<u32>,
+    session_id: &mut Option<u32>,
     handshake_complete: &mut bool,
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
     user_manager: &UserManager,
@@ -118,7 +118,7 @@ async fn handle_client_message(
     match serde_json::from_str::<ClientMessage>(line) {
         Ok(msg) => match msg {
             ClientMessage::ChatSend { message } => {
-                handlers::handle_chat_send(message, *user_id, &mut ctx).await?;
+                handlers::handle_chat_send(message, *session_id, &mut ctx).await?;
             }
             ClientMessage::Handshake { version } => {
                 handlers::handle_handshake(version, handshake_complete, &mut ctx).await?;
@@ -133,19 +133,19 @@ async fn handle_client_message(
                     password,
                     features,
                     *handshake_complete,
-                    user_id,
+                    session_id,
                     &mut ctx,
                 )
                 .await?;
             }
             ClientMessage::UserDelete { username } => {
-                handlers::handle_userdelete(username, *user_id, &mut ctx).await?;
+                handlers::handle_userdelete(username, *session_id, &mut ctx).await?;
             }
-            ClientMessage::UserInfo { user_id: requested_user_id } => {
-                handlers::handle_userinfo(requested_user_id, *user_id, &mut ctx).await?;
+            ClientMessage::UserInfo { session_id: requested_session_id } => {
+                handlers::handle_userinfo(requested_session_id, *session_id, &mut ctx).await?;
             }
             ClientMessage::UserList => {
-                handlers::handle_userlist(*user_id, &mut ctx).await?;
+                handlers::handle_userlist(*session_id, &mut ctx).await?;
             }
         },
         Err(e) => {

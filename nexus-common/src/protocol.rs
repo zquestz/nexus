@@ -28,7 +28,7 @@ pub enum ClientMessage {
     /// Delete a user account
     UserDelete { username: String },
     /// Request information about a specific user
-    UserInfo { user_id: u32 },
+    UserInfo { session_id: u32 },
     /// Request list of connected users
     UserList,
 }
@@ -39,7 +39,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
     /// Chat message
     ChatMessage {
-        user_id: u32,
+        session_id: u32,
         username: String,
         message: String,
     },
@@ -72,7 +72,7 @@ pub enum ServerMessage {
         error: Option<String>,
     },
     /// User disconnected event
-    UserDisconnected { user_id: u32, username: String },
+    UserDisconnected { session_id: u32, username: String },
     /// User information response
     UserInfoResponse {
         user: Option<UserInfoDetailed>,
@@ -85,7 +85,7 @@ pub enum ServerMessage {
 /// Information about a connected user (basic info for lists)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-    pub id: u32,
+    pub session_id: u32,
     pub username: String,
     pub login_time: u64,
 }
@@ -93,9 +93,8 @@ pub struct UserInfo {
 /// Detailed information about a user (for UserInfo command)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfoDetailed {
-    pub id: u32,
+    pub session_id: u32,
     pub username: String,
-    pub session_id: String,
     pub login_time: u64,
     pub features: Vec<String>,
     /// When the account was created (Unix timestamp)
@@ -134,9 +133,9 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("UserDelete")
                 .field("username", username)
                 .finish(),
-            ClientMessage::UserInfo { user_id } => f
+            ClientMessage::UserInfo { session_id } => f
                 .debug_struct("UserInfo")
-                .field("user_id", user_id)
+                .field("session_id", session_id)
                 .finish(),
             ClientMessage::UserList => f.debug_struct("UserList").finish(),
         }

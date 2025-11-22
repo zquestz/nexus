@@ -1,16 +1,18 @@
 //! UserList message handler
 
-use super::{HandlerContext, ERR_NOT_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_PERMISSION_DENIED};
+use super::{
+    ERR_AUTHENTICATION, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
+};
 use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 
 /// Handle a userlist request from the client
 pub async fn handle_userlist(
-    user_id: Option<u32>,
+    session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    let id = match user_id {
+    let id = match session_id {
         Some(id) => id,
         None => {
             eprintln!("UserList request from {} without login", ctx.peer_addr);
@@ -57,7 +59,7 @@ pub async fn handle_userlist(
     let user_infos: Vec<UserInfo> = all_users
         .into_iter()
         .map(|u| UserInfo {
-            id: u.id,
+            session_id: u.session_id,
             username: u.username,
             login_time: u.login_time,
         })

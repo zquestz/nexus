@@ -29,7 +29,6 @@ impl UserManager {
         &self,
         db_user_id: i64,
         username: String,
-        session_id: String,
         address: SocketAddr,
         created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
@@ -40,7 +39,7 @@ impl UserManager {
         *next_id += 1;
         drop(next_id);
 
-        let user = User::new(id, db_user_id, username, session_id, address, created_at, tx, features);
+        let user = User::new(id, db_user_id, username, address, created_at, tx, features);
         let mut users = self.users.write().await;
         users.insert(id, user);
 
@@ -60,10 +59,7 @@ impl UserManager {
     }
 
     /// Get a user by session ID
-    // pub async fn get_user_by_session(&self, session_id: &str) -> Option<User> {
-    //     let users = self.users.read().await;
-    //     users.values().find(|u| u.session_id == session_id).cloned()
-    // }
+
 
     /// Get all connected users
     pub async fn get_all_users(&self) -> Vec<User> {
@@ -90,7 +86,7 @@ impl UserManager {
     pub async fn broadcast_except(&self, exclude_id: u32, message: ServerMessage) {
         let users = self.users.read().await;
         for user in users.values() {
-            if user.id != exclude_id {
+            if user.session_id != exclude_id {
                 // Ignore send errors (user might have disconnected)
                 let _ = user.tx.send(message.clone());
             }
