@@ -2,6 +2,7 @@
 //!
 //! Shared types, protocols, and utilities for the Nexus BBS system.
 
+pub mod io;
 pub mod protocol;
 pub mod yggdrasil;
 

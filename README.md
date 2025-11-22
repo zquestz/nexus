@@ -7,7 +7,7 @@ A modern community server for the [Yggdrasil](https://yggdrasil-network.github.i
 ⚠️ **Very Early Development**
 
 🟢 **Server**: Basic functionality working with comprehensive testing  
-⏳ **Client**: Not yet implemented
+🟡 **Client**: Basic functionality working
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Rust workspace with three crates:
 
 - **nexus-common**: Shared protocol definitions and utilities
 - **nexus-server**: BBS server daemon (`nexusd`)
-- **nexus-client**: BBS client (`nexus`) - not yet implemented
+- **nexus-client**: BBS client (binary: `nexus`)
 
 ## Requirements
 
@@ -50,6 +50,27 @@ The server will:
 1. Create a database in your system's data directory (or specified path)
 2. Listen on the specified Yggdrasil IPv6 address
 3. Auto-register the first user as admin
+
+## Running the Client
+
+```bash
+# Connect to a server (replace with actual server address)
+./target/release/nexus --server 200:1234:5678:9abc:def0:1234:5678:9abc \
+                        --username myname \
+                        --password mypassword
+
+# Custom port
+./target/release/nexus -s 200:1234:5678:9abc:def0:1234:5678:9abc \
+                        -u myname \
+                        --password mypassword \
+                        -p 8080
+```
+
+**Client Commands:**
+- `/users` - List online users
+- `/info <session_id>` - Get detailed info about a user
+- `/quit` - Disconnect
+- `<message>` - Send chat message to #server channel
 
 ## Protocol
 

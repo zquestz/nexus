@@ -21,10 +21,10 @@ pub use userlist::handle_userlist;
 
 use crate::db::UserDb;
 use crate::users::UserManager;
+use nexus_common::io::send_server_message;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 use std::net::SocketAddr;
-use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc;
 
@@ -40,11 +40,7 @@ pub struct HandlerContext<'a> {
 impl<'a> HandlerContext<'a> {
     /// Send a message to the client
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
-        let json = serde_json::to_string(message).unwrap();
-        self.writer.write_all(json.as_bytes()).await?;
-        self.writer.write_all(b"\n").await?;
-        self.writer.flush().await?;
-        Ok(())
+        send_server_message(self.writer, message).await
     }
 
     /// Send an error message and disconnect

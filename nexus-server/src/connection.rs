@@ -3,10 +3,11 @@
 use crate::db::UserDb;
 use crate::handlers::{self, HandlerContext};
 use crate::users::UserManager;
+use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use std::io;
 use std::net::SocketAddr;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
@@ -62,11 +63,7 @@ pub async fn handle_connection(
 
             // Handle outgoing server messages/events
             Some(msg) = rx.recv() => {
-                let json = serde_json::to_string(&msg)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                writer.write_all(json.as_bytes()).await?;
-                writer.write_all(b"\n").await?;
-                writer.flush().await?;
+                send_server_message(&mut writer, &msg).await?;
             }
         }
     }
