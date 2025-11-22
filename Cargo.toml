@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "nexus-common",
+    "nexus-server",
+    "nexus-client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"

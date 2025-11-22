@@ -1,0 +1,11 @@
+[package]
+name = "nexus-client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nexus-common = { path = "../nexus-common" }
+
+[[bin]]
+name = "nexus"
+path = "src/main.rs"
