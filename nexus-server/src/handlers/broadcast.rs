@@ -78,7 +78,7 @@ pub async fn handle_user_broadcast(
     if !has_perm {
         eprintln!("UserBroadcast from {} without permission", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("UserBroadcast"))
+            .send_error(ERR_PERMISSION_DENIED, Some("UserBroadcast"))
             .await;
     }
 
@@ -277,10 +277,10 @@ mod tests {
         )
         .await;
 
-        // Should fail
+        // Should succeed (send error but not disconnect)
         assert!(
-            result.is_err(),
-            "Broadcast should require UserBroadcast permission"
+            result.is_ok(),
+            "Should send error message but not disconnect"
         );
     }
 

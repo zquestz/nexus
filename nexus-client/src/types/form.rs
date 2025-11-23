@@ -51,6 +51,7 @@ impl Default for UserManagementState {
                 ("user_info".to_string(), false),
                 ("chat_send".to_string(), false),
                 ("chat_receive".to_string(), false),
+                ("user_broadcast".to_string(), false),
                 ("user_create".to_string(), false),
                 ("user_delete".to_string(), false),
             ],

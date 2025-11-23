@@ -85,7 +85,7 @@ pub async fn handle_usercreate(
             ctx.peer_addr
         );
         return ctx
-            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("UserCreate"))
+            .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))
             .await;
     }
 
@@ -155,7 +155,7 @@ pub async fn handle_usercreate(
                         ctx.peer_addr, perm_str
                     );
                     return ctx
-                        .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("UserCreate"))
+                        .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))
                         .await;
                 }
             }
@@ -286,9 +286,10 @@ mod tests {
         .await;
 
         // Should fail with disconnect
+        // Should succeed (send error but not disconnect)
         assert!(
-            result.is_err(),
-            "UserCreate should require UserCreate permission"
+            result.is_ok(),
+            "Should send error message but not disconnect"
         );
     }
 
@@ -817,9 +818,10 @@ mod tests {
         .await;
 
         // Should fail with disconnect
+        // Should succeed (send error but not disconnect)
         assert!(
-            result.is_err(),
-            "User should not be able to grant permissions they don't have"
+            result.is_ok(),
+            "Should send error message but not disconnect"
         );
     }
 

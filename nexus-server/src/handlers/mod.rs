@@ -48,17 +48,22 @@ impl<'a> HandlerContext<'a> {
         send_server_message(self.writer, message).await
     }
 
+    /// Send an error message without disconnecting
+    pub async fn send_error(&mut self, message: &str, command: Option<&str>) -> io::Result<()> {
+        let error_msg = ServerMessage::Error {
+            message: message.to_string(),
+            command: command.map(|s| s.to_string()),
+        };
+        self.send_message(&error_msg).await
+    }
+
     /// Send an error message and disconnect
     pub async fn send_error_and_disconnect(
         &mut self,
         message: &str,
         command: Option<&str>,
     ) -> io::Result<()> {
-        let error_msg = ServerMessage::Error {
-            message: message.to_string(),
-            command: command.map(|s| s.to_string()),
-        };
-        self.send_message(&error_msg).await?;
+        self.send_error(message, command).await?;
         Err(io::Error::new(io::ErrorKind::Other, message))
     }
 }

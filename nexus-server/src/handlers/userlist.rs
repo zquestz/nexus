@@ -48,9 +48,9 @@ pub async fn handle_userlist(
     };
 
     if !has_perm {
-        eprintln!("UserList request from {} without permission", ctx.peer_addr);
+        eprintln!("UserList from {} without permission", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("UserList"))
+            .send_error(ERR_PERMISSION_DENIED, Some("UserList"))
             .await;
     }
 
@@ -69,4 +69,84 @@ pub async fn handle_userlist(
     ctx.send_message(&response).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db;
+    use crate::handlers::testing::create_test_context;
+
+    #[tokio::test]
+    async fn test_userlist_requires_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITHOUT userlist permission
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let user = test_ctx
+            .user_db
+            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Add user to UserManager
+        let session_id = test_ctx
+            .user_manager
+            .add_user(
+                user.id,
+                "alice".to_string(),
+                test_ctx.peer_addr,
+                user.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Try to get user list without permission
+        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+
+        // Should succeed (send error but not disconnect)
+        assert!(result.is_ok(), "Should send error message but not disconnect");
+    }
+
+    #[tokio::test]
+    async fn test_userlist_with_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH userlist permission
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::UserList);
+            set
+        };
+        let user = test_ctx
+            .user_db
+            .create_user("alice", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        // Add user to UserManager
+        let session_id = test_ctx
+            .user_manager
+            .add_user(
+                user.id,
+                "alice".to_string(),
+                test_ctx.peer_addr,
+                user.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Get user list with permission
+        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Valid userlist request should succeed");
+    }
 }

@@ -81,7 +81,7 @@ pub async fn handle_chat_send(
     if !has_perm {
         eprintln!("ChatSend from {} without permission", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_PERMISSION_DENIED, Some("ChatSend"))
+            .send_error(ERR_PERMISSION_DENIED, Some("ChatSend"))
             .await;
     }
 
@@ -224,8 +224,8 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Chat should require ChatSend permission");
+        // Should succeed (send error but not disconnect)
+        assert!(result.is_ok(), "Should send error message but not disconnect");
     }
 
     #[tokio::test]
