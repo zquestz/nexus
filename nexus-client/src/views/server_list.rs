@@ -41,15 +41,24 @@ pub fn server_list_panel<'a>(
                 });
             }
 
-            btn = btn.on_press(Message::SwitchToConnection(*conn_id));
+            btn = btn
+                .on_press(Message::SwitchToConnection(*conn_id))
+                .height(32);
 
-            let server_row = row![
-                btn,
-                button(text("X").size(11))
-                    .on_press(Message::DisconnectFromServer(*conn_id))
-                    .padding(4),
-            ]
-            .spacing(3);
+            // Add disconnect button with matching height (square)
+            let disconnect_btn = button(
+                container(text("X").size(11))
+                    .center_x(32)
+                    .center_y(32)
+            )
+                .on_press(Message::DisconnectFromServer(*conn_id))
+                .width(32)
+                .height(32)
+                .padding(0);
+
+            let server_row = row![btn, disconnect_btn]
+                .spacing(5)
+                .align_y(iced::alignment::Vertical::Center);
 
             connected_column = connected_column.push(server_row);
         }
@@ -89,6 +98,7 @@ pub fn server_list_panel<'a>(
 
             let btn = button(text(&bookmark.name).size(13))
                 .width(Fill)
+                .height(32)
                 .padding(6)
                 .on_press(if connected_to_bookmark {
                     // Find the connection_id for this bookmark and switch to it
@@ -102,18 +112,32 @@ pub fn server_list_panel<'a>(
                     Message::ConnectToBookmark(index)
                 });
 
-            let server_row = row![
-                btn,
-                button(text("Edit").size(11))
-                    .on_press(Message::ShowEditBookmark(index))
-                    .padding(4),
-                button(text("Del").size(11))
-                    .on_press(Message::DeleteBookmark(index))
-                    .padding(4),
-            ]
-            .spacing(3);
+            // Add action buttons with matching height (square)
+            let edit_btn = button(
+                container(text("Edit").size(11))
+                    .center_x(32)
+                    .center_y(32)
+            )
+                .on_press(Message::ShowEditBookmark(index))
+                .width(32)
+                .height(32)
+                .padding(0);
+                
+            let delete_btn = button(
+                container(text("Del").size(11))
+                    .center_x(32)
+                    .center_y(32)
+            )
+                .on_press(Message::DeleteBookmark(index))
+                .width(32)
+                .height(32)
+                .padding(0);
 
-            bookmarks_column = bookmarks_column.push(server_row);
+            let bookmark_row = row![btn, edit_btn, delete_btn]
+                .spacing(3)
+                .align_y(iced::alignment::Vertical::Center);
+
+            bookmarks_column = bookmarks_column.push(bookmark_row);
         }
     }
 
