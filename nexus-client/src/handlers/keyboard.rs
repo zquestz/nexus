@@ -34,6 +34,10 @@ impl NexusApp {
             // Delete user screen only has one field, so focus stays
             self.focused_field = InputId::DeleteUsername;
             return text_input::focus(text_input::Id::from(InputId::DeleteUsername));
+        } else if self.ui_state.show_broadcast {
+            // Broadcast screen only has one field, so focus stays
+            self.focused_field = InputId::BroadcastMessage;
+            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
         } else if self.active_connection.is_none() {
             // On connection screen, cycle through fields
             let next_field = match self.focused_field {
@@ -99,6 +103,16 @@ impl NexusApp {
                         }
                     }
                 }
+            } else if self.ui_state.show_broadcast {
+                // On broadcast screen, try to send broadcast
+                if let Some(conn_id) = self.active_connection {
+                    if let Some(conn) = self.connections.get(&conn_id) {
+                        let can_send = !conn.broadcast_message.trim().is_empty();
+                        if can_send {
+                            return self.update(Message::SendBroadcastPressed);
+                        }
+                    }
+                }
             } else if self.active_connection.is_none() {
                 // On connection screen, try to connect
                 let can_connect = !self.connection_form.server_address.trim().is_empty()
@@ -119,13 +133,16 @@ impl NexusApp {
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // Cancel bookmark edit
                 return self.update(Message::CancelBookmarkEdit);
-            } else if self.ui_state.show_add_user || self.ui_state.show_delete_user {
-                // Cancel add/delete user screens
+            } else if self.ui_state.show_add_user || self.ui_state.show_delete_user || self.ui_state.show_broadcast {
+                // Cancel add/delete user screens or broadcast
                 if self.ui_state.show_add_user {
                     return self.update(Message::ToggleAddUser);
                 }
                 if self.ui_state.show_delete_user {
                     return self.update(Message::ToggleDeleteUser);
+                }
+                if self.ui_state.show_broadcast {
+                    return self.update(Message::ToggleBroadcast);
                 }
             }
         }

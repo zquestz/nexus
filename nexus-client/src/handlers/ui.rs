@@ -18,10 +18,11 @@ impl NexusApp {
     }
 
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
-        // Toggle Add User, and turn off Delete User
+        // Toggle Add User, and turn off Delete User and Broadcast
         self.ui_state.show_add_user = !self.ui_state.show_add_user;
         if self.ui_state.show_add_user {
             self.ui_state.show_delete_user = false;
+            self.ui_state.show_broadcast = false;
             // Clear form and set focus
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -37,10 +38,11 @@ impl NexusApp {
     }
 
     pub fn handle_toggle_delete_user(&mut self) -> Task<Message> {
-        // Toggle Delete User, and turn off Add User
+        // Toggle Delete User, and turn off Add User and Broadcast
         self.ui_state.show_delete_user = !self.ui_state.show_delete_user;
         if self.ui_state.show_delete_user {
             self.ui_state.show_add_user = false;
+            self.ui_state.show_broadcast = false;
             // Clear form and set focus
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {

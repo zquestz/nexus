@@ -15,6 +15,8 @@ pub enum Permission {
     ChatSend,
     /// Permission to receive chat messages
     ChatReceive,
+    /// Permission to send broadcast messages
+    UserBroadcast,
     /// Permission to create users
     UserCreate,
     /// Permission to delete users
@@ -43,6 +45,7 @@ impl Permission {
             "user_info" => Some(Permission::UserInfo),
             "chat_send" => Some(Permission::ChatSend),
             "chat_receive" => Some(Permission::ChatReceive),
+            "user_broadcast" => Some(Permission::UserBroadcast),
             "user_create" => Some(Permission::UserCreate),
             "user_delete" => Some(Permission::UserDelete),
             _ => None,
@@ -87,6 +90,8 @@ mod tests {
         assert_eq!(Permission::UserInfo.as_str(), "user_info");
         assert_eq!(Permission::ChatSend.as_str(), "chat_send");
         assert_eq!(Permission::ChatReceive.as_str(), "chat_receive");
+        assert_eq!(Permission::UserBroadcast.as_str(), "user_broadcast");
+        assert_eq!(Permission::UserCreate.as_str(), "user_create");
         assert_eq!(Permission::UserDelete.as_str(), "user_delete");
     }
 }

@@ -45,6 +45,9 @@ pub struct ServerConnection {
     /// Current message being typed in chat input
     pub message_input: String,
 
+    /// Current message being typed in broadcast input
+    pub broadcast_message: String,
+
     /// Admin panel state (create/delete user forms)
     pub user_management: UserManagementState,
 }

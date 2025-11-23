@@ -8,7 +8,7 @@ use iced::{Center, Element, Fill};
 use std::collections::HashMap;
 
 use super::{
-    admin::admin_view, bookmark::bookmark_edit_view, chat::chat_view,
+    admin::admin_view, bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
     connection::connection_form_view, server_list::server_list_panel,
     user_list::user_list_panel,
 };
@@ -37,9 +37,10 @@ pub fn main_layout<'a>(
     show_user_list: bool,
     show_add_user: bool,
     show_delete_user: bool,
+    show_broadcast: bool,
 ) -> Element<'a, Message> {
     // Top toolbar
-    let toolbar = build_toolbar(show_bookmarks, show_user_list, active_connection.is_some());
+    let toolbar = build_toolbar(show_bookmarks, show_user_list, show_broadcast, active_connection.is_some());
 
     // Left panel: Server list
     let server_list = server_list_panel(bookmarks, connections, active_connection);
@@ -63,6 +64,7 @@ pub fn main_layout<'a>(
                 user_management,
                 show_add_user,
                 show_delete_user,
+                show_broadcast,
             )
         } else {
             empty_content_view()
@@ -106,15 +108,33 @@ pub fn main_layout<'a>(
 }
 
 /// Build the top toolbar with toggle buttons
-fn build_toolbar(show_bookmarks: bool, show_user_list: bool, is_connected: bool) -> Element<'static, Message> {
+fn build_toolbar(show_bookmarks: bool, show_user_list: bool, show_broadcast: bool, is_connected: bool) -> Element<'static, Message> {
     // Need to capture these for the closures
     let show_bookmarks_copy = show_bookmarks;
     let show_user_list_copy = show_user_list;
+    let show_broadcast_copy = show_broadcast;
 
     let toolbar = container(
         row![
             // Title
             text("Nexus BBS").size(16),
+            // Broadcast button
+            if is_connected {
+                button(text("Broadcast").size(12))
+                    .on_press(Message::ToggleBroadcast)
+                    .padding(8)
+                    .style(move |theme, status| {
+                        let mut style = button::primary(theme, status);
+                        if show_broadcast_copy {
+                            style.background = Some(iced::Background::Color(iced::Color::from_rgb(
+                                0.3, 0.5, 0.7,
+                            )));
+                        }
+                        style
+                    })
+            } else {
+                button(text("Broadcast").size(12)).padding(8)
+            },
             // User management buttons
             if is_connected {
                 button(text("User Create").size(12))
@@ -181,11 +201,16 @@ fn server_content_view<'a>(
     user_management: &'a UserManagementState,
     show_add_user: bool,
     show_delete_user: bool,
+    show_broadcast: bool,
 ) -> Element<'a, Message> {
-    // If any admin panel is open, show admin view, otherwise show chat
-    if show_add_user || show_delete_user {
+    // If broadcast panel is open, show broadcast view
+    if show_broadcast {
+        broadcast_view(conn)
+    } else if show_add_user || show_delete_user {
+        // If any admin panel is open, show admin view
         admin_view(conn, user_management, show_add_user, show_delete_user)
     } else {
+        // Otherwise show chat
         chat_view(conn, message_input, show_add_user, show_delete_user)
     }
 }

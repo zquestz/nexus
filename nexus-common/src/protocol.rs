@@ -25,6 +25,8 @@ pub enum ClientMessage {
         password: String,
         features: Vec<String>,
     },
+    /// Broadcast a message to all connected users
+    UserBroadcast { message: String },
     /// Create a new user account
     UserCreate {
         username: String,
@@ -70,6 +72,12 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+    /// Broadcast message from another user
+    ServerBroadcast {
+        session_id: u32,
+        username: String,
+        message: String,
+    },
     /// User connected event
     UserConnected { user: UserInfo },
     /// User create response
@@ -86,6 +94,12 @@ pub enum ServerMessage {
     },
     /// User disconnected event
     UserDisconnected { session_id: u32, username: String },
+    /// User broadcast reply
+    UserBroadcastReply {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// User information response
     UserInfoResponse {
         user: Option<UserInfoDetailed>,
@@ -142,7 +156,16 @@ impl std::fmt::Debug for ClientMessage {
                 .field("password", &"<REDACTED>")
                 .field("features", features)
                 .finish(),
-            ClientMessage::UserCreate { username, is_admin, permissions, .. } => f
+            ClientMessage::UserBroadcast { message } => f
+                .debug_struct("UserBroadcast")
+                .field("message", message)
+                .finish(),
+            ClientMessage::UserCreate {
+                username,
+                is_admin,
+                permissions,
+                ..
+            } => f
                 .debug_struct("UserCreate")
                 .field("username", username)
                 .field("is_admin", is_admin)

@@ -142,6 +142,9 @@ async fn handle_client_message(
                 )
                 .await?;
             }
+            ClientMessage::UserBroadcast { message } => {
+                handlers::handle_user_broadcast(message, *session_id, &mut ctx).await?;
+            }
             ClientMessage::UserCreate {
                 username,
                 password,

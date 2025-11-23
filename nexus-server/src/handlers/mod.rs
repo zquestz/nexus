@@ -1,5 +1,6 @@
 //! Message handlers for client commands
 
+mod broadcast;
 mod chat;
 mod errors;
 mod handshake;
@@ -12,6 +13,7 @@ mod userlist;
 #[cfg(test)]
 pub mod testing;
 
+pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
 pub use errors::*;
 pub use handshake::handle_handshake;

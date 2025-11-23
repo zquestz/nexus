@@ -3,6 +3,7 @@
 // Module declarations
 mod admin;
 mod bookmark;
+mod broadcast;
 mod chat;
 mod connection;
 mod layout;

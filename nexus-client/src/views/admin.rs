@@ -88,7 +88,6 @@ pub fn admin_view<'a>(
         return container(create_form)
             .width(Fill)
             .height(Fill)
-            .padding(20)
             .center(Fill)
             .into();
     }
@@ -142,7 +141,6 @@ pub fn admin_view<'a>(
         return container(delete_form)
             .width(Fill)
             .height(Fill)
-            .padding(20)
             .center(Fill)
             .into();
     }

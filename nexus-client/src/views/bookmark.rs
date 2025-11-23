@@ -104,7 +104,6 @@ pub fn bookmark_edit_view<'a>(
     container(content)
         .width(Fill)
         .height(Fill)
-        .padding(20)
         .center(Fill)
         .into()
 }

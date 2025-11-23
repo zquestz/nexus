@@ -55,6 +55,7 @@ impl NexusApp {
                     shutdown_handle: conn.shutdown.unwrap(),
                     connection_id,
                     message_input: String::new(),
+                    broadcast_message: String::new(),
                     user_management: crate::types::UserManagementState::default(),
                 };
 
@@ -156,6 +157,34 @@ impl NexusApp {
                     timestamp: Local::now(),
                 },
             ),
+            ServerMessage::ServerBroadcast {
+                session_id: _,
+                username,
+                message,
+            } => self.add_chat_message(
+                connection_id,
+                ChatMessage {
+                    username: format!("[BROADCAST] {}", username),
+                    message,
+                    timestamp: Local::now(),
+                },
+            ),
+            ServerMessage::UserBroadcastReply { success, error } => {
+                let message = if success {
+                    ChatMessage {
+                        username: "System".to_string(),
+                        message: "Broadcast sent successfully".to_string(),
+                        timestamp: Local::now(),
+                    }
+                } else {
+                    ChatMessage {
+                        username: "Error".to_string(),
+                        message: format!("Failed to send broadcast: {}", error.unwrap_or_default()),
+                        timestamp: Local::now(),
+                    }
+                };
+                self.add_chat_message(connection_id, message)
+            }
             ServerMessage::UserConnected { user } => {
                 conn.online_users.push(UserInfo {
                     session_id: user.session_id,

@@ -86,6 +86,7 @@ impl Default for NexusApp {
                 show_user_list: true,
                 show_add_user: false,
                 show_delete_user: false,
+                show_broadcast: false,
             },
             default_user_mgmt: UserManagementState::default(),
         }
@@ -185,11 +186,18 @@ impl NexusApp {
                 self.handle_delete_username_changed(username)
             }
 
+            // Broadcast
+            Message::BroadcastMessageChanged(input) => {
+                self.handle_broadcast_message_changed(input)
+            }
+            Message::SendBroadcastPressed => self.handle_send_broadcast_pressed(),
+
             // UI toggles
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),
             Message::ToggleUserList => self.handle_toggle_user_list(),
             Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleDeleteUser => self.handle_toggle_delete_user(),
+            Message::ToggleBroadcast => self.handle_toggle_broadcast(),
 
             // Network events
             Message::ConnectionResult(result) => self.handle_connection_result(result),
@@ -268,6 +276,7 @@ impl NexusApp {
             self.ui_state.show_user_list,
             self.ui_state.show_add_user,
             self.ui_state.show_delete_user,
+            self.ui_state.show_broadcast,
         )
     }
 }

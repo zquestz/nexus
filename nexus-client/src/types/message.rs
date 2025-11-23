@@ -48,11 +48,16 @@ pub enum Message {
     DeleteUserPressed(String),
     DeleteUsernameChanged(String),
 
+    // === Broadcast ===
+    BroadcastMessageChanged(String),
+    SendBroadcastPressed,
+
     // === UI Toggles ===
     ToggleBookmarks,
     ToggleUserList,
     ToggleAddUser,
     ToggleDeleteUser,
+    ToggleBroadcast,
 
     // === Keyboard Events ===
     TabPressed,

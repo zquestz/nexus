@@ -11,6 +11,7 @@ pub struct UiState {
     pub show_user_list: bool,
     pub show_add_user: bool,
     pub show_delete_user: bool,
+    pub show_broadcast: bool,
 }
 
 /// Text input IDs for focus management
@@ -32,6 +33,7 @@ pub enum InputId {
     AdminUsername,
     AdminPassword,
     DeleteUsername,
+    BroadcastMessage,
     ChatInput,
 }
 
