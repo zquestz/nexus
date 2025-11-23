@@ -48,7 +48,10 @@ pub async fn handle_userlist(
     };
 
     if !has_perm {
-        eprintln!("UserList from {} without permission", ctx.peer_addr);
+        eprintln!(
+            "UserList from {} (user: {}) without permission",
+            ctx.peer_addr, user.username
+        );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserList"))
             .await;

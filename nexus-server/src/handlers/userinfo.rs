@@ -50,7 +50,10 @@ pub async fn handle_userinfo(
     };
 
     if !has_perm {
-        eprintln!("UserInfo from {} without permission", ctx.peer_addr);
+        eprintln!(
+            "UserInfo from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
+        );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserInfo"))
             .await;

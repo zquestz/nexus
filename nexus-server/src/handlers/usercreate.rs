@@ -81,8 +81,8 @@ pub async fn handle_usercreate(
 
     if !has_permission {
         eprintln!(
-            "UserCreate request from {} without permission",
-            ctx.peer_addr
+            "UserCreate from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
         );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))
@@ -151,8 +151,8 @@ pub async fn handle_usercreate(
 
                 if !has_perm {
                     eprintln!(
-                        "UserCreate request from {} trying to grant permission they don't have: {}",
-                        ctx.peer_addr, perm_str
+                        "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
+                        ctx.peer_addr, requesting_user.username, perm_str
                     );
                     return ctx
                         .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))

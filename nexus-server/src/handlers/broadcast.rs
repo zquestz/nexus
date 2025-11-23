@@ -76,7 +76,10 @@ pub async fn handle_user_broadcast(
     };
 
     if !has_perm {
-        eprintln!("UserBroadcast from {} without permission", ctx.peer_addr);
+        eprintln!(
+            "UserBroadcast from {} (user: {}) without permission",
+            ctx.peer_addr, user.username
+        );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserBroadcast"))
             .await;

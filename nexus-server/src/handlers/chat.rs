@@ -79,7 +79,10 @@ pub async fn handle_chat_send(
     };
 
     if !has_perm {
-        eprintln!("ChatSend from {} without permission", ctx.peer_addr);
+        eprintln!(
+            "ChatSend from {} (user: {}) without permission",
+            ctx.peer_addr, user.username
+        );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("ChatSend"))
             .await;
