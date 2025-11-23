@@ -1,6 +1,7 @@
 //! Nexus BBS Client - GUI Application
 
 mod config;
+mod icons;
 mod network;
 mod types;
 mod views;
@@ -477,13 +478,14 @@ impl NexusApp {
                         };
                         let _ = conn.tx.send(msg);
 
-                        // Clear the form
+                        // Clear the form and close the panel
                         self.admin_username.clear();
                         self.admin_password.clear();
                         self.admin_is_admin = false;
                         for (_, enabled) in &mut self.admin_permissions {
                             *enabled = false;
                         }
+                        self.show_add_user = false;
                     }
                 }
                 Task::none()
@@ -493,8 +495,9 @@ impl NexusApp {
                     if let Some(conn) = self.connections.get(&conn_id) {
                         let msg = ClientMessage::UserDelete { username };
                         let _ = conn.tx.send(msg);
-                        // Clear the form after sending
+                        // Clear the form and close the panel
                         self.delete_username.clear();
+                        self.show_delete_user = false;
                     }
                 }
                 Task::none()
@@ -613,19 +616,28 @@ impl NexusApp {
                 }
             }
             Message::NetworkError(connection_id, error) => {
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.chat_messages.push(ChatMessage {
-                        session_id: 0,
-                        username: "Error".to_string(),
-                        message: error,
-                        timestamp: Local::now(),
+                // Connection has closed or errored - remove it from the list
+                if let Some(conn) = self.connections.remove(&connection_id) {
+                    // Clean up the receiver from the global registry
+                    let registry = network::NETWORK_RECEIVERS.clone();
+                    tokio::spawn(async move {
+                        let mut receivers = registry.lock().await;
+                        receivers.remove(&connection_id);
                     });
-                    // Only auto-scroll if this is the active connection
+                    
+                    // Signal the network task to shutdown
+                    let shutdown_arc = conn.shutdown_handle.clone();
+                    tokio::spawn(async move {
+                        let mut guard = shutdown_arc.lock().await;
+                        if let Some(shutdown) = guard.take() {
+                            shutdown.shutdown();
+                        }
+                    });
+                    
+                    // If this was the active connection, clear it and show error
                     if self.active_connection == Some(connection_id) {
-                        return scrollable::snap_to(
-                            ScrollableId::ChatMessages.into(),
-                            scrollable::RelativeOffset::END,
-                        );
+                        self.active_connection = None;
+                        self.connection_error = Some(format!("Disconnected: {}", error));
                     }
                 }
                 Task::none()

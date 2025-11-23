@@ -1,5 +1,6 @@
 //! UI view rendering for the Nexus client - Multi-server layout
 
+use crate::icons;
 use crate::types::{BookmarkEditMode, InputId, Message, ScrollableId, ServerBookmark, ServerConnection, UserInfo};
 use iced::widget::{Column, button, checkbox, column, container, row, scrollable, text, text_input};
 use iced::{Center, Element, Fill};
@@ -60,10 +61,10 @@ pub fn main_layout<'a>(
                     }
                     style
                 }),
-            button(text("Add User").size(12))
+            button(text(format!("{} User Create", icons::ICON_ADD)).size(12))
                 .on_press(Message::ToggleAddUser)
                 .padding(8),
-            button(text("Delete User").size(12))
+            button(text(format!("{} User Delete", icons::ICON_DELETE)).size(12))
                 .on_press(Message::ToggleDeleteUser)
                 .padding(8),
         ]
@@ -171,7 +172,8 @@ fn server_list_panel<'a>(
         for (conn_id, conn) in conn_list {
             let is_active = active_connection == Some(*conn_id);
             
-            let mut btn = button(text(&conn.display_name).size(13))
+            let display = format!("{} {}", icons::ICON_CONNECTED, conn.display_name);
+            let mut btn = button(text(display).size(13))
                 .width(Fill)
                 .padding(6);
             
@@ -237,9 +239,9 @@ fn server_list_panel<'a>(
                 .any(|conn| conn.bookmark_index == Some(index));
             
             let bookmark_name = if connected_to_bookmark {
-                format!("● {}", bookmark.name)
+                format!("{} {}", icons::ICON_CONNECTED, bookmark.name)
             } else {
-                bookmark.name.clone()
+                format!("{} {}", icons::ICON_DISCONNECTED, bookmark.name)
             };
             
             let btn = button(text(bookmark_name).size(13))
@@ -444,11 +446,11 @@ fn chat_view<'a>(
     for msg in &conn.chat_messages {
         let time_str = msg.timestamp.format("%H:%M:%S").to_string();
         let display = if msg.username == "System" {
-            text(format!("[{}] *** {}", time_str, msg.message)).size(12).color([0.7, 0.7, 0.7])
+            text(format!("[{}] {} {}", time_str, icons::PREFIX_SYSTEM, msg.message)).size(12).color([0.7, 0.7, 0.7])
         } else if msg.username == "Error" {
-            text(format!("[{}] Error: {}", time_str, msg.message)).size(12).color([1.0, 0.0, 0.0])
+            text(format!("[{}] {} {}", time_str, icons::ICON_ERROR, msg.message)).size(12).color([1.0, 0.0, 0.0])
         } else if msg.username == "Info" {
-            text(format!("[{}] ℹ {}", time_str, msg.message)).size(12).color([0.5, 0.8, 1.0])
+            text(format!("[{}] {} {}", time_str, icons::ICON_INFO, msg.message)).size(12).color([0.5, 0.8, 1.0])
         } else {
             text(format!("[{}] {}: {}", time_str, msg.username, msg.message)).size(12)
         };
@@ -500,7 +502,7 @@ fn admin_view<'a>(
 
     // Show Add User form
     if show_add_user {
-        let create_title = text("Create New User")
+        let create_title = text("User Create")
             .size(20)
             .width(Fill)
             .align_x(Center);
@@ -537,11 +539,11 @@ fn admin_view<'a>(
         }
 
         let create_button = if can_create {
-            button(text("Create User").size(14))
+            button(text("Create").size(14))
                 .on_press(Message::CreateUserPressed)
                 .padding(10)
         } else {
-            button(text("Create User").size(14)).padding(10)
+            button(text("Create").size(14)).padding(10)
         };
 
         let cancel_button = button(text("Cancel").size(14))
@@ -578,14 +580,14 @@ fn admin_view<'a>(
 
     // Show Delete User panel
     if show_delete_user {
-        let delete_title = text("Delete User")
+        let delete_title = text("User Delete")
             .size(20)
             .width(Fill)
             .align_x(Center);
         
         let can_delete = !delete_username.trim().is_empty();
         
-        let username_input = text_input("Username to delete", delete_username)
+        let username_input = text_input("Username", delete_username)
             .on_input(Message::DeleteUsernameChanged)
             .on_submit(if can_delete { Message::DeleteUserPressed(delete_username.to_string()) } else { Message::DeleteUsernameChanged(String::new()) })
             .id(text_input::Id::from(InputId::DeleteUsername))
@@ -593,11 +595,11 @@ fn admin_view<'a>(
             .size(14);
         
         let delete_button = if can_delete {
-            button(text("Delete User").size(14))
+            button(text("Delete").size(14))
                 .on_press(Message::DeleteUserPressed(delete_username.to_string()))
                 .padding(10)
         } else {
-            button(text("Delete User").size(14)).padding(10)
+            button(text("Delete").size(14)).padding(10)
         };
         
         let cancel_button = button(text("Cancel").size(14))
@@ -609,7 +611,7 @@ fn admin_view<'a>(
             text("").size(15),
             username_input,
             text("").size(10),
-            text("⚠ Warning: Deletion is permanent!").color([1.0, 0.5, 0.0]).size(14),
+            text(format!("{} Warning: Deletion is permanent!", icons::ICON_WARNING)).color([1.0, 0.5, 0.0]).size(14),
             text("").size(10),
             row![
                 delete_button,
