@@ -113,31 +113,9 @@ fn build_toolbar(show_bookmarks: bool, show_user_list: bool, is_connected: bool)
 
     let toolbar = container(
         row![
+            // Title
             text("Nexus BBS").size(16),
-            button(text(if show_bookmarks { "[<]" } else { "[>]" }).size(12))
-                .on_press(Message::ToggleBookmarks)
-                .padding(8)
-                .style(move |theme, status| {
-                    let mut style = button::primary(theme, status);
-                    if !show_bookmarks_copy {
-                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
-                            0.4, 0.4, 0.4,
-                        )));
-                    }
-                    style
-                }),
-            button(text(if show_user_list { "[>]" } else { "[<]" }).size(12))
-                .on_press(Message::ToggleUserList)
-                .padding(8)
-                .style(move |theme, status| {
-                    let mut style = button::primary(theme, status);
-                    if !show_user_list_copy {
-                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
-                            0.4, 0.4, 0.4,
-                        )));
-                    }
-                    style
-                }),
+            // User management buttons
             if is_connected {
                 button(text("User Create").size(12))
                     .on_press(Message::ToggleAddUser)
@@ -152,6 +130,34 @@ fn build_toolbar(show_bookmarks: bool, show_user_list: bool, is_connected: bool)
             } else {
                 button(text("User Delete").size(12)).padding(8)
             },
+            // Spacer to push collapse buttons to the right
+            container(text("")).width(Fill),
+            // Left collapse button (bookmarks)
+            button(text(if show_bookmarks { "[<]" } else { "[>]" }).size(12))
+                .on_press(Message::ToggleBookmarks)
+                .padding(8)
+                .style(move |theme, status| {
+                    let mut style = button::primary(theme, status);
+                    if !show_bookmarks_copy {
+                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
+                            0.4, 0.4, 0.4,
+                        )));
+                    }
+                    style
+                }),
+            // Right collapse button (user list)
+            button(text(if show_user_list { "[>]" } else { "[<]" }).size(12))
+                .on_press(Message::ToggleUserList)
+                .padding(8)
+                .style(move |theme, status| {
+                    let mut style = button::primary(theme, status);
+                    if !show_user_list_copy {
+                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
+                            0.4, 0.4, 0.4,
+                        )));
+                    }
+                    style
+                }),
         ]
         .spacing(10)
         .padding(8)

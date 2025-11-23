@@ -51,18 +51,14 @@ impl NexusApp {
 
         Task::perform(
             async move {
-                let mut result = network::connect_to_server(
+                network::connect_to_server(
                     server_address.clone(),
                     port.clone(),
                     username,
                     password,
+                    connection_id,
                 )
-                .await;
-                // Override connection_id with our pre-assigned one
-                if let Ok(ref mut conn) = result {
-                    conn.connection_id = connection_id;
-                }
-                result
+                .await
             },
             Message::ConnectionResult,
         )

@@ -29,10 +29,6 @@ type ConnectionRegistry =
 pub static NETWORK_RECEIVERS: once_cell::sync::Lazy<ConnectionRegistry> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
 
-/// Global counter for unique connection IDs
-pub static NEXT_CONNECTION_ID: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
 /// Handle for shutting down a network connection
 #[derive(Debug)]
 pub struct ShutdownHandle {
@@ -52,6 +48,7 @@ pub async fn connect_to_server(
     port: String,
     username: String,
     password: String,
+    connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Establish TCP connection
     let stream = establish_connection(&server_address, &port).await?;
@@ -63,7 +60,7 @@ pub async fn connect_to_server(
     let session_id = perform_login(&mut reader, &mut writer, username, password).await?;
 
     // Set up bidirectional communication
-    setup_communication_channels(reader, writer, session_id).await
+    setup_communication_channels(reader, writer, session_id, connection_id).await
 }
 
 /// Establish TCP connection to the server
@@ -174,6 +171,7 @@ async fn setup_communication_channels(
     reader: Reader,
     writer: Writer,
     session_id: String,
+    connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
@@ -183,8 +181,8 @@ async fn setup_communication_channels(
     // Spawn background task for bidirectional communication
     spawn_network_task(reader, writer, cmd_rx, msg_tx, shutdown_rx);
 
-    // Register connection in global registry
-    let connection_id = register_connection(msg_rx).await;
+    // Register connection in global registry with pre-assigned ID
+    register_connection(connection_id, msg_rx).await;
 
     Ok(NetworkConnection {
         tx: cmd_tx,
@@ -241,12 +239,10 @@ fn spawn_network_task(
     });
 }
 
-/// Register connection in global registry and return connection ID
-async fn register_connection(msg_rx: mpsc::UnboundedReceiver<ServerMessage>) -> usize {
-    let connection_id = NEXT_CONNECTION_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+/// Register connection in global registry with pre-assigned ID
+async fn register_connection(connection_id: usize, msg_rx: mpsc::UnboundedReceiver<ServerMessage>) {
     let mut receivers = NETWORK_RECEIVERS.lock().await;
     receivers.insert(connection_id, msg_rx);
-    connection_id
 }
 
 /// Create Iced stream for network messages
