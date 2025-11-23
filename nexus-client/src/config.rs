@@ -1,8 +1,8 @@
-//! Configuration management for server bookmarks
+//! Server bookmark configuration
 
 use crate::types::ServerBookmark;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Configuration structure
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -44,14 +44,34 @@ impl Config {
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create config directory: {}", e))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
         }
 
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        fs::write(&path, json)
-            .map_err(|e| format!("Failed to write config file: {}", e))?;
+        fs::write(&path, json).map_err(|e| format!("Failed to write config file: {}", e))?;
+
+        // Set restrictive permissions on Unix (owner read/write only)
+        #[cfg(unix)]
+        Self::set_config_permissions(&path)?;
+
+        Ok(())
+    }
+
+    /// Set config file permissions to 0o600 (owner read/write only) on Unix systems
+    #[cfg(unix)]
+    fn set_config_permissions(path: &Path) -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let metadata = fs::metadata(path)
+            .map_err(|e| format!("Failed to read config file metadata: {}", e))?;
+        let mut perms = metadata.permissions();
+        perms.set_mode(0o600);
+
+        fs::set_permissions(path, perms)
+            .map_err(|e| format!("Failed to set config file permissions: {}", e))?;
 
         Ok(())
     }

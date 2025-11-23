@@ -12,56 +12,90 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
 
-/// Global registry for network receivers (public for cleanup on disconnect)
-pub static NETWORK_RECEIVERS: once_cell::sync::Lazy<
-    Arc<Mutex<std::collections::HashMap<usize, mpsc::UnboundedReceiver<ServerMessage>>>>,
-> = once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
+/// Connection timeout duration (30 seconds)
+const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Global counter for connection IDs
+/// Type alias for TCP read half with buffering
+type Reader = BufReader<tokio::net::tcp::OwnedReadHalf>;
+
+/// Type alias for TCP write half
+type Writer = tokio::net::tcp::OwnedWriteHalf;
+
+/// Type alias for the connection registry
+type ConnectionRegistry =
+    Arc<Mutex<std::collections::HashMap<usize, mpsc::UnboundedReceiver<ServerMessage>>>>;
+
+/// Global registry for network receivers
+pub static NETWORK_RECEIVERS: once_cell::sync::Lazy<ConnectionRegistry> =
+    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
+
+/// Global counter for unique connection IDs
 pub static NEXT_CONNECTION_ID: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-/// Shutdown signal for the network task
+/// Handle for shutting down a network connection
 #[derive(Debug)]
 pub struct ShutdownHandle {
     tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl ShutdownHandle {
+    /// Signal the network task to shut down
     pub fn shutdown(self) {
         let _ = self.tx.send(());
     }
 }
 
-/// Connect to the server, perform handshake and login
+/// Connect to server, perform handshake and login
 pub async fn connect_to_server(
     server_address: String,
     port: String,
     username: String,
     password: String,
 ) -> Result<NetworkConnection, String> {
-    // Parse address and port
-    let addr: Ipv6Addr = server_address
-        .parse()
-        .map_err(|_| "Invalid IPv6 address".to_string())?;
-    let port: u16 = port
-        .parse()
-        .map_err(|_| "Invalid port number".to_string())?;
-
-    // Connect to server
-    let socket_addr = std::net::SocketAddr::from((addr, port));
-    let stream = TcpStream::connect(socket_addr)
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
-
+    // Establish TCP connection
+    let stream = establish_connection(&server_address, &port).await?;
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
+    // Perform handshake and login
+    perform_handshake(&mut reader, &mut writer).await?;
+    let session_id = perform_login(&mut reader, &mut writer, username, password).await?;
+
+    // Set up bidirectional communication
+    setup_communication_channels(reader, writer, session_id).await
+}
+
+/// Establish TCP connection to the server
+async fn establish_connection(address: &str, port: &str) -> Result<TcpStream, String> {
+    let addr: Ipv6Addr = address
+        .parse()
+        .map_err(|e| format!("Invalid IPv6 address '{}': {}", address, e))?;
+    let port: u16 = port
+        .parse()
+        .map_err(|e| format!("Invalid port number '{}': {}", port, e))?;
+
+    let socket_addr = std::net::SocketAddr::from((addr, port));
+
+    // Add timeout for connection
+    tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
+        .await
+        .map_err(|_| {
+            format!(
+                "Connection timed out after {} seconds",
+                CONNECTION_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| format!("Connection failed: {}", e))
+}
+
+/// Perform protocol handshake with the server
+async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(), String> {
     // Send handshake
     let handshake = ClientMessage::Handshake {
         version: PROTOCOL_VERSION.to_string(),
     };
-    send_client_message(&mut writer, &handshake)
+    send_client_message(writer, &handshake)
         .await
         .map_err(|e| format!("Failed to send handshake: {}", e))?;
 
@@ -73,58 +107,103 @@ pub async fn connect_to_server(
         .map_err(|e| format!("Failed to read handshake response: {}", e))?;
 
     match serde_json::from_str::<ServerMessage>(&line.trim()) {
+        Ok(ServerMessage::HandshakeResponse { success: true, .. }) => Ok(()),
         Ok(ServerMessage::HandshakeResponse {
-            success,
-            version: _,
+            success: false,
             error,
-        }) => {
-            if !success {
-                return Err(format!("Handshake failed: {}", error.unwrap_or_default()));
-            }
-        }
-        _ => return Err("Unexpected handshake response".to_string()),
+            ..
+        }) => Err(format!("Handshake failed: {}", error.unwrap_or_default())),
+        Ok(_) => Err("Unexpected handshake response".to_string()),
+        Err(e) => Err(format!("Failed to parse handshake response: {}", e)),
     }
+}
 
+/// Perform login and return session ID
+async fn perform_login(
+    reader: &mut Reader,
+    writer: &mut Writer,
+    username: String,
+    password: String,
+) -> Result<String, String> {
     // Send login
     let login = ClientMessage::Login {
-        username: username.clone(),
-        password: password.clone(),
+        username,
+        password,
         features: vec!["chat".to_string()],
     };
-    send_client_message(&mut writer, &login)
+    send_client_message(writer, &login)
         .await
         .map_err(|e| format!("Failed to send login: {}", e))?;
 
     // Wait for login response
-    line.clear();
+    let mut line = String::new();
     reader
         .read_line(&mut line)
         .await
         .map_err(|e| format!("Failed to read login response: {}", e))?;
 
-    let session_id = match serde_json::from_str::<ServerMessage>(&line.trim()) {
+    match serde_json::from_str::<ServerMessage>(&line.trim()) {
         Ok(ServerMessage::LoginResponse {
-            success,
-            session_id,
-            error,
-        }) => {
-            if !success {
-                return Err(error.unwrap_or_else(|| "Login failed".to_string()));
-            }
-            session_id.ok_or_else(|| "No session ID received".to_string())?
-        }
-        Ok(ServerMessage::Error { message, .. }) => {
-            return Err(message);
-        }
-        _ => return Err("Unexpected login response".to_string()),
-    };
+            success: true,
+            session_id: Some(id),
+            ..
+        }) => Ok(id),
+        Ok(ServerMessage::LoginResponse {
+            success: true,
+            session_id: None,
+            ..
+        }) => Err("No session ID received".to_string()),
+        Ok(ServerMessage::LoginResponse {
+            success: false,
+            error: Some(msg),
+            ..
+        }) => Err(msg),
+        Ok(ServerMessage::LoginResponse {
+            success: false,
+            error: None,
+            ..
+        }) => Err("Login failed".to_string()),
+        Ok(ServerMessage::Error { message, .. }) => Err(message),
+        Ok(_) => Err("Unexpected login response".to_string()),
+        Err(e) => Err(format!("Failed to parse login response: {}", e)),
+    }
+}
 
+/// Set up bidirectional communication channels and spawn network task
+async fn setup_communication_channels(
+    reader: Reader,
+    writer: Writer,
+    session_id: String,
+) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
-    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
     let (msg_tx, msg_rx) = mpsc::unbounded_channel::<ServerMessage>();
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    // Spawn task to handle bidirectional communication
+    // Spawn background task for bidirectional communication
+    spawn_network_task(reader, writer, cmd_rx, msg_tx, shutdown_rx);
+
+    // Register connection in global registry
+    let connection_id = register_connection(msg_rx).await;
+
+    Ok(NetworkConnection {
+        tx: cmd_tx,
+        session_id,
+        connection_id,
+        shutdown: Some(Arc::new(Mutex::new(Some(ShutdownHandle {
+            tx: shutdown_tx,
+        })))),
+    })
+}
+
+/// Spawn background task to handle bidirectional communication
+fn spawn_network_task(
+    mut reader: Reader,
+    mut writer: Writer,
+    mut cmd_rx: mpsc::UnboundedReceiver<ClientMessage>,
+    msg_tx: mpsc::UnboundedSender<ServerMessage>,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+) {
     tokio::spawn(async move {
         let mut line = String::new();
         loop {
@@ -160,23 +239,17 @@ pub async fn connect_to_server(
             }
         }
     });
-
-    // Generate unique connection ID and store receiver
-    let connection_id = NEXT_CONNECTION_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    {
-        let mut receivers = NETWORK_RECEIVERS.lock().await;
-        receivers.insert(connection_id, msg_rx);
-    }
-
-    Ok(NetworkConnection {
-        tx: cmd_tx,
-        session_id: session_id.to_string(),
-        connection_id,
-        shutdown: Some(std::sync::Arc::new(tokio::sync::Mutex::new(Some(ShutdownHandle { tx: shutdown_tx })))),
-    })
 }
 
-/// Create a stream that reads messages from the network receiver
+/// Register connection in global registry and return connection ID
+async fn register_connection(msg_rx: mpsc::UnboundedReceiver<ServerMessage>) -> usize {
+    let connection_id = NEXT_CONNECTION_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut receivers = NETWORK_RECEIVERS.lock().await;
+    receivers.insert(connection_id, msg_rx);
+    connection_id
+}
+
+/// Create Iced stream for network messages
 pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
     stream::channel(100, move |mut output| async move {
         // Get the receiver from the registry
@@ -187,18 +260,20 @@ pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
 
         if let Some(ref mut receiver) = rx {
             while let Some(msg) = receiver.recv().await {
-                let _ = output.send(Message::ServerMessageReceived(connection_id, msg)).await;
+                let _ = output
+                    .send(Message::ServerMessageReceived(connection_id, msg))
+                    .await;
             }
         }
 
-        // Connection closed
+        // Connection closed - send error and end stream naturally
         let _ = output
-            .send(Message::NetworkError(connection_id, "Connection closed".to_string()))
+            .send(Message::NetworkError(
+                connection_id,
+                "Connection closed".to_string(),
+            ))
             .await;
 
-        // Keep the stream alive but do nothing
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-        }
+        // Stream ends naturally here, allowing Iced to clean up the subscription
     })
 }
