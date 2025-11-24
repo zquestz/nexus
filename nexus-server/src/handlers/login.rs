@@ -122,7 +122,7 @@ pub async fn handle_login(
         .user_manager
         .add_user(
             authenticated_account.id,
-            authenticated_account.username,
+            authenticated_account.username.clone(),
             ctx.peer_addr,
             authenticated_account.created_at,
             ctx.tx.clone(),
@@ -131,9 +131,27 @@ pub async fn handle_login(
         .await;
     *session_id = Some(id);
 
+    // Get user's permissions from database
+    let user_permissions = if authenticated_account.is_admin {
+        // Admins get all permissions automatically - return empty list
+        // Client checks is_admin flag to know they have all permissions
+        vec![]
+    } else {
+        // Fetch permissions from database for non-admin users
+        match ctx.user_db.get_user_permissions(authenticated_account.id).await {
+            Ok(perms) => perms.to_vec().iter().map(|p| p.as_str().to_string()).collect(),
+            Err(e) => {
+                eprintln!("Error fetching permissions for {}: {}", authenticated_account.username, e);
+                vec![]
+            }
+        }
+    };
+
     let response = ServerMessage::LoginResponse {
         success: true,
         session_id: Some(id.to_string()),
+        is_admin: Some(authenticated_account.is_admin),
+        permissions: Some(user_permissions),
         error: None,
     };
     ctx.send_message(&response).await?;
@@ -158,8 +176,7 @@ pub async fn handle_login(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::{testing::create_test_context};
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -212,15 +229,19 @@ mod tests {
 
         let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
 
-        // Verify successful login response
+        // Verify successful login response with admin flag and empty permissions
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
                 session_id,
+                is_admin,
+                permissions,
                 error,
             } => {
                 assert!(success, "Login should indicate success");
                 assert!(session_id.is_some(), "Should return session ID");
+                assert_eq!(is_admin, Some(true), "First user should be marked as admin");
+                assert_eq!(permissions, Some(vec![]), "Admin should have empty permissions list");
                 assert!(error.is_none(), "Should have no error");
             }
             _ => panic!("Expected LoginResponse"),
@@ -241,11 +262,20 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Pre-create a user
+        // Create a user account with permissions
         let password = "mypassword";
         let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::UserList);
+            set.insert(db::Permission::ChatSend);
+            set
+        };
         test_ctx
             .user_db
-            .create_user("bob", &hashed, false, &db::Permissions::new())
+            .create_user("bob", &hashed, false, &perms)
             .await
             .unwrap();
 
@@ -274,15 +304,22 @@ mod tests {
 
         let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
 
-        // Verify successful login response
+        // Verify successful login response with is_admin and permissions
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
                 session_id,
+                is_admin,
+                permissions,
                 error,
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
+                assert_eq!(is_admin, Some(false), "Non-admin user should be marked as non-admin");
+                assert!(permissions.is_some(), "Should return permissions list");
+                let perms = permissions.unwrap();
+                assert!(perms.contains(&"user_list".to_string()), "Should have user_list permission");
+                assert!(perms.contains(&"chat_send".to_string()), "Should have chat_send permission");
                 assert!(error.is_none(), "Should have no error");
             }
             _ => panic!("Expected LoginResponse"),
@@ -354,6 +391,87 @@ mod tests {
             "Login as non-existent user should fail after first user"
         );
         assert!(session_id.is_none(), "Session ID should remain None");
+    }
+
+    #[tokio::test]
+    async fn test_login_non_admin_returns_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create an admin user first
+        let admin_password = "adminpass";
+        let admin_hashed = db::hash_password(admin_password).unwrap();
+        let _admin = test_ctx
+            .user_db
+            .create_user("admin", &admin_hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Create a non-admin user with specific permissions
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        use std::collections::HashSet;
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(db::Permission::UserList);
+            set.insert(db::Permission::ChatSend);
+            set.insert(db::Permission::ChatReceive);
+            set
+        };
+        let _user = test_ctx
+            .user_db
+            .create_user("alice", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        let handshake_complete = true;
+        let mut session_id = None;
+
+        // Attempt login
+        let result = handle_login(
+            "alice".to_string(),
+            password.to_string(),
+            vec!["chat".to_string()],
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+
+        // Verify response includes correct permissions
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success,
+                session_id,
+                is_admin,
+                permissions,
+                error,
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(session_id.is_some(), "Should return session ID");
+                assert_eq!(is_admin, Some(false), "Should not be admin");
+                assert!(permissions.is_some(), "Should return permissions");
+
+                let perms = permissions.unwrap();
+                assert_eq!(perms.len(), 3, "Should have exactly 3 permissions");
+                assert!(perms.contains(&"user_list".to_string()), "Should have user_list");
+                assert!(perms.contains(&"chat_send".to_string()), "Should have chat_send");
+                assert!(perms.contains(&"chat_receive".to_string()), "Should have chat_receive");
+                assert!(!perms.contains(&"user_create".to_string()), "Should NOT have user_create");
+                assert!(!perms.contains(&"user_delete".to_string()), "Should NOT have user_delete");
+                assert!(error.is_none(), "Should have no error");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
     }
 
     #[tokio::test]

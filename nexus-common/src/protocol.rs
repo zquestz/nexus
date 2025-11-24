@@ -70,6 +70,10 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         session_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        is_admin: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
     /// Broadcast message from another user
@@ -245,6 +249,8 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: true,
             session_id: Some("abc123".to_string()),
+            is_admin: Some(false),
+            permissions: Some(vec!["user_list".to_string()]),
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -257,10 +263,48 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: false,
             session_id: None,
+            is_admin: None,
+            permissions: None,
             error: Some("Invalid credentials".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":false"));
         assert!(json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_serialize_login_response_admin() {
+        let msg = ServerMessage::LoginResponse {
+            success: true,
+            session_id: Some("admin123".to_string()),
+            is_admin: Some(true),
+            permissions: Some(vec![]),
+            error: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"LoginResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"is_admin\":true"));
+        assert!(json.contains("\"permissions\":[]"));
+    }
+
+    #[test]
+    fn test_serialize_login_response_with_permissions() {
+        let msg = ServerMessage::LoginResponse {
+            success: true,
+            session_id: Some("user123".to_string()),
+            is_admin: Some(false),
+            permissions: Some(vec![
+                "user_list".to_string(),
+                "chat_send".to_string(),
+            ]),
+            error: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"LoginResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"is_admin\":false"));
+        assert!(json.contains("\"user_list\""));
+        assert!(json.contains("\"chat_send\""));
     }
 }

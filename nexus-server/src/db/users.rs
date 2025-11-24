@@ -88,6 +88,28 @@ impl UserDb {
         Ok(count.0 > 0)
     }
 
+    /// Get all permissions for a user
+    pub async fn get_user_permissions(
+        &self,
+        user_id: i64,
+    ) -> Result<Permissions, sqlx::Error> {
+        let perm_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT permission FROM user_permissions WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut permissions = Permissions::new();
+        for (perm_str,) in perm_rows {
+            if let Some(perm) = Permission::from_str(&perm_str) {
+                permissions.permissions.insert(perm);
+            }
+        }
+
+        Ok(permissions)
+    }
+
     /// Set permissions for a user (replaces all existing permissions)
     pub async fn set_permissions(
         &self,
