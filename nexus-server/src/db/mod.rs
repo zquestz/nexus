@@ -4,12 +4,18 @@ pub mod password;
 pub mod permissions;
 pub mod users;
 
+#[cfg(test)]
+pub mod testing;
+
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 pub use users::UserDb;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
+
+/// Maximum number of concurrent database connections in the pool
+const MAX_DB_CONNECTIONS: u32 = 5;
 
 /// Get the default database path for the platform
 pub fn default_database_path() -> Result<PathBuf, String> {
@@ -32,7 +38,7 @@ pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
 
     // Create connection pool
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(MAX_DB_CONNECTIONS)
         .connect(&database_url)
         .await?;
 

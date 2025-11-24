@@ -3,6 +3,30 @@
 use super::permissions::{Permission, Permissions};
 use sqlx::SqlitePool;
 
+// SQL query constants
+const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE LOWER(username) = LOWER(?)";
+const SQL_SELECT_USER_BY_ID: &str =
+    "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = ?";
+const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
+const SQL_COUNT_PERMISSION: &str =
+    "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
+const SQL_SELECT_PERMISSIONS: &str = "SELECT permission FROM user_permissions WHERE user_id = ?";
+const SQL_DELETE_PERMISSIONS: &str = "DELETE FROM user_permissions WHERE user_id = ?";
+const SQL_INSERT_PERMISSION: &str =
+    "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)";
+const SQL_INSERT_USER: &str =
+    "INSERT INTO users (username, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?)";
+const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
+const SQL_UPDATE_USER: &str =
+    "UPDATE users SET username = ?, password_hash = ?, is_admin = ? WHERE id = ?";
+const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
+     WHERE id = ?
+     AND (
+         is_admin = 0
+         OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
+     )";
+
 /// User account stored in database
 #[derive(Debug, Clone)]
 pub struct UserAccount {
@@ -20,30 +44,25 @@ pub struct UserDb {
 }
 
 impl UserDb {
+    // ========================================================================
+    // Constructor
+    // ========================================================================
+
     /// Create a new UserDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
-    /// Check if any users exist in the database
-    pub async fn has_any_users(&self) -> Result<bool, sqlx::Error> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(count.0 > 0)
-    }
+    // ========================================================================
+    // Query Methods - User Lookup
+    // ========================================================================
 
-    /// Get a user by username
-    pub async fn get_user_by_username(
-        &self,
-        username: &str,
-    ) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, i64)> = sqlx::query_as(
-            "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE username = ?"
-        )
-        .bind(username)
-        .fetch_optional(&self.pool)
-        .await?;
+    /// Get a user by ID
+    pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
+        let user: Option<(i64, String, String, bool, i64)> = sqlx::query_as(SQL_SELECT_USER_BY_ID)
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(user.map(
             |(id, username, hashed_password, is_admin, created_at)| UserAccount {
@@ -56,6 +75,57 @@ impl UserDb {
         ))
     }
 
+    /// Get a user by username (case-insensitive lookup)
+    pub async fn get_user_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<UserAccount>, sqlx::Error> {
+        let user: Option<(i64, String, String, bool, i64)> =
+            sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
+                .bind(username)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        Ok(user.map(
+            |(id, username, hashed_password, is_admin, created_at)| UserAccount {
+                id,
+                username,
+                hashed_password,
+                is_admin,
+                created_at,
+            },
+        ))
+    }
+
+    /// Check if any users exist in the database
+    pub async fn has_any_users(&self) -> Result<bool, sqlx::Error> {
+        let count: (i64,) = sqlx::query_as(SQL_COUNT_USERS)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count.0 > 0)
+    }
+
+    // ========================================================================
+    // Permission Methods
+    // ========================================================================
+
+    /// Get all permissions for a user
+    pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
+        let perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_PERMISSIONS)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut permissions = Permissions::new();
+        for (perm_str,) in perm_rows {
+            if let Some(perm) = Permission::from_str(&perm_str) {
+                permissions.permissions.insert(perm);
+            }
+        }
+
+        Ok(permissions)
+    }
+
     /// Check if user has a specific permission (with admin override)
     pub async fn has_permission(
         &self,
@@ -63,7 +133,7 @@ impl UserDb {
         permission: Permission,
     ) -> Result<bool, sqlx::Error> {
         // Check if user is admin (admins have all permissions)
-        let is_admin: Option<(bool,)> = sqlx::query_as("SELECT is_admin FROM users WHERE id = ?")
+        let is_admin: Option<(bool,)> = sqlx::query_as(SQL_CHECK_IS_ADMIN)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -77,62 +147,51 @@ impl UserDb {
             return Ok(true);
         }
 
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?",
-        )
-        .bind(user_id)
-        .bind(permission.as_str())
-        .fetch_one(&self.pool)
-        .await?;
+        let count: (i64,) = sqlx::query_as(SQL_COUNT_PERMISSION)
+            .bind(user_id)
+            .bind(permission.as_str())
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(count.0 > 0)
     }
 
-    /// Get all permissions for a user
-    pub async fn get_user_permissions(
-        &self,
-        user_id: i64,
-    ) -> Result<Permissions, sqlx::Error> {
-        let perm_rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT permission FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut permissions = Permissions::new();
-        for (perm_str,) in perm_rows {
-            if let Some(perm) = Permission::from_str(&perm_str) {
-                permissions.permissions.insert(perm);
-            }
-        }
-
-        Ok(permissions)
-    }
-
     /// Set permissions for a user (replaces all existing permissions)
+    ///
+    /// This operation is atomic - uses a transaction to ensure either all permissions
+    /// are updated or none are (prevents partial permission states on errors).
     pub async fn set_permissions(
         &self,
         user_id: i64,
         permissions: &Permissions,
     ) -> Result<(), sqlx::Error> {
+        // Use a transaction to make this atomic
+        let mut tx = self.pool.begin().await?;
+
         // Delete existing permissions
-        sqlx::query("DELETE FROM user_permissions WHERE user_id = ?")
+        sqlx::query(SQL_DELETE_PERMISSIONS)
             .bind(user_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         // Insert new permissions
         for perm in permissions.to_vec() {
-            sqlx::query("INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)")
+            sqlx::query(SQL_INSERT_PERMISSION)
                 .bind(user_id)
                 .bind(perm.as_str())
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
         }
 
+        // Commit the transaction
+        tx.commit().await?;
+
         Ok(())
     }
+
+    // ========================================================================
+    // Mutation Methods - Create/Update/Delete
+    // ========================================================================
 
     /// Create a new user account with permissions
     pub async fn create_user(
@@ -144,15 +203,13 @@ impl UserDb {
     ) -> Result<UserAccount, sqlx::Error> {
         let created_at = chrono::Utc::now().timestamp();
 
-        let result = sqlx::query(
-            "INSERT INTO users (username, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(username)
-        .bind(hashed_password)
-        .bind(is_admin)
-        .bind(created_at)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query(SQL_INSERT_USER)
+            .bind(username)
+            .bind(hashed_password)
+            .bind(is_admin)
+            .bind(created_at)
+            .execute(&self.pool)
+            .await?;
 
         let user_id = result.last_insert_rowid();
 
@@ -171,24 +228,20 @@ impl UserDb {
         })
     }
 
-    /// Get a user by ID
-    pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, i64)> = sqlx::query_as(
-            "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = ?",
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+    /// Delete a user account
+    /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
+    ///
+    /// This operation is atomic and prevents deleting the last admin via a SQL constraint.
+    /// If the target user is an admin and they are the last admin, the deletion will not occur.
+    pub async fn delete_user(&self, user_id: i64) -> Result<bool, sqlx::Error> {
+        // Atomic deletion: only delete if user is non-admin OR if they're not the last admin
+        // This prevents race conditions when multiple admins try to delete each other simultaneously
+        let result = sqlx::query(SQL_DELETE_USER_ATOMIC)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
 
-        Ok(user.map(
-            |(id, username, hashed_password, is_admin, created_at)| UserAccount {
-                id,
-                username,
-                hashed_password,
-                is_admin,
-                created_at,
-            },
-        ))
+        Ok(result.rows_affected() > 0)
     }
 
     /// Update a user account
@@ -214,11 +267,9 @@ impl UserDb {
         if let Some(false) = requested_is_admin {
             if user.is_admin {
                 // Check if this is the last admin
-                let admin_count: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM users WHERE is_admin = 1"
-                )
-                .fetch_one(&self.pool)
-                .await?;
+                let admin_count: (i64,) = sqlx::query_as(SQL_COUNT_ADMINS)
+                    .fetch_one(&self.pool)
+                    .await?;
 
                 if admin_count.0 <= 1 {
                     // Cannot demote the last admin
@@ -243,15 +294,13 @@ impl UserDb {
         let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
 
         // Always update all fields to simplify the query
-        sqlx::query(
-            "UPDATE users SET username = ?, password_hash = ?, is_admin = ? WHERE id = ?"
-        )
-        .bind(final_username)
-        .bind(final_password)
-        .bind(final_is_admin)
-        .bind(user.id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query(SQL_UPDATE_USER)
+            .bind(final_username)
+            .bind(final_password)
+            .bind(final_is_admin)
+            .bind(user.id)
+            .execute(&self.pool)
+            .await?;
 
         // Update permissions if provided
         if let Some(perms) = requested_permissions {
@@ -260,7 +309,7 @@ impl UserDb {
                 self.set_permissions(user.id, perms).await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
-                sqlx::query("DELETE FROM user_permissions WHERE user_id = ?")
+                sqlx::query(SQL_DELETE_PERMISSIONS)
                     .bind(user.id)
                     .execute(&self.pool)
                     .await?;
@@ -269,58 +318,12 @@ impl UserDb {
 
         Ok(true)
     }
-
-    /// Delete a user account
-    /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
-    ///
-    /// This operation is atomic and prevents deleting the last admin via a SQL constraint.
-    /// If the target user is an admin and they are the last admin, the deletion will not occur.
-    pub async fn delete_user(&self, user_id: i64) -> Result<bool, sqlx::Error> {
-        // Atomic deletion: only delete if user is non-admin OR if they're not the last admin
-        // This prevents race conditions when multiple admins try to delete each other simultaneously
-        let result = sqlx::query(
-            "DELETE FROM users
-             WHERE id = ?
-             AND (
-                 is_admin = 0
-                 OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
-             )",
-        )
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Create an in-memory test database with migrations
-    async fn create_test_db() -> SqlitePool {
-        let pool = SqlitePool::connect(":memory:")
-            .await
-            .expect("Failed to create in-memory database");
-
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .expect("Failed to run migrations");
-
-        pool
-    }
-
-    /// Count the number of admin users in the database
-    async fn count_admins(pool: &SqlitePool) -> i64 {
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_admin = 1")
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        count
-    }
+    use crate::db::testing::*;
 
     // ========================================================================
     // Database Operations Tests
@@ -373,7 +376,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_user_by_username_case_sensitive() {
+    async fn test_get_user_by_username_case_insensitive() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
@@ -382,12 +385,25 @@ mod tests {
             .await
             .unwrap();
 
-        // Exact match should work
-        assert!(db.get_user_by_username("Alice").await.unwrap().is_some());
+        // All case variations should match (case-insensitive lookup)
+        let user1 = db.get_user_by_username("Alice").await.unwrap().unwrap();
+        let user2 = db.get_user_by_username("alice").await.unwrap().unwrap();
+        let user3 = db.get_user_by_username("ALICE").await.unwrap().unwrap();
 
-        // Different case should not match (case-sensitive)
-        assert!(db.get_user_by_username("alice").await.unwrap().is_none());
-        assert!(db.get_user_by_username("ALICE").await.unwrap().is_none());
+        // All should return the same user
+        assert_eq!(user1.id, user2.id);
+        assert_eq!(user1.id, user3.id);
+
+        // But the stored username should preserve original case
+        assert_eq!(user1.username, "Alice");
+        assert_eq!(user2.username, "Alice");
+        assert_eq!(user3.username, "Alice");
+
+        // Cannot create another user with different casing
+        let result = db
+            .create_user("alice", "hash456", false, &Permissions::new())
+            .await;
+        assert!(result.is_err()); // Should fail due to unique constraint
     }
 
     #[tokio::test]
@@ -438,13 +454,12 @@ mod tests {
             .unwrap();
 
         // Verify permissions were stored in database
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
+                .bind(user.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
 
         assert_eq!(count, 2, "Should have 2 permissions stored");
     }
@@ -469,13 +484,12 @@ mod tests {
             .unwrap();
 
         // Verify NO permissions stored in database (admin gets all automatically)
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(admin.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
+                .bind(admin.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
 
         assert_eq!(count, 0, "Admin should have no stored permissions");
     }
@@ -539,10 +553,7 @@ mod tests {
             set
         };
 
-        let user = db
-            .create_user("bob", "hash", false, &perms)
-            .await
-            .unwrap();
+        let user = db.create_user("bob", "hash", false, &perms).await.unwrap();
 
         // Should have granted permissions
         assert!(
@@ -575,7 +586,10 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Non-existent user should have no permissions
-        let result = db.has_permission(99999, Permission::UserList).await.unwrap();
+        let result = db
+            .has_permission(99999, Permission::UserList)
+            .await
+            .unwrap();
         assert!(!result);
     }
 
@@ -665,19 +679,15 @@ mod tests {
             set
         };
 
-        let user = db
-            .create_user("bob", "hash", false, &perms)
-            .await
-            .unwrap();
+        let user = db.create_user("bob", "hash", false, &perms).await.unwrap();
 
         // Verify permissions exist
-        let (perm_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let (perm_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
+                .bind(user.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(perm_count, 2);
 
         // Delete user
@@ -685,14 +695,16 @@ mod tests {
         assert!(deleted, "User should be deleted");
 
         // Permissions should be cascaded
-        let (perm_count_after,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(perm_count_after, 0, "Permissions should be deleted via CASCADE");
+        let (perm_count_after,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
+                .bind(user.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            perm_count_after, 0,
+            "Permissions should be deleted via CASCADE"
+        );
     }
 
     #[tokio::test]
@@ -803,10 +815,8 @@ mod tests {
         assert_eq!(count_admins(&pool).await, 2);
 
         // Try to delete both admins simultaneously
-        let (result1, result2) = tokio::join!(
-            db1.delete_user(admin2.id),
-            db2.delete_user(admin1.id)
-        );
+        let (result1, result2) =
+            tokio::join!(db1.delete_user(admin2.id), db2.delete_user(admin1.id));
 
         let deleted1 = result1.unwrap();
         let deleted2 = result2.unwrap();
