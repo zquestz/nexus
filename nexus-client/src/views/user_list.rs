@@ -1,19 +1,29 @@
 //! User list panel (right sidebar)
 
-use crate::types::{Message, UserInfo};
-use iced::widget::{button, column, container, scrollable, text, Column};
+use crate::types::{Message, ServerConnection};
+use iced::widget::{column, container, scrollable, text, Column, button};
 use iced::{Element, Fill};
 
 /// Displays online users as clickable buttons
-pub fn user_list_panel<'a>(users: &'a [UserInfo], _bookmark_index: usize) -> Element<'a, Message> {
+pub fn user_list_panel<'a>(conn: &'a ServerConnection) -> Element<'a, Message> {
+    // Check if user has permission to view user list
+    let can_view_users = conn.is_admin || conn.permissions.contains(&"user_list".to_string());
+
     let title = text("Users").size(16);
 
     let mut users_column = Column::new().spacing(3).padding(5);
 
-    if users.is_empty() {
+    if !can_view_users {
+        // No permission to view user list
+        users_column = users_column.push(
+            text("No permission to view users")
+                .size(11)
+                .color([0.7, 0.7, 0.7])
+        );
+    } else if conn.online_users.is_empty() {
         users_column = users_column.push(text("No users online").size(11).color([0.5, 0.5, 0.5]));
     } else {
-        for user in users {
+        for user in &conn.online_users {
             users_column = users_column.push(
                 button(text(&user.username).size(12))
                     .on_press(Message::RequestUserInfo(user.session_id))

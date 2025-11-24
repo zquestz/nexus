@@ -57,6 +57,8 @@ impl NexusApp {
                     message_input: String::new(),
                     broadcast_message: String::new(),
                     user_management: crate::types::UserManagementState::default(),
+                    is_admin: conn.is_admin,
+                    permissions: conn.permissions,
                 };
 
                 // Add to connections and make it active

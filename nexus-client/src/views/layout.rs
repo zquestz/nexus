@@ -39,8 +39,21 @@ pub fn main_layout<'a>(
     show_delete_user: bool,
     show_broadcast: bool,
 ) -> Element<'a, Message> {
+    // Get permissions and admin status from active connection
+    let (is_admin, permissions) = active_connection
+        .and_then(|id| connections.get(&id))
+        .map(|conn| (conn.is_admin, conn.permissions.as_slice()))
+        .unwrap_or((false, &[]));
+
     // Top toolbar
-    let toolbar = build_toolbar(show_bookmarks, show_user_list, show_broadcast, active_connection.is_some());
+    let toolbar = build_toolbar(
+        show_bookmarks,
+        show_user_list,
+        show_broadcast,
+        active_connection.is_some(),
+        is_admin,
+        permissions,
+    );
 
     // Left panel: Server list
     let server_list = server_list_panel(bookmarks, connections, active_connection);
@@ -84,12 +97,12 @@ pub fn main_layout<'a>(
     let user_list = if show_user_list {
         if let Some(conn_id) = active_connection {
             if let Some(conn) = connections.get(&conn_id) {
-                user_list_panel(&conn.online_users, conn_id)
+                user_list_panel(conn)
             } else {
-                user_list_panel(&[], 0) // Empty user list
+                container(text("")).width(0).into()
             }
         } else {
-            user_list_panel(&[], 0) // Empty user list
+            container(text("")).width(0).into()
         }
     } else {
         container(text("")).width(0).into()
@@ -108,18 +121,30 @@ pub fn main_layout<'a>(
 }
 
 /// Build the top toolbar with toggle buttons
-fn build_toolbar(show_bookmarks: bool, show_user_list: bool, show_broadcast: bool, is_connected: bool) -> Element<'static, Message> {
+fn build_toolbar(
+    show_bookmarks: bool,
+    show_user_list: bool,
+    show_broadcast: bool,
+    is_connected: bool,
+    is_admin: bool,
+    permissions: &[String],
+) -> Element<'static, Message> {
     // Need to capture these for the closures
     let show_bookmarks_copy = show_bookmarks;
     let show_user_list_copy = show_user_list;
     let show_broadcast_copy = show_broadcast;
+
+    // Check permissions
+    let has_broadcast = is_admin || permissions.contains(&"user_broadcast".to_string());
+    let has_user_create = is_admin || permissions.contains(&"user_create".to_string());
+    let has_user_delete = is_admin || permissions.contains(&"user_delete".to_string());
 
     let toolbar = container(
         row![
             // Title
             text("Nexus BBS").size(16),
             // Broadcast button
-            if is_connected {
+            if is_connected && has_broadcast {
                 button(text("Broadcast").size(12))
                     .on_press(Message::ToggleBroadcast)
                     .padding(8)
@@ -136,14 +161,14 @@ fn build_toolbar(show_bookmarks: bool, show_user_list: bool, show_broadcast: boo
                 button(text("Broadcast").size(12)).padding(8)
             },
             // User management buttons
-            if is_connected {
+            if is_connected && has_user_create {
                 button(text("User Create").size(12))
                     .on_press(Message::ToggleAddUser)
                     .padding(8)
             } else {
                 button(text("User Create").size(12)).padding(8)
             },
-            if is_connected {
+            if is_connected && has_user_delete {
                 button(text("User Delete").size(12))
                     .on_press(Message::ToggleDeleteUser)
                     .padding(8)

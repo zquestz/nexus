@@ -50,6 +50,12 @@ pub struct ServerConnection {
 
     /// Admin panel state (create/delete user forms)
     pub user_management: UserManagementState,
+
+    /// Whether this user is an admin on this server
+    pub is_admin: bool,
+
+    /// Permissions this user has on this server
+    pub permissions: Vec<String>,
 }
 
 /// Network connection handle
@@ -63,4 +69,6 @@ pub struct NetworkConnection {
     pub connection_id: usize,
     pub shutdown:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>>,
+    pub is_admin: bool,
+    pub permissions: Vec<String>,
 }

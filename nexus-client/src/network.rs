@@ -21,6 +21,13 @@ type Reader = BufReader<tokio::net::tcp::OwnedReadHalf>;
 /// Type alias for TCP write half
 type Writer = tokio::net::tcp::OwnedWriteHalf;
 
+/// Login information returned from the server
+struct LoginInfo {
+    session_id: String,
+    is_admin: bool,
+    permissions: Vec<String>,
+}
+
 /// Type alias for the connection registry
 type ConnectionRegistry =
     Arc<Mutex<std::collections::HashMap<usize, mpsc::UnboundedReceiver<ServerMessage>>>>;
@@ -57,10 +64,10 @@ pub async fn connect_to_server(
 
     // Perform handshake and login
     perform_handshake(&mut reader, &mut writer).await?;
-    let session_id = perform_login(&mut reader, &mut writer, username, password).await?;
+    let login_info = perform_login(&mut reader, &mut writer, username, password).await?;
 
     // Set up bidirectional communication
-    setup_communication_channels(reader, writer, session_id, connection_id).await
+    setup_communication_channels(reader, writer, login_info, connection_id).await
 }
 
 /// Establish TCP connection to the server
@@ -115,13 +122,13 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
     }
 }
 
-/// Perform login and return session ID
+/// Perform login and return login info (session ID, admin status, permissions)
 async fn perform_login(
     reader: &mut Reader,
     writer: &mut Writer,
     username: String,
     password: String,
-) -> Result<String, String> {
+) -> Result<LoginInfo, String> {
     // Send login
     let login = ClientMessage::Login {
         username,
@@ -143,8 +150,14 @@ async fn perform_login(
         Ok(ServerMessage::LoginResponse {
             success: true,
             session_id: Some(id),
+            is_admin,
+            permissions,
             ..
-        }) => Ok(id),
+        }) => Ok(LoginInfo {
+            session_id: id,
+            is_admin: is_admin.unwrap_or(false),
+            permissions: permissions.unwrap_or_default(),
+        }),
         Ok(ServerMessage::LoginResponse {
             success: true,
             session_id: None,
@@ -170,7 +183,7 @@ async fn perform_login(
 async fn setup_communication_channels(
     reader: Reader,
     writer: Writer,
-    session_id: String,
+    login_info: LoginInfo,
     connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
@@ -186,11 +199,13 @@ async fn setup_communication_channels(
 
     Ok(NetworkConnection {
         tx: cmd_tx,
-        session_id,
+        session_id: login_info.session_id,
         connection_id,
         shutdown: Some(Arc::new(Mutex::new(Some(ShutdownHandle {
             tx: shutdown_tx,
         })))),
+        is_admin: login_info.is_admin,
+        permissions: login_info.permissions,
     })
 }
 

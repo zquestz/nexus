@@ -7,6 +7,7 @@ use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use std::io;
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -19,6 +20,14 @@ pub async fn handle_connection(
     user_db: UserDb,
     debug: bool,
 ) -> io::Result<()> {
+    // Enable TCP keepalive to detect dead connections
+    // Keepalive will probe the connection every 60 seconds
+    let socket_ref = socket2::SockRef::from(&socket);
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(Duration::from_secs(60))
+        .with_interval(Duration::from_secs(10));
+    socket_ref.set_tcp_keepalive(&keepalive)?;
+
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::new(reader);
 

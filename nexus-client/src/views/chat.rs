@@ -11,46 +11,78 @@ pub fn chat_view<'a>(
     _show_add_user: bool,
     _show_delete_user: bool,
 ) -> Element<'a, Message> {
+    // Check permissions
+    let can_send = conn.is_admin || conn.permissions.contains(&"chat_send".to_string());
+    let can_receive = conn.is_admin || conn.permissions.contains(&"chat_receive".to_string());
+    
     // No tabs in chat view - just the content
     let top_bar = row![].spacing(0).padding(0);
 
-    // Chat messages
-    let mut chat_column = Column::new().spacing(3).padding(8);
-    for msg in &conn.chat_messages {
-        let time_str = msg.timestamp.format("%H:%M:%S").to_string();
-        let display = if msg.username == "System" {
-            text(format!("[{}] [SYS] {}", time_str, msg.message))
-                .size(12)
-                .color([0.7, 0.7, 0.7])
-        } else if msg.username == "Error" {
-            text(format!("[{}] [ERR] {}", time_str, msg.message))
-                .size(12)
-                .color([1.0, 0.0, 0.0])
-        } else if msg.username == "Info" {
-            text(format!("[{}] [INFO] {}", time_str, msg.message))
-                .size(12)
-                .color([0.5, 0.8, 1.0])
-        } else {
-            text(format!("[{}] {}: {}", time_str, msg.username, msg.message)).size(12)
-        };
-        chat_column = chat_column.push(display);
-    }
+    // Chat messages - only show if user has permission to receive
+    let chat_scrollable = if can_receive {
+        let mut chat_column = Column::new().spacing(3).padding(8);
+        for msg in &conn.chat_messages {
+            let time_str = msg.timestamp.format("%H:%M:%S").to_string();
+            let display = if msg.username == "System" {
+                text(format!("[{}] [SYS] {}", time_str, msg.message))
+                    .size(12)
+                    .color([0.7, 0.7, 0.7])
+            } else if msg.username == "Error" {
+                text(format!("[{}] [ERR] {}", time_str, msg.message))
+                    .size(12)
+                    .color([1.0, 0.0, 0.0])
+            } else if msg.username == "Info" {
+                text(format!("[{}] [INFO] {}", time_str, msg.message))
+                    .size(12)
+                    .color([0.5, 0.8, 1.0])
+            } else {
+                text(format!("[{}] {}: {}", time_str, msg.username, msg.message)).size(12)
+            };
+            chat_column = chat_column.push(display);
+        }
 
-    let chat_scrollable = scrollable(chat_column)
-        .id(ScrollableId::ChatMessages.into())
-        .height(Fill);
+        scrollable(chat_column)
+            .id(ScrollableId::ChatMessages.into())
+            .height(Fill)
+    } else {
+        // No permission to receive chat
+        let no_permission_column = Column::new()
+            .spacing(3)
+            .padding(8)
+            .push(
+                text("You do not have permission to view chat messages")
+                    .size(14)
+                    .color([0.7, 0.7, 0.7])
+            );
+        
+        scrollable(no_permission_column)
+            .id(ScrollableId::ChatMessages.into())
+            .height(Fill)
+    };
 
     // Message input
     let input_row = row![
-        text_input("Type a message...", message_input)
-            .on_input(Message::MessageInputChanged)
-            .on_submit(Message::SendMessagePressed)
-            .id(text_input::Id::from(InputId::ChatInput))
-            .padding(8)
-            .size(13),
-        button(text("Send").size(12))
-            .on_press(Message::SendMessagePressed)
-            .padding(8),
+        if can_send {
+            text_input("Type a message...", message_input)
+                .on_input(Message::MessageInputChanged)
+                .on_submit(Message::SendMessagePressed)
+                .id(text_input::Id::from(InputId::ChatInput))
+                .padding(8)
+                .size(13)
+        } else {
+            text_input("No permission to send messages", message_input)
+                .id(text_input::Id::from(InputId::ChatInput))
+                .padding(8)
+                .size(13)
+        },
+        if can_send {
+            button(text("Send").size(12))
+                .on_press(Message::SendMessagePressed)
+                .padding(8)
+        } else {
+            button(text("Send").size(12))
+                .padding(8)
+        },
     ]
     .spacing(5);
 
