@@ -2,10 +2,19 @@
 
 use super::DEFAULT_PORT;
 
-/// State for user edit flow (two-stage process)
-///
-/// Stage 1: User enters username to edit
-/// Stage 2: Form shows with current values, user can modify and submit
+/// Complete list of all available permissions
+const ALL_PERMISSIONS: &[&str] = &[
+    "user_list",
+    "user_info",
+    "chat_send",
+    "chat_receive",
+    "user_broadcast",
+    "user_create",
+    "user_delete",
+    "user_edit",
+];
+
+/// User edit flow state (two-stage process)
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserEditState {
     /// Not editing anyone
@@ -27,17 +36,20 @@ pub enum UserEditState {
     },
 }
 
-/// State for connection form (connecting to new servers)
-///
-/// Temporary state for the connection dialog. Unlike bookmarks,
-/// this state is not persisted and is cleared after connecting.
+/// Connection form state (not persisted)
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionFormState {
+    /// Optional display name for connection
     pub server_name: String,
+    /// Server IPv6 address
     pub server_address: String,
+    /// Server port number
     pub port: String,
+    /// Username for authentication
     pub username: String,
+    /// Password for authentication
     pub password: String,
+    /// Connection error message
     pub error: Option<String>,
 }
 
@@ -52,19 +64,18 @@ impl ConnectionFormState {
     }
 }
 
-/// State for user management (create/delete/edit user forms)
-///
-/// Per-connection admin panel state. Each connection maintains its own
-/// user management forms independently.
+/// User management panel state (per-connection)
 #[derive(Debug, Clone)]
 pub struct UserManagementState {
-    // Add User fields
+    /// Username for add user form
     pub username: String,
+    /// Password for add user form
     pub password: String,
+    /// Admin flag for add user form
     pub is_admin: bool,
+    /// Permissions for add user form
     pub permissions: Vec<(String, bool)>,
-    
-    // Edit User state
+    /// Current edit user state
     pub edit_state: UserEditState,
 }
 
@@ -74,16 +85,10 @@ impl Default for UserManagementState {
             username: String::new(),
             password: String::new(),
             is_admin: false,
-            permissions: vec![
-                ("user_list".to_string(), false),
-                ("user_info".to_string(), false),
-                ("chat_send".to_string(), false),
-                ("chat_receive".to_string(), false),
-                ("user_broadcast".to_string(), false),
-                ("user_create".to_string(), false),
-                ("user_delete".to_string(), false),
-                ("user_edit".to_string(), false),
-            ],
+            permissions: ALL_PERMISSIONS
+                .iter()
+                .map(|s| (s.to_string(), false))
+                .collect(),
             edit_state: UserEditState::None,
         }
     }
@@ -104,14 +109,14 @@ impl UserManagementState {
     pub fn clear_edit_user(&mut self) {
         self.edit_state = UserEditState::None;
     }
-    
+
     /// Start editing a user (stage 1: enter username)
     pub fn start_editing(&mut self) {
         self.edit_state = UserEditState::SelectingUser {
             username: String::new(),
         };
     }
-    
+
     /// Move to stage 2 of editing with user details from server
     pub fn load_user_for_editing(
         &mut self,
@@ -120,22 +125,16 @@ impl UserManagementState {
         permissions: Vec<String>,
     ) {
         // Convert permissions Vec<String> to Vec<(String, bool)>
-        let mut perm_map = vec![
-            ("user_list".to_string(), false),
-            ("user_info".to_string(), false),
-            ("chat_send".to_string(), false),
-            ("chat_receive".to_string(), false),
-            ("user_broadcast".to_string(), false),
-            ("user_create".to_string(), false),
-            ("user_delete".to_string(), false),
-            ("user_edit".to_string(), false),
-        ];
-        
+        let mut perm_map: Vec<(String, bool)> = ALL_PERMISSIONS
+            .iter()
+            .map(|s| (s.to_string(), false))
+            .collect();
+
         // Mark permissions that the user has
         for (perm_name, enabled) in &mut perm_map {
             *enabled = permissions.contains(perm_name);
         }
-        
+
         self.edit_state = UserEditState::EditingUser {
             original_username: username.clone(),
             new_username: username,

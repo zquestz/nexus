@@ -15,6 +15,12 @@ use tokio::sync::{Mutex, mpsc};
 /// Connection timeout duration (30 seconds)
 const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Buffer size for the Iced stream channel
+const STREAM_CHANNEL_SIZE: usize = 100;
+
+/// Default features to request during login
+const DEFAULT_FEATURES: &[&str] = &["chat"];
+
 /// Type alias for TCP read half with buffering
 type Reader = BufReader<tokio::net::tcp::OwnedReadHalf>;
 
@@ -50,6 +56,10 @@ impl ShutdownHandle {
 }
 
 /// Connect to server, perform handshake and login
+///
+/// Establishes a TCP connection, performs protocol handshake and authentication,
+/// then sets up bidirectional communication channels. Returns a NetworkConnection
+/// handle for sending messages to the server.
 pub async fn connect_to_server(
     server_address: String,
     port: u16,
@@ -129,11 +139,11 @@ async fn perform_login(
     username: String,
     password: String,
 ) -> Result<LoginInfo, String> {
-    // Send login
+    // Send login with default features
     let login = ClientMessage::Login {
         username,
         password,
-        features: vec!["chat".to_string()],
+        features: DEFAULT_FEATURES.iter().map(|s| s.to_string()).collect(),
     };
     send_client_message(writer, &login)
         .await
@@ -261,8 +271,12 @@ async fn register_connection(connection_id: usize, msg_rx: mpsc::UnboundedReceiv
 }
 
 /// Create Iced stream for network messages
+///
+/// Creates a subscription stream that receives messages from the server
+/// for a specific connection. When the connection closes, sends a NetworkError
+/// message and ends the stream.
 pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
-    stream::channel(100, move |mut output| async move {
+    stream::channel(STREAM_CHANNEL_SIZE, move |mut output| async move {
         // Get the receiver from the registry
         let mut rx = {
             let mut receivers = NETWORK_RECEIVERS.lock().await;

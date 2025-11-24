@@ -6,7 +6,7 @@ use iced::Task;
 use nexus_common::protocol::ClientMessage;
 
 impl NexusApp {
-    // User management field update handlers
+    /// Handle admin panel username field change
     pub fn handle_admin_username_changed(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -17,6 +17,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle admin panel password field change
     pub fn handle_admin_password_changed(&mut self, password: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -27,6 +28,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle admin panel Is Admin checkbox toggle
     pub fn handle_admin_is_admin_toggled(&mut self, is_admin: bool) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -36,6 +38,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle admin panel permission checkbox toggle
     pub fn handle_admin_permission_toggled(
         &mut self,
         permission: String,
@@ -56,7 +59,7 @@ impl NexusApp {
         Task::none()
     }
 
-    // User management operation handlers
+    /// Handle Create User button press
     pub fn handle_create_user_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -94,6 +97,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle Delete User button press
     pub fn handle_delete_user_pressed(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -106,7 +110,7 @@ impl NexusApp {
         Task::none()
     }
 
-    // User edit field update handlers
+    /// Handle edit user username field change (stage 1)
     pub fn handle_edit_username_changed(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -119,6 +123,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle edit user new username field change (stage 2)
     pub fn handle_edit_new_username_changed(&mut self, new_username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -131,6 +136,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle edit user new password field change (stage 2)
     pub fn handle_edit_new_password_changed(&mut self, new_password: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -143,6 +149,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle edit user Is Admin checkbox toggle (stage 2)
     pub fn handle_edit_is_admin_toggled(&mut self, is_admin: bool) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -154,6 +161,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle edit user permission checkbox toggle (stage 2)
     pub fn handle_edit_permission_toggled(
         &mut self,
         permission: String,
@@ -171,7 +179,7 @@ impl NexusApp {
         Task::none()
     }
 
-    // User edit operation handlers
+    /// Handle Edit button press (stage 1 - request user details)
     pub fn handle_edit_user_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -187,6 +195,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle Update button press (stage 2 - submit changes)
     pub fn handle_update_user_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -243,6 +252,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle Cancel button press in edit user panel
     pub fn handle_cancel_edit_user(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {

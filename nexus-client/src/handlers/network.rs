@@ -8,7 +8,7 @@ use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 impl NexusApp {
-    // Network event handlers
+    /// Handle connection attempt result (success or failure)
     pub fn handle_connection_result(
         &mut self,
         result: Result<crate::types::NetworkConnection, String>,
@@ -80,6 +80,7 @@ impl NexusApp {
         }
     }
 
+    /// Handle message received from server
     pub fn handle_server_message_received(
         &mut self,
         connection_id: usize,
@@ -92,6 +93,7 @@ impl NexusApp {
         }
     }
 
+    /// Handle network error or connection closure
     pub fn handle_network_error(&mut self, connection_id: usize, error: String) -> Task<Message> {
         // Connection has closed or errored - remove it from the list
         if let Some(conn) = self.connections.remove(&connection_id) {
@@ -120,7 +122,7 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Helper method to add a chat message and auto-scroll if this is the active connection
+    /// Add chat message and auto-scroll if this is the active connection
     pub fn add_chat_message(
         &mut self,
         connection_id: usize,
@@ -138,6 +140,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Process a specific server message and update state
     pub fn handle_server_message(
         &mut self,
         connection_id: usize,
@@ -193,6 +196,7 @@ impl NexusApp {
                 conn.online_users.push(UserInfo {
                     session_id: user.session_id,
                     username: user.username.clone(),
+                    is_admin: user.is_admin,
                 });
                 self.add_chat_message(
                     connection_id,
@@ -223,6 +227,7 @@ impl NexusApp {
                     .map(|u| UserInfo {
                         session_id: u.session_id,
                         username: u.username,
+                        is_admin: u.is_admin,
                     })
                     .collect();
                 Task::none()
@@ -235,12 +240,49 @@ impl NexusApp {
                         timestamp: Local::now(),
                     }
                 } else if let Some(user) = user {
+                    // Calculate session duration
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let session_duration_secs = now.saturating_sub(user.login_time);
+                    let duration_str = if session_duration_secs < 60 {
+                        format!("{}s", session_duration_secs)
+                    } else if session_duration_secs < 3600 {
+                        format!("{}m", session_duration_secs / 60)
+                    } else {
+                        format!("{}h {}m", session_duration_secs / 3600, (session_duration_secs % 3600) / 60)
+                    };
+                    
+                    // Build info message
+                    let mut info = String::new();
+                    
+                    // Start with username
+                    info.push_str(&user.username);
+                    
+                    // Add admin status if present (only visible to admins)
+                    if let Some(is_admin) = user.is_admin {
+                        if is_admin {
+                            info.push_str(" • Admin");
+                        }
+                    }
+                    
+                    // Add online duration
+                    info.push_str(&format!(" • Online: {}", duration_str));
+                    
+                    // Add features if any
+                    if !user.features.is_empty() {
+                        info.push_str(&format!(" • Features: {}", user.features.join(", ")));
+                    }
+                    
+                    // Add address if present (only visible to admins)
+                    if let Some(address) = user.address {
+                        info.push_str(&format!(" • IP: {}", address));
+                    }
+                    
                     ChatMessage {
                         username: "Info".to_string(),
-                        message: format!(
-                            "User {} (session {}): created {}, features: {:?}",
-                            user.username, user.session_id, user.created_at, user.features
-                        ),
+                        message: info,
                         timestamp: Local::now(),
                     }
                 } else {

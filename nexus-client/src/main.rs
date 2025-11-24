@@ -16,51 +16,49 @@ use types::{
     UiState, UserManagementState,
 };
 
+/// Default window width
+const WINDOW_WIDTH: f32 = 1200.0;
+
+/// Default window height
+const WINDOW_HEIGHT: f32 = 700.0;
+
+/// Minimum window width
+const MIN_WINDOW_WIDTH: f32 = 800.0;
+
+/// Minimum window height
+const MIN_WINDOW_HEIGHT: f32 = 500.0;
+
 pub fn main() -> iced::Result {
     iced::application("Nexus BBS", NexusApp::update, NexusApp::view)
         .theme(|_| Theme::Dark)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {
-            size: iced::Size::new(1200.0, 700.0),
-            min_size: Some(iced::Size::new(800.0, 500.0)),
+            size: iced::Size::new(WINDOW_WIDTH, WINDOW_HEIGHT),
+            min_size: Some(iced::Size::new(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
             ..Default::default()
         })
         .run_with(NexusApp::new)
 }
 
 /// Main application state for the Nexus BBS client
-///
-/// This struct contains all state needed to run the client, including
-/// configuration, active connections, UI state, and form inputs.
-///
-/// The state is organized into logical groups using dedicated state structs
-/// to improve organization and reduce the number of top-level fields.
 struct NexusApp {
-    // Configuration and bookmarks
-    /// Application configuration and saved bookmarks
+    /// Application configuration and server bookmarks
     config: config::Config,
-    /// Current bookmark being edited (if any)
+    /// State for bookmark add/edit dialog
     bookmark_edit: BookmarkEditState,
-
-    // Multi-server connections
-    /// Active server connections mapped by connection_id
+    /// Active server connections by connection_id
     connections: HashMap<usize, ServerConnection>,
-    /// Currently active/displayed connection (if any)
+    /// Currently displayed connection
     active_connection: Option<usize>,
     /// Counter for generating unique connection IDs
     next_connection_id: usize,
-
-    // Connection form state
     /// Connection form inputs and state
     connection_form: ConnectionFormState,
     /// Currently focused input field
     focused_field: InputId,
-
-    // UI state
     /// UI panel visibility toggles
     ui_state: UiState,
-
-    // Default state for views when no connection is active
+    /// Default user management state when no connection active
     default_user_mgmt: UserManagementState,
 }
 
@@ -69,10 +67,7 @@ impl Default for NexusApp {
         let config = config::Config::load();
         Self {
             config,
-            bookmark_edit: BookmarkEditState {
-                port: DEFAULT_PORT.to_string(),
-                ..Default::default()
-            },
+            bookmark_edit: BookmarkEditState::default(),
             connections: HashMap::new(),
             active_connection: None,
             next_connection_id: 0,
@@ -96,14 +91,8 @@ impl Default for NexusApp {
 impl NexusApp {
     /// Initialize the application with default state and auto-connect tasks
     ///
-    /// This method is called once at startup. It creates the default application
-    /// state and generates tasks for:
-    /// - Focusing the server name input field
-    /// - Auto-connecting to bookmarks with `auto_connect` enabled
-    ///
-    /// # Returns
-    ///
-    /// A tuple of (app state, batched initialization tasks)
+    /// Called once at startup to set up initial state and generate tasks for
+    /// focusing the input field and auto-connecting to bookmarks.
     fn new() -> (Self, Task<Message>) {
         let app = Self::default();
 
@@ -119,21 +108,11 @@ impl NexusApp {
 
     /// Process a message and update application state
     ///
-    /// This is the central message dispatcher that routes all messages to their
-    /// appropriate handlers. The handlers are implemented in separate modules
-    /// under `handlers/` for better organization.
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to process
-    ///
-    /// # Returns
-    ///
-    /// A `Task` that may trigger additional messages (for async operations)
+    /// Central message dispatcher that routes messages to their handlers.
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            // Keyboard navigation
             Message::TabPressed => self.handle_tab_navigation(),
-
             Message::Event(event) => self.handle_keyboard_event(event),
 
             // Bookmark operations
@@ -163,6 +142,8 @@ impl NexusApp {
             Message::UsernameChanged(username) => self.handle_username_changed(username),
             Message::PasswordChanged(password) => self.handle_password_changed(password),
             Message::ConnectPressed => self.handle_connect_pressed(),
+
+            // Chat operations
             Message::MessageInputChanged(input) => self.handle_message_input_changed(input),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
             Message::RequestUserInfo(session_id) => self.handle_request_user_info(session_id),
@@ -173,7 +154,7 @@ impl NexusApp {
                 self.handle_switch_to_connection(connection_id)
             }
 
-            // User management
+            // User management (create user)
             Message::AdminUsernameChanged(username) => self.handle_admin_username_changed(username),
             Message::AdminPasswordChanged(password) => self.handle_admin_password_changed(password),
             Message::AdminIsAdminToggled(is_admin) => self.handle_admin_is_admin_toggled(is_admin),
@@ -182,7 +163,7 @@ impl NexusApp {
             }
             Message::CreateUserPressed => self.handle_create_user_pressed(),
             Message::DeleteUserPressed(username) => self.handle_delete_user_pressed(username),
-            
+
             // User edit
             Message::EditUsernameChanged(username) => self.handle_edit_username_changed(username),
             Message::EditUserPressed => self.handle_edit_user_pressed(),
@@ -200,9 +181,7 @@ impl NexusApp {
             Message::CancelEditUser => self.handle_cancel_edit_user(),
 
             // Broadcast
-            Message::BroadcastMessageChanged(input) => {
-                self.handle_broadcast_message_changed(input)
-            }
+            Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),
             Message::SendBroadcastPressed => self.handle_send_broadcast_pressed(),
 
             // UI toggles
@@ -225,16 +204,8 @@ impl NexusApp {
 
     /// Set up subscriptions for keyboard events and network streams
     ///
-    /// This method creates subscriptions for:
-    /// - Keyboard events (Tab, Enter, Escape)
-    /// - Network message streams for each active connection
-    ///
-    /// Subscriptions are dynamically created/destroyed as connections are
-    /// added or removed.
-    ///
-    /// # Returns
-    ///
-    /// A batched subscription of all active subscriptions
+    /// Creates subscriptions for keyboard events and network message streams
+    /// for each active connection.
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![iced::event::listen().map(Message::Event)];
 
@@ -251,13 +222,7 @@ impl NexusApp {
 
     /// Render the current application state to the UI
     ///
-    /// This method delegates to `views::main_layout()` which handles all
-    /// UI rendering logic. The view function takes a snapshot of the current
-    /// state and renders it to Iced Elements.
-    ///
-    /// # Returns
-    ///
-    /// The root UI element containing the entire application interface
+    /// Delegates to `views::main_layout()` for all rendering logic.
     fn view(&self) -> Element<Message> {
         // Get current connection state or use defaults
         let (message_input, user_management) = self
@@ -277,12 +242,13 @@ impl NexusApp {
             &self.connection_form.username,
             &self.connection_form.password,
             &self.connection_form.error,
-            &self.bookmark_edit.name,
-            &self.bookmark_edit.address,
-            &self.bookmark_edit.port,
-            &self.bookmark_edit.username,
-            &self.bookmark_edit.password,
-            self.bookmark_edit.auto_connect,
+            &self.bookmark_edit.bookmark.name,
+            &self.bookmark_edit.bookmark.address,
+            &self.bookmark_edit.bookmark.port,
+            &self.bookmark_edit.bookmark.username,
+            &self.bookmark_edit.bookmark.password,
+            self.bookmark_edit.bookmark.auto_connect,
+            &self.bookmark_edit.error,
             message_input,
             user_management,
             self.ui_state.show_bookmarks,

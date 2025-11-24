@@ -1,10 +1,18 @@
 //! Broadcast message handlers
 
-use crate::types::{InputId, Message};
+use crate::types::{ChatMessage, InputId, Message, ScrollableId};
 use crate::NexusApp;
+use chrono::Local;
+use iced::widget::{scrollable, text_input};
 use iced::Task;
-use iced::widget::text_input;
 use nexus_common::protocol::ClientMessage;
+
+// Constants
+const MAX_BROADCAST_LENGTH: usize = 1024;
+
+// Error messages
+const ERR_MESSAGE_TOO_LONG: &str = "Broadcast message too long";
+const ERR_SEND_FAILED: &str = "Failed to send broadcast";
 
 impl NexusApp {
     /// Handle broadcast message input change
@@ -14,24 +22,50 @@ impl NexusApp {
                 conn.broadcast_message = input;
             }
         }
+        self.focused_field = InputId::BroadcastMessage;
         Task::none()
     }
 
     /// Handle send broadcast button press
     pub fn handle_send_broadcast_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if !conn.broadcast_message.trim().is_empty() {
-                    let msg = ClientMessage::UserBroadcast {
-                        message: conn.broadcast_message.clone(),
-                    };
-                    let _ = conn.tx.send(msg);
-                    conn.broadcast_message.clear();
-                    
-                    // Close broadcast panel and return focus to chat
-                    self.ui_state.show_broadcast = false;
-                    return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            if let Some(conn) = self.connections.get(&conn_id) {
+                let message = conn.broadcast_message.trim();
+
+                // Validate message is not empty
+                if message.is_empty() {
+                    return Task::none();
                 }
+
+                // Validate message length
+                if message.len() > MAX_BROADCAST_LENGTH {
+                    let error_msg = format!(
+                        "{} ({} characters, max {})",
+                        ERR_MESSAGE_TOO_LONG,
+                        message.len(),
+                        MAX_BROADCAST_LENGTH
+                    );
+                    return self.add_broadcast_error(conn_id, error_msg);
+                }
+
+                let msg = ClientMessage::UserBroadcast {
+                    message: message.to_string(),
+                };
+
+                // Send message and handle errors
+                if let Err(e) = conn.tx.send(msg) {
+                    let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                    return self.add_broadcast_error(conn_id, error_msg);
+                }
+
+                // Clear message after successful send
+                if let Some(conn) = self.connections.get_mut(&conn_id) {
+                    conn.broadcast_message.clear();
+                }
+
+                // Close broadcast panel and return focus to chat
+                self.ui_state.show_broadcast = false;
+                return text_input::focus(text_input::Id::from(InputId::ChatInput));
             }
         }
         Task::none()
@@ -40,23 +74,37 @@ impl NexusApp {
     /// Handle toggle broadcast panel
     pub fn handle_toggle_broadcast(&mut self) -> Task<Message> {
         self.ui_state.show_broadcast = !self.ui_state.show_broadcast;
-        
+
         // Close other admin panels when opening broadcast
         if self.ui_state.show_broadcast {
             self.ui_state.show_add_user = false;
             self.ui_state.show_edit_user = false;
-            
+
             // Focus broadcast input when opening
-            if self.active_connection.is_some() {
-                return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
-            }
+            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
         } else {
             // Return focus to chat when closing
-            if self.active_connection.is_some() {
-                return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+        }
+    }
+
+    /// Add an error message to the chat for broadcast errors and auto-scroll
+    fn add_broadcast_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
+            conn.chat_messages.push(ChatMessage {
+                username: "Error".to_string(),
+                message,
+                timestamp: Local::now(),
+            });
+            
+            // Auto-scroll if this is the active connection
+            if self.active_connection == Some(connection_id) {
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
             }
         }
-        
         Task::none()
     }
 }

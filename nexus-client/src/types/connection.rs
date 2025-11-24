@@ -6,69 +6,59 @@ use tokio::sync::mpsc;
 
 use super::{ChatMessage, UserInfo};
 
-/// Connection to a server
+/// Type alias for shutdown handle
+type ShutdownHandle = std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
+
+/// Active connection to a server
 ///
-/// Represents an active connection with its associated state and UI.
-/// Each connection maintains its own chat history, user list, and form state.
+/// Contains connection state, chat history, user list, and UI state.
 #[derive(Debug, Clone)]
 pub struct ServerConnection {
-    /// Index into bookmarks list, None for ad-hoc connections
+    /// Bookmark index or None for ad-hoc connections
     pub bookmark_index: Option<usize>,
-
-    /// Session ID assigned by server (parsed from string to u32)
+    /// Session ID assigned by server
     #[allow(dead_code)]
     pub session_id: u32,
-
-    /// Authenticated username for this connection
+    /// Authenticated username
     #[allow(dead_code)]
     pub username: String,
-
-    /// Display name (bookmark name or "address:port")
+    /// Display name (bookmark name or address:port)
     pub display_name: String,
-
-    /// Chat message history for this connection
-    pub chat_messages: Vec<ChatMessage>,
-
-    /// Currently online users on this server
-    pub online_users: Vec<UserInfo>,
-
-    /// Channel for sending commands to server
-    pub tx: mpsc::UnboundedSender<ClientMessage>,
-
-    /// Handle for graceful connection shutdown
-    pub shutdown_handle: std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>,
-
     /// Unique connection identifier
     pub connection_id: usize,
-
-    // === Per-Connection UI State ===
-    /// Current message being typed in chat input
-    pub message_input: String,
-
-    /// Current message being typed in broadcast input
-    pub broadcast_message: String,
-
-    /// Admin panel state (create/delete user forms)
-    pub user_management: UserManagementState,
-
-    /// Whether this user is an admin on this server
+    /// Whether user is admin on this server
     pub is_admin: bool,
-
-    /// Permissions this user has on this server
+    /// User's permissions on this server
     pub permissions: Vec<String>,
+    /// Chat message history
+    pub chat_messages: Vec<ChatMessage>,
+    /// Currently online users
+    pub online_users: Vec<UserInfo>,
+    /// Channel for sending commands to server
+    pub tx: mpsc::UnboundedSender<ClientMessage>,
+    /// Handle for graceful shutdown
+    pub shutdown_handle: ShutdownHandle,
+    /// Current chat message input
+    pub message_input: String,
+    /// Current broadcast message input
+    pub broadcast_message: String,
+    /// User management panel state
+    pub user_management: UserManagementState,
 }
 
-/// Network connection handle
-///
-/// Contains channels and identifiers for communicating with a connected server.
-/// Returned by `connect_to_server()` and used to send messages.
+/// Network connection handle returned by connect_to_server()
 #[derive(Debug, Clone)]
 pub struct NetworkConnection {
+    /// Channel for sending messages to server
     pub tx: mpsc::UnboundedSender<nexus_common::protocol::ClientMessage>,
+    /// Session ID from server
     pub session_id: String,
+    /// Unique connection identifier
     pub connection_id: usize,
-    pub shutdown:
-        Option<std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>>,
+    /// Optional shutdown handle
+    pub shutdown: Option<ShutdownHandle>,
+    /// Whether user is admin
     pub is_admin: bool,
+    /// User's permissions
     pub permissions: Vec<String>,
 }

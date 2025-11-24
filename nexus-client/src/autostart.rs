@@ -5,6 +5,9 @@ use crate::types::Message;
 use iced::Task;
 
 /// Generate connection tasks for bookmarks with auto_connect enabled
+///
+/// Returns one task per bookmark that has `auto_connect = true`.
+/// These tasks are executed during application startup.
 pub fn generate_auto_connect_tasks(config: &Config) -> Vec<Task<Message>> {
     config
         .bookmarks
@@ -69,7 +72,7 @@ mod tests {
             port: DEFAULT_PORT.to_string(),
             username: "user2".to_string(),
             password: "pass2".to_string(),
-            auto_connect: false,
+            auto_connect: false, // Should be skipped
         });
         config.add_bookmark(ServerBookmark {
             name: "Server 3".to_string(),
@@ -81,6 +84,6 @@ mod tests {
         });
 
         let tasks = generate_auto_connect_tasks(&config);
-        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks.len(), 2); // Bookmarks 1 and 3
     }
 }

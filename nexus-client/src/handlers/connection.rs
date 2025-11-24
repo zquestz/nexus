@@ -7,38 +7,42 @@ use iced::widget::text_input;
 use nexus_common::protocol::ClientMessage;
 
 impl NexusApp {
-    // Connection form field update handlers
+    /// Handle server name field change
     pub fn handle_server_name_changed(&mut self, name: String) -> Task<Message> {
         self.connection_form.server_name = name;
         self.focused_field = InputId::ServerName;
         Task::none()
     }
 
+    /// Handle server address field change
     pub fn handle_server_address_changed(&mut self, addr: String) -> Task<Message> {
         self.connection_form.server_address = addr;
         self.focused_field = InputId::ServerAddress;
         Task::none()
     }
 
+    /// Handle port field change
     pub fn handle_port_changed(&mut self, port: String) -> Task<Message> {
         self.connection_form.port = port;
         self.focused_field = InputId::Port;
         Task::none()
     }
 
+    /// Handle username field change
     pub fn handle_username_changed(&mut self, username: String) -> Task<Message> {
         self.connection_form.username = username;
         self.focused_field = InputId::Username;
         Task::none()
     }
 
+    /// Handle password field change
     pub fn handle_password_changed(&mut self, password: String) -> Task<Message> {
         self.connection_form.password = password;
         self.focused_field = InputId::Password;
         Task::none()
     }
 
-    // Connection and chat handlers
+    /// Handle connect button press
     pub fn handle_connect_pressed(&mut self) -> Task<Message> {
         self.connection_form.error = None;
 
@@ -70,6 +74,7 @@ impl NexusApp {
         )
     }
 
+    /// Handle chat message input change
     pub fn handle_message_input_changed(&mut self, input: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -79,6 +84,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle send chat message button press
     pub fn handle_send_message_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -94,6 +100,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Request detailed user information from server
     pub fn handle_request_user_info(&mut self, session_id: u32) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get(&conn_id) {
@@ -103,6 +110,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Disconnect from a server and clean up resources
     pub fn handle_disconnect_from_server(&mut self, connection_id: usize) -> Task<Message> {
         if let Some(conn) = self.connections.remove(&connection_id) {
             // Signal the network task to shutdown
@@ -130,6 +138,7 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Switch active view to a different connection
     pub fn handle_switch_to_connection(&mut self, connection_id: usize) -> Task<Message> {
         if self.connections.contains_key(&connection_id) {
             self.active_connection = Some(connection_id);

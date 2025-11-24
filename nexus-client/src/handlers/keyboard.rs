@@ -71,9 +71,9 @@ impl NexusApp {
         {
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // On bookmark edit screen, try to save
-                let can_save = !self.bookmark_edit.name.trim().is_empty()
-                    && !self.bookmark_edit.address.trim().is_empty()
-                    && !self.bookmark_edit.port.trim().is_empty();
+                let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
+                    && !self.bookmark_edit.bookmark.address.trim().is_empty()
+                    && !self.bookmark_edit.bookmark.port.trim().is_empty();
                 if can_save {
                     return self.update(Message::SaveBookmark);
                 }

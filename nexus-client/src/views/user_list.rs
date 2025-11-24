@@ -1,7 +1,7 @@
 //! User list panel (right sidebar)
 
 use crate::types::{Message, ServerConnection};
-use iced::widget::{column, container, scrollable, text, Column, button};
+use iced::widget::{Column, button, column, container, scrollable, text};
 use iced::{Element, Fill};
 
 /// Displays online users as clickable buttons
@@ -18,14 +18,24 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection) -> Element<'a, Message> {
         users_column = users_column.push(
             text("No permission to view users")
                 .size(11)
-                .color([0.7, 0.7, 0.7])
+                .color([0.7, 0.7, 0.7]),
         );
     } else if conn.online_users.is_empty() {
         users_column = users_column.push(text("No users online").size(11).color([0.5, 0.5, 0.5]));
     } else {
         for user in &conn.online_users {
+            // Bold text for admins
+            let username_text = if user.is_admin {
+                text(&user.username).font(iced::Font {
+                    weight: iced::font::Weight::Bold,
+                    ..iced::Font::default()
+                })
+            } else {
+                text(&user.username)
+            };
+
             users_column = users_column.push(
-                button(text(&user.username).size(12))
+                button(username_text.size(12))
                     .on_press(Message::RequestUserInfo(user.session_id))
                     .width(Fill)
                     .padding(6),

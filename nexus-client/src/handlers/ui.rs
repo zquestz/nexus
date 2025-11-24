@@ -6,17 +6,19 @@ use iced::Task;
 use iced::widget::text_input;
 
 impl NexusApp {
-    // UI toggle handlers
+    /// Toggle bookmarks sidebar visibility
     pub fn handle_toggle_bookmarks(&mut self) -> Task<Message> {
         self.ui_state.show_bookmarks = !self.ui_state.show_bookmarks;
         Task::none()
     }
 
+    /// Toggle user list sidebar visibility
     pub fn handle_toggle_user_list(&mut self) -> Task<Message> {
         self.ui_state.show_user_list = !self.ui_state.show_user_list;
         Task::none()
     }
 
+    /// Toggle Add User panel visibility
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
         // Toggle Add User, and turn off Delete User and Broadcast
         self.ui_state.show_add_user = !self.ui_state.show_add_user;
@@ -37,6 +39,7 @@ impl NexusApp {
         }
     }
 
+    /// Toggle Edit User panel visibility
     pub fn handle_toggle_edit_user(&mut self) -> Task<Message> {
         // Toggle Edit User, and turn off Add User, Delete User, and Broadcast
         self.ui_state.show_edit_user = !self.ui_state.show_edit_user;

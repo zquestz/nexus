@@ -31,6 +31,7 @@ pub fn main_layout<'a>(
     bookmark_username: &'a str,
     bookmark_password: &'a str,
     bookmark_auto_connect: bool,
+    bookmark_error: &'a Option<String>,
     message_input: &'a str,
     user_management: &'a UserManagementState,
     show_bookmarks: bool,
@@ -68,6 +69,7 @@ pub fn main_layout<'a>(
             bookmark_username,
             bookmark_password,
             bookmark_auto_connect,
+            bookmark_error,
         )
     } else if let Some(conn_id) = active_connection {
         if let Some(conn) = connections.get(&conn_id) {
