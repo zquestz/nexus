@@ -18,7 +18,7 @@ pub async fn handle_userupdate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Must be logged in
+    // Verify authentication
     let requesting_session_id = match session_id {
         Some(id) => id,
         None => {
@@ -29,7 +29,7 @@ pub async fn handle_userupdate(
         }
     };
 
-    // Get the requesting user
+    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
@@ -40,7 +40,7 @@ pub async fn handle_userupdate(
         }
     };
 
-    // Check if requesting user has permission (UserEdit permission OR admin)
+    // Check UserEdit permission
     let has_permission = match ctx
         .user_db
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
@@ -65,7 +65,7 @@ pub async fn handle_userupdate(
             .await;
     }
 
-    // Prevent users from editing themselves
+    // Prevent self-editing
     if username == requesting_user.username {
         eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
@@ -75,7 +75,7 @@ pub async fn handle_userupdate(
         return ctx.send_message(&response).await;
     }
 
-    // Get the requesting user's account to check if they're admin
+    // Fetch requesting user account to check admin status
     let requesting_account = match ctx
         .user_db
         .get_user_by_username(&requesting_user.username)
@@ -89,7 +89,7 @@ pub async fn handle_userupdate(
         }
     };
 
-    // Only admins can change the is_admin flag
+    // Verify admin flag modification privilege
     if requested_is_admin.is_some() && !requesting_account.is_admin {
         eprintln!(
             "UserUpdate from {} (non-admin) trying to change admin status",
@@ -100,13 +100,12 @@ pub async fn handle_userupdate(
             .await;
     }
 
-    // Parse and validate permissions if provided
+    // Parse and validate requested permissions
     let parsed_permissions = if let Some(ref perm_strings) = requested_permissions {
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
             if let Some(perm) = Permission::from_str(perm_str) {
-                // Non-admins can only set permissions they themselves have
-                // This applies to both granting AND revoking permissions
+                // Check permission delegation authority
                 if !requesting_account.is_admin {
                     let has_perm = match ctx
                         .user_db
@@ -139,9 +138,7 @@ pub async fn handle_userupdate(
             }
         }
 
-        // For non-admins: merge requested permissions with target's current permissions
-        // Non-admins can only modify permissions they themselves have
-        // All other permissions are preserved from the target's current state
+        // Apply permission merge logic for non-admins
         if !requesting_account.is_admin {
             // Get target user's account
             if let Ok(Some(target_account)) = ctx.user_db.get_user_by_username(&username).await {
@@ -191,10 +188,10 @@ pub async fn handle_userupdate(
         None
     };
 
-    // Hash password if provided (skip if empty string)
+    // Process password change request
     let requested_password_hash = if let Some(ref password) = requested_password {
         if password.trim().is_empty() {
-            // Empty password means don't change the password
+            // Empty password = no change
             None
         } else {
             match hash_password(password) {

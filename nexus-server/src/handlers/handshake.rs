@@ -10,6 +10,7 @@ pub async fn handle_handshake(
     handshake_complete: &mut bool,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Check for duplicate handshake
     if *handshake_complete {
         eprintln!("Duplicate handshake attempt from {}", ctx.peer_addr);
         let response = ServerMessage::HandshakeResponse {
@@ -21,9 +22,11 @@ pub async fn handle_handshake(
         return Err(io::Error::new(io::ErrorKind::Other, "Duplicate handshake"));
     }
 
-    // Check if version is compatible
+    // Verify protocol version compatibility
     let server_version = nexus_common::PROTOCOL_VERSION;
+
     if version == server_version {
+        // Version matches - complete handshake
         *handshake_complete = true;
         let response = ServerMessage::HandshakeResponse {
             success: true,
@@ -32,6 +35,7 @@ pub async fn handle_handshake(
         };
         ctx.send_message(&response).await?;
     } else {
+        // Version mismatch - reject handshake
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: server_version.to_string(),

@@ -7,12 +7,16 @@ use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use std::io;
 
+/// Error message when target user not found
+const ERR_TARGET_NOT_FOUND: &str = "User not found";
+
 /// Handle a userinfo request from the client
 pub async fn handle_userinfo(
     requested_session_id: u32,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Verify authentication
     let id = match session_id {
         Some(id) => id,
         None => {
@@ -23,7 +27,7 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Get the requesting user
+    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -34,7 +38,7 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Check if requesting user has permission to view user info
+    // Check UserInfo permission
     let has_perm = match ctx
         .user_db
         .has_permission(requesting_user.db_user_id, Permission::UserInfo)
@@ -59,21 +63,21 @@ pub async fn handle_userinfo(
             .await;
     }
 
-    // Get the requested user
+    // Look up target user by session ID
     let target_user = match ctx.user_manager.get_user_by_session_id(requested_session_id).await {
         Some(u) => u,
         None => {
             // User not found - send response with None
             let response = ServerMessage::UserInfoResponse {
                 user: None,
-                error: Some("User not found".to_string()),
+                error: Some(ERR_TARGET_NOT_FOUND.to_string()),
             };
             ctx.send_message(&response).await?;
             return Ok(());
         }
     };
 
-    // Check if requesting user is admin (for detailed info)
+    // Fetch requesting user account to check admin status
     let requesting_account = match ctx
         .user_db
         .get_user_by_username(&requesting_user.username)
@@ -87,7 +91,7 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Get target user's account info to check if they are admin
+    // Fetch target user account for admin status
     let target_account = match ctx
         .user_db
         .get_user_by_username(&target_user.username)
@@ -101,7 +105,7 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Build response - admins get extra fields
+    // Build response with appropriate visibility level
     let user_info = if requesting_account.is_admin {
         // Admin gets all fields including target user's admin status
         UserInfoDetailed {

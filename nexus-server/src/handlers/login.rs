@@ -18,6 +18,7 @@ pub async fn handle_login(
     session_id: &mut Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Verify handshake completed
     if !handshake_complete {
         eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
         return ctx
@@ -25,6 +26,7 @@ pub async fn handle_login(
             .await;
     }
 
+    // Check for duplicate login on same connection
     if session_id.is_some() {
         eprintln!("Duplicate login attempt from {}", ctx.peer_addr);
         return ctx
@@ -32,7 +34,7 @@ pub async fn handle_login(
             .await;
     }
 
-    // Check if this is the first user (will become admin)
+    // Determine if this is the first user (will auto-become admin)
     let is_first_user = match ctx.user_db.has_any_users().await {
         Ok(has_users) => !has_users,
         Err(e) => {
@@ -43,7 +45,7 @@ pub async fn handle_login(
         }
     };
 
-    // Check if user exists
+    // Look up user account in database
     let account = match ctx.user_db.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
@@ -54,7 +56,7 @@ pub async fn handle_login(
         }
     };
 
-    // Verify password or create first user
+    // Authenticate user or create first admin
     let authenticated_account = if let Some(account) = account {
         // User exists - verify password
         match db::verify_password(&password, &account.hashed_password) {
@@ -115,7 +117,7 @@ pub async fn handle_login(
             .await;
     };
 
-    // User authenticated successfully - create session
+    // Create session in UserManager
     // Note: Features are client preferences (what they want to subscribe to)
     // Permissions are checked when executing commands, not at login
     let id = ctx
@@ -131,7 +133,7 @@ pub async fn handle_login(
         .await;
     *session_id = Some(id);
 
-    // Get user's permissions from database
+    // Fetch user permissions for LoginResponse
     let user_permissions = if authenticated_account.is_admin {
         // Admins get all permissions automatically - return empty list
         // Client checks is_admin flag to know they have all permissions
@@ -160,11 +162,12 @@ pub async fn handle_login(
         println!("User '{}' logged in from {}", username, ctx.peer_addr);
     }
 
-    // Broadcast user connected to all other users
+    // Notify other users about new connection
     let user_info = UserInfo {
         session_id: id,
         username,
         login_time: current_timestamp(),
+        is_admin: authenticated_account.is_admin,
     };
     ctx.user_manager
         .broadcast_except(id, ServerMessage::UserConnected { user: user_info })

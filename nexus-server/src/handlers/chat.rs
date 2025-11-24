@@ -8,13 +8,16 @@ use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
+/// Maximum length for chat messages (in characters)
+const MAX_CHAT_LENGTH: usize = 1024;
+
 /// Handle a chat send request from the client
 pub async fn handle_chat_send(
     message: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Check message is not empty
+    // Validate message content
     if message.trim().is_empty() {
         eprintln!("ChatSend from {} with empty message", ctx.peer_addr);
         return ctx
@@ -22,18 +25,21 @@ pub async fn handle_chat_send(
             .await;
     }
 
-    // Check message length limit (1024 characters)
-    if message.len() > 1024 {
+    if message.len() > MAX_CHAT_LENGTH {
         eprintln!(
             "ChatSend from {} exceeds length limit: {} chars",
             ctx.peer_addr,
             message.len()
         );
         return ctx
-            .send_error_and_disconnect("Message too long (max 1024 characters)", Some("ChatSend"))
+            .send_error_and_disconnect(
+                &format!("Message too long (max {} characters)", MAX_CHAT_LENGTH),
+                Some("ChatSend"),
+            )
             .await;
     }
 
+    // Verify user is logged in
     let id = match session_id {
         Some(id) => id,
         None => {
@@ -44,7 +50,7 @@ pub async fn handle_chat_send(
         }
     };
 
-    // Get the user and check permissions
+    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -54,6 +60,7 @@ pub async fn handle_chat_send(
         }
     };
 
+    // Check chat feature
     if !user.has_feature("chat") {
         eprintln!(
             "ChatSend from {} without chat feature enabled",
@@ -64,6 +71,7 @@ pub async fn handle_chat_send(
             .await;
     }
 
+    // Check permission
     let has_perm = match ctx
         .user_db
         .has_permission(user.db_user_id, Permission::ChatSend)
@@ -88,7 +96,7 @@ pub async fn handle_chat_send(
             .await;
     }
 
-    // Broadcast to all users with chat feature AND ChatReceive permission
+    // Broadcast to all users with chat feature and ChatReceive permission
     ctx.user_manager
         .broadcast_to_feature(
             "chat",
@@ -131,10 +139,10 @@ mod tests {
     #[tokio::test]
     async fn test_chat_message_too_long() {
         let mut test_ctx = create_test_context().await;
-        let session_id = Some(1); // Logged in
+        let session_id = Some(1); // Fake session (length check happens first)
 
-        // Create message over 1024 characters
-        let long_message = "a".repeat(1025);
+        // Create message over MAX_CHAT_LENGTH characters
+        let long_message = "a".repeat(MAX_CHAT_LENGTH + 1);
 
         // Try to send too-long message
         let result =
@@ -143,7 +151,7 @@ mod tests {
         // Should fail
         assert!(
             result.is_err(),
-            "Message over 1024 chars should be rejected"
+            "Message over MAX_CHAT_LENGTH should be rejected"
         );
     }
 
@@ -162,8 +170,8 @@ mod tests {
         )
         .await;
 
-        // Create message at exactly 1024 characters
-        let max_message = "a".repeat(1024);
+        // Create message at exactly MAX_CHAT_LENGTH characters
+        let max_message = "a".repeat(MAX_CHAT_LENGTH);
 
         // Should succeed
         let result = handle_chat_send(
@@ -172,7 +180,51 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        assert!(result.is_ok(), "Message at 1024 chars should be accepted");
+        assert!(
+            result.is_ok(),
+            "Message at MAX_CHAT_LENGTH should be accepted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_empty_message() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec!["chat".to_string()],
+        )
+        .await;
+
+        // Try to send empty message
+        let result = handle_chat_send(
+            "".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(result.is_err(), "Empty message should be rejected");
+
+        // Try to send whitespace-only message
+        let result = handle_chat_send(
+            "   ".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(
+            result.is_err(),
+            "Whitespace-only message should be rejected"
+        );
     }
 
     #[tokio::test]
@@ -199,7 +251,10 @@ mod tests {
         .await;
 
         // Should succeed (send error but not disconnect)
-        assert!(result.is_ok(), "Should send error message but not disconnect");
+        assert!(
+            result.is_ok(),
+            "Should send error message but not disconnect"
+        );
     }
 
     #[tokio::test]
@@ -230,62 +285,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_chat_empty_message() {
-        let mut test_ctx = create_test_context().await;
-
-        // Create user with chat permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::ChatSend);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager with chat feature
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-            )
-            .await;
-
-        // Try to send empty message
-        let result = handle_chat_send(
-            "".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        // Should fail
-        assert!(result.is_err(), "Empty message should be rejected");
-
-        // Try to send whitespace-only message
-        let result = handle_chat_send(
-            "   ".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        // Should fail
-        assert!(result.is_err(), "Whitespace-only message should be rejected");
-    }
-
-    #[tokio::test]
     async fn test_chat_successful() {
         let mut test_ctx = create_test_context().await;
 
@@ -310,5 +309,58 @@ mod tests {
 
         // Should succeed
         assert!(result.is_ok(), "Valid chat message should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_chat_invalid_session() {
+        let mut test_ctx = create_test_context().await;
+
+        // Use a session ID that doesn't exist in UserManager
+        let invalid_session_id = Some(999);
+
+        // Try to send chat with invalid session
+        let result = handle_chat_send(
+            "Hello".to_string(),
+            invalid_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail (ERR_AUTHENTICATION)
+        assert!(
+            result.is_err(),
+            "Chat with invalid session should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_admin_has_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user WITHOUT explicit ChatSend permission
+        // Admins should have all permissions automatically
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+            vec!["chat".to_string()],
+        )
+        .await;
+
+        // Admin should be able to send chat
+        let result = handle_chat_send(
+            "Admin message!".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed
+        assert!(
+            result.is_ok(),
+            "Admin should be able to chat without explicit permission"
+        );
     }
 }

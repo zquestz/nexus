@@ -8,30 +8,42 @@ use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
+/// Error message when session not found
+const ERR_SESSION_NOT_FOUND: &str = "Session not found";
+
+/// Error message when requesting user account not found
+const ERR_ACCOUNT_NOT_FOUND: &str = "Your user account was not found";
+
+/// Error message when user lacks delete permission
+const ERR_NO_DELETE_PERMISSION: &str = "You don't have permission to delete users";
+
+/// Error message when target user not found
+const ERR_TARGET_NOT_FOUND: &str = "User not found";
+
 /// Handle UserDelete command
 pub async fn handle_userdelete(
     target_username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // User must be logged in
+    // Verify authentication
     let Some(session_id) = session_id else {
         return ctx
             .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserDelete"))
             .await;
     };
 
-    // Get requesting user from UserManager to get their database ID
+    // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect("Session not found", Some("UserDelete"))
+                .send_error_and_disconnect(ERR_SESSION_NOT_FOUND, Some("UserDelete"))
                 .await;
         }
     };
 
-    // Get requesting user info from database to check permissions
+    // Fetch requesting user account for permission check
     let requesting_user = match ctx
         .user_db
         .get_user_by_id(requesting_user_session.db_user_id)
@@ -40,7 +52,7 @@ pub async fn handle_userdelete(
         Ok(Some(user)) => user,
         Ok(None) => {
             return ctx
-                .send_error_and_disconnect("Your user account was not found", Some("UserDelete"))
+                .send_error_and_disconnect(ERR_ACCOUNT_NOT_FOUND, Some("UserDelete"))
                 .await;
         }
         Err(e) => {
@@ -51,7 +63,7 @@ pub async fn handle_userdelete(
         }
     };
 
-    // Check if requesting user is admin OR has UserDelete permission
+    // Check UserDelete permission
     let has_permission = requesting_user.is_admin
         || match ctx
             .user_db
@@ -70,18 +82,18 @@ pub async fn handle_userdelete(
     if !has_permission {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
-            error: Some("You don't have permission to delete users".to_string()),
+            error: Some(ERR_NO_DELETE_PERMISSION.to_string()),
         };
         return ctx.send_message(&response).await;
     }
 
-    // Get the target user to check if they exist and if they're an admin
+    // Look up target user in database
     let target_user = match ctx.user_db.get_user_by_username(&target_username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             let response = ServerMessage::UserDeleteResponse {
                 success: false,
-                error: Some("User not found".to_string()),
+                error: Some(ERR_TARGET_NOT_FOUND.to_string()),
             };
             return ctx.send_message(&response).await;
         }
@@ -93,7 +105,7 @@ pub async fn handle_userdelete(
         }
     };
 
-    // Prevent users from deleting themselves
+    // Prevent self-deletion
     if target_user.id == requesting_user.id {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
@@ -102,7 +114,7 @@ pub async fn handle_userdelete(
         return ctx.send_message(&response).await;
     }
 
-    // If the user is currently connected, notify and disconnect them first
+    // Handle online user disconnection
     let all_users = ctx.user_manager.get_all_users().await;
     let online_user = all_users.iter().find(|u| u.db_user_id == target_user.id);
 
@@ -127,7 +139,7 @@ pub async fn handle_userdelete(
         }
     }
 
-    // Delete the user from database (atomic operation that prevents deleting last admin)
+    // Delete user from database (atomic last-admin protection)
     match ctx.user_db.delete_user(target_user.id).await {
         Ok(deleted) => {
             if deleted {

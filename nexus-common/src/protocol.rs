@@ -146,6 +146,7 @@ pub struct UserInfo {
     pub session_id: u32,
     pub username: String,
     pub login_time: u64,
+    pub is_admin: bool,
 }
 
 /// Detailed information about a user (for UserInfo command)

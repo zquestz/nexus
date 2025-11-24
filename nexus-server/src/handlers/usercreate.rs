@@ -8,6 +8,12 @@ use crate::db::{hash_password, Permission, Permissions};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
+/// Error message for empty username
+const ERR_EMPTY_USERNAME: &str = "Username cannot be empty";
+
+/// Error message for empty password
+const ERR_EMPTY_PASSWORD: &str = "Password cannot be empty";
+
 /// Handle a user creation request from the client
 pub async fn handle_usercreate(
     username: String,
@@ -17,29 +23,28 @@ pub async fn handle_usercreate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Validate username is not empty
+    // Validate input fields
     if username.trim().is_empty() {
         eprintln!("UserCreate from {} with empty username", ctx.peer_addr);
         let error_msg = ServerMessage::UserCreateResponse {
             success: false,
-            error: Some("Username cannot be empty".to_string()),
+            error: Some(ERR_EMPTY_USERNAME.to_string()),
         };
         ctx.send_message(&error_msg).await?;
         return Ok(());
     }
 
-    // Validate password is not empty
     if password.trim().is_empty() {
         eprintln!("UserCreate from {} with empty password", ctx.peer_addr);
         let error_msg = ServerMessage::UserCreateResponse {
             success: false,
-            error: Some("Password cannot be empty".to_string()),
+            error: Some(ERR_EMPTY_PASSWORD.to_string()),
         };
         ctx.send_message(&error_msg).await?;
         return Ok(());
     }
 
-    // Must be logged in
+    // Verify authentication
     let requesting_session_id = match session_id {
         Some(id) => id,
         None => {
@@ -50,7 +55,7 @@ pub async fn handle_usercreate(
         }
     };
 
-    // Get the requesting user
+    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
@@ -64,7 +69,7 @@ pub async fn handle_usercreate(
         }
     };
 
-    // Check if requesting user has permission (UserCreate permission OR admin)
+    // Check UserCreate permission
     let has_permission = match ctx
         .user_db
         .has_permission(requesting_user.db_user_id, Permission::UserCreate)
@@ -89,7 +94,7 @@ pub async fn handle_usercreate(
             .await;
     }
 
-    // Only admins can create admin users
+    // Verify admin creation privilege
     if is_admin {
         let requesting_account = match ctx
             .user_db
@@ -115,7 +120,7 @@ pub async fn handle_usercreate(
         }
     }
 
-    // Get the requesting user's account to check their permissions
+    // Fetch requesting user's account for permission validation
     let requesting_account = match ctx
         .user_db
         .get_user_by_username(&requesting_user.username)
@@ -129,7 +134,7 @@ pub async fn handle_usercreate(
         }
     };
 
-    // Parse permission strings into Permission enums and validate
+    // Parse and validate requested permissions
     let mut perms = Permissions::new();
     for perm_str in permissions {
         if let Some(perm) = Permission::from_str(&perm_str) {
@@ -167,7 +172,7 @@ pub async fn handle_usercreate(
         }
     }
 
-    // Check if username already exists
+    // Check for duplicate username
     match ctx.user_db.get_user_by_username(&username).await {
         Ok(Some(_)) => {
             // Username already exists
@@ -188,7 +193,7 @@ pub async fn handle_usercreate(
         }
     }
 
-    // Hash the password
+    // Hash password for secure storage
     let password_hash = match hash_password(&password) {
         Ok(hash) => hash,
         Err(e) => {
@@ -199,7 +204,7 @@ pub async fn handle_usercreate(
         }
     };
 
-    // Create the user
+    // Create user in database
     match ctx
         .user_db
         .create_user(&username, &password_hash, is_admin, &perms)

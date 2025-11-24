@@ -8,6 +8,9 @@ use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
+/// Maximum length for broadcast messages (in characters)
+const MAX_BROADCAST_LENGTH: usize = 1024;
+
 /// Handle a broadcast request from the client
 ///
 /// Broadcasts a message to all connected users including the sender.
@@ -17,7 +20,7 @@ pub async fn handle_user_broadcast(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Check message is not empty
+    // Validate message content
     if message.trim().is_empty() {
         eprintln!("UserBroadcast from {} with empty message", ctx.peer_addr);
         return ctx
@@ -25,8 +28,7 @@ pub async fn handle_user_broadcast(
             .await;
     }
 
-    // Check message length limit (1024 characters)
-    if message.len() > 1024 {
+    if message.len() > MAX_BROADCAST_LENGTH {
         eprintln!(
             "UserBroadcast from {} exceeds length limit: {} chars",
             ctx.peer_addr,
@@ -34,12 +36,13 @@ pub async fn handle_user_broadcast(
         );
         return ctx
             .send_error_and_disconnect(
-                "Message too long (max 1024 characters)",
+                &format!("Message too long (max {} characters)", MAX_BROADCAST_LENGTH),
                 Some("UserBroadcast"),
             )
             .await;
     }
 
+    // Verify user is logged in
     let id = match session_id {
         Some(id) => id,
         None => {
@@ -50,7 +53,7 @@ pub async fn handle_user_broadcast(
         }
     };
 
-    // Get the user
+    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -60,7 +63,7 @@ pub async fn handle_user_broadcast(
         }
     };
 
-    // Check UserBroadcast permission
+    // Check permission
     let has_perm = match ctx
         .user_db
         .has_permission(user.db_user_id, Permission::UserBroadcast)
@@ -85,7 +88,7 @@ pub async fn handle_user_broadcast(
             .await;
     }
 
-    // Broadcast to all users INCLUDING the sender
+    // Send broadcast to all users
     ctx.user_manager
         .broadcast(ServerMessage::ServerBroadcast {
             session_id: id,
@@ -158,8 +161,8 @@ mod tests {
         )
         .await;
 
-        // Create message at exactly 1024 characters
-        let max_message = "a".repeat(1024);
+        // Create message at exactly MAX_BROADCAST_LENGTH characters
+        let max_message = "a".repeat(MAX_BROADCAST_LENGTH);
 
         // Should succeed
         let result = handle_user_broadcast(
@@ -168,7 +171,10 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        assert!(result.is_ok(), "Message at 1024 chars should be accepted");
+        assert!(
+            result.is_ok(),
+            "Message at MAX_BROADCAST_LENGTH chars should be accepted"
+        );
     }
 
     #[tokio::test]
@@ -205,7 +211,10 @@ mod tests {
         .await;
 
         // Should fail
-        assert!(result.is_err(), "Whitespace-only message should be rejected");
+        assert!(
+            result.is_err(),
+            "Whitespace-only message should be rejected"
+        );
     }
 
     #[tokio::test]
@@ -213,14 +222,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITHOUT broadcast permission (non-admin)
-        let session_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[],
-            false,
-        )
-        .await;
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to broadcast without permission
         let result = handle_user_broadcast(
@@ -261,5 +263,50 @@ mod tests {
 
         // Should succeed
         assert!(result.is_ok(), "Valid broadcast message should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_invalid_session() {
+        let mut test_ctx = create_test_context().await;
+
+        // Use a session ID that doesn't exist in UserManager
+        let invalid_session_id = Some(999);
+
+        // Try to broadcast with invalid session
+        let result = handle_user_broadcast(
+            "Hello everyone".to_string(),
+            invalid_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail (ERR_AUTHENTICATION)
+        assert!(
+            result.is_err(),
+            "Broadcast with invalid session should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_admin_has_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user WITHOUT explicit UserBroadcast permission
+        // Admins should have all permissions automatically
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin should be able to broadcast
+        let result = handle_user_broadcast(
+            "Admin announcement!".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed
+        assert!(
+            result.is_ok(),
+            "Admin should be able to broadcast without explicit permission"
+        );
     }
 }

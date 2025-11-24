@@ -1,5 +1,6 @@
 //! Message handlers for client commands
 
+// Handler modules (alphabetically ordered)
 mod broadcast;
 mod chat;
 mod errors;
@@ -8,13 +9,14 @@ mod login;
 mod usercreate;
 mod userdelete;
 mod useredit;
-mod userupdate;
 mod userinfo;
 mod userlist;
+mod userupdate;
 
 #[cfg(test)]
 pub mod testing;
 
+// Public exports
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
 pub use errors::*;
@@ -23,9 +25,9 @@ pub use login::handle_login;
 pub use usercreate::handle_usercreate;
 pub use userdelete::handle_userdelete;
 pub use useredit::handle_useredit;
-pub use userupdate::handle_userupdate;
 pub use userinfo::handle_userinfo;
 pub use userlist::handle_userlist;
+pub use userupdate::handle_userupdate;
 
 use crate::db::UserDb;
 use crate::users::UserManager;

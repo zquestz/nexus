@@ -12,6 +12,7 @@ pub async fn handle_userlist(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    // Verify authentication
     let id = match session_id {
         Some(id) => id,
         None => {
@@ -22,7 +23,7 @@ pub async fn handle_userlist(
         }
     };
 
-    // Get user and check permission
+    // Get requesting user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -33,6 +34,7 @@ pub async fn handle_userlist(
         }
     };
 
+    // Check UserList permission
     let has_perm = match ctx
         .user_db
         .has_permission(user.db_user_id, Permission::UserList)
@@ -57,17 +59,27 @@ pub async fn handle_userlist(
             .await;
     }
 
-    // Get all users from the manager
+    // Fetch all connected users
     let all_users = ctx.user_manager.get_all_users().await;
-    let user_infos: Vec<UserInfo> = all_users
-        .into_iter()
-        .map(|u| UserInfo {
-            session_id: u.session_id,
-            username: u.username,
-            login_time: u.login_time,
-        })
-        .collect();
+    
+    // Build user info list with admin status
+    let mut user_infos = Vec::new();
+    for user in all_users {
+        // Get user account to check admin status
+        let is_admin = match ctx.user_db.get_user_by_id(user.db_user_id).await {
+            Ok(Some(account)) => account.is_admin,
+            _ => false, // Default to non-admin if lookup fails
+        };
+        
+        user_infos.push(UserInfo {
+            session_id: user.session_id,
+            username: user.username,
+            login_time: user.login_time,
+            is_admin,
+        });
+    }
 
+    // Send user list response
     let response = ServerMessage::UserListResponse { users: user_infos };
     ctx.send_message(&response).await?;
 
@@ -78,78 +90,114 @@ pub async fn handle_userlist(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user};
+
+    #[tokio::test]
+    async fn test_userlist_requires_login() {
+        let mut test_ctx = create_test_context().await;
+
+        // Try to get user list without being logged in
+        let result = handle_userlist(None, &mut test_ctx.handler_context()).await;
+
+        // Should fail
+        assert!(result.is_err(), "UserList should require login");
+    }
+
+    #[tokio::test]
+    async fn test_userlist_invalid_session() {
+        let mut test_ctx = create_test_context().await;
+
+        // Use a session ID that doesn't exist in UserManager
+        let invalid_session_id = Some(999);
+
+        // Try to get user list with invalid session
+        let result = handle_userlist(invalid_session_id, &mut test_ctx.handler_context()).await;
+
+        // Should fail (ERR_AUTHENTICATION)
+        assert!(
+            result.is_err(),
+            "UserList with invalid session should be rejected"
+        );
+    }
 
     #[tokio::test]
     async fn test_userlist_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT userlist permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create user WITHOUT UserList permission
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to get user list without permission
         let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed (send error but not disconnect)
-        assert!(result.is_ok(), "Should send error message but not disconnect");
+        assert!(
+            result.is_ok(),
+            "Should send error message but not disconnect"
+        );
     }
 
     #[tokio::test]
     async fn test_userlist_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH userlist permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserList);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create user WITH UserList permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserList],
+            false,
+        )
+        .await;
 
         // Get user list with permission
         let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Valid userlist request should succeed");
+
+        // Verify response contains the user
+        use crate::handlers::testing::read_server_message;
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users } => {
+                assert_eq!(users.len(), 1, "Should have 1 user in the list");
+                assert_eq!(users[0].username, "alice");
+                assert_eq!(users[0].session_id, session_id);
+                assert_eq!(users[0].is_admin, false, "alice should not be admin");
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_admin_has_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user WITHOUT explicit UserList permission
+        // Admins should have all permissions automatically
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin should be able to list users
+        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+
+        // Should succeed
+        assert!(
+            result.is_ok(),
+            "Admin should be able to list users without explicit permission"
+        );
+        
+        // Verify admin flag is set
+        use crate::handlers::testing::read_server_message;
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users } => {
+                assert_eq!(users.len(), 1, "Should have 1 user in the list");
+                assert_eq!(users[0].username, "admin");
+                assert_eq!(users[0].is_admin, true, "admin should have is_admin=true");
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
     }
 }

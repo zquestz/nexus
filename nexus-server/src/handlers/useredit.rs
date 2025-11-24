@@ -11,7 +11,7 @@ pub async fn handle_useredit(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Must be logged in
+    // Verify authentication
     let requesting_session_id = match session_id {
         Some(id) => id,
         None => {
@@ -22,7 +22,7 @@ pub async fn handle_useredit(
         }
     };
 
-    // Get the requesting user
+    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
@@ -33,7 +33,7 @@ pub async fn handle_useredit(
         }
     };
 
-    // Check if requesting user has permission (UserEdit permission OR admin)
+    // Check UserEdit permission
     let has_permission = match ctx
         .user_db
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
@@ -58,7 +58,7 @@ pub async fn handle_useredit(
             .await;
     }
 
-    // Get the target user from database
+    // Look up target user in database
     let target_user = match ctx.user_db.get_user_by_username(&username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
@@ -75,7 +75,7 @@ pub async fn handle_useredit(
         }
     };
 
-    // Get the user's permissions
+    // Fetch user permissions for response
     let user_permissions = match ctx.user_db.get_user_permissions(target_user.id).await {
         Ok(perms) => perms,
         Err(e) => {
@@ -86,14 +86,14 @@ pub async fn handle_useredit(
         }
     };
 
-    // Convert permissions to string vec
+    // Convert permissions to protocol format
     let permissions: Vec<String> = user_permissions
         .to_vec()
         .iter()
         .map(|p| p.as_str().to_string())
         .collect();
 
-    // Send response with user details
+    // Send user details for editing
     let response = ServerMessage::UserEditResponse {
         username: target_user.username,
         is_admin: target_user.is_admin,

@@ -96,7 +96,7 @@ pub async fn login_user_with_features(
     is_admin: bool,
     features: Vec<String>,
 ) -> u32 {
-    use crate::db::{hash_password, Permissions};
+    use crate::db::{Permissions, hash_password};
 
     // Hash password
     let hashed = hash_password(password).unwrap();
