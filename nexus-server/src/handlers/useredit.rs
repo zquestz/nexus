@@ -23,7 +23,7 @@ pub async fn handle_useredit(
     };
 
     // Get the requesting user
-    let requesting_user = match ctx.user_manager.get_user(requesting_session_id).await {
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
             eprintln!("UserEdit request from unknown user {}", ctx.peer_addr);

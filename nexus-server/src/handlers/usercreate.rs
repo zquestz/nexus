@@ -51,7 +51,7 @@ pub async fn handle_usercreate(
     };
 
     // Get the requesting user
-    let requesting_user = match ctx.user_manager.get_user(requesting_session_id).await {
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
             eprintln!(

@@ -45,7 +45,7 @@ pub async fn handle_chat_send(
     };
 
     // Get the user and check permissions
-    let user = match ctx.user_manager.get_user(id).await {
+    let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
             return ctx

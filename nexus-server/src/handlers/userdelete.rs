@@ -22,7 +22,7 @@ pub async fn handle_userdelete(
     };
 
     // Get requesting user from UserManager to get their database ID
-    let requesting_user_session = match ctx.user_manager.get_user(session_id).await {
+    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
             return ctx
@@ -449,7 +449,7 @@ mod tests {
             .await;
 
         // Verify online user is connected
-        let online_before = test_ctx.user_manager.get_user(online_session_id).await;
+        let online_before = test_ctx.user_manager.get_user_by_session_id(online_session_id).await;
         assert!(
             online_before.is_some(),
             "Online user should be connected before deletion"
@@ -492,7 +492,7 @@ mod tests {
         );
 
         // Verify online user was disconnected from UserManager
-        let online_after = test_ctx.user_manager.get_user(online_session_id).await;
+        let online_after = test_ctx.user_manager.get_user_by_session_id(online_session_id).await;
         assert!(
             online_after.is_none(),
             "Online user should be disconnected from UserManager"

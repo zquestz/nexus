@@ -30,7 +30,7 @@ pub async fn handle_userupdate(
     };
 
     // Get the requesting user
-    let requesting_user = match ctx.user_manager.get_user(requesting_session_id).await {
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
         Some(u) => u,
         None => {
             eprintln!("UserUpdate request from unknown user {}", ctx.peer_addr);
@@ -263,7 +263,7 @@ pub async fn handle_userupdate(
 
                     // Send to all sessions belonging to the updated user
                     ctx.user_manager
-                        .broadcast_to_user(&updated_account.username, &permissions_update)
+                        .broadcast_to_username(&updated_account.username, &permissions_update)
                         .await;
                 }
             }

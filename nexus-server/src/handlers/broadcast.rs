@@ -51,7 +51,7 @@ pub async fn handle_user_broadcast(
     };
 
     // Get the user
-    let user = match ctx.user_manager.get_user(id).await {
+    let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
             return ctx

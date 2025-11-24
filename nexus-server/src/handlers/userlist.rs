@@ -23,7 +23,7 @@ pub async fn handle_userlist(
     };
 
     // Get user and check permission
-    let user = match ctx.user_manager.get_user(id).await {
+    let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
             eprintln!("UserList request from unknown user {}", ctx.peer_addr);

@@ -24,7 +24,7 @@ pub async fn handle_userinfo(
     };
 
     // Get the requesting user
-    let requesting_user = match ctx.user_manager.get_user(id).await {
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
             eprintln!("UserInfo request from unknown user {}", ctx.peer_addr);
@@ -60,7 +60,7 @@ pub async fn handle_userinfo(
     }
 
     // Get the requested user
-    let target_user = match ctx.user_manager.get_user(requested_session_id).await {
+    let target_user = match ctx.user_manager.get_user_by_session_id(requested_session_id).await {
         Some(u) => u,
         None => {
             // User not found - send response with None

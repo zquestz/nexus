@@ -16,6 +16,7 @@ pub struct TestContext {
     pub user_db: UserDb,
     pub tx: mpsc::UnboundedSender<ServerMessage>,
     pub peer_addr: SocketAddr,
+    pub _rx: mpsc::UnboundedReceiver<ServerMessage>, // Keep receiver alive to prevent channel closure
 }
 
 impl TestContext {
@@ -61,8 +62,8 @@ pub async fn create_test_context() -> TestContext {
 
     let client = client_handle.await.unwrap();
 
-    // Create message channel
-    let (tx, _rx) = mpsc::unbounded_channel();
+    // Create message channel (keep receiver alive to prevent channel closure)
+    let (tx, rx) = mpsc::unbounded_channel();
 
     TestContext {
         client,
@@ -71,6 +72,7 @@ pub async fn create_test_context() -> TestContext {
         user_db,
         tx,
         peer_addr,
+        _rx: rx,
     }
 }
 
