@@ -6,7 +6,7 @@ use iced::stream;
 use nexus_common::PROTOCOL_VERSION;
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
-use std::net::Ipv6Addr;
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
@@ -45,13 +45,13 @@ impl ShutdownHandle {
 /// Connect to server, perform handshake and login
 pub async fn connect_to_server(
     server_address: String,
-    port: String,
+    port: u16,
     username: String,
     password: String,
     connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Establish TCP connection
-    let stream = establish_connection(&server_address, &port).await?;
+    let stream = establish_connection(&server_address, port).await?;
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
@@ -64,15 +64,15 @@ pub async fn connect_to_server(
 }
 
 /// Establish TCP connection to the server
-async fn establish_connection(address: &str, port: &str) -> Result<TcpStream, String> {
-    let addr: Ipv6Addr = address
-        .parse()
-        .map_err(|e| format!("Invalid IPv6 address '{}': {}", address, e))?;
-    let port: u16 = port
-        .parse()
-        .map_err(|e| format!("Invalid port number '{}': {}", port, e))?;
+async fn establish_connection(address: &str, port: u16) -> Result<TcpStream, String> {
+    // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
+    let mut addrs = (address, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("Invalid address '{}': {}", address, e))?;
 
-    let socket_addr = std::net::SocketAddr::from((addr, port));
+    let socket_addr = addrs
+        .next()
+        .ok_or_else(|| format!("Could not resolve address '{}'", address))?;
 
     // Add timeout for connection
     tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))

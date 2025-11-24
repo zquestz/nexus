@@ -43,7 +43,7 @@ impl NexusApp {
         self.connection_form.error = None;
 
         let server_address = self.connection_form.server_address.clone();
-        let port = self.connection_form.port.clone();
+        let port_str = self.connection_form.port.clone();
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
         let connection_id = self.next_connection_id;
@@ -51,9 +51,15 @@ impl NexusApp {
 
         Task::perform(
             async move {
+                // Parse port to u16
+                let port: u16 = match port_str.parse() {
+                    Ok(p) => p,
+                    Err(_) => return Err(format!("Invalid port number '{}'", port_str)),
+                };
+
                 network::connect_to_server(
                     server_address.clone(),
-                    port.clone(),
+                    port,
                     username,
                     password,
                     connection_id,
