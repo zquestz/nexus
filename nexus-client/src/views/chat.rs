@@ -25,16 +25,21 @@ pub fn chat_view<'a>(
                 text(format!("[{}] [SYS] {}", time_str, msg.message))
                     .size(12)
                     .color([0.7, 0.7, 0.7])
+                    .font(iced::Font::MONOSPACE)
             } else if msg.username == "Error" {
                 text(format!("[{}] [ERR] {}", time_str, msg.message))
                     .size(12)
                     .color([1.0, 0.0, 0.0])
+                    .font(iced::Font::MONOSPACE)
             } else if msg.username == "Info" {
                 text(format!("[{}] [INFO] {}", time_str, msg.message))
                     .size(12)
                     .color([0.5, 0.8, 1.0])
+                    .font(iced::Font::MONOSPACE)
             } else {
-                text(format!("[{}] {}: {}", time_str, msg.username, msg.message)).size(12)
+                text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
             };
             chat_column = chat_column.push(display);
         }
@@ -49,8 +54,9 @@ pub fn chat_view<'a>(
             .padding(8)
             .push(
                 text("You do not have permission to view chat messages")
-                    .size(14)
+                    .size(12)
                     .color([0.7, 0.7, 0.7])
+                    .font(iced::Font::MONOSPACE)
             );
         
         scrollable(no_permission_column)
