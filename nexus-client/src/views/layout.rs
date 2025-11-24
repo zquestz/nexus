@@ -1,10 +1,15 @@
 //! Main application layout and toolbar
 
+use super::style::{
+    BUTTON_ACTIVE_COLOR, BUTTON_INACTIVE_COLOR, EMPTY_VIEW_SIZE, EMPTY_VIEW_TEXT_COLOR,
+    PANEL_SPACING, TOOLBAR_BACKGROUND_COLOR, TOOLBAR_BUTTON_PADDING, TOOLBAR_BUTTON_SIZE,
+    TOOLBAR_PADDING, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
+};
 use crate::types::{
     BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
 };
 use iced::widget::{button, column, container, row, text};
-use iced::{Center, Element, Fill};
+use iced::{Background, Center, Element, Fill};
 use std::collections::HashMap;
 
 use super::{
@@ -13,7 +18,26 @@ use super::{
     users::users_view,
 };
 
+/// Helper function to create an invisible/hidden panel
+fn hidden_panel<'a>() -> Element<'a, Message> {
+    container(text("")).width(0).into()
+}
+
+// Permission constants
+const PERMISSION_USER_BROADCAST: &str = "user_broadcast";
+const PERMISSION_USER_CREATE: &str = "user_create";
+const PERMISSION_USER_EDIT: &str = "user_edit";
+
 /// Main application layout with toolbar and three-panel layout
+///
+/// Displays the top toolbar with action buttons, and a multi-panel layout
+/// containing the server list (left), main content area (center), and user
+/// list (right). Panels can be toggled on/off via toolbar buttons.
+///
+/// The main content area shows different views based on application state:
+/// - Bookmark editor when editing/adding bookmarks
+/// - Connection form when no server is connected
+/// - Server content (chat/user management/broadcast) when connected
 pub fn main_layout<'a>(
     connections: &'a HashMap<usize, ServerConnection>,
     active_connection: Option<usize>,
@@ -95,34 +119,35 @@ pub fn main_layout<'a>(
         )
     };
 
-    // Right panel: User list (only when connected)
-    let user_list = if let Some(conn_id) = active_connection {
-        if show_user_list {
-            if let Some(conn) = connections.get(&conn_id) {
-                user_list_panel(conn)
-            } else {
-                container(text("")).width(0).into()
-            }
-        } else {
-            container(text("")).width(0).into()
-        }
+    // Right panel: User list (only when connected and visible)
+    let user_list = if show_user_list {
+        active_connection
+            .and_then(|conn_id| connections.get(&conn_id))
+            .map(|conn| user_list_panel(conn))
+            .unwrap_or_else(hidden_panel)
     } else {
-        container(text("")).width(0).into()
+        hidden_panel()
     };
 
-    // Three-panel layout
+    // Three-panel layout with conditional panels
     let content = if show_bookmarks {
         row![server_list, main_content, user_list]
-            .spacing(0)
+            .spacing(PANEL_SPACING)
             .height(Fill)
     } else {
-        row![main_content, user_list].spacing(0).height(Fill)
+        row![main_content, user_list]
+            .spacing(PANEL_SPACING)
+            .height(Fill)
     };
 
     column![toolbar, content].into()
 }
 
 /// Build the top toolbar with buttons and toggles
+///
+/// Shows application title, action buttons (Broadcast, User Create, User Edit),
+/// and panel toggle buttons. Buttons are enabled/disabled based on connection
+/// state and user permissions.
 fn build_toolbar(
     show_bookmarks: bool,
     show_user_list: bool,
@@ -136,93 +161,89 @@ fn build_toolbar(
     let show_user_list_copy = show_user_list;
     let show_broadcast_copy = show_broadcast;
 
-    // Check permissions
-    let has_broadcast = is_admin || permissions.contains(&"user_broadcast".to_string());
-    let has_user_create = is_admin || permissions.contains(&"user_create".to_string());
-    let has_user_edit = is_admin || permissions.contains(&"user_edit".to_string());
+    // Check permissions (avoid string allocations)
+    let has_broadcast = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_BROADCAST);
+    let has_user_create = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
+    let has_user_edit = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
 
     let toolbar = container(
         row![
             // Title
-            text("Nexus BBS").size(16),
+            text("Nexus BBS").size(TOOLBAR_TITLE_SIZE),
             // Broadcast button
             if is_connected && has_broadcast {
-                button(text("Broadcast").size(12))
+                button(text("Broadcast").size(TOOLBAR_BUTTON_SIZE))
                     .on_press(Message::ToggleBroadcast)
-                    .padding(8)
+                    .padding(TOOLBAR_BUTTON_PADDING)
                     .style(move |theme, status| {
                         let mut style = button::primary(theme, status);
                         if show_broadcast_copy {
-                            style.background = Some(iced::Background::Color(
-                                iced::Color::from_rgb(0.3, 0.5, 0.7),
-                            ));
+                            style.background = Some(Background::Color(BUTTON_ACTIVE_COLOR));
                         }
                         style
                     })
             } else {
-                button(text("Broadcast").size(12)).padding(8)
+                button(text("Broadcast").size(TOOLBAR_BUTTON_SIZE)).padding(TOOLBAR_BUTTON_PADDING)
             },
             // User Create button
             if is_connected && has_user_create {
-                button(text("User Create").size(12))
+                button(text("User Create").size(TOOLBAR_BUTTON_SIZE))
                     .on_press(Message::ToggleAddUser)
-                    .padding(8)
+                    .padding(TOOLBAR_BUTTON_PADDING)
             } else {
-                button(text("User Create").size(12)).padding(8)
+                button(text("User Create").size(TOOLBAR_BUTTON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
             },
-            // User Edit button (replaces User Delete - delete is now inside edit form)
+            // User Edit button
             if is_connected && has_user_edit {
-                button(text("User Edit").size(12))
+                button(text("User Edit").size(TOOLBAR_BUTTON_SIZE))
                     .on_press(Message::ToggleEditUser)
-                    .padding(8)
+                    .padding(TOOLBAR_BUTTON_PADDING)
             } else {
-                button(text("User Edit").size(12)).padding(8)
+                button(text("User Edit").size(TOOLBAR_BUTTON_SIZE)).padding(TOOLBAR_BUTTON_PADDING)
             },
             // Spacer to push collapse buttons to the right
             container(text("")).width(Fill),
             // Left collapse button (bookmarks)
-            button(text(if show_bookmarks { "[<]" } else { "[>]" }).size(12))
+            button(text(if show_bookmarks { "[<]" } else { "[>]" }).size(TOOLBAR_BUTTON_SIZE))
                 .on_press(Message::ToggleBookmarks)
-                .padding(8)
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(move |theme, status| {
                     let mut style = button::primary(theme, status);
                     if !show_bookmarks_copy {
-                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
-                            0.4, 0.4, 0.4,
-                        )));
+                        style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
                     }
                     style
                 }),
             // Right collapse button (user list)
-            button(text(if show_user_list { "[>]" } else { "[<]" }).size(12))
+            button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
                 .on_press(Message::ToggleUserList)
-                .padding(8)
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(move |theme, status| {
                     let mut style = button::primary(theme, status);
                     if !show_user_list_copy {
-                        style.background = Some(iced::Background::Color(iced::Color::from_rgb(
-                            0.4, 0.4, 0.4,
-                        )));
+                        style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
                     }
                     style
                 }),
         ]
-        .spacing(10)
-        .padding(8)
+        .spacing(TOOLBAR_SPACING)
+        .padding(TOOLBAR_PADDING)
         .align_y(Center),
     )
     .width(Fill)
     .style(|_theme| container::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgb(
-            0.15, 0.15, 0.15,
-        ))),
+        background: Some(Background::Color(TOOLBAR_BACKGROUND_COLOR)),
         ..Default::default()
     });
 
     toolbar.into()
 }
 
-/// Dispatches to admin or chat view based on active panels
+/// Dispatches to appropriate content view based on active panels
+///
+/// Shows broadcast view, user management view, or chat view depending on
+/// which panels are currently open.
 fn server_content_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
@@ -244,11 +265,13 @@ fn server_content_view<'a>(
 }
 
 /// Empty content view when no server is selected
+///
+/// Displays a centered message prompting the user to select a server.
 fn empty_content_view<'a>() -> Element<'a, Message> {
     container(
         text("Select a server from the list")
-            .size(16)
-            .color([0.5, 0.5, 0.5]),
+            .size(EMPTY_VIEW_SIZE)
+            .color(EMPTY_VIEW_TEXT_COLOR),
     )
     .width(Fill)
     .height(Fill)

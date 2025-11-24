@@ -1,14 +1,14 @@
 //! UI view rendering components
 
-// Module declarations
-mod users;
 mod bookmark;
 mod broadcast;
 mod chat;
 mod connection;
 mod layout;
 mod server_list;
+mod style;
 mod user_list;
+mod users;
 
 // Re-export the main layout function (public API)
 pub use layout::main_layout;

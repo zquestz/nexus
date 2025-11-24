@@ -1,44 +1,53 @@
 //! Chat interface for active server connections
 
+use super::style::{
+    CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, ERROR_TEXT_COLOR, INFO_TEXT_COLOR,
+    INPUT_PADDING, SMALL_PADDING, SMALL_SPACING, SYSTEM_TEXT_COLOR,
+};
 use crate::types::{InputId, Message, ScrollableId, ServerConnection};
-use iced::widget::{column, container, row, scrollable, text, text_input, button, Column};
+use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Fill};
 
+// Permission constants
+const PERMISSION_CHAT_SEND: &str = "chat_send";
+const PERMISSION_CHAT_RECEIVE: &str = "chat_receive";
+
 /// Displays chat messages and input field
-pub fn chat_view<'a>(
-    conn: &'a ServerConnection,
-    message_input: &'a str,
-) -> Element<'a, Message> {
+///
+/// Shows chat history with timestamps and different colors for system/error/info
+/// messages. Checks permissions before allowing send/receive operations.
+pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Element<'a, Message> {
     // Check permissions
-    let can_send = conn.is_admin || conn.permissions.contains(&"chat_send".to_string());
-    let can_receive = conn.is_admin || conn.permissions.contains(&"chat_receive".to_string());
-    
-    // No tabs in chat view - just the content
-    let top_bar = row![].spacing(0).padding(0);
+    let can_send = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND);
+    let can_receive = conn.is_admin
+        || conn
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_CHAT_RECEIVE);
 
     // Chat messages - only show if user has permission to receive
     let chat_scrollable = if can_receive {
-        let mut chat_column = Column::new().spacing(3).padding(8);
+        let mut chat_column = Column::new().spacing(CHAT_SPACING).padding(INPUT_PADDING);
         for msg in &conn.chat_messages {
             let time_str = msg.timestamp.format("%H:%M:%S").to_string();
             let display = if msg.username == "System" {
                 text(format!("[{}] [SYS] {}", time_str, msg.message))
-                    .size(12)
-                    .color([0.7, 0.7, 0.7])
+                    .size(CHAT_MESSAGE_SIZE)
+                    .color(SYSTEM_TEXT_COLOR)
                     .font(iced::Font::MONOSPACE)
             } else if msg.username == "Error" {
                 text(format!("[{}] [ERR] {}", time_str, msg.message))
-                    .size(12)
-                    .color([1.0, 0.0, 0.0])
+                    .size(CHAT_MESSAGE_SIZE)
+                    .color(ERROR_TEXT_COLOR)
                     .font(iced::Font::MONOSPACE)
             } else if msg.username == "Info" {
                 text(format!("[{}] [INFO] {}", time_str, msg.message))
-                    .size(12)
-                    .color([0.5, 0.8, 1.0])
+                    .size(CHAT_MESSAGE_SIZE)
+                    .color(INFO_TEXT_COLOR)
                     .font(iced::Font::MONOSPACE)
             } else {
                 text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
-                    .size(12)
+                    .size(CHAT_MESSAGE_SIZE)
                     .font(iced::Font::MONOSPACE)
             };
             chat_column = chat_column.push(display);
@@ -50,15 +59,15 @@ pub fn chat_view<'a>(
     } else {
         // No permission to receive chat
         let no_permission_column = Column::new()
-            .spacing(3)
-            .padding(8)
+            .spacing(CHAT_SPACING)
+            .padding(INPUT_PADDING)
             .push(
                 text("You do not have permission to view chat messages")
-                    .size(12)
-                    .color([0.7, 0.7, 0.7])
-                    .font(iced::Font::MONOSPACE)
+                    .size(CHAT_MESSAGE_SIZE)
+                    .color(SYSTEM_TEXT_COLOR)
+                    .font(iced::Font::MONOSPACE),
             );
-        
+
         scrollable(no_permission_column)
             .id(ScrollableId::ChatMessages.into())
             .height(Fill)
@@ -71,29 +80,28 @@ pub fn chat_view<'a>(
                 .on_input(Message::MessageInputChanged)
                 .on_submit(Message::SendMessagePressed)
                 .id(text_input::Id::from(InputId::ChatInput))
-                .padding(8)
-                .size(13)
+                .padding(INPUT_PADDING)
+                .size(CHAT_INPUT_SIZE)
         } else {
             text_input("No permission to send messages", message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
-                .padding(8)
-                .size(13)
+                .padding(INPUT_PADDING)
+                .size(CHAT_INPUT_SIZE)
         },
         if can_send {
-            button(text("Send").size(12))
+            button(text("Send").size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
-                .padding(8)
+                .padding(INPUT_PADDING)
         } else {
-            button(text("Send").size(12))
-                .padding(8)
+            button(text("Send").size(CHAT_MESSAGE_SIZE)).padding(INPUT_PADDING)
         },
     ]
-    .spacing(5);
+    .spacing(SMALL_SPACING);
 
     container(
-        column![top_bar, chat_scrollable, input_row,]
-            .spacing(5)
-            .padding(5),
+        column![chat_scrollable, input_row,]
+            .spacing(SMALL_SPACING)
+            .padding(SMALL_PADDING),
     )
     .width(Fill)
     .height(Fill)
