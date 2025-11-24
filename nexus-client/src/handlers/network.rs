@@ -287,7 +287,8 @@ impl NexusApp {
             } => {
                 // Load the user details into edit form (stage 2)
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management.load_user_for_editing(username, is_admin, permissions);
+                    conn.user_management
+                        .load_user_for_editing(username, is_admin, permissions);
                 }
                 Task::none()
             }
@@ -306,6 +307,36 @@ impl NexusApp {
                     }
                 };
                 self.add_chat_message(connection_id, message)
+            }
+            ServerMessage::PermissionsUpdated {
+                is_admin,
+                permissions,
+            } => {
+                // Update the connection's permissions and admin status
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    let had_user_list =
+                        conn.is_admin || conn.permissions.contains(&"user_list".to_string());
+
+                    conn.is_admin = is_admin;
+                    conn.permissions = permissions.clone();
+
+                    let has_user_list = is_admin || permissions.contains(&"user_list".to_string());
+
+                    // If user just gained user_list permission, refresh the list
+                    // (it may be stale from missed join/leave events while permission was revoked)
+                    if !had_user_list && has_user_list {
+                        let _ = conn.tx.send(ClientMessage::UserList);
+                    }
+
+                    // Notify user in chat
+                    let message = ChatMessage {
+                        username: "System".to_string(),
+                        message: "Your permissions have been updated".to_string(),
+                        timestamp: Local::now(),
+                    };
+                    return self.add_chat_message(connection_id, message);
+                }
+                Task::none()
             }
             ServerMessage::Error { message, .. } => self.add_chat_message(
                 connection_id,

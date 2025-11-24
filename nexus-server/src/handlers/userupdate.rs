@@ -2,9 +2,9 @@
 
 use super::{
     ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN,
-    ERR_PERMISSION_DENIED, ERR_USERNAME_EXISTS, ERR_USER_NOT_FOUND, HandlerContext,
+    ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, ERR_USERNAME_EXISTS, HandlerContext,
 };
-use crate::db::{hash_password, Permission, Permissions};
+use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
@@ -67,10 +67,7 @@ pub async fn handle_userupdate(
 
     // Prevent users from editing themselves
     if username == requesting_user.username {
-        eprintln!(
-            "UserUpdate from {} attempting to edit self",
-            ctx.peer_addr
-        );
+        eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(ERR_CANNOT_EDIT_SELF.to_string()),
@@ -141,7 +138,7 @@ pub async fn handle_userupdate(
                 eprintln!("Warning: unknown permission '{}'", perm_str);
             }
         }
-        
+
         // For non-admins: merge requested permissions with target's current permissions
         // Non-admins can only modify permissions they themselves have
         // All other permissions are preserved from the target's current state
@@ -149,10 +146,11 @@ pub async fn handle_userupdate(
             // Get target user's account
             if let Ok(Some(target_account)) = ctx.user_db.get_user_by_username(&username).await {
                 // Get target user's current permissions
-                if let Ok(target_perms) = ctx.user_db.get_user_permissions(target_account.id).await {
+                if let Ok(target_perms) = ctx.user_db.get_user_permissions(target_account.id).await
+                {
                     // Start with an empty set for the final permissions
                     let mut final_perms = Permissions::new();
-                    
+
                     // Add all permissions from target that requesting user DOESN'T have
                     // (these are preserved and cannot be modified)
                     for target_perm in &target_perms.permissions {
@@ -169,25 +167,25 @@ pub async fn handle_userupdate(
                                     .await;
                             }
                         };
-                        
+
                         if !requester_has_perm {
                             // Preserve this permission - requester can't modify it
                             final_perms.permissions.insert(*target_perm);
                         }
                     }
-                    
+
                     // Add all requested permissions that the requester DOES have
                     // (these are the ones the requester can control)
                     for requested_perm in &perms.permissions {
                         final_perms.permissions.insert(*requested_perm);
                     }
-                    
+
                     // Replace the requested permissions with the merged set
                     perms = final_perms;
                 }
             }
         }
-        
+
         Some(perms)
     } else {
         None
@@ -238,17 +236,51 @@ pub async fn handle_userupdate(
         .await
     {
         Ok(true) => {
-            // Success
+            // Success - send response to requester
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
             };
-            ctx.send_message(&response).await
+            ctx.send_message(&response).await?;
+
+            // Notify all sessions of the updated user about their new permissions
+            // Get the updated user's account to read final permissions
+            if let Ok(Some(updated_account)) = ctx.user_db.get_user_by_username(&username).await {
+                // Get the final permissions
+                if let Ok(final_permissions) =
+                    ctx.user_db.get_user_permissions(updated_account.id).await
+                {
+                    let permission_strings: Vec<String> = final_permissions
+                        .permissions
+                        .iter()
+                        .map(|p| p.as_str().to_string())
+                        .collect();
+
+                    let permissions_update = ServerMessage::PermissionsUpdated {
+                        is_admin: updated_account.is_admin,
+                        permissions: permission_strings,
+                    };
+
+                    // Send to all sessions belonging to the updated user
+                    ctx.user_manager
+                        .broadcast_to_user(&updated_account.username, &permissions_update)
+                        .await;
+                }
+            }
+
+            Ok(())
         }
         Ok(false) => {
             // Update was blocked (user not found, last admin, or duplicate username)
             // We need to determine which error to return
-            let error_message = if ctx.user_db.get_user_by_username(&username).await.ok().flatten().is_none() {
+            let error_message = if ctx
+                .user_db
+                .get_user_by_username(&username)
+                .await
+                .ok()
+                .flatten()
+                .is_none()
+            {
                 ERR_USER_NOT_FOUND
             } else if requested_is_admin == Some(false) {
                 ERR_CANNOT_DEMOTE_LAST_ADMIN
@@ -396,7 +428,11 @@ mod tests {
         }
 
         // Verify username was changed
-        let user = test_ctx.user_db.get_user_by_username("bobby").await.unwrap();
+        let user = test_ctx
+            .user_db
+            .get_user_by_username("bobby")
+            .await
+            .unwrap();
         assert!(user.is_some());
         let user = test_ctx.user_db.get_user_by_username("bob").await.unwrap();
         assert!(user.is_none());
@@ -749,7 +785,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(user.hashed_password, original_hash, "Password should not have been changed");
+        assert_eq!(
+            user.hashed_password, original_hash,
+            "Password should not have been changed"
+        );
     }
 
     #[tokio::test]
@@ -761,7 +800,11 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::UserList, Permission::UserInfo, Permission::ChatSend],
+            &[
+                Permission::UserList,
+                Permission::UserInfo,
+                Permission::ChatSend,
+            ],
             false,
         )
         .await;
@@ -777,7 +820,12 @@ mod tests {
         .await;
 
         // Get Alice's user ID for verification later
-        let alice = test_ctx.user_db.get_user_by_username("alice").await.unwrap().unwrap();
+        let alice = test_ctx
+            .user_db
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
 
         // Bob tries to update Alice, removing user_info and chat_send (permissions Bob doesn't have)
         // Bob tries to set Alice's permissions to just user_list (which Bob has)

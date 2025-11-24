@@ -137,6 +137,17 @@ impl UserManager {
             let _ = user.tx.send(message.clone());
         }
     }
+
+    /// Broadcast a message to all sessions of a specific user (by username)
+    pub async fn broadcast_to_user(&self, username: &str, message: &ServerMessage) {
+        let users = self.users.read().await;
+        for user in users.values() {
+            if user.username == username {
+                // Silently ignore send errors (user might have disconnected)
+                let _ = user.tx.send(message.clone());
+            }
+        }
+    }
 }
 
 impl Default for UserManager {

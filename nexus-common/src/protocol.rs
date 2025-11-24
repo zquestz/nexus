@@ -114,6 +114,11 @@ pub enum ServerMessage {
     },
     /// User disconnected event
     UserDisconnected { session_id: u32, username: String },
+    /// Permissions updated notification (sent to user when their permissions change)
+    PermissionsUpdated {
+        is_admin: bool,
+        permissions: Vec<String>,
+    },
     /// User broadcast reply
     UserBroadcastReply {
         success: bool,
@@ -334,10 +339,7 @@ mod tests {
             success: true,
             session_id: Some("user123".to_string()),
             is_admin: Some(false),
-            permissions: Some(vec![
-                "user_list".to_string(),
-                "chat_send".to_string(),
-            ]),
+            permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();

@@ -1,17 +1,16 @@
 //! Main application layout and toolbar
 
 use crate::types::{
-    BookmarkEditMode, Message, ServerBookmark, ServerConnection,
-    UserManagementState,
+    BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
 };
 use iced::widget::{button, column, container, row, text};
 use iced::{Center, Element, Fill};
 use std::collections::HashMap;
 
 use super::{
-    users::users_view, bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
-    connection::connection_form_view, server_list::server_list_panel,
-    user_list::user_list_panel,
+    bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
+    connection::connection_form_view, server_list::server_list_panel, user_list::user_list_panel,
+    users::users_view,
 };
 
 /// Main application layout with toolbar and three-panel layout
@@ -110,9 +109,13 @@ pub fn main_layout<'a>(
     };
 
     // Three-panel layout
-    let content = row![server_list, main_content, user_list]
-        .spacing(0)
-        .height(Fill);
+    let content = if show_bookmarks {
+        row![server_list, main_content, user_list]
+            .spacing(0)
+            .height(Fill)
+    } else {
+        row![main_content, user_list].spacing(0).height(Fill)
+    };
 
     column![toolbar, content].into()
 }
@@ -148,9 +151,9 @@ fn build_toolbar(
                     .style(move |theme, status| {
                         let mut style = button::primary(theme, status);
                         if show_broadcast_copy {
-                            style.background = Some(iced::Background::Color(iced::Color::from_rgb(
-                                0.3, 0.5, 0.7,
-                            )));
+                            style.background = Some(iced::Background::Color(
+                                iced::Color::from_rgb(0.3, 0.5, 0.7),
+                            ));
                         }
                         style
                     })
