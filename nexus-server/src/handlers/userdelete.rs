@@ -158,7 +158,7 @@ pub async fn handle_userdelete(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user};
     use tokio::io::AsyncReadExt;
     use tokio::sync::mpsc;
 
@@ -179,31 +179,19 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITHOUT UserDelete permission (non-admin)
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let user_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let user_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[],
+            false,
+        )
+        .await;
 
         // Create target user
         let target = test_ctx
             .user_db
-            .create_user("bob", &hashed, false, &db::Permissions::new())
+            .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -251,26 +239,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Try to delete non-existent user
         let result = handle_userdelete(
@@ -312,26 +288,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Try to delete self
         let result = handle_userdelete(
@@ -369,7 +333,7 @@ mod tests {
         }
 
         // Verify admin still exists
-        let still_exists = test_ctx.user_db.get_user_by_id(admin.id).await.unwrap();
+        let still_exists = test_ctx.user_db.get_user_by_username("admin").await.unwrap();
         assert!(
             still_exists.is_some(),
             "Admin should not be able to delete themselves"
@@ -383,42 +347,25 @@ mod tests {
         // Create one admin user
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
+        let _admin = test_ctx
             .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("only_admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
-        // Create a non-admin user with UserDelete permission
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserDelete);
-            set
-        };
-        let deleter = test_ctx
-            .user_db
-            .create_user("deleter", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add deleter to UserManager
-        let deleter_id = test_ctx
-            .user_manager
-            .add_user(
-                deleter.id,
-                "deleter".to_string(),
-                test_ctx.peer_addr,
-                deleter.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create non-admin user with UserDelete permission
+        let deleter_id = login_user(
+            &mut test_ctx,
+            "deleter",
+            "password",
+            &[db::Permission::UserDelete],
+            false,
+        )
+        .await;
 
         // Try to delete the only admin
         let result = handle_userdelete(
-            "admin".to_string(),
+            "only_admin".to_string(),
             Some(deleter_id),
             &mut test_ctx.handler_context(),
         )
@@ -450,9 +397,13 @@ mod tests {
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Verify admin still exists
-        let still_exists = test_ctx.user_db.get_user_by_id(admin.id).await.unwrap();
-        assert!(still_exists.is_some(), "Cannot delete the last admin");
+        // Verify only admin still exists in database
+        let remaining_admin = test_ctx
+            .user_db
+            .get_user_by_username("only_admin")
+            .await
+            .unwrap();
+        assert!(remaining_admin.is_some(), "Cannot delete the last admin");
     }
 
     #[tokio::test]
@@ -460,40 +411,28 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Create offline user to delete
         let offline_user = test_ctx
             .user_db
-            .create_user("offline_user", &hashed, false, &db::Permissions::new())
+            .create_user("offline_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create online user to delete
         let online_user = test_ctx
             .user_db
-            .create_user("online_user", &hashed, false, &db::Permissions::new())
+            .create_user("online_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
 
         // Add online_user to UserManager (they're online)
         let (online_tx, _online_rx) = mpsc::unbounded_channel();
@@ -564,41 +503,22 @@ mod tests {
     async fn test_userdelete_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserDelete permission (not admin)
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserDelete);
-            set
-        };
-        let deleter = test_ctx
-            .user_db
-            .create_user("deleter", &hashed, false, &perms)
-            .await
-            .unwrap();
+        // Create non-admin user with UserDelete permission
+        let deleter_id = login_user(
+            &mut test_ctx,
+            "deleter",
+            "password",
+            &[db::Permission::UserDelete],
+            false,
+        )
+        .await;
 
         // Create target user
         let target = test_ctx
             .user_db
-            .create_user("target", &hashed, false, &db::Permissions::new())
+            .create_user("target", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
-
-        // Add deleter to UserManager
-        let deleter_id = test_ctx
-            .user_manager
-            .add_user(
-                deleter.id,
-                "deleter".to_string(),
-                test_ctx.peer_addr,
-                deleter.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
 
         // Delete target user
         let result = handle_userdelete(

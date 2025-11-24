@@ -109,7 +109,7 @@ pub async fn handle_chat_send(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user_with_features};
 
     #[tokio::test]
     async fn test_chat_requires_login() {
@@ -152,33 +152,15 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user with chat permission and feature
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::ChatSend);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager with chat feature
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-            )
-            .await;
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec!["chat".to_string()],
+        )
+        .await;
 
         // Create message at exactly 1024 characters
         let max_message = "a".repeat(1024);
@@ -197,27 +179,16 @@ mod tests {
     async fn test_chat_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT chat permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add user to UserManager with chat feature
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-            )
-            .await;
+        // Create user WITHOUT chat permission but WITH chat feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[],
+            false,
+            vec!["chat".to_string()],
+        )
+        .await;
 
         // Try to send chat without permission
         let result = handle_chat_send(
@@ -235,34 +206,16 @@ mod tests {
     async fn test_chat_requires_feature() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH chat permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::ChatSend);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager WITHOUT chat feature
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![], // No features
-            )
-            .await;
+        // Create user WITH chat permission but WITHOUT chat feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![], // No chat feature
+        )
+        .await;
 
         // Try to send chat without chat feature
         let result = handle_chat_send(
@@ -336,34 +289,16 @@ mod tests {
     async fn test_chat_successful() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::ChatSend);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager with chat feature
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-            )
-            .await;
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec!["chat".to_string()],
+        )
+        .await;
 
         // Send valid chat message
         let result = handle_chat_send(

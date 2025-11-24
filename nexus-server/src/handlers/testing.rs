@@ -73,3 +73,67 @@ pub async fn create_test_context() -> TestContext {
         peer_addr,
     }
 }
+
+/// Helper to create a user and add them to UserManager, returning their session_id
+pub async fn login_user(
+    test_ctx: &mut TestContext,
+    username: &str,
+    password: &str,
+    permissions: &[crate::db::Permission],
+    is_admin: bool,
+) -> u32 {
+    login_user_with_features(test_ctx, username, password, permissions, is_admin, vec![]).await
+}
+
+/// Helper to create a user with features and add them to UserManager, returning their session_id
+pub async fn login_user_with_features(
+    test_ctx: &mut TestContext,
+    username: &str,
+    password: &str,
+    permissions: &[crate::db::Permission],
+    is_admin: bool,
+    features: Vec<String>,
+) -> u32 {
+    use crate::db::{hash_password, Permissions};
+
+    // Hash password
+    let hashed = hash_password(password).unwrap();
+
+    // Build permissions
+    let mut perms = Permissions::new();
+    for perm in permissions {
+        perms.permissions.insert(*perm);
+    }
+
+    // Create user in database
+    let user = test_ctx
+        .user_db
+        .create_user(username, &hashed, is_admin, &perms)
+        .await
+        .unwrap();
+
+    // Add user to UserManager
+    let session_id = test_ctx
+        .user_manager
+        .add_user(
+            user.id,
+            username.to_string(),
+            test_ctx.peer_addr,
+            user.created_at,
+            test_ctx.tx.clone(),
+            features,
+        )
+        .await;
+
+    session_id
+}
+
+/// Helper to read a ServerMessage from the client stream
+pub async fn read_server_message(client: &mut TcpStream) -> ServerMessage {
+    use tokio::io::AsyncBufReadExt;
+
+    let mut reader = tokio::io::BufReader::new(client);
+    let mut line = String::new();
+    reader.read_line(&mut line).await.unwrap();
+    serde_json::from_str(&line.trim()).unwrap()
+}

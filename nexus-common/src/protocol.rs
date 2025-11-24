@@ -36,6 +36,14 @@ pub enum ClientMessage {
     },
     /// Delete a user account
     UserDelete { username: String },
+    /// Edit a user account
+    UserEdit {
+        username: String,
+        requested_username: Option<String>,
+        requested_password: Option<String>,
+        requested_is_admin: Option<bool>,
+        requested_permissions: Option<Vec<String>>,
+    },
     /// Request information about a specific user
     UserInfo { session_id: u32 },
     /// Request list of connected users
@@ -92,6 +100,12 @@ pub enum ServerMessage {
     },
     /// User delete response
     UserDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// User edit response
+    UserEditResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
@@ -179,6 +193,20 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::UserDelete { username } => f
                 .debug_struct("UserDelete")
                 .field("username", username)
+                .finish(),
+            ClientMessage::UserEdit {
+                username,
+                requested_username,
+                requested_password: _,
+                requested_is_admin,
+                requested_permissions,
+            } => f
+                .debug_struct("UserEdit")
+                .field("username", username)
+                .field("requested_username", requested_username)
+                .field("requested_password", &"<REDACTED>")
+                .field("requested_is_admin", requested_is_admin)
+                .field("requested_permissions", requested_permissions)
                 .finish(),
             ClientMessage::UserInfo { session_id } => f
                 .debug_struct("UserInfo")

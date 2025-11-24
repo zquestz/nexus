@@ -21,6 +21,8 @@ pub enum Permission {
     UserCreate,
     /// Permission to delete users
     UserDelete,
+    /// Permission to edit users
+    UserEdit,
 }
 
 impl Permission {
@@ -48,6 +50,7 @@ impl Permission {
             "user_broadcast" => Some(Permission::UserBroadcast),
             "user_create" => Some(Permission::UserCreate),
             "user_delete" => Some(Permission::UserDelete),
+            "user_edit" => Some(Permission::UserEdit),
             _ => None,
         }
     }
@@ -93,5 +96,6 @@ mod tests {
         assert_eq!(Permission::UserBroadcast.as_str(), "user_broadcast");
         assert_eq!(Permission::UserCreate.as_str(), "user_create");
         assert_eq!(Permission::UserDelete.as_str(), "user_delete");
+        assert_eq!(Permission::UserEdit.as_str(), "user_edit");
     }
 }

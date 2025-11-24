@@ -106,7 +106,7 @@ pub async fn handle_user_broadcast(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user};
 
     #[tokio::test]
     async fn test_broadcast_requires_login() {
@@ -149,33 +149,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITH broadcast permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserBroadcast);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserBroadcast],
+            false,
+        )
+        .await;
 
         // Create message at exactly 1024 characters
         let max_message = "a".repeat(1024);
@@ -195,33 +176,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITH broadcast permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserBroadcast);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserBroadcast],
+            false,
+        )
+        .await;
 
         // Try to send empty message
         let result = handle_user_broadcast(
@@ -250,27 +212,15 @@ mod tests {
     async fn test_broadcast_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT broadcast permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create user WITHOUT broadcast permission (non-admin)
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[],
+            false,
+        )
+        .await;
 
         // Try to broadcast without permission
         let result = handle_user_broadcast(
@@ -292,33 +242,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITH broadcast permission
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserBroadcast);
-            set
-        };
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &perms)
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserBroadcast],
+            false,
+        )
+        .await;
 
         // Send valid broadcast message
         let result = handle_user_broadcast(

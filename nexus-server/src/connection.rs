@@ -173,6 +173,24 @@ async fn handle_client_message(
             ClientMessage::UserDelete { username } => {
                 handlers::handle_userdelete(username, *session_id, &mut ctx).await?;
             }
+            ClientMessage::UserEdit {
+                username,
+                requested_username,
+                requested_password,
+                requested_is_admin,
+                requested_permissions,
+            } => {
+                handlers::handle_useredit(
+                    username,
+                    requested_username,
+                    requested_password,
+                    requested_is_admin,
+                    requested_permissions,
+                    *session_id,
+                    &mut ctx,
+                )
+                .await?;
+            }
             ClientMessage::UserInfo {
                 session_id: requested_session_id,
             } => {

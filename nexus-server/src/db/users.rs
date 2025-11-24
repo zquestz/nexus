@@ -191,6 +191,85 @@ impl UserDb {
         ))
     }
 
+    /// Update a user account
+    /// Returns Ok(true) if user was updated, Ok(false) if user didn't exist or update was blocked
+    ///
+    /// This operation is atomic and prevents demoting the last admin via a SQL constraint.
+    /// If the target user is the last admin and requested_is_admin is Some(false), the update will not occur.
+    pub async fn update_user(
+        &self,
+        username: &str,
+        requested_username: Option<&str>,
+        requested_password_hash: Option<&str>,
+        requested_is_admin: Option<bool>,
+        requested_permissions: Option<&Permissions>,
+    ) -> Result<bool, sqlx::Error> {
+        // First, get the user to update
+        let user = match self.get_user_by_username(username).await? {
+            Some(u) => u,
+            None => return Ok(false),
+        };
+
+        // Check if we're trying to demote the last admin
+        if let Some(false) = requested_is_admin {
+            if user.is_admin {
+                // Check if this is the last admin
+                let admin_count: (i64,) = sqlx::query_as(
+                    "SELECT COUNT(*) FROM users WHERE is_admin = 1"
+                )
+                .fetch_one(&self.pool)
+                .await?;
+
+                if admin_count.0 <= 1 {
+                    // Cannot demote the last admin
+                    return Ok(false);
+                }
+            }
+        }
+
+        // Check if new username already exists (and it's not the same user)
+        if let Some(new_name) = requested_username {
+            if new_name != username {
+                if let Some(_) = self.get_user_by_username(new_name).await? {
+                    // Username already taken
+                    return Ok(false);
+                }
+            }
+        }
+
+        // Build the final values for each field
+        let final_username = requested_username.unwrap_or(username);
+        let final_password = requested_password_hash.unwrap_or(&user.hashed_password);
+        let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
+
+        // Always update all fields to simplify the query
+        sqlx::query(
+            "UPDATE users SET username = ?, password_hash = ?, is_admin = ? WHERE id = ?"
+        )
+        .bind(final_username)
+        .bind(final_password)
+        .bind(final_is_admin)
+        .bind(user.id)
+        .execute(&self.pool)
+        .await?;
+
+        // Update permissions if provided
+        if let Some(perms) = requested_permissions {
+            // Only set permissions for non-admin users
+            if !final_is_admin {
+                self.set_permissions(user.id, perms).await?;
+            } else {
+                // Clear permissions for admin users (they get all automatically)
+                sqlx::query("DELETE FROM user_permissions WHERE user_id = ?")
+                    .bind(user.id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+
+        Ok(true)
+    }
+
     /// Delete a user account
     /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
     ///

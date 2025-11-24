@@ -226,7 +226,7 @@ pub async fn handle_usercreate(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user};
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -253,26 +253,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITHOUT UserCreate permission (non-admin)
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let user = test_ctx
-            .user_db
-            .create_user("alice", &hashed, false, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add user to UserManager
-        let user_id = test_ctx
-            .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let user_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[],
+            false,
+        )
+        .await;
 
         // Try to create user without permission
         let result = handle_usercreate(
@@ -297,27 +285,15 @@ mod tests {
     async fn test_usercreate_admin_can_create() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create an admin user
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Create a new user
         let result = handle_usercreate(
@@ -436,27 +412,15 @@ mod tests {
     async fn test_usercreate_can_create_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create an admin user
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Create a new admin user
         let result = handle_usercreate(
@@ -503,43 +467,22 @@ mod tests {
     async fn test_usercreate_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserCreate permission (not admin)
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let mut perms = db::Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(db::Permission::UserCreate);
-            set.insert(db::Permission::ChatSend);
-            set.insert(db::Permission::ChatReceive);
-            set
-        };
-        let creator = test_ctx
-            .user_db
-            .create_user("creator", &hashed, false, &perms)
-            .await
-            .unwrap();
+        // Create a non-admin user WITH UserCreate permission
+        let creator_id = login_user(
+            &mut test_ctx,
+            "creator",
+            "password",
+            &[db::Permission::UserCreate, db::Permission::UserList],
+            false,
+        )
+        .await;
 
-        // Add creator to UserManager
-        let creator_id = test_ctx
-            .user_manager
-            .add_user(
-                creator.id,
-                "creator".to_string(),
-                test_ctx.peer_addr,
-                creator.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
-
-        // Create a new user
+        // Create a new user (can only grant permissions creator has)
         let result = handle_usercreate(
             "newuser".to_string(),
             "password".to_string(),
             false,
-            vec!["chat_send".to_string(), "chat_receive".to_string()],
+            vec!["user_list".to_string()],
             Some(creator_id),
             &mut test_ctx.handler_context(),
         )
@@ -576,45 +519,27 @@ mod tests {
         
         // Verify permissions were granted
         let user = created_user.unwrap();
-        let has_chat_send = test_ctx
+        let has_user_list = test_ctx
             .user_db
-            .has_permission(user.id, db::Permission::ChatSend)
+            .has_permission(user.id, db::Permission::UserList)
             .await
             .unwrap();
-        let has_chat_receive = test_ctx
-            .user_db
-            .has_permission(user.id, db::Permission::ChatReceive)
-            .await
-            .unwrap();
-        assert!(has_chat_send, "User should have ChatSend permission");
-        assert!(has_chat_receive, "User should have ChatReceive permission");
+        assert!(has_user_list, "User should have UserList permission");
     }
 
     #[tokio::test]
     async fn test_usercreate_grants_specified_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        // Create an admin user
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Create a new user with specific permissions
         let result = handle_usercreate(
@@ -830,25 +755,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin_user = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                admin_user.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin_user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Try to create user with empty username
         let result = handle_usercreate(
@@ -869,25 +783,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin_user = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        let session_id = test_ctx
-            .user_manager
-            .add_user(
-                admin_user.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin_user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Try to create user with empty password
         let result = handle_usercreate(
@@ -908,26 +811,14 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let admin = test_ctx
-            .user_db
-            .create_user("admin", &hashed, true, &db::Permissions::new())
-            .await
-            .unwrap();
-
-        // Add admin to UserManager
-        let admin_id = test_ctx
-            .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-            )
-            .await;
+        let admin_id = login_user(
+            &mut test_ctx,
+            "admin",
+            "password",
+            &[],
+            true,
+        )
+        .await;
 
         // Admin can grant ALL permissions even if not explicitly listed
         let result = handle_usercreate(

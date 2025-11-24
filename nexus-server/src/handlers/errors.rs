@@ -38,3 +38,12 @@ pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
 
 /// Error message when account has been deleted
 pub const ERR_ACCOUNT_DELETED: &str = "Your account has been deleted";
+
+/// Error message when trying to demote last admin
+pub const ERR_CANNOT_DEMOTE_LAST_ADMIN: &str = "Cannot demote the last admin";
+
+/// Error message when trying to edit yourself
+pub const ERR_CANNOT_EDIT_SELF: &str = "You cannot edit yourself";
+
+/// Error message when user to edit is not found
+pub const ERR_USER_NOT_FOUND: &str = "User not found";
