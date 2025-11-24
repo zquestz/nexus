@@ -8,6 +8,7 @@ mod login;
 mod usercreate;
 mod userdelete;
 mod useredit;
+mod userupdate;
 mod userinfo;
 mod userlist;
 
@@ -22,6 +23,7 @@ pub use login::handle_login;
 pub use usercreate::handle_usercreate;
 pub use userdelete::handle_userdelete;
 pub use useredit::handle_useredit;
+pub use userupdate::handle_userupdate;
 pub use userinfo::handle_userinfo;
 pub use userlist::handle_userlist;
 

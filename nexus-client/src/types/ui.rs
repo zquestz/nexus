@@ -10,7 +10,7 @@ pub struct UiState {
     pub show_bookmarks: bool,
     pub show_user_list: bool,
     pub show_add_user: bool,
-    pub show_delete_user: bool,
+    pub show_edit_user: bool,
     pub show_broadcast: bool,
 }
 
@@ -32,7 +32,9 @@ pub enum InputId {
     BookmarkPassword,
     AdminUsername,
     AdminPassword,
-    DeleteUsername,
+    EditUsername,
+    EditNewUsername,
+    EditNewPassword,
     BroadcastMessage,
     ChatInput,
 }

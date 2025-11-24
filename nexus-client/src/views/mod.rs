@@ -1,7 +1,7 @@
 //! UI view rendering components
 
 // Module declarations
-mod admin;
+mod users;
 mod bookmark;
 mod broadcast;
 mod chat;

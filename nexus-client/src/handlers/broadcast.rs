@@ -44,7 +44,7 @@ impl NexusApp {
         // Close other admin panels when opening broadcast
         if self.ui_state.show_broadcast {
             self.ui_state.show_add_user = false;
-            self.ui_state.show_delete_user = false;
+            self.ui_state.show_edit_user = false;
             
             // Focus broadcast input when opening
             if self.active_connection.is_some() {

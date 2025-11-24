@@ -173,14 +173,25 @@ async fn handle_client_message(
             ClientMessage::UserDelete { username } => {
                 handlers::handle_userdelete(username, *session_id, &mut ctx).await?;
             }
-            ClientMessage::UserEdit {
+            ClientMessage::UserEdit { username } => {
+                handlers::handle_useredit(username, *session_id, &mut ctx).await?;
+            }
+            ClientMessage::UserInfo {
+                session_id: requested_session_id,
+            } => {
+                handlers::handle_userinfo(requested_session_id, *session_id, &mut ctx).await?;
+            }
+            ClientMessage::UserList => {
+                handlers::handle_userlist(*session_id, &mut ctx).await?;
+            }
+            ClientMessage::UserUpdate {
                 username,
                 requested_username,
                 requested_password,
                 requested_is_admin,
                 requested_permissions,
             } => {
-                handlers::handle_useredit(
+                handlers::handle_userupdate(
                     username,
                     requested_username,
                     requested_password,
@@ -190,14 +201,6 @@ async fn handle_client_message(
                     &mut ctx,
                 )
                 .await?;
-            }
-            ClientMessage::UserInfo {
-                session_id: requested_session_id,
-            } => {
-                handlers::handle_userinfo(requested_session_id, *session_id, &mut ctx).await?;
-            }
-            ClientMessage::UserList => {
-                handlers::handle_userlist(*session_id, &mut ctx).await?;
             }
         },
         Err(e) => {

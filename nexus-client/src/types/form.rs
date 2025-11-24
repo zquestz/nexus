@@ -2,6 +2,31 @@
 
 use super::DEFAULT_PORT;
 
+/// State for user edit flow (two-stage process)
+///
+/// Stage 1: User enters username to edit
+/// Stage 2: Form shows with current values, user can modify and submit
+#[derive(Debug, Clone, PartialEq)]
+pub enum UserEditState {
+    /// Not editing anyone
+    None,
+    /// Stage 1: Selecting which user to edit (username input only)
+    SelectingUser { username: String },
+    /// Stage 2: Editing user details (full form with current values)
+    EditingUser {
+        /// Original username (for the UserUpdate request)
+        original_username: String,
+        /// New username (editable field, pre-filled with original)
+        new_username: String,
+        /// New password (optional, empty = don't change)
+        new_password: String,
+        /// Is admin flag (editable)
+        is_admin: bool,
+        /// Permissions (editable)
+        permissions: Vec<(String, bool)>,
+    },
+}
+
 /// State for connection form (connecting to new servers)
 ///
 /// Temporary state for the connection dialog. Unlike bookmarks,
@@ -27,17 +52,20 @@ impl ConnectionFormState {
     }
 }
 
-/// State for user management (create/delete user forms)
+/// State for user management (create/delete/edit user forms)
 ///
 /// Per-connection admin panel state. Each connection maintains its own
 /// user management forms independently.
 #[derive(Debug, Clone)]
 pub struct UserManagementState {
+    // Add User fields
     pub username: String,
     pub password: String,
     pub is_admin: bool,
     pub permissions: Vec<(String, bool)>,
-    pub delete_username: String,
+    
+    // Edit User state
+    pub edit_state: UserEditState,
 }
 
 impl Default for UserManagementState {
@@ -54,8 +82,9 @@ impl Default for UserManagementState {
                 ("user_broadcast".to_string(), false),
                 ("user_create".to_string(), false),
                 ("user_delete".to_string(), false),
+                ("user_edit".to_string(), false),
             ],
-            delete_username: String::new(),
+            edit_state: UserEditState::None,
         }
     }
 }
@@ -71,8 +100,48 @@ impl UserManagementState {
         }
     }
 
-    /// Clear the delete user form fields
-    pub fn clear_delete_user(&mut self) {
-        self.delete_username.clear();
+    /// Clear the edit user state
+    pub fn clear_edit_user(&mut self) {
+        self.edit_state = UserEditState::None;
+    }
+    
+    /// Start editing a user (stage 1: enter username)
+    pub fn start_editing(&mut self) {
+        self.edit_state = UserEditState::SelectingUser {
+            username: String::new(),
+        };
+    }
+    
+    /// Move to stage 2 of editing with user details from server
+    pub fn load_user_for_editing(
+        &mut self,
+        username: String,
+        is_admin: bool,
+        permissions: Vec<String>,
+    ) {
+        // Convert permissions Vec<String> to Vec<(String, bool)>
+        let mut perm_map = vec![
+            ("user_list".to_string(), false),
+            ("user_info".to_string(), false),
+            ("chat_send".to_string(), false),
+            ("chat_receive".to_string(), false),
+            ("user_broadcast".to_string(), false),
+            ("user_create".to_string(), false),
+            ("user_delete".to_string(), false),
+            ("user_edit".to_string(), false),
+        ];
+        
+        // Mark permissions that the user has
+        for (perm_name, enabled) in &mut perm_map {
+            *enabled = permissions.contains(perm_name);
+        }
+        
+        self.edit_state = UserEditState::EditingUser {
+            original_username: username.clone(),
+            new_username: username,
+            new_password: String::new(),
+            is_admin,
+            permissions: perm_map,
+        };
     }
 }

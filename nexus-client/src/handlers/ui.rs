@@ -21,7 +21,7 @@ impl NexusApp {
         // Toggle Add User, and turn off Delete User and Broadcast
         self.ui_state.show_add_user = !self.ui_state.show_add_user;
         if self.ui_state.show_add_user {
-            self.ui_state.show_delete_user = false;
+            self.ui_state.show_edit_user = false;
             self.ui_state.show_broadcast = false;
             // Clear form and set focus
             if let Some(conn_id) = self.active_connection {
@@ -37,23 +37,30 @@ impl NexusApp {
         }
     }
 
-    pub fn handle_toggle_delete_user(&mut self) -> Task<Message> {
-        // Toggle Delete User, and turn off Add User and Broadcast
-        self.ui_state.show_delete_user = !self.ui_state.show_delete_user;
-        if self.ui_state.show_delete_user {
+    pub fn handle_toggle_edit_user(&mut self) -> Task<Message> {
+        // Toggle Edit User, and turn off Add User, Delete User, and Broadcast
+        self.ui_state.show_edit_user = !self.ui_state.show_edit_user;
+        if self.ui_state.show_edit_user {
             self.ui_state.show_add_user = false;
             self.ui_state.show_broadcast = false;
-            // Clear form and set focus
+            // Start editing and set focus
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.user_management.clear_delete_user();
+                    conn.user_management.start_editing();
                 }
             }
-            self.focused_field = InputId::DeleteUsername;
-            return text_input::focus(text_input::Id::from(InputId::DeleteUsername));
+            self.focused_field = InputId::EditUsername;
+            return text_input::focus(text_input::Id::from(InputId::EditUsername));
         } else {
-            // Closing panel - focus chat input
+            // Closing panel - clear and focus chat input
+            if let Some(conn_id) = self.active_connection {
+                if let Some(conn) = self.connections.get_mut(&conn_id) {
+                    conn.user_management.clear_edit_user();
+                }
+            }
             return text_input::focus(text_input::Id::from(InputId::ChatInput));
         }
     }
+
+
 }

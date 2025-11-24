@@ -85,7 +85,7 @@ impl Default for NexusApp {
                 show_bookmarks: true,
                 show_user_list: true,
                 show_add_user: false,
-                show_delete_user: false,
+                show_edit_user: false,
                 show_broadcast: false,
             },
             default_user_mgmt: UserManagementState::default(),
@@ -182,9 +182,22 @@ impl NexusApp {
             }
             Message::CreateUserPressed => self.handle_create_user_pressed(),
             Message::DeleteUserPressed(username) => self.handle_delete_user_pressed(username),
-            Message::DeleteUsernameChanged(username) => {
-                self.handle_delete_username_changed(username)
+            
+            // User edit
+            Message::EditUsernameChanged(username) => self.handle_edit_username_changed(username),
+            Message::EditUserPressed => self.handle_edit_user_pressed(),
+            Message::EditNewUsernameChanged(new_username) => {
+                self.handle_edit_new_username_changed(new_username)
             }
+            Message::EditNewPasswordChanged(new_password) => {
+                self.handle_edit_new_password_changed(new_password)
+            }
+            Message::EditIsAdminToggled(is_admin) => self.handle_edit_is_admin_toggled(is_admin),
+            Message::EditPermissionToggled(permission, enabled) => {
+                self.handle_edit_permission_toggled(permission, enabled)
+            }
+            Message::UpdateUserPressed => self.handle_update_user_pressed(),
+            Message::CancelEditUser => self.handle_cancel_edit_user(),
 
             // Broadcast
             Message::BroadcastMessageChanged(input) => {
@@ -196,7 +209,7 @@ impl NexusApp {
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),
             Message::ToggleUserList => self.handle_toggle_user_list(),
             Message::ToggleAddUser => self.handle_toggle_add_user(),
-            Message::ToggleDeleteUser => self.handle_toggle_delete_user(),
+            Message::ToggleEditUser => self.handle_toggle_edit_user(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
 
             // Network events
@@ -254,16 +267,16 @@ impl NexusApp {
             .unwrap_or(("", &self.default_user_mgmt));
 
         views::main_layout(
-            &self.config.bookmarks,
             &self.connections,
             self.active_connection,
+            &self.config.bookmarks,
+            &self.bookmark_edit.mode,
             &self.connection_form.server_name,
             &self.connection_form.server_address,
             &self.connection_form.port,
             &self.connection_form.username,
             &self.connection_form.password,
             &self.connection_form.error,
-            &self.bookmark_edit.mode,
             &self.bookmark_edit.name,
             &self.bookmark_edit.address,
             &self.bookmark_edit.port,
@@ -275,7 +288,7 @@ impl NexusApp {
             self.ui_state.show_bookmarks,
             self.ui_state.show_user_list,
             self.ui_state.show_add_user,
-            self.ui_state.show_delete_user,
+            self.ui_state.show_edit_user,
             self.ui_state.show_broadcast,
         )
     }

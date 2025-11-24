@@ -36,18 +36,20 @@ pub enum ClientMessage {
     },
     /// Delete a user account
     UserDelete { username: String },
-    /// Edit a user account
-    UserEdit {
+    /// Request user details for editing (returns admin status and permissions)
+    UserEdit { username: String },
+    /// Request information about a specific user
+    UserInfo { session_id: u32 },
+    /// Request list of connected users
+    UserList,
+    /// Update a user account
+    UserUpdate {
         username: String,
         requested_username: Option<String>,
         requested_password: Option<String>,
         requested_is_admin: Option<bool>,
         requested_permissions: Option<Vec<String>>,
     },
-    /// Request information about a specific user
-    UserInfo { session_id: u32 },
-    /// Request list of connected users
-    UserList,
 }
 
 /// Server response messages
@@ -104,11 +106,11 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
-    /// User edit response
+    /// User edit response (returns current user details for editing)
     UserEditResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
+        username: String,
+        is_admin: bool,
+        permissions: Vec<String>,
     },
     /// User disconnected event
     UserDisconnected { session_id: u32, username: String },
@@ -125,6 +127,12 @@ pub enum ServerMessage {
     },
     /// User list response
     UserListResponse { users: Vec<UserInfo> },
+    /// User update response
+    UserUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 /// Information about a connected user (basic info for lists)
@@ -194,25 +202,29 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("UserDelete")
                 .field("username", username)
                 .finish(),
-            ClientMessage::UserEdit {
-                username,
-                requested_username,
-                requested_password: _,
-                requested_is_admin,
-                requested_permissions,
-            } => f
+            ClientMessage::UserEdit { username } => f
                 .debug_struct("UserEdit")
                 .field("username", username)
-                .field("requested_username", requested_username)
-                .field("requested_password", &"<REDACTED>")
-                .field("requested_is_admin", requested_is_admin)
-                .field("requested_permissions", requested_permissions)
                 .finish(),
             ClientMessage::UserInfo { session_id } => f
                 .debug_struct("UserInfo")
                 .field("session_id", session_id)
                 .finish(),
             ClientMessage::UserList => f.debug_struct("UserList").finish(),
+            ClientMessage::UserUpdate {
+                username,
+                requested_username,
+                requested_password: _,
+                requested_is_admin,
+                requested_permissions,
+            } => f
+                .debug_struct("UserUpdate")
+                .field("username", username)
+                .field("requested_username", requested_username)
+                .field("requested_password", &"<REDACTED>")
+                .field("requested_is_admin", requested_is_admin)
+                .field("requested_permissions", requested_permissions)
+                .finish(),
         }
     }
 }

@@ -46,7 +46,16 @@ pub enum Message {
     AdminPermissionToggled(String, bool),
     CreateUserPressed,
     DeleteUserPressed(String),
-    DeleteUsernameChanged(String),
+    
+    // === User Edit Panel ===
+    EditUsernameChanged(String),
+    EditUserPressed,
+    EditNewUsernameChanged(String),
+    EditNewPasswordChanged(String),
+    EditIsAdminToggled(bool),
+    EditPermissionToggled(String, bool),
+    UpdateUserPressed,
+    CancelEditUser,
 
     // === Broadcast ===
     BroadcastMessageChanged(String),
@@ -56,7 +65,7 @@ pub enum Message {
     ToggleBookmarks,
     ToggleUserList,
     ToggleAddUser,
-    ToggleDeleteUser,
+    ToggleEditUser,
     ToggleBroadcast,
 
     // === Keyboard Events ===

@@ -8,8 +8,6 @@ use iced::{Element, Fill};
 pub fn chat_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
-    _show_add_user: bool,
-    _show_delete_user: bool,
 ) -> Element<'a, Message> {
     // Check permissions
     let can_send = conn.is_admin || conn.permissions.contains(&"chat_send".to_string());

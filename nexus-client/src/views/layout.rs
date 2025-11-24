@@ -1,30 +1,31 @@
-//! Main application layout
+//! Main application layout and toolbar
 
 use crate::types::{
-    BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
+    BookmarkEditMode, Message, ServerBookmark, ServerConnection,
+    UserManagementState,
 };
 use iced::widget::{button, column, container, row, text};
 use iced::{Center, Element, Fill};
 use std::collections::HashMap;
 
 use super::{
-    admin::admin_view, bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
+    users::users_view, bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
     connection::connection_form_view, server_list::server_list_panel,
     user_list::user_list_panel,
 };
 
 /// Main application layout with toolbar and three-panel layout
 pub fn main_layout<'a>(
-    bookmarks: &'a [ServerBookmark],
     connections: &'a HashMap<usize, ServerConnection>,
     active_connection: Option<usize>,
+    bookmarks: &'a [ServerBookmark],
+    bookmark_edit_mode: &'a BookmarkEditMode,
     server_name: &'a str,
     server_address: &'a str,
     port: &'a str,
     username: &'a str,
     password: &'a str,
     connection_error: &'a Option<String>,
-    bookmark_edit_mode: &'a BookmarkEditMode,
     bookmark_name: &'a str,
     bookmark_address: &'a str,
     bookmark_port: &'a str,
@@ -36,7 +37,7 @@ pub fn main_layout<'a>(
     show_bookmarks: bool,
     show_user_list: bool,
     show_add_user: bool,
-    show_delete_user: bool,
+    show_edit_user: bool,
     show_broadcast: bool,
 ) -> Element<'a, Message> {
     // Get permissions and admin status from active connection
@@ -76,7 +77,7 @@ pub fn main_layout<'a>(
                 message_input,
                 user_management,
                 show_add_user,
-                show_delete_user,
+                show_edit_user,
                 show_broadcast,
             )
         } else {
@@ -93,9 +94,9 @@ pub fn main_layout<'a>(
         )
     };
 
-    // Right panel: User list (show if enabled, display empty state if no active connection)
-    let user_list = if show_user_list {
-        if let Some(conn_id) = active_connection {
+    // Right panel: User list (only when connected)
+    let user_list = if let Some(conn_id) = active_connection {
+        if show_user_list {
             if let Some(conn) = connections.get(&conn_id) {
                 user_list_panel(conn)
             } else {
@@ -108,19 +109,15 @@ pub fn main_layout<'a>(
         container(text("")).width(0).into()
     };
 
-    // Main layout: Toolbar at top, then three-column layout
-    let main_row = if show_bookmarks {
-        row![server_list, main_content, user_list,].spacing(0)
-    } else {
-        row![main_content, user_list,].spacing(0)
-    };
+    // Three-panel layout
+    let content = row![server_list, main_content, user_list]
+        .spacing(0)
+        .height(Fill);
 
-    let layout = column![toolbar, main_row,].spacing(0);
-
-    container(layout).width(Fill).height(Fill).into()
+    column![toolbar, content].into()
 }
 
-/// Build the top toolbar with toggle buttons
+/// Build the top toolbar with buttons and toggles
 fn build_toolbar(
     show_bookmarks: bool,
     show_user_list: bool,
@@ -137,7 +134,7 @@ fn build_toolbar(
     // Check permissions
     let has_broadcast = is_admin || permissions.contains(&"user_broadcast".to_string());
     let has_user_create = is_admin || permissions.contains(&"user_create".to_string());
-    let has_user_delete = is_admin || permissions.contains(&"user_delete".to_string());
+    let has_user_edit = is_admin || permissions.contains(&"user_edit".to_string());
 
     let toolbar = container(
         row![
@@ -160,7 +157,7 @@ fn build_toolbar(
             } else {
                 button(text("Broadcast").size(12)).padding(8)
             },
-            // User management buttons
+            // User Create button
             if is_connected && has_user_create {
                 button(text("User Create").size(12))
                     .on_press(Message::ToggleAddUser)
@@ -168,12 +165,13 @@ fn build_toolbar(
             } else {
                 button(text("User Create").size(12)).padding(8)
             },
-            if is_connected && has_user_delete {
-                button(text("User Delete").size(12))
-                    .on_press(Message::ToggleDeleteUser)
+            // User Edit button (replaces User Delete - delete is now inside edit form)
+            if is_connected && has_user_edit {
+                button(text("User Edit").size(12))
+                    .on_press(Message::ToggleEditUser)
                     .padding(8)
             } else {
-                button(text("User Delete").size(12)).padding(8)
+                button(text("User Edit").size(12)).padding(8)
             },
             // Spacer to push collapse buttons to the right
             container(text("")).width(Fill),
@@ -225,18 +223,18 @@ fn server_content_view<'a>(
     message_input: &'a str,
     user_management: &'a UserManagementState,
     show_add_user: bool,
-    show_delete_user: bool,
+    show_edit_user: bool,
     show_broadcast: bool,
 ) -> Element<'a, Message> {
     // If broadcast panel is open, show broadcast view
     if show_broadcast {
         broadcast_view(conn)
-    } else if show_add_user || show_delete_user {
-        // If any admin panel is open, show admin view
-        admin_view(conn, user_management, show_add_user, show_delete_user)
+    } else if show_add_user || show_edit_user {
+        // If any user management panel is open, show users view
+        users_view(conn, user_management, show_add_user, show_edit_user)
     } else {
         // Otherwise show chat
-        chat_view(conn, message_input, show_add_user, show_delete_user)
+        chat_view(conn, message_input)
     }
 }
 

@@ -40,8 +40,10 @@ impl NexusApp {
                     )
                 };
 
-                // Request initial user list
-                let _ = conn.tx.send(ClientMessage::UserList);
+                // Request initial user list (only if user has permission)
+                if conn.is_admin || conn.permissions.contains(&"user_list".to_string()) {
+                    let _ = conn.tx.send(ClientMessage::UserList);
+                }
 
                 // Create server connection
                 let server_conn = ServerConnection {
@@ -273,6 +275,33 @@ impl NexusApp {
                     ChatMessage {
                         username: "Error".to_string(),
                         message: format!("Failed to delete user: {}", error.unwrap_or_default()),
+                        timestamp: Local::now(),
+                    }
+                };
+                self.add_chat_message(connection_id, message)
+            }
+            ServerMessage::UserEditResponse {
+                username,
+                is_admin,
+                permissions,
+            } => {
+                // Load the user details into edit form (stage 2)
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    conn.user_management.load_user_for_editing(username, is_admin, permissions);
+                }
+                Task::none()
+            }
+            ServerMessage::UserUpdateResponse { success, error } => {
+                let message = if success {
+                    ChatMessage {
+                        username: "System".to_string(),
+                        message: "User updated successfully".to_string(),
+                        timestamp: Local::now(),
+                    }
+                } else {
+                    ChatMessage {
+                        username: "Error".to_string(),
+                        message: format!("Failed to update user: {}", error.unwrap_or_default()),
                         timestamp: Local::now(),
                     }
                 };
