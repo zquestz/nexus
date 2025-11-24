@@ -20,50 +20,52 @@ impl NexusApp {
 
     /// Toggle Add User panel visibility
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
-        // Toggle Add User, and turn off Delete User and Broadcast
+        // Toggle Add User, and turn off Edit User and Broadcast
         self.ui_state.show_add_user = !self.ui_state.show_add_user;
         if self.ui_state.show_add_user {
             self.ui_state.show_edit_user = false;
             self.ui_state.show_broadcast = false;
-            // Clear form and set focus
+            // Clear form and set focus (only if connected)
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {
                     conn.user_management.clear_add_user();
                 }
+                self.focused_field = InputId::AdminUsername;
+                return text_input::focus(text_input::Id::from(InputId::AdminUsername));
             }
-            self.focused_field = InputId::AdminUsername;
-            return text_input::focus(text_input::Id::from(InputId::AdminUsername));
         } else {
-            // Closing panel - focus chat input
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            // Closing panel - focus chat input if connected
+            if self.active_connection.is_some() {
+                return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            }
         }
+        Task::none()
     }
 
     /// Toggle Edit User panel visibility
     pub fn handle_toggle_edit_user(&mut self) -> Task<Message> {
-        // Toggle Edit User, and turn off Add User, Delete User, and Broadcast
+        // Toggle Edit User, and turn off Add User and Broadcast
         self.ui_state.show_edit_user = !self.ui_state.show_edit_user;
         if self.ui_state.show_edit_user {
             self.ui_state.show_add_user = false;
             self.ui_state.show_broadcast = false;
-            // Start editing and set focus
+            // Start editing and set focus (only if connected)
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {
                     conn.user_management.start_editing();
                 }
+                self.focused_field = InputId::EditUsername;
+                return text_input::focus(text_input::Id::from(InputId::EditUsername));
             }
-            self.focused_field = InputId::EditUsername;
-            return text_input::focus(text_input::Id::from(InputId::EditUsername));
         } else {
-            // Closing panel - clear and focus chat input
+            // Closing panel - clear and focus chat input if connected
             if let Some(conn_id) = self.active_connection {
                 if let Some(conn) = self.connections.get_mut(&conn_id) {
                     conn.user_management.clear_edit_user();
                 }
+                return text_input::focus(text_input::Id::from(InputId::ChatInput));
             }
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
         }
+        Task::none()
     }
-
-
 }

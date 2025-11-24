@@ -1,9 +1,15 @@
 //! User management
 
+use crate::types::{ChatMessage, InputId, Message, ScrollableId, UserEditState};
 use crate::NexusApp;
-use crate::types::{InputId, Message, UserEditState};
+use chrono::Local;
+use iced::widget::scrollable;
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
+
+// Constants
+const MSG_USERNAME_ERROR: &str = "Error";
+const ERR_SEND_FAILED: &str = "Failed to send command";
 
 impl NexusApp {
     /// Handle admin panel username field change
@@ -87,7 +93,11 @@ impl NexusApp {
                     is_admin,
                     permissions,
                 };
-                let _ = conn.tx.send(msg);
+                
+                // Send message and handle errors
+                if let Err(e) = conn.tx.send(msg) {
+                    return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                }
 
                 // Clear the form and close the panel
                 conn.user_management.clear_add_user();
@@ -102,7 +112,11 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
                 let msg = ClientMessage::UserDelete { username };
-                let _ = conn.tx.send(msg);
+                
+                // Send message and handle errors
+                if let Err(e) = conn.tx.send(msg) {
+                    return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                }
                 // Note: This is called from the Delete button in the User Edit form
                 // The edit form will handle closing itself
             }
@@ -187,7 +201,11 @@ impl NexusApp {
                     let msg = ClientMessage::UserEdit {
                         username: username.clone(),
                     };
-                    let _ = conn.tx.send(msg);
+                    
+                    // Send message and handle errors
+                    if let Err(e) = conn.tx.send(msg) {
+                        return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                    }
                     // Stay on this screen, wait for server response
                 }
             }
@@ -241,7 +259,11 @@ impl NexusApp {
                         requested_is_admin,
                         requested_permissions: Some(requested_permissions),
                     };
-                    let _ = conn.tx.send(msg);
+                    
+                    // Send message and handle errors
+                    if let Err(e) = conn.tx.send(msg) {
+                        return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                    }
 
                     // Clear the form and close the panel
                     conn.user_management.clear_edit_user();
@@ -260,6 +282,26 @@ impl NexusApp {
             }
         }
         self.ui_state.show_edit_user = false;
+        Task::none()
+    }
+
+    /// Add an error message to the chat for user management errors and auto-scroll
+    fn add_user_management_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
+            conn.chat_messages.push(ChatMessage {
+                username: MSG_USERNAME_ERROR.to_string(),
+                message,
+                timestamp: Local::now(),
+            });
+
+            // Auto-scroll if this is the active connection
+            if self.active_connection == Some(connection_id) {
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
+            }
+        }
         Task::none()
     }
 }

@@ -1,7 +1,7 @@
 //! Keyboard navigation
 
 use crate::NexusApp;
-use crate::types::{BookmarkEditMode, InputId, Message};
+use crate::types::{BookmarkEditMode, InputId, Message, UserEditState};
 use iced::keyboard::{self, key};
 use iced::widget::text_input;
 use iced::{Event, Task};
@@ -30,6 +30,30 @@ impl NexusApp {
             };
             self.focused_field = next_field.clone();
             return text_input::focus(text_input::Id::from(next_field));
+        } else if self.ui_state.show_edit_user {
+            // On edit user screen, handle both stages
+            if let Some(conn_id) = self.active_connection {
+                if let Some(conn) = self.connections.get(&conn_id) {
+                    match &conn.user_management.edit_state {
+                        UserEditState::SelectingUser { .. } => {
+                            // Stage 1: Only username field
+                            self.focused_field = InputId::EditUsername;
+                            return text_input::focus(text_input::Id::from(InputId::EditUsername));
+                        }
+                        UserEditState::EditingUser { .. } => {
+                            // Stage 2: Cycle through edit fields
+                            let next_field = match self.focused_field {
+                                InputId::EditNewUsername => InputId::EditNewPassword,
+                                InputId::EditNewPassword => InputId::EditNewUsername,
+                                _ => InputId::EditNewUsername,
+                            };
+                            self.focused_field = next_field.clone();
+                            return text_input::focus(text_input::Id::from(next_field));
+                        }
+                        UserEditState::None => {}
+                    }
+                }
+            }
         } else if self.ui_state.show_broadcast {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
@@ -88,6 +112,27 @@ impl NexusApp {
                         }
                     }
                 }
+            } else if self.ui_state.show_edit_user {
+                // On edit user screen, handle Enter for both stages
+                if let Some(conn_id) = self.active_connection {
+                    if let Some(conn) = self.connections.get(&conn_id) {
+                        match &conn.user_management.edit_state {
+                            UserEditState::SelectingUser { username } => {
+                                // Stage 1: Submit edit request
+                                if !username.trim().is_empty() {
+                                    return self.update(Message::EditUserPressed);
+                                }
+                            }
+                            UserEditState::EditingUser { new_username, .. } => {
+                                // Stage 2: Submit update
+                                if !new_username.trim().is_empty() {
+                                    return self.update(Message::UpdateUserPressed);
+                                }
+                            }
+                            UserEditState::None => {}
+                        }
+                    }
+                }
             } else if self.ui_state.show_broadcast {
                 // On broadcast screen, try to send broadcast
                 if let Some(conn_id) = self.active_connection {
@@ -118,7 +163,10 @@ impl NexusApp {
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // Cancel bookmark edit
                 return self.update(Message::CancelBookmarkEdit);
-            } else if self.ui_state.show_add_user || self.ui_state.show_edit_user || self.ui_state.show_broadcast {
+            } else if self.ui_state.show_add_user
+                || self.ui_state.show_edit_user
+                || self.ui_state.show_broadcast
+            {
                 // Cancel add/edit user screens or broadcast
                 if self.ui_state.show_add_user {
                     return self.update(Message::ToggleAddUser);

@@ -7,6 +7,17 @@ use iced::Task;
 use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+// Message username constants
+const MSG_USERNAME_SYSTEM: &str = "System";
+const MSG_USERNAME_ERROR: &str = "Error";
+const MSG_USERNAME_INFO: &str = "Info";
+const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
+
+// Error message constants
+const ERR_CONNECTION_BROKEN: &str = "Connection error";
+const ERR_NO_SHUTDOWN_HANDLE: &str = "Connection error: No shutdown handle";
+const ERR_USERLIST_FAILED: &str = "Failed to refresh user list";
+
 impl NexusApp {
     /// Handle connection attempt result (success or failure)
     pub fn handle_connection_result(
@@ -40,10 +51,9 @@ impl NexusApp {
                     )
                 };
 
-                // Request initial user list (only if user has permission)
-                if conn.is_admin || conn.permissions.contains(&"user_list".to_string()) {
-                    let _ = conn.tx.send(ClientMessage::UserList);
-                }
+                let conn_tx = conn.tx.clone();
+                let should_request_userlist =
+                    conn.is_admin || conn.permissions.contains(&"user_list".to_string());
 
                 // Create server connection
                 let server_conn = ServerConnection {
@@ -54,7 +64,13 @@ impl NexusApp {
                     chat_messages: Vec::new(),
                     online_users: Vec::new(),
                     tx: conn.tx,
-                    shutdown_handle: conn.shutdown.unwrap(),
+                    shutdown_handle: match conn.shutdown {
+                        Some(handle) => handle,
+                        None => {
+                            self.connection_form.error = Some(ERR_NO_SHUTDOWN_HANDLE.to_string());
+                            return Task::none();
+                        }
+                    },
                     connection_id,
                     message_input: String::new(),
                     broadcast_message: String::new(),
@@ -66,6 +82,19 @@ impl NexusApp {
                 // Add to connections and make it active
                 self.connections.insert(connection_id, server_conn);
                 self.active_connection = Some(connection_id);
+
+                // Request initial user list (only if user has permission)
+                if should_request_userlist {
+                    if let Err(e) = conn_tx.send(ClientMessage::UserList) {
+                        // Channel send failed - connection is broken, show error
+                        self.connection_form.error =
+                            Some(format!("{}: {}", ERR_CONNECTION_BROKEN, e));
+                        // Remove the connection we just added since it's broken
+                        self.connections.remove(&connection_id);
+                        self.active_connection = None;
+                        return Task::none();
+                    }
+                }
 
                 // Clear connection form
                 self.connection_form.clear();
@@ -171,7 +200,7 @@ impl NexusApp {
             } => self.add_chat_message(
                 connection_id,
                 ChatMessage {
-                    username: format!("[BROADCAST] {}", username),
+                    username: format!("{} {}", MSG_USERNAME_BROADCAST_PREFIX, username),
                     message,
                     timestamp: Local::now(),
                 },
@@ -179,13 +208,13 @@ impl NexusApp {
             ServerMessage::UserBroadcastReply { success, error } => {
                 let message = if success {
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: "Broadcast sent successfully".to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
                     ChatMessage {
-                        username: "Error".to_string(),
+                        username: MSG_USERNAME_ERROR.to_string(),
                         message: format!("Failed to send broadcast: {}", error.unwrap_or_default()),
                         timestamp: Local::now(),
                     }
@@ -201,7 +230,7 @@ impl NexusApp {
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: format!("{} connected", user.username),
                         timestamp: Local::now(),
                     },
@@ -215,7 +244,7 @@ impl NexusApp {
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: format!("{} disconnected", username),
                         timestamp: Local::now(),
                     },
@@ -235,7 +264,7 @@ impl NexusApp {
             ServerMessage::UserInfoResponse { user, error } => {
                 let message = if let Some(err) = error {
                     ChatMessage {
-                        username: "Info".to_string(),
+                        username: MSG_USERNAME_INFO.to_string(),
                         message: format!("Error: {}", err),
                         timestamp: Local::now(),
                     }
@@ -246,42 +275,36 @@ impl NexusApp {
                         .unwrap()
                         .as_secs();
                     let session_duration_secs = now.saturating_sub(user.login_time);
-                    let duration_str = if session_duration_secs < 60 {
-                        format!("{}s", session_duration_secs)
-                    } else if session_duration_secs < 3600 {
-                        format!("{}m", session_duration_secs / 60)
-                    } else {
-                        format!("{}h {}m", session_duration_secs / 3600, (session_duration_secs % 3600) / 60)
-                    };
-                    
+                    let duration_str = Self::format_duration(session_duration_secs);
+
                     // Build info message
                     let mut info = String::new();
-                    
+
                     // Start with username
                     info.push_str(&user.username);
-                    
+
                     // Add admin status if present (only visible to admins)
                     if let Some(is_admin) = user.is_admin {
                         if is_admin {
                             info.push_str(" • Admin");
                         }
                     }
-                    
+
                     // Add online duration
                     info.push_str(&format!(" • Online: {}", duration_str));
-                    
+
                     // Add features if any
                     if !user.features.is_empty() {
                         info.push_str(&format!(" • Features: {}", user.features.join(", ")));
                     }
-                    
+
                     // Add address if present (only visible to admins)
                     if let Some(address) = user.address {
                         info.push_str(&format!(" • IP: {}", address));
                     }
-                    
+
                     ChatMessage {
-                        username: "Info".to_string(),
+                        username: MSG_USERNAME_INFO.to_string(),
                         message: info,
                         timestamp: Local::now(),
                     }
@@ -293,13 +316,13 @@ impl NexusApp {
             ServerMessage::UserCreateResponse { success, error } => {
                 let message = if success {
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: "User created successfully".to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
                     ChatMessage {
-                        username: "Error".to_string(),
+                        username: MSG_USERNAME_ERROR.to_string(),
                         message: format!("Failed to create user: {}", error.unwrap_or_default()),
                         timestamp: Local::now(),
                     }
@@ -309,13 +332,13 @@ impl NexusApp {
             ServerMessage::UserDeleteResponse { success, error } => {
                 let message = if success {
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: "User deleted successfully".to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
                     ChatMessage {
-                        username: "Error".to_string(),
+                        username: MSG_USERNAME_ERROR.to_string(),
                         message: format!("Failed to delete user: {}", error.unwrap_or_default()),
                         timestamp: Local::now(),
                     }
@@ -337,13 +360,13 @@ impl NexusApp {
             ServerMessage::UserUpdateResponse { success, error } => {
                 let message = if success {
                     ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: "User updated successfully".to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
                     ChatMessage {
-                        username: "Error".to_string(),
+                        username: MSG_USERNAME_ERROR.to_string(),
                         message: format!("Failed to update user: {}", error.unwrap_or_default()),
                         timestamp: Local::now(),
                     }
@@ -367,12 +390,21 @@ impl NexusApp {
                     // If user just gained user_list permission, refresh the list
                     // (it may be stale from missed join/leave events while permission was revoked)
                     if !had_user_list && has_user_list {
-                        let _ = conn.tx.send(ClientMessage::UserList);
+                        if let Err(e) = conn.tx.send(ClientMessage::UserList) {
+                            // Channel send failed - add error to chat
+                            let error_msg = format!("{}: {}", ERR_USERLIST_FAILED, e);
+                            let chat_msg = ChatMessage {
+                                username: MSG_USERNAME_ERROR.to_string(),
+                                message: error_msg,
+                                timestamp: Local::now(),
+                            };
+                            conn.chat_messages.push(chat_msg);
+                        }
                     }
 
                     // Notify user in chat
                     let message = ChatMessage {
-                        username: "System".to_string(),
+                        username: MSG_USERNAME_SYSTEM.to_string(),
                         message: "Your permissions have been updated".to_string(),
                         timestamp: Local::now(),
                     };
@@ -383,12 +415,23 @@ impl NexusApp {
             ServerMessage::Error { message, .. } => self.add_chat_message(
                 connection_id,
                 ChatMessage {
-                    username: "Error".to_string(),
+                    username: MSG_USERNAME_ERROR.to_string(),
                     message,
                     timestamp: Local::now(),
                 },
             ),
             _ => Task::none(),
+        }
+    }
+
+    /// Format session duration in human-readable form
+    fn format_duration(seconds: u64) -> String {
+        if seconds < 60 {
+            format!("{}s", seconds)
+        } else if seconds < 3600 {
+            format!("{}m", seconds / 60)
+        } else {
+            format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
         }
     }
 }
