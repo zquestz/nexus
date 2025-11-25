@@ -101,6 +101,8 @@ pub enum Message {
     ToggleBookmarks,
     /// Toolbar: Toggle Broadcast panel
     ToggleBroadcast,
+    /// Toolbar: Show chat view
+    ShowChatView,
     /// Toolbar: Toggle Edit User panel
     ToggleEditUser,
     /// Toolbar: Toggle light/dark theme

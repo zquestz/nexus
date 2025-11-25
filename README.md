@@ -6,16 +6,17 @@ A modern BBS (Bulletin Board System) for the [Yggdrasil](https://yggdrasil-netwo
 
 ⚠️ **Under Heavy Development** - Expect breaking changes
 
-🟢 **Server**: Production-ready (69 tests passing)  
-🟢 **Client**: GUI application with multi-server support
+🟢 **Server**: Production-ready (112 tests passing)  
+🟢 **Client**: Feature-complete GUI with multi-server support
 
 ## Features
 
-- Real-time chat and broadcast messaging
-- User management with permission-based access control
+- Real-time chat, broadcast messaging, and chat topics
+- Granular permission system (10 permissions)
 - Multi-server bookmarks with auto-connect
+- Admin panel for user management (create/edit/delete)
 - SQLite database with Argon2id password hashing
-- Cross-platform GUI (Iced framework)
+- Cross-platform GUI with light/dark themes (Iced framework)
 
 ## Architecture
 
@@ -59,7 +60,7 @@ Use the GUI to manage server bookmarks, chat, view users, and manage permissions
 ## Testing
 
 ```bash
-cargo test --workspace  # 75 tests total
+cargo test --workspace  # 134 tests total
 ```
 
 ## Database & Configuration

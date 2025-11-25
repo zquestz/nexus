@@ -196,6 +196,7 @@ impl NexusApp {
             Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleEditUser => self.handle_toggle_edit_user(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
+            Message::ShowChatView => self.handle_show_chat_view(),
             Message::ToggleTheme => self.handle_toggle_theme(),
 
             // Network events

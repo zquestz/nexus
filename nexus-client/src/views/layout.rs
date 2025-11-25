@@ -186,8 +186,69 @@ fn build_toolbar(
         row![
             // Title
             text("Nexus BBS").size(TOOLBAR_TITLE_SIZE),
-            // Main icon group (Broadcast, User Create, User Edit)
+            // Main icon group (Chat, Broadcast, User Create, User Edit)
             row![
+            // Chat button - always visible when connected
+            if is_connected {
+                tooltip(
+                    button(icon::chat().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ShowChatView)
+                        .style(move |theme, status| {
+                            if !show_broadcast_copy && !show_add_user_copy && !show_edit_user_copy {
+                                // Active state (on chat view) - blue background
+                                button::Style {
+                                    background: Some(Background::Color(interactive_hover_color())),
+                                    text_color: action_button_text(),
+                                    border: Border::default(),
+                                    shadow: iced::Shadow::default(),
+                                }
+                            } else {
+                                // Default state - transparent with hover
+                                button::Style {
+                                    background: None,
+                                    text_color: match status {
+                                        button::Status::Hovered => interactive_hover_color(),
+                                        _ => toolbar_icon_color(theme),
+                                    },
+                                    border: Border::default(),
+                                    shadow: iced::Shadow::default(),
+                                }
+                            }
+                        }),
+                    container(text("Chat").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            text_color: Some(tooltip_text_color(theme)),
+                            border: tooltip_border(),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
+            } else {
+                tooltip(
+                    button(icon::chat().size(TOOLBAR_ICON_SIZE))
+                        .style(|theme, _status| button::Style {
+                            background: None,
+                            text_color: toolbar_icon_disabled_color(theme),
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("Chat").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            text_color: Some(tooltip_text_color(theme)),
+                            border: tooltip_border(),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
+            },
             // Broadcast button
             if is_connected && has_broadcast {
                 tooltip(

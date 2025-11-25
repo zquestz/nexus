@@ -4,7 +4,6 @@ use super::permissions::{Permission, Permissions};
 use sqlx::SqlitePool;
 
 // SQL query constants
-const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
 const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE LOWER(username) = LOWER(?)";
 const SQL_SELECT_USER_BY_ID: &str =
     "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = ?";
@@ -95,14 +94,6 @@ impl UserDb {
                 created_at,
             },
         ))
-    }
-
-    /// Check if any users exist in the database
-    pub async fn has_any_users(&self) -> Result<bool, sqlx::Error> {
-        let count: (i64,) = sqlx::query_as(SQL_COUNT_USERS)
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(count.0 > 0)
     }
 
     // ========================================================================
@@ -228,6 +219,60 @@ impl UserDb {
         })
     }
 
+    /// Atomically create the first user as admin if no users exist
+    ///
+    /// This method uses a transaction to check if any users exist and create
+    /// the first user atomically, preventing race conditions where multiple
+    /// simultaneous logins could all become admin.
+    ///
+    /// Returns:
+    /// - Ok(Some(account)) - First user created successfully as admin
+    /// - Ok(None) - Users already exist, did not create
+    /// - Err(e) - Database error
+    pub async fn create_first_user_if_none_exist(
+        &self,
+        username: &str,
+        hashed_password: &str,
+    ) -> Result<Option<UserAccount>, sqlx::Error> {
+        // Start a transaction for atomicity
+        let mut tx = self.pool.begin().await?;
+
+        // Check if any users exist (within transaction)
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&mut *tx)
+            .await?;
+
+        if count.0 > 0 {
+            // Users exist - rollback and return None
+            tx.rollback().await?;
+            return Ok(None);
+        }
+
+        // No users exist - create first user as admin
+        let created_at = chrono::Utc::now().timestamp();
+
+        let result = sqlx::query(SQL_INSERT_USER)
+            .bind(username)
+            .bind(hashed_password)
+            .bind(true) // is_admin = true
+            .bind(created_at)
+            .execute(&mut *tx)
+            .await?;
+
+        let user_id = result.last_insert_rowid();
+
+        // Commit the transaction
+        tx.commit().await?;
+
+        Ok(Some(UserAccount {
+            id: user_id,
+            username: username.to_string(),
+            hashed_password: hashed_password.to_string(),
+            is_admin: true,
+            created_at,
+        }))
+    }
+
     /// Delete a user account
     /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
     ///
@@ -328,23 +373,6 @@ mod tests {
     // ========================================================================
     // Database Operations Tests
     // ========================================================================
-
-    #[tokio::test]
-    async fn test_has_any_users() {
-        let pool = create_test_db().await;
-        let db = UserDb::new(pool.clone());
-
-        // Initially no users
-        assert!(!db.has_any_users().await.unwrap());
-
-        // Create a user
-        db.create_user("alice", "hash", false, &Permissions::new())
-            .await
-            .unwrap();
-
-        // Now should have users
-        assert!(db.has_any_users().await.unwrap());
-    }
 
     #[tokio::test]
     async fn test_get_user_by_username() {

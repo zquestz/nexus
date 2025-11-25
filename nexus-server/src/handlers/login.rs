@@ -34,17 +34,6 @@ pub async fn handle_login(
             .await;
     }
 
-    // Determine if this is the first user (will auto-become admin)
-    let is_first_user = match ctx.db.users.has_any_users().await {
-        Ok(has_users) => !has_users,
-        Err(e) => {
-            eprintln!("Database error checking for users: {}", e);
-            return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("Login"))
-                .await;
-        }
-    };
-
     // Look up user account in database
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
@@ -77,8 +66,8 @@ pub async fn handle_login(
                     .await;
             }
         }
-    } else if is_first_user {
-        // First user - create as admin
+    } else {
+        // User doesn't exist - try to create as first user (atomic operation)
         let hashed_password = match db::hash_password(&password) {
             Ok(hash) => hash,
             Err(e) => {
@@ -89,32 +78,33 @@ pub async fn handle_login(
             }
         };
 
-        // Admin gets all permissions automatically (no need to store in table)
+        // Try to create as first admin - the database method will handle atomicity
         match ctx
             .db.users
-            .create_user(&username, &hashed_password, true, &db::Permissions::new())
+            .create_first_user_if_none_exist(&username, &hashed_password)
             .await
         {
-            Ok(account) => {
+            Ok(Some(account)) => {
                 println!(
                     "Created first user (admin): '{}' from {}",
                     username, ctx.peer_addr
                 );
                 account
             }
+            Ok(None) => {
+                // Another connection created the first user already
+                eprintln!("User {} does not exist and not first user", username);
+                return ctx
+                    .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
+                    .await;
+            }
             Err(e) => {
-                eprintln!("Failed to create admin user {}: {}", username, e);
+                eprintln!("Failed to create first user {}: {}", username, e);
                 return ctx
                     .send_error_and_disconnect(ERR_FAILED_TO_CREATE_USER, Some("Login"))
                     .await;
             }
         }
-    } else {
-        // User doesn't exist and not first user
-        eprintln!("User {} does not exist", username);
-        return ctx
-            .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
-            .await;
     };
 
     // Create session in UserManager

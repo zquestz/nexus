@@ -88,6 +88,17 @@ impl NexusApp {
         }
     }
 
+    /// Handle showing chat view - closes all panels and focuses chat input
+    pub fn handle_show_chat_view(&mut self) -> Task<Message> {
+        // Close all panels
+        self.ui_state.show_broadcast = false;
+        self.ui_state.show_add_user = false;
+        self.ui_state.show_edit_user = false;
+
+        // Focus chat input
+        text_input::focus(text_input::Id::from(InputId::ChatInput))
+    }
+
     /// Add an error message to the chat for broadcast errors and auto-scroll
     fn add_broadcast_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
         if let Some(conn) = self.connections.get_mut(&connection_id) {
