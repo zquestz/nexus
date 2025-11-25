@@ -40,7 +40,8 @@ pub async fn handle_userinfo(
 
     // Check UserInfo permission
     let has_perm = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(requesting_user.db_user_id, Permission::UserInfo)
         .await
     {
@@ -69,7 +70,7 @@ pub async fn handle_userinfo(
         .into_iter()
         .filter(|u| u.username == requested_username)
         .collect();
-    
+
     if target_sessions.is_empty() {
         // User not found - send response with None
         let response = ServerMessage::UserInfoResponse {
@@ -82,7 +83,8 @@ pub async fn handle_userinfo(
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
-        .db.users
+        .db
+        .users
         .get_user_by_username(&requesting_user.username)
         .await
     {
@@ -95,11 +97,7 @@ pub async fn handle_userinfo(
     };
 
     // Fetch target user account for admin status and created_at
-    let target_account = match ctx
-        .db.users
-        .get_user_by_username(&requested_username)
-        .await
-    {
+    let target_account = match ctx.db.users.get_user_by_username(&requested_username).await {
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
@@ -111,7 +109,7 @@ pub async fn handle_userinfo(
     // Aggregate session data
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
     let earliest_login = target_sessions.iter().map(|s| s.login_time).min().unwrap();
-    
+
     // Collect unique features from all sessions
     let mut all_features = std::collections::HashSet::new();
     for session in &target_sessions {
@@ -120,7 +118,7 @@ pub async fn handle_userinfo(
         }
     }
     let features: Vec<String> = all_features.into_iter().collect();
-    
+
     // Collect IP addresses from all sessions (for admins only)
     let addresses: Vec<String> = target_sessions
         .iter()
@@ -173,7 +171,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to get user info without being logged in
-        let result = handle_userinfo("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+        let result =
+            handle_userinfo("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserInfo should require login");
@@ -187,7 +186,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -206,7 +206,12 @@ mod tests {
             .await;
 
         // Try to get user info without permission
-        let result = handle_userinfo("alice".to_string(), Some(user_id), &mut test_ctx.handler_context()).await;
+        let result = handle_userinfo(
+            "alice".to_string(),
+            Some(user_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         // Should fail with disconnect
         assert!(
@@ -230,7 +235,8 @@ mod tests {
             set
         };
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &perms)
             .await
             .unwrap();
@@ -299,14 +305,16 @@ mod tests {
             set
         };
         let requester = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("requester", &hashed, false, &perms)
             .await
             .unwrap();
 
         // Create target user
         let target = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("target", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -389,14 +397,16 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create target user (non-admin)
         let target = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("target", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -427,8 +437,12 @@ mod tests {
             .await;
 
         // Request info about target as admin
-        let result =
-            handle_userinfo("target".to_string(), Some(admin_id), &mut test_ctx.handler_context()).await;
+        let result = handle_userinfo(
+            "target".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
@@ -464,7 +478,10 @@ mod tests {
                     "Target user is not admin"
                 );
 
-                assert!(user_info.addresses.is_some(), "Admin should see addresses field");
+                assert!(
+                    user_info.addresses.is_some(),
+                    "Admin should see addresses field"
+                );
                 let addresses = user_info.addresses.unwrap();
                 assert!(!addresses.is_empty(), "Addresses should not be empty");
                 assert_eq!(addresses.len(), 1, "Should have 1 address");
@@ -486,13 +503,15 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let admin1 = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin1", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
         let admin2 = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin2", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -523,8 +542,12 @@ mod tests {
             .await;
 
         // Admin1 requests info about admin2
-        let result =
-            handle_userinfo("admin2".to_string(), Some(admin1_id), &mut test_ctx.handler_context()).await;
+        let result = handle_userinfo(
+            "admin2".to_string(),
+            Some(admin1_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
@@ -552,13 +575,12 @@ mod tests {
                     user_info.is_admin.is_some(),
                     "Admin should see is_admin field"
                 );
-                assert_eq!(
-                    user_info.is_admin.unwrap(),
-                    true,
-                    "Target user is admin"
-                );
+                assert_eq!(user_info.is_admin.unwrap(), true, "Target user is admin");
 
-                assert!(user_info.addresses.is_some(), "Admin should see address field");
+                assert!(
+                    user_info.addresses.is_some(),
+                    "Admin should see address field"
+                );
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
         }

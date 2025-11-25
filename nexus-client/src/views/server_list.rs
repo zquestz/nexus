@@ -1,22 +1,20 @@
 //! Server list panel (left sidebar)
 
 use super::style::{
-    BORDER_WIDTH, FORM_PADDING, INPUT_PADDING,
-    PANEL_SPACING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT,
-    SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_BUTTON_SIZE, SERVER_LIST_DISCONNECT_ICON_SIZE,
-    SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
+    BORDER_WIDTH, FORM_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING, SECTION_TITLE_SIZE,
+    SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_BUTTON_SIZE,
+    SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_BACKGROUND_COLOR, NO_SPACING,
-    sidebar_background, sidebar_border, section_title_color, empty_state_color,
-    separator_color, alt_row_color, button_text_color, tooltip_text_color, tooltip_border,
-    primary_button_style, disconnect_icon_color, disconnect_icon_hover_color,
-    edit_icon_color, edit_icon_hover_color, interactive_hover_color,
+    TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
+    TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
+    disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color, empty_state_color,
+    interactive_hover_color, primary_button_style, section_title_color, separator_color,
+    sidebar_background, sidebar_border, tooltip_border, tooltip_text_color,
 };
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
-use iced::widget::{button, column, container, row, scrollable, text, tooltip, Column};
-use iced::{alignment, Background, Border, Element, Fill};
+use iced::widget::{Column, button, column, container, row, scrollable, text, tooltip};
+use iced::{Background, Border, Element, Fill, alignment};
 use std::collections::HashMap;
 
 /// Displays connected servers and saved bookmarks
@@ -32,24 +30,20 @@ pub fn server_list_panel<'a>(
     let mut main_column = Column::new().spacing(PANEL_SPACING);
 
     // === CONNECTED SERVERS SECTION ===
-    let connected_title = text("Connected")
-        .size(SECTION_TITLE_SIZE)
-        .style(|theme| {
-            iced::widget::text::Style {
+    let connected_title =
+        text("Connected")
+            .size(SECTION_TITLE_SIZE)
+            .style(|theme| iced::widget::text::Style {
                 color: Some(section_title_color(theme)),
-            }
-        });
-    let mut connected_column = Column::new()
-        .spacing(SERVER_LIST_ITEM_SPACING);
+            });
+    let mut connected_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if connections.is_empty() {
         connected_column = connected_column.push(
             text("No connections")
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
-                .style(|theme| {
-                    iced::widget::text::Style {
-                        color: Some(empty_state_color(theme)),
-                    }
+                .style(|theme| iced::widget::text::Style {
+                    color: Some(empty_state_color(theme)),
                 }),
         );
     } else {
@@ -99,16 +93,17 @@ pub fn server_list_panel<'a>(
 
             // Alternating row backgrounds
             let is_even = index % 2 == 0;
-            let row_container = container(server_row)
-                .width(Fill)
-                .style(move |theme| container::Style {
-                    background: if is_even {
-                        Some(Background::Color(alt_row_color(theme)))
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                });
+            let row_container =
+                container(server_row)
+                    .width(Fill)
+                    .style(move |theme| container::Style {
+                        background: if is_even {
+                            Some(Background::Color(alt_row_color(theme)))
+                        } else {
+                            None
+                        },
+                        ..Default::default()
+                    });
 
             connected_column = connected_column.push(row_container);
         }
@@ -131,24 +126,20 @@ pub fn server_list_panel<'a>(
     main_column = main_column.push(separator);
 
     // === BOOKMARKS SECTION ===
-    let bookmarks_title = text("Bookmarks")
-        .size(SECTION_TITLE_SIZE)
-        .style(|theme| {
-            iced::widget::text::Style {
+    let bookmarks_title =
+        text("Bookmarks")
+            .size(SECTION_TITLE_SIZE)
+            .style(|theme| iced::widget::text::Style {
                 color: Some(section_title_color(theme)),
-            }
-        });
-    let mut bookmarks_column = Column::new()
-        .spacing(SERVER_LIST_ITEM_SPACING);
+            });
+    let mut bookmarks_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if bookmarks.is_empty() {
         bookmarks_column = bookmarks_column.push(
             text("No bookmarks")
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
-                .style(|theme| {
-                    iced::widget::text::Style {
-                        color: Some(empty_state_color(theme)),
-                    }
+                .style(|theme| iced::widget::text::Style {
+                    color: Some(empty_state_color(theme)),
                 }),
         );
     } else {
@@ -210,16 +201,17 @@ pub fn server_list_panel<'a>(
 
             // Alternating row backgrounds
             let is_even = index % 2 == 0;
-            let row_container = container(bookmark_row)
-                .width(Fill)
-                .style(move |theme| container::Style {
-                    background: if is_even {
-                        Some(Background::Color(alt_row_color(theme)))
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                });
+            let row_container =
+                container(bookmark_row)
+                    .width(Fill)
+                    .style(move |theme| container::Style {
+                        background: if is_even {
+                            Some(Background::Color(alt_row_color(theme)))
+                        } else {
+                            None
+                        },
+                        ..Default::default()
+                    });
 
             bookmarks_column = bookmarks_column.push(row_container);
         }
@@ -257,13 +249,11 @@ pub fn server_list_panel<'a>(
         .into()
 }
 
-
-
 /// Helper function to create transparent icon buttons with hover color change
-fn transparent_icon_button<'a>(
-    icon: iced::widget::Text<'a>,
+fn transparent_icon_button(
+    icon: iced::widget::Text<'_>,
     message: Message,
-) -> button::Button<'a, Message> {
+) -> button::Button<'_, Message> {
     button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
         .on_press(message)
         .width(SERVER_LIST_BUTTON_HEIGHT)
@@ -280,10 +270,10 @@ fn transparent_icon_button<'a>(
 }
 
 /// Helper function to create transparent edit/cog buttons with hover color change
-fn transparent_edit_button<'a>(
-    icon: iced::widget::Text<'a>,
+fn transparent_edit_button(
+    icon: iced::widget::Text<'_>,
     message: Message,
-) -> button::Button<'a, Message> {
+) -> button::Button<'_, Message> {
     button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
         .on_press(message)
         .width(SERVER_LIST_BUTTON_HEIGHT)

@@ -73,7 +73,8 @@ pub async fn handle_chat_send(
 
     // Check permission
     let has_perm = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(user.db_user_id, Permission::ChatSend)
         .await
     {

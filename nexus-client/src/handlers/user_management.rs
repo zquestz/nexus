@@ -1,10 +1,10 @@
 //! User management
 
-use crate::types::{ChatMessage, InputId, Message, ScrollableId, UserEditState};
 use crate::NexusApp;
+use crate::types::{ChatMessage, InputId, Message, ScrollableId, UserEditState};
 use chrono::Local;
-use iced::widget::scrollable;
 use iced::Task;
+use iced::widget::scrollable;
 use nexus_common::protocol::ClientMessage;
 
 // Constants
@@ -93,10 +93,11 @@ impl NexusApp {
                     is_admin,
                     permissions,
                 };
-                
+
                 // Send message and handle errors
                 if let Err(e) = conn.tx.send(msg) {
-                    return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                    return self
+                        .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
                 }
 
                 // Clear the form and close the panel
@@ -112,10 +113,11 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
                 let msg = ClientMessage::UserDelete { username };
-                
+
                 // Send message and handle errors
                 if let Err(e) = conn.tx.send(msg) {
-                    return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                    return self
+                        .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
                 }
                 // Note: This is called from the Delete button in the User Edit form
                 // The edit form will handle closing itself
@@ -128,7 +130,10 @@ impl NexusApp {
     pub fn handle_edit_username_changed(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::SelectingUser { username: ref mut u } = conn.user_management.edit_state {
+                if let UserEditState::SelectingUser {
+                    username: ref mut u,
+                } = conn.user_management.edit_state
+                {
                     *u = username;
                 }
             }
@@ -141,7 +146,11 @@ impl NexusApp {
     pub fn handle_edit_new_username_changed(&mut self, new_username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::EditingUser { new_username: ref mut nu, .. } = conn.user_management.edit_state {
+                if let UserEditState::EditingUser {
+                    new_username: ref mut nu,
+                    ..
+                } = conn.user_management.edit_state
+                {
                     *nu = new_username;
                 }
             }
@@ -154,7 +163,11 @@ impl NexusApp {
     pub fn handle_edit_new_password_changed(&mut self, new_password: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::EditingUser { new_password: ref mut np, .. } = conn.user_management.edit_state {
+                if let UserEditState::EditingUser {
+                    new_password: ref mut np,
+                    ..
+                } = conn.user_management.edit_state
+                {
                     *np = new_password;
                 }
             }
@@ -167,7 +180,11 @@ impl NexusApp {
     pub fn handle_edit_is_admin_toggled(&mut self, is_admin: bool) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::EditingUser { is_admin: ref mut ia, .. } = conn.user_management.edit_state {
+                if let UserEditState::EditingUser {
+                    is_admin: ref mut ia,
+                    ..
+                } = conn.user_management.edit_state
+                {
                     *ia = is_admin;
                 }
             }
@@ -183,7 +200,11 @@ impl NexusApp {
     ) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::EditingUser { permissions: ref mut perms, .. } = conn.user_management.edit_state {
+                if let UserEditState::EditingUser {
+                    permissions: ref mut perms,
+                    ..
+                } = conn.user_management.edit_state
+                {
                     if let Some(perm) = perms.iter_mut().find(|(p, _)| p == &permission) {
                         perm.1 = enabled;
                     }
@@ -197,14 +218,18 @@ impl NexusApp {
     pub fn handle_edit_user_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get_mut(&conn_id) {
-                if let UserEditState::SelectingUser { username } = &conn.user_management.edit_state {
+                if let UserEditState::SelectingUser { username } = &conn.user_management.edit_state
+                {
                     let msg = ClientMessage::UserEdit {
                         username: username.clone(),
                     };
-                    
+
                     // Send message and handle errors
                     if let Err(e) = conn.tx.send(msg) {
-                        return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                        return self.add_user_management_error(
+                            conn_id,
+                            format!("{}: {}", ERR_SEND_FAILED, e),
+                        );
                     }
                     // Stay on this screen, wait for server response
                 }
@@ -223,7 +248,8 @@ impl NexusApp {
                     new_password,
                     is_admin,
                     permissions,
-                } = &conn.user_management.edit_state {
+                } = &conn.user_management.edit_state
+                {
                     let requested_username = if new_username != original_username {
                         Some(new_username.clone())
                     } else {
@@ -237,11 +263,7 @@ impl NexusApp {
                     };
 
                     // Only send admin flag if current user is admin
-                    let requested_is_admin = if conn.is_admin {
-                        Some(*is_admin)
-                    } else {
-                        None
-                    };
+                    let requested_is_admin = if conn.is_admin { Some(*is_admin) } else { None };
 
                     // Only send permissions that the current user has (or all if admin)
                     let requested_permissions: Vec<String> = permissions
@@ -259,10 +281,13 @@ impl NexusApp {
                         requested_is_admin,
                         requested_permissions: Some(requested_permissions),
                     };
-                    
+
                     // Send message and handle errors
                     if let Err(e) = conn.tx.send(msg) {
-                        return self.add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                        return self.add_user_management_error(
+                            conn_id,
+                            format!("{}: {}", ERR_SEND_FAILED, e),
+                        );
                     }
 
                     // Clear the form and close the panel
@@ -286,7 +311,11 @@ impl NexusApp {
     }
 
     /// Add an error message to the chat for user management errors and auto-scroll
-    fn add_user_management_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
+    fn add_user_management_error(
+        &mut self,
+        connection_id: usize,
+        message: String,
+    ) -> Task<Message> {
         if let Some(conn) = self.connections.get_mut(&connection_id) {
             conn.chat_messages.push(ChatMessage {
                 username: MSG_USERNAME_ERROR.to_string(),

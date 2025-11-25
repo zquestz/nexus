@@ -325,11 +325,9 @@ impl UserDb {
 
         // Check if new username already exists (and it's not the same user)
         if let Some(new_name) = requested_username {
-            if new_name != username {
-                if let Some(_) = self.get_user_by_username(new_name).await? {
-                    // Username already taken
-                    return Ok(false);
-                }
+            if new_name != username && self.get_user_by_username(new_name).await?.is_some() {
+                // Username already taken
+                return Ok(false);
             }
         }
 

@@ -2,8 +2,8 @@
 
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
-    primary_text_input_style, error_message_color,
+    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, error_message_color,
+    primary_button_style, primary_text_input_style,
 };
 use crate::types::{InputId, Message};
 use iced::widget::{button, column, container, text, text_input};
@@ -95,7 +95,12 @@ pub fn connection_form_view<'a>(
 
     // Show error if present (at top for visibility)
     if let Some(error) = connection_error {
-        column_items.push(text(error).size(TEXT_SIZE).color(error_message_color()).into());
+        column_items.push(
+            text(error)
+                .size(TEXT_SIZE)
+                .color(error_message_color())
+                .into(),
+        );
         column_items.push(text("").size(SPACER_SIZE_MEDIUM).into());
     }
 

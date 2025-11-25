@@ -4,7 +4,7 @@ use super::{
     ERR_CANNOT_CREATE_ADMIN, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
     ERR_USERNAME_EXISTS, HandlerContext,
 };
-use crate::db::{hash_password, Permission, Permissions};
+use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
@@ -56,13 +56,14 @@ pub async fn handle_usercreate(
     };
 
     // Get requesting user from session
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
         Some(u) => u,
         None => {
-            eprintln!(
-                "UserCreate request from unknown user {}",
-                ctx.peer_addr
-            );
+            eprintln!("UserCreate request from unknown user {}", ctx.peer_addr);
             return ctx
                 .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
                 .await;
@@ -71,7 +72,8 @@ pub async fn handle_usercreate(
 
     // Check UserCreate permission
     let has_permission = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(requesting_user.db_user_id, Permission::UserCreate)
         .await
     {
@@ -97,7 +99,8 @@ pub async fn handle_usercreate(
     // Verify admin creation privilege
     if is_admin {
         let requesting_account = match ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username(&requesting_user.username)
             .await
         {
@@ -122,7 +125,8 @@ pub async fn handle_usercreate(
 
     // Fetch requesting user's account for permission validation
     let requesting_account = match ctx
-        .db.users
+        .db
+        .users
         .get_user_by_username(&requesting_user.username)
         .await
     {
@@ -141,7 +145,8 @@ pub async fn handle_usercreate(
             // Non-admins can only grant permissions they have
             if !requesting_account.is_admin {
                 let has_perm = match ctx
-                    .db.users
+                    .db
+                    .users
                     .has_permission(requesting_user.db_user_id, perm)
                     .await
                 {
@@ -206,7 +211,8 @@ pub async fn handle_usercreate(
 
     // Create user in database
     match ctx
-        .db.users
+        .db
+        .users
         .create_user(&username, &password_hash, is_admin, &perms)
         .await
     {
@@ -258,14 +264,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITHOUT UserCreate permission (non-admin)
-        let user_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[],
-            false,
-        )
-        .await;
+        let user_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to create user without permission
         let result = handle_usercreate(
@@ -291,14 +290,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create an admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new user
         let result = handle_usercreate(
@@ -331,7 +323,8 @@ mod tests {
 
         // Verify user exists in database
         let created_user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("newuser")
             .await
             .unwrap();
@@ -349,14 +342,16 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create existing user
         let _existing = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("existing", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -418,14 +413,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create an admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new admin user
         let result = handle_usercreate(
@@ -458,7 +446,8 @@ mod tests {
 
         // Verify user exists and is admin
         let created_user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("newadmin")
             .await
             .unwrap();
@@ -516,16 +505,18 @@ mod tests {
 
         // Verify user exists
         let created_user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("newuser")
             .await
             .unwrap();
         assert!(created_user.is_some(), "User should exist in database");
-        
+
         // Verify permissions were granted
         let user = created_user.unwrap();
         let has_user_list = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::UserList)
             .await
             .unwrap();
@@ -537,14 +528,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create an admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new user with specific permissions
         let result = handle_usercreate(
@@ -584,7 +568,8 @@ mod tests {
 
         // Verify user exists and has the specified permissions
         let created_user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("newuser")
             .await
             .unwrap();
@@ -593,17 +578,20 @@ mod tests {
 
         // Check granted permissions
         let has_user_list = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::UserList)
             .await
             .unwrap();
         let has_user_info = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::UserInfo)
             .await
             .unwrap();
         let has_chat_send = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::ChatSend)
             .await
             .unwrap();
@@ -614,12 +602,14 @@ mod tests {
 
         // Check permissions NOT granted
         let has_chat_receive = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::ChatReceive)
             .await
             .unwrap();
         let has_user_delete = test_ctx
-            .db.users
+            .db
+            .users
             .has_permission(user.id, db::Permission::UserDelete)
             .await
             .unwrap();
@@ -642,7 +632,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let _admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -656,7 +647,8 @@ mod tests {
             set
         };
         let creator = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("creator", &hashed, false, &perms)
             .await
             .unwrap();
@@ -700,7 +692,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let _admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -715,7 +708,8 @@ mod tests {
             set
         };
         let creator = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("creator", &hashed, false, &perms)
             .await
             .unwrap();
@@ -760,14 +754,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let session_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create user with empty username
         let result = handle_usercreate(
@@ -788,14 +775,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let session_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create user with empty password
         let result = handle_usercreate(
@@ -816,14 +796,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Admin can grant ALL permissions even if not explicitly listed
         let result = handle_usercreate(
@@ -866,7 +839,8 @@ mod tests {
 
         // Verify user has all permissions
         let created_user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("newuser")
             .await
             .unwrap();
@@ -885,15 +859,12 @@ mod tests {
 
         for perm in all_perms {
             let has_perm = test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(user.id, perm)
                 .await
                 .unwrap();
-            assert!(
-                has_perm,
-                "User should have {:?} permission",
-                perm
-            );
+            assert!(has_perm, "User should have {:?} permission", perm);
         }
     }
 }

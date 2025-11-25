@@ -150,7 +150,7 @@ impl NexusApp {
             Message::ConnectPressed => self.handle_connect_pressed(),
 
             // Chat operations
-            Message::MessageInputChanged(input) => self.handle_message_input_changed(input),
+            Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
             Message::RequestUserInfo(session_id) => self.handle_request_user_info(session_id),
             Message::DisconnectFromServer(connection_id) => {

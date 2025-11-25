@@ -12,7 +12,7 @@ use iced::{Center, Element, Fill};
 /// Render the broadcast panel
 ///
 /// Shows a form for composing and sending broadcast messages to all connected users.
-pub fn broadcast_view<'a>(conn: &'a ServerConnection) -> Element<'a, Message> {
+pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
     let title = text("Broadcast Message")
         .size(TITLE_SIZE)
         .width(Fill)

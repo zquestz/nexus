@@ -3,7 +3,7 @@
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, form_error_color,
+    form_error_color, primary_button_style, primary_checkbox_style, primary_text_input_style,
 };
 use crate::types::{BookmarkEditMode, InputId, Message};
 use iced::widget::{button, checkbox, column, container, row, text, text_input};
@@ -14,6 +14,7 @@ use iced::{Center, Element, Fill};
 /// Shows validated input fields for server connection details with optional
 /// username/password fields and auto-connect checkbox. Validates that required
 /// fields (name, address, port) are non-empty before enabling save button.
+#[allow(clippy::too_many_arguments)]
 pub fn bookmark_edit_view<'a>(
     bookmark_edit_mode: &'a BookmarkEditMode,
     bookmark_name: &'a str,

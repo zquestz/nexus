@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="#2d5a7d" stroke="#1a3a52" stroke-width="4"/>
+  
+  <!-- Network nodes (hexagon pattern representing Yggdrasil mesh) -->
+  <g fill="#4d9fd9" stroke="#3d7fb9" stroke-width="2">
+    <!-- Center node -->
+    <circle cx="128" cy="128" r="16"/>
+    
+    <!-- Ring of 6 nodes -->
+    <circle cx="128" cy="68" r="12"/>
+    <circle cx="180" cy="98" r="12"/>
+    <circle cx="180" cy="158" r="12"/>
+    <circle cx="128" cy="188" r="12"/>
+    <circle cx="76" cy="158" r="12"/>
+    <circle cx="76" cy="98" r="12"/>
+  </g>
+  
+  <!-- Connection lines -->
+  <g stroke="#5db3f5" stroke-width="3" opacity="0.7" fill="none">
+    <!-- Center to ring connections -->
+    <line x1="128" y1="128" x2="128" y2="68"/>
+    <line x1="128" y1="128" x2="180" y2="98"/>
+    <line x1="128" y1="128" x2="180" y2="158"/>
+    <line x1="128" y1="128" x2="128" y2="188"/>
+    <line x1="128" y1="128" x2="76" y2="158"/>
+    <line x1="128" y1="128" x2="76" y2="98"/>
+    
+    <!-- Ring connections (hexagon) -->
+    <line x1="128" y1="68" x2="180" y2="98"/>
+    <line x1="180" y1="98" x2="180" y2="158"/>
+    <line x1="180" y1="158" x2="128" y2="188"/>
+    <line x1="128" y1="188" x2="76" y2="158"/>
+    <line x1="76" y1="158" x2="76" y2="98"/>
+    <line x1="76" y1="98" x2="128" y2="68"/>
+  </g>
+  
+  <!-- Terminal/BBS elements (small squares representing text) -->
+  <g fill="#ffffff" opacity="0.9">
+    <rect x="95" y="115" width="4" height="4"/>
+    <rect x="102" y="115" width="4" height="4"/>
+    <rect x="109" y="115" width="4" height="4"/>
+    <rect x="95" y="122" width="4" height="4"/>
+    <rect x="102" y="122" width="4" height="4"/>
+    <rect x="95" y="129" width="4" height="4"/>
+    <rect x="102" y="129" width="4" height="4"/>
+    <rect x="109" y="129" width="4" height="4"/>
+    
+    <rect x="145" y="115" width="4" height="4"/>
+    <rect x="152" y="115" width="4" height="4"/>
+    <rect x="159" y="115" width="4" height="4"/>
+    <rect x="145" y="122" width="4" height="4"/>
+    <rect x="159" y="122" width="4" height="4"/>
+    <rect x="145" y="129" width="4" height="4"/>
+    <rect x="152" y="129" width="4" height="4"/>
+    <rect x="159" y="129" width="4" height="4"/>
+  </g>
+</svg>

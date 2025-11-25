@@ -1,5 +1,10 @@
 # Nexus BBS
 
+[![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/zquestz/nexus)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
+
 A modern BBS (Bulletin Board System) for the [Yggdrasil](https://yggdrasil-network.github.io/) mesh network, inspired by classic community servers like Hotline, KDX, Carracho, and Wired.
 
 ## Status
@@ -56,6 +61,12 @@ First user to connect becomes admin automatically.
 ```
 
 Use the GUI to manage server bookmarks, chat, view users, and manage permissions.
+
+## Linux Desktop Integration
+
+For Linux systems, desktop integration files (icon and .desktop file) are available in `nexus-client/assets/linux/`.
+
+See `nexus-client/assets/linux/README.md` for installation instructions.
 
 ## Testing
 

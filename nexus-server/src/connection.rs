@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc;
 
 /// Handle a client connection
@@ -57,10 +58,10 @@ pub async fn handle_connection(
                     &line,
                     &mut session_id,
                     &mut handshake_complete,
+                    peer_addr,
                     &mut writer,
                     &user_manager,
                     &db,
-                    peer_addr,
                     &tx,
                     debug,
                 ).await {
@@ -99,14 +100,15 @@ pub async fn handle_connection(
 }
 
 /// Handle a message from the client
+#[allow(clippy::too_many_arguments)]
 async fn handle_client_message(
     line: &str,
     session_id: &mut Option<u32>,
     handshake_complete: &mut bool,
-    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    peer_addr: SocketAddr,
+    writer: &mut OwnedWriteHalf,
     user_manager: &UserManager,
     db: &Database,
-    peer_addr: SocketAddr,
     tx: &mpsc::UnboundedSender<ServerMessage>,
     debug: bool,
 ) -> io::Result<()> {

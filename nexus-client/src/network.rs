@@ -121,7 +121,7 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
         .await
         .map_err(|e| format!("Failed to read handshake response: {}", e))?;
 
-    match serde_json::from_str::<ServerMessage>(&line.trim()) {
+    match serde_json::from_str::<ServerMessage>(line.trim()) {
         Ok(ServerMessage::HandshakeResponse { success: true, .. }) => Ok(()),
         Ok(ServerMessage::HandshakeResponse {
             success: false,
@@ -157,7 +157,7 @@ async fn perform_login(
         .await
         .map_err(|e| format!("Failed to read login response: {}", e))?;
 
-    match serde_json::from_str::<ServerMessage>(&line.trim()) {
+    match serde_json::from_str::<ServerMessage>(line.trim()) {
         Ok(ServerMessage::LoginResponse {
             success: true,
             session_id: Some(id),

@@ -10,7 +10,7 @@ impl UserManager {
     /// Automatically removes users whose channels have closed (disconnected connections).
     pub async fn broadcast(&self, message: ServerMessage) {
         let mut disconnected = Vec::new();
-        
+
         {
             let users = self.users.read().await;
             for user in users.values() {
@@ -19,7 +19,7 @@ impl UserManager {
                 }
             }
         }
-        
+
         self.remove_disconnected(disconnected).await;
     }
 
@@ -28,18 +28,16 @@ impl UserManager {
     /// Automatically removes users whose channels have closed (disconnected connections).
     pub async fn broadcast_except(&self, exclude_session_id: u32, message: ServerMessage) {
         let mut disconnected = Vec::new();
-        
+
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.session_id != exclude_session_id {
-                    if user.tx.send(message.clone()).is_err() {
-                        disconnected.push(user.session_id);
-                    }
+                if user.session_id != exclude_session_id && user.tx.send(message.clone()).is_err() {
+                    disconnected.push(user.session_id);
                 }
             }
         }
-        
+
         self.remove_disconnected(disconnected).await;
     }
 
@@ -57,7 +55,7 @@ impl UserManager {
         required_permission: Permission,
     ) {
         let mut disconnected = Vec::new();
-        
+
         {
             let users = self.users.read().await;
             for user in users.values() {
@@ -88,7 +86,7 @@ impl UserManager {
                 }
             }
         }
-        
+
         self.remove_disconnected(disconnected).await;
     }
 
@@ -100,18 +98,16 @@ impl UserManager {
     /// Automatically removes users whose channels have closed (disconnected connections).
     pub async fn broadcast_to_username(&self, username: &str, message: &ServerMessage) {
         let mut disconnected = Vec::new();
-        
+
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.username == username {
-                    if user.tx.send(message.clone()).is_err() {
-                        disconnected.push(user.session_id);
-                    }
+                if user.username == username && user.tx.send(message.clone()).is_err() {
+                    disconnected.push(user.session_id);
                 }
             }
         }
-        
+
         self.remove_disconnected(disconnected).await;
     }
 
@@ -128,7 +124,7 @@ impl UserManager {
         required_permission: Permission,
     ) {
         let mut disconnected = Vec::new();
-        
+
         {
             let users = self.users.read().await;
             for user in users.values() {
@@ -154,7 +150,7 @@ impl UserManager {
                 }
             }
         }
-        
+
         self.remove_disconnected(disconnected).await;
     }
 }

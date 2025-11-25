@@ -66,7 +66,7 @@ pub enum Message {
     /// Keyboard or mouse event
     Event(iced::Event),
     /// Chat: Message input field changed
-    MessageInputChanged(String),
+    ChatInputChanged(String),
     /// Network: Error occurred on connection
     NetworkError(usize, String),
     /// Connection form: Password field changed

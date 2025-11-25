@@ -50,7 +50,7 @@ pub struct HandlerContext<'a> {
     pub debug: bool,
 }
 
-impl<'a> HandlerContext<'a> {
+impl HandlerContext<'_> {
     /// Send a message to the client
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
         send_server_message(self.writer, message).await

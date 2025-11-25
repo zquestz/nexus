@@ -45,7 +45,8 @@ pub async fn handle_userdelete(
 
     // Fetch requesting user account for permission check
     let requesting_user = match ctx
-        .db.users
+        .db
+        .users
         .get_user_by_id(requesting_user_session.db_user_id)
         .await
     {
@@ -66,7 +67,8 @@ pub async fn handle_userdelete(
     // Check UserDelete permission
     let has_permission = requesting_user.is_admin
         || match ctx
-            .db.users
+            .db
+            .users
             .has_permission(requesting_user.id, Permission::UserDelete)
             .await
         {
@@ -132,7 +134,7 @@ pub async fn handle_userdelete(
             // Broadcast disconnection to all other users
             ctx.user_manager
                 .broadcast(ServerMessage::UserDisconnected {
-                    session_id: session_id,
+                    session_id,
                     username: removed_user.username.clone(),
                 })
                 .await;
@@ -191,18 +193,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user WITHOUT UserDelete permission (non-admin)
-        let user_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[],
-            false,
-        )
-        .await;
+        let user_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Create target user
         let target = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -251,14 +247,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete non-existent user
         let result = handle_userdelete(
@@ -300,14 +289,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete self
         let result = handle_userdelete(
@@ -345,7 +327,12 @@ mod tests {
         }
 
         // Verify admin still exists
-        let still_exists = test_ctx.db.users.get_user_by_username("admin").await.unwrap();
+        let still_exists = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap();
         assert!(
             still_exists.is_some(),
             "Admin should not be able to delete themselves"
@@ -360,7 +347,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let _admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("only_admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -411,7 +399,8 @@ mod tests {
 
         // Verify only admin still exists in database
         let remaining_admin = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("only_admin")
             .await
             .unwrap();
@@ -423,25 +412,20 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin user
-        let admin_id = login_user(
-            &mut test_ctx,
-            "admin",
-            "password",
-            &[],
-            true,
-        )
-        .await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create offline user to delete
         let offline_user = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("offline_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create online user to delete
         let online_user = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("online_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -461,7 +445,10 @@ mod tests {
             .await;
 
         // Verify online user is connected
-        let online_before = test_ctx.user_manager.get_user_by_session_id(online_session_id).await;
+        let online_before = test_ctx
+            .user_manager
+            .get_user_by_session_id(online_session_id)
+            .await;
         assert!(
             online_before.is_some(),
             "Online user should be connected before deletion"
@@ -476,7 +463,8 @@ mod tests {
         .await;
         assert!(result1.is_ok(), "Should successfully delete offline user");
         let deleted1 = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_id(offline_user.id)
             .await
             .unwrap();
@@ -494,7 +482,8 @@ mod tests {
         .await;
         assert!(result2.is_ok(), "Should successfully delete online user");
         let deleted2 = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_id(online_user.id)
             .await
             .unwrap();
@@ -504,7 +493,10 @@ mod tests {
         );
 
         // Verify online user was disconnected from UserManager
-        let online_after = test_ctx.user_manager.get_user_by_session_id(online_session_id).await;
+        let online_after = test_ctx
+            .user_manager
+            .get_user_by_session_id(online_session_id)
+            .await;
         assert!(
             online_after.is_none(),
             "Online user should be disconnected from UserManager"
@@ -527,7 +519,8 @@ mod tests {
 
         // Create target user
         let target = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("target", "hash", false, &db::Permissions::new())
             .await
             .unwrap();

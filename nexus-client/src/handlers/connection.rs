@@ -1,10 +1,10 @@
 //! Connection and chat message handlers
 
 use crate::types::{ChatMessage, InputId, Message, ScrollableId};
-use crate::{network, NexusApp};
+use crate::{NexusApp, network};
 use chrono::Local;
-use iced::widget::{scrollable, text_input};
 use iced::Task;
+use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::ClientMessage;
 
 // Constants
@@ -85,14 +85,8 @@ impl NexusApp {
 
         Task::perform(
             async move {
-                network::connect_to_server(
-                    server_address,
-                    port,
-                    username,
-                    password,
-                    connection_id,
-                )
-                .await
+                network::connect_to_server(server_address, port, username, password, connection_id)
+                    .await
             },
             Message::ConnectionResult,
         )

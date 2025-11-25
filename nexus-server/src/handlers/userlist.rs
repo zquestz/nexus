@@ -36,7 +36,8 @@ pub async fn handle_userlist(
 
     // Check UserList permission
     let has_perm = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(user.db_user_id, Permission::UserList)
         .await
     {
@@ -61,19 +62,20 @@ pub async fn handle_userlist(
 
     // Fetch all connected users
     let all_users = ctx.user_manager.get_all_users().await;
-    
+
     // Deduplicate by username and aggregate sessions
     use std::collections::HashMap;
     let mut user_map: HashMap<String, (u64, bool, Vec<u32>)> = HashMap::new(); // (earliest_login, is_admin, session_ids)
-    
+
     for user in all_users {
         // Get user account to check admin status
         let is_admin = match ctx.db.users.get_user_by_id(user.db_user_id).await {
             Ok(Some(account)) => account.is_admin,
             _ => false, // Default to non-admin if lookup fails
         };
-        
-        user_map.entry(user.username.clone())
+
+        user_map
+            .entry(user.username.clone())
             .and_modify(|(login_time, _, session_ids)| {
                 // Keep earliest login time
                 *login_time = (*login_time).min(user.login_time);
@@ -81,9 +83,10 @@ pub async fn handle_userlist(
             })
             .or_insert((user.login_time, is_admin, vec![user.session_id]));
     }
-    
+
     // Build deduplicated user info list
-    let mut user_infos: Vec<UserInfo> = user_map.into_iter()
+    let mut user_infos: Vec<UserInfo> = user_map
+        .into_iter()
         .map(|(username, (login_time, is_admin, session_ids))| UserInfo {
             username,
             login_time,
@@ -91,7 +94,7 @@ pub async fn handle_userlist(
             session_ids,
         })
         .collect();
-    
+
     // Sort by username (case-insensitive) for consistent ordering
     user_infos.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
 
@@ -204,7 +207,7 @@ mod tests {
             result.is_ok(),
             "Admin should be able to list users without explicit permission"
         );
-        
+
         // Verify admin flag is set
         use crate::handlers::testing::read_server_message;
         let response = read_server_message(&mut test_ctx.client).await;

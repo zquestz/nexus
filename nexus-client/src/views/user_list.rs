@@ -17,7 +17,7 @@ use iced::{Background, Border, Element, Fill};
 ///
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
-pub fn user_list_panel<'a>(conn: &'a ServerConnection) -> Element<'a, Message> {
+pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
     let title = text("Users")
         .size(USER_LIST_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {

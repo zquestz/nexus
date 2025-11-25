@@ -12,7 +12,7 @@ const CONFIG_FILE_MODE: u32 = 0o600;
 ///
 /// The config is persisted to disk as JSON in the platform-specific
 /// configuration directory (e.g., ~/.config/nexus/config.json on Linux).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct Config {
     pub bookmarks: Vec<ServerBookmark>,
     #[serde(default)]
@@ -29,15 +29,6 @@ pub enum ThemePreference {
 impl Default for ThemePreference {
     fn default() -> Self {
         Self::Dark
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            bookmarks: Vec::new(),
-            theme: ThemePreference::default(),
-        }
     }
 }
 

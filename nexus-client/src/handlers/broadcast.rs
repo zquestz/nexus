@@ -1,10 +1,10 @@
 //! Broadcast message handlers
 
-use crate::types::{ChatMessage, InputId, Message, ScrollableId};
 use crate::NexusApp;
+use crate::types::{ChatMessage, InputId, Message, ScrollableId};
 use chrono::Local;
-use iced::widget::{scrollable, text_input};
 use iced::Task;
+use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::ClientMessage;
 
 // Constants
@@ -81,10 +81,10 @@ impl NexusApp {
             self.ui_state.show_edit_user = false;
 
             // Focus broadcast input when opening
-            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
+            text_input::focus(text_input::Id::from(InputId::BroadcastMessage))
         } else {
             // Return focus to chat when closing
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            text_input::focus(text_input::Id::from(InputId::ChatInput))
         }
     }
 
@@ -107,7 +107,7 @@ impl NexusApp {
                 message,
                 timestamp: Local::now(),
             });
-            
+
             // Auto-scroll if this is the active connection
             if self.active_connection == Some(connection_id) {
                 return scrollable::snap_to(

@@ -77,7 +77,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     let input_row = row![
         if can_send {
             text_input("Type a message...", message_input)
-                .on_input(Message::MessageInputChanged)
+                .on_input(Message::ChatInputChanged)
                 .on_submit(Message::SendMessagePressed)
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)

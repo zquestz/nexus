@@ -6,7 +6,7 @@ use super::{
 };
 use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
-use nexus_common::protocol::{ServerMessage, ServerInfo, UserInfo};
+use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use std::io;
 
 /// Handle a login request from the client
@@ -80,7 +80,8 @@ pub async fn handle_login(
 
         // Try to create as first admin - the database method will handle atomicity
         match ctx
-            .db.users
+            .db
+            .users
             .create_first_user_if_none_exist(&username, &hashed_password)
             .await
         {
@@ -130,23 +131,44 @@ pub async fn handle_login(
         vec![]
     } else {
         // Fetch permissions from database for non-admin users
-        match ctx.db.users.get_user_permissions(authenticated_account.id).await {
-            Ok(perms) => perms.to_vec().iter().map(|p| p.as_str().to_string()).collect(),
+        match ctx
+            .db
+            .users
+            .get_user_permissions(authenticated_account.id)
+            .await
+        {
+            Ok(perms) => perms
+                .to_vec()
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect(),
             Err(e) => {
-                eprintln!("Error fetching permissions for {}: {}", authenticated_account.username, e);
+                eprintln!(
+                    "Error fetching permissions for {}: {}",
+                    authenticated_account.username, e
+                );
                 vec![]
             }
         }
     };
 
     // Fetch server info if user has ChatTopic permission
-    let server_info = if authenticated_account.is_admin || 
-        ctx.db.users.has_permission(authenticated_account.id, Permission::ChatTopic).await.unwrap_or(false) {
+    let server_info = if authenticated_account.is_admin
+        || ctx
+            .db
+            .users
+            .has_permission(authenticated_account.id, Permission::ChatTopic)
+            .await
+            .unwrap_or(false)
+    {
         // Fetch chat topic from database
         match ctx.db.config.get_topic().await {
             Ok(chat_topic) => Some(ServerInfo { chat_topic }),
             Err(e) => {
-                eprintln!("Error fetching chat topic for {}: {}", authenticated_account.username, e);
+                eprintln!(
+                    "Error fetching chat topic for {}: {}",
+                    authenticated_account.username, e
+                );
                 None
             }
         }
@@ -185,7 +207,7 @@ pub async fn handle_login(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::{testing::create_test_context};
+    use crate::handlers::testing::create_test_context;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -251,7 +273,11 @@ mod tests {
                 assert!(success, "Login should indicate success");
                 assert!(session_id.is_some(), "Should return session ID");
                 assert_eq!(is_admin, Some(true), "First user should be marked as admin");
-                assert_eq!(permissions, Some(vec![]), "Admin should have empty permissions list");
+                assert_eq!(
+                    permissions,
+                    Some(vec![]),
+                    "Admin should have empty permissions list"
+                );
                 assert!(error.is_none(), "Should have no error");
             }
             _ => panic!("Expected LoginResponse"),
@@ -259,7 +285,8 @@ mod tests {
 
         // Verify user was created as admin in database
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -284,7 +311,8 @@ mod tests {
             set
         };
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", &hashed, false, &perms)
             .await
             .unwrap();
@@ -326,11 +354,21 @@ mod tests {
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
-                assert_eq!(is_admin, Some(false), "Non-admin user should be marked as non-admin");
+                assert_eq!(
+                    is_admin,
+                    Some(false),
+                    "Non-admin user should be marked as non-admin"
+                );
                 assert!(permissions.is_some(), "Should return permissions list");
                 let perms = permissions.unwrap();
-                assert!(perms.contains(&"user_list".to_string()), "Should have user_list permission");
-                assert!(perms.contains(&"chat_send".to_string()), "Should have chat_send permission");
+                assert!(
+                    perms.contains(&"user_list".to_string()),
+                    "Should have user_list permission"
+                );
+                assert!(
+                    perms.contains(&"chat_send".to_string()),
+                    "Should have chat_send permission"
+                );
                 assert!(error.is_none(), "Should have no error");
             }
             _ => panic!("Expected LoginResponse"),
@@ -345,7 +383,8 @@ mod tests {
         let password = "correctpassword";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -377,7 +416,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("existing", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -412,7 +452,8 @@ mod tests {
         let admin_password = "adminpass";
         let admin_hashed = db::hash_password(admin_password).unwrap();
         let _admin = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &admin_hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -430,7 +471,8 @@ mod tests {
             set
         };
         let _user = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &perms)
             .await
             .unwrap();
@@ -475,11 +517,26 @@ mod tests {
 
                 let perms = permissions.unwrap();
                 assert_eq!(perms.len(), 3, "Should have exactly 3 permissions");
-                assert!(perms.contains(&"user_list".to_string()), "Should have user_list");
-                assert!(perms.contains(&"chat_send".to_string()), "Should have chat_send");
-                assert!(perms.contains(&"chat_receive".to_string()), "Should have chat_receive");
-                assert!(!perms.contains(&"user_create".to_string()), "Should NOT have user_create");
-                assert!(!perms.contains(&"user_delete".to_string()), "Should NOT have user_delete");
+                assert!(
+                    perms.contains(&"user_list".to_string()),
+                    "Should have user_list"
+                );
+                assert!(
+                    perms.contains(&"chat_send".to_string()),
+                    "Should have chat_send"
+                );
+                assert!(
+                    perms.contains(&"chat_receive".to_string()),
+                    "Should have chat_receive"
+                );
+                assert!(
+                    !perms.contains(&"user_create".to_string()),
+                    "Should NOT have user_create"
+                );
+                assert!(
+                    !perms.contains(&"user_delete".to_string()),
+                    "Should NOT have user_delete"
+                );
                 assert!(error.is_none(), "Should have no error");
             }
             _ => panic!("Expected LoginResponse"),
@@ -494,7 +551,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -543,7 +601,8 @@ mod tests {
         let mut perms = db::Permissions::new();
         perms.permissions.insert(Permission::ChatTopic);
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &perms)
             .await
             .unwrap();
@@ -588,7 +647,10 @@ mod tests {
                 assert!(success, "Login should succeed");
                 assert!(server_info.is_some(), "Should include server_info");
                 let info = server_info.unwrap();
-                assert_eq!(info.chat_topic, "Test server topic", "Should include chat topic");
+                assert_eq!(
+                    info.chat_topic, "Test server topic",
+                    "Should include chat topic"
+                );
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -602,18 +664,14 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
 
         // Set a topic (user shouldn't see it)
-        test_ctx
-            .db
-            .config
-            .set_topic("Secret topic")
-            .await
-            .unwrap();
+        test_ctx.db.config.set_topic("Secret topic").await.unwrap();
 
         let mut session_id = None;
         let handshake_complete = true;
@@ -645,7 +703,10 @@ mod tests {
                 ..
             } => {
                 assert!(success, "Login should succeed");
-                assert!(server_info.is_none(), "Should NOT include server_info without permission");
+                assert!(
+                    server_info.is_none(),
+                    "Should NOT include server_info without permission"
+                );
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -659,7 +720,8 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();

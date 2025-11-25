@@ -1,6 +1,9 @@
 //! UserEdit message handler - Returns user details for editing
 
-use super::{ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, HandlerContext};
+use super::{
+    ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
+    ERR_USER_NOT_FOUND, HandlerContext,
+};
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
@@ -23,7 +26,11 @@ pub async fn handle_useredit(
     };
 
     // Get requesting user from session
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
         Some(u) => u,
         None => {
             eprintln!("UserEdit request from unknown user {}", ctx.peer_addr);
@@ -35,7 +42,8 @@ pub async fn handle_useredit(
 
     // Check UserEdit permission
     let has_permission = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
         .await
     {
@@ -64,9 +72,7 @@ pub async fn handle_useredit(
             "UserEdit from {} (user: {}) attempting to edit themselves",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(ERR_CANNOT_EDIT_SELF, Some("UserEdit"))
-            .await;
+        return ctx.send_error(ERR_CANNOT_EDIT_SELF, Some("UserEdit")).await;
     }
 
     // Look up target user in database
@@ -74,9 +80,7 @@ pub async fn handle_useredit(
         Ok(Some(user)) => user,
         Ok(None) => {
             eprintln!("UserEdit request for non-existent user: {}", username);
-            return ctx
-                .send_error(ERR_USER_NOT_FOUND, Some("UserEdit"))
-                .await;
+            return ctx.send_error(ERR_USER_NOT_FOUND, Some("UserEdit")).await;
         }
         Err(e) => {
             eprintln!("Database error getting user: {}", e);
@@ -143,7 +147,8 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -202,7 +207,8 @@ mod tests {
         perms.permissions.insert(db::Permission::ChatSend);
 
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &perms)
             .await
             .unwrap();
@@ -241,7 +247,8 @@ mod tests {
 
         // Create another admin
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("admin2", "hash", true, &db::Permissions::new())
             .await
             .unwrap();
@@ -286,7 +293,8 @@ mod tests {
 
         // Create another user
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
