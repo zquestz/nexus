@@ -64,8 +64,8 @@ pub const SERVER_LIST_BUTTON_SIZE: u16 = 12;
 /// Server list small text size (empty states, action buttons)
 pub const SERVER_LIST_SMALL_TEXT_SIZE: u16 = 11;
 
-/// Server list icon size (for cog/edit icons)
-pub const SERVER_LIST_ICON_SIZE: u16 = 14;
+/// Server list disconnect icon size (larger, more prominent)
+pub const SERVER_LIST_DISCONNECT_ICON_SIZE: u16 = 18;
 
 /// User list title size
 pub const USER_LIST_TITLE_SIZE: u16 = 16;
@@ -123,6 +123,9 @@ pub const SERVER_LIST_SECTION_SPACING: u16 = 5;
 /// Server list item spacing
 pub const SERVER_LIST_ITEM_SPACING: u16 = 3;
 
+/// No spacing between button and icon (flush)
+pub const NO_SPACING: u16 = 0;
+
 /// User list item spacing
 pub const USER_LIST_ITEM_SPACING: u16 = 3;
 
@@ -141,9 +144,6 @@ pub const SERVER_LIST_PANEL_WIDTH: u16 = 220;
 
 /// Server list button height
 pub const SERVER_LIST_BUTTON_HEIGHT: u16 = 32;
-
-/// Server list icon button size (square)
-pub const SERVER_LIST_ICON_BUTTON_SIZE: u16 = 32;
 
 /// Separator line height
 pub const SEPARATOR_HEIGHT: u16 = 1;
@@ -188,9 +188,6 @@ pub const SECTION_TITLE_COLOR: Color = Color::from_rgb(0.7, 0.7, 0.7);
 /// Empty state text color (dark gray)
 pub const EMPTY_STATE_COLOR: Color = Color::from_rgb(0.4, 0.4, 0.4);
 
-/// Active connection background color (blue-gray)
-pub const ACTIVE_CONNECTION_COLOR: Color = Color::from_rgb(0.3, 0.4, 0.5);
-
 /// Separator line color (dark gray)
 pub const SEPARATOR_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
 
@@ -199,3 +196,21 @@ pub const SERVER_LIST_BACKGROUND_COLOR: Color = Color::from_rgb(0.12, 0.12, 0.12
 
 /// Server list border color (dark gray)
 pub const SERVER_LIST_BORDER_COLOR: Color = Color::from_rgb(0.2, 0.2, 0.2);
+
+/// Bookmark row alternate background color (slightly lighter than sidebar)
+pub const BOOKMARK_ROW_ALT_COLOR: Color = Color::from_rgb(0.15, 0.15, 0.15);
+
+/// Bookmark button hover color (bright blue)
+pub const BOOKMARK_BUTTON_HOVER_COLOR: Color = Color::from_rgb(0.3, 0.5, 0.7);
+
+/// Disconnect icon default color (light gray)
+pub const DISCONNECT_ICON_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
+
+/// Disconnect icon hover color (red)
+pub const DISCONNECT_ICON_HOVER_COLOR: Color = Color::from_rgb(1.0, 0.3, 0.3);
+
+/// Edit/cog icon default color (light gray)
+pub const EDIT_ICON_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
+
+/// Edit/cog icon hover color (blue)
+pub const EDIT_ICON_HOVER_COLOR: Color = Color::from_rgb(0.5, 0.7, 1.0);

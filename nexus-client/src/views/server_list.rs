@@ -1,13 +1,15 @@
 //! Server list panel (left sidebar)
 
 use super::style::{
-    ACTIVE_CONNECTION_COLOR, BORDER_WIDTH, EMPTY_STATE_COLOR, FORM_PADDING, INPUT_PADDING,
+    BORDER_WIDTH, EMPTY_STATE_COLOR, FORM_PADDING, INPUT_PADDING,
     PANEL_SPACING, SECTION_TITLE_COLOR, SECTION_TITLE_SIZE, SEPARATOR_COLOR, SEPARATOR_HEIGHT,
     SERVER_LIST_BACKGROUND_COLOR, SERVER_LIST_BORDER_COLOR, SERVER_LIST_BUTTON_HEIGHT,
-    SERVER_LIST_BUTTON_SIZE, SERVER_LIST_ICON_BUTTON_SIZE, SERVER_LIST_ITEM_SPACING,
-    SERVER_LIST_ICON_SIZE, SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING,
-    SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE, SMALL_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    SERVER_LIST_BUTTON_SIZE, SERVER_LIST_DISCONNECT_ICON_SIZE,
+    SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
+    SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, NO_SPACING,
+    DISCONNECT_ICON_COLOR, DISCONNECT_ICON_HOVER_COLOR, EDIT_ICON_COLOR, EDIT_ICON_HOVER_COLOR,
+    BOOKMARK_ROW_ALT_COLOR, BOOKMARK_BUTTON_HOVER_COLOR,
 };
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
@@ -32,8 +34,7 @@ pub fn server_list_panel<'a>(
         .size(SECTION_TITLE_SIZE)
         .color(SECTION_TITLE_COLOR);
     let mut connected_column = Column::new()
-        .spacing(SERVER_LIST_ITEM_SPACING)
-        .padding(SMALL_PADDING);
+        .spacing(SERVER_LIST_ITEM_SPACING);
 
     if connections.is_empty() {
         connected_column = connected_column.push(
@@ -46,27 +47,29 @@ pub fn server_list_panel<'a>(
         let mut conn_list: Vec<_> = connections.iter().collect();
         conn_list.sort_by_key(|(id, _)| **id);
 
-        for (conn_id, conn) in conn_list {
-            let is_active = active_connection == Some(*conn_id);
+        for (index, (conn_id, conn)) in conn_list.iter().enumerate() {
+            let is_active = active_connection == Some(**conn_id);
 
-            let mut btn = button(text(&conn.display_name).size(SERVER_LIST_TEXT_SIZE))
+            // Transparent button with hover effect and blue text for active
+            let btn = button(text(&conn.display_name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
                 .height(SERVER_LIST_BUTTON_HEIGHT)
-                .padding(INPUT_PADDING);
-
-            if is_active {
-                btn = btn.style(|theme, status| button::Style {
-                    background: Some(Background::Color(ACTIVE_CONNECTION_COLOR)),
-                    text_color: Color::WHITE,
-                    ..button::primary(theme, status)
+                .padding(INPUT_PADDING)
+                .on_press(Message::SwitchToConnection(**conn_id))
+                .style(move |_theme, status| button::Style {
+                    background: None,
+                    text_color: match status {
+                        button::Status::Hovered => BOOKMARK_BUTTON_HOVER_COLOR,
+                        _ if is_active => BOOKMARK_BUTTON_HOVER_COLOR,
+                        _ => Color::WHITE,
+                    },
+                    border: Border::default(),
+                    shadow: iced::Shadow::default(),
                 });
-            }
 
-            btn = btn.on_press(Message::SwitchToConnection(*conn_id));
-
-            // Disconnect button (square icon button)
+            // Disconnect button (transparent icon button with hover effect)
             let disconnect_btn = tooltip(
-                icon_button_widget(icon::cancel(), Message::DisconnectFromServer(*conn_id)),
+                transparent_icon_button(icon::cancel(), Message::DisconnectFromServer(**conn_id)),
                 text("Disconnect").size(TOOLTIP_TEXT_SIZE),
                 tooltip::Position::Right,
             )
@@ -74,10 +77,23 @@ pub fn server_list_panel<'a>(
             .padding(TOOLTIP_PADDING);
 
             let server_row = row![btn, disconnect_btn]
-                .spacing(SERVER_LIST_ITEM_SPACING)
+                .spacing(NO_SPACING)
                 .align_y(alignment::Vertical::Center);
 
-            connected_column = connected_column.push(server_row);
+            // Alternating row backgrounds
+            let is_even = index % 2 == 0;
+            let row_container = container(server_row)
+                .width(Fill)
+                .style(move |_theme| container::Style {
+                    background: if is_even {
+                        Some(Background::Color(BOOKMARK_ROW_ALT_COLOR))
+                    } else {
+                        None
+                    },
+                    ..Default::default()
+                });
+
+            connected_column = connected_column.push(row_container);
         }
     }
 
@@ -102,8 +118,7 @@ pub fn server_list_panel<'a>(
         .size(SECTION_TITLE_SIZE)
         .color(SECTION_TITLE_COLOR);
     let mut bookmarks_column = Column::new()
-        .spacing(SERVER_LIST_ITEM_SPACING)
-        .padding(SMALL_PADDING);
+        .spacing(SERVER_LIST_ITEM_SPACING);
 
     if bookmarks.is_empty() {
         bookmarks_column = bookmarks_column.push(
@@ -126,15 +141,25 @@ pub fn server_list_panel<'a>(
                 Message::ConnectToBookmark(index)
             };
 
+            // Transparent button with hover effect
             let btn = button(text(&bookmark.name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
-                .on_press(bookmark_message);
+                .on_press(bookmark_message)
+                .style(|_theme, status| button::Style {
+                    background: None,
+                    text_color: match status {
+                        button::Status::Hovered => BOOKMARK_BUTTON_HOVER_COLOR,
+                        _ => Color::WHITE,
+                    },
+                    border: Border::default(),
+                    shadow: iced::Shadow::default(),
+                });
 
-            // Action button (square icon button)
+            // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(
-                icon_button_widget(icon::cog(), Message::ShowEditBookmark(index)),
+                transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
                 text("Edit").size(TOOLTIP_TEXT_SIZE),
                 tooltip::Position::Right,
             )
@@ -142,14 +167,27 @@ pub fn server_list_panel<'a>(
             .padding(TOOLTIP_PADDING);
 
             let bookmark_row = row![btn, edit_btn]
-                .spacing(SERVER_LIST_ITEM_SPACING)
+                .spacing(NO_SPACING)
                 .align_y(alignment::Vertical::Center);
 
-            bookmarks_column = bookmarks_column.push(bookmark_row);
+            // Alternating row backgrounds
+            let is_even = index % 2 == 0;
+            let row_container = container(bookmark_row)
+                .width(Fill)
+                .style(move |_theme| container::Style {
+                    background: if is_even {
+                        Some(Background::Color(BOOKMARK_ROW_ALT_COLOR))
+                    } else {
+                        None
+                    },
+                    ..Default::default()
+                });
+
+            bookmarks_column = bookmarks_column.push(row_container);
         }
     }
 
-    let add_btn = button(text("+ Add Bookmark").size(SERVER_LIST_BUTTON_SIZE))
+    let add_btn = button(text("Add Bookmark").size(SERVER_LIST_BUTTON_SIZE))
         .on_press(Message::ShowAddBookmark)
         .padding(INPUT_PADDING)
         .width(Fill);
@@ -180,15 +218,44 @@ pub fn server_list_panel<'a>(
         .into()
 }
 
-/// Helper function to create square icon buttons with icon widget
-fn icon_button_widget<'a>(icon: iced::widget::Text<'a>, message: Message) -> button::Button<'a, Message> {
-    button(
-        container(icon.size(SERVER_LIST_ICON_SIZE))
-            .center_x(SERVER_LIST_ICON_BUTTON_SIZE)
-            .center_y(SERVER_LIST_ICON_BUTTON_SIZE),
-    )
-    .on_press(message)
-    .width(SERVER_LIST_ICON_BUTTON_SIZE)
-    .height(SERVER_LIST_ICON_BUTTON_SIZE)
-    .padding(0)
+
+
+/// Helper function to create transparent icon buttons with hover color change
+fn transparent_icon_button<'a>(
+    icon: iced::widget::Text<'a>,
+    message: Message,
+) -> button::Button<'a, Message> {
+    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
+        .on_press(message)
+        .width(SERVER_LIST_BUTTON_HEIGHT)
+        .height(SERVER_LIST_BUTTON_HEIGHT)
+        .style(|_theme, status| button::Style {
+            background: None,
+            text_color: match status {
+                button::Status::Hovered => DISCONNECT_ICON_HOVER_COLOR,
+                _ => DISCONNECT_ICON_COLOR,
+            },
+            border: Border::default(),
+            shadow: iced::Shadow::default(),
+        })
+}
+
+/// Helper function to create transparent edit/cog buttons with hover color change
+fn transparent_edit_button<'a>(
+    icon: iced::widget::Text<'a>,
+    message: Message,
+) -> button::Button<'a, Message> {
+    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
+        .on_press(message)
+        .width(SERVER_LIST_BUTTON_HEIGHT)
+        .height(SERVER_LIST_BUTTON_HEIGHT)
+        .style(|_theme, status| button::Style {
+            background: None,
+            text_color: match status {
+                button::Status::Hovered => EDIT_ICON_HOVER_COLOR,
+                _ => EDIT_ICON_COLOR,
+            },
+            border: Border::default(),
+            shadow: iced::Shadow::default(),
+        })
 }
