@@ -47,8 +47,6 @@ pub const CHAT_INPUT_SIZE: u16 = 13;
 /// Toolbar title text size
 pub const TOOLBAR_TITLE_SIZE: u16 = 16;
 
-
-
 /// Toolbar icon size (for collapse/expand icons)
 pub const TOOLBAR_ICON_SIZE: u16 = 20;
 
@@ -109,8 +107,6 @@ pub const BUTTON_PADDING: u16 = 10;
 
 /// Form container padding
 pub const FORM_PADDING: u16 = 20;
-
-
 
 /// Toolbar horizontal padding (matches FORM_PADDING for alignment)
 pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
@@ -308,6 +304,14 @@ pub fn info_text_color(theme: &Theme) -> Color {
     }
 }
 
+/// Admin user text color in user list (theme-aware red)
+pub fn admin_user_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::ADMIN_USER_TEXT_LIGHT,
+        _ => colors::ADMIN_USER_TEXT_DARK,
+    }
+}
+
 /// Get empty view text color for the current theme
 pub fn empty_view_text_color(theme: &Theme) -> Color {
     match theme {
@@ -349,7 +353,7 @@ pub fn edit_icon_hover_color(theme: &Theme) -> Color {
 }
 
 /// Get interactive element hover color (theme-independent signature blue)
-/// 
+///
 /// Used for button hover states, active server/bookmark selection, and clickable items.
 /// This is our signature blue color used throughout the application for consistency.
 pub fn interactive_hover_color() -> Color {
@@ -359,6 +363,14 @@ pub fn interactive_hover_color() -> Color {
 /// Get error message text color for chat messages
 pub fn error_message_color() -> Color {
     colors::ERROR_MESSAGE
+}
+
+/// Broadcast message text color (theme-aware red)
+pub fn broadcast_message_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::BROADCAST_TEXT_LIGHT,
+        _ => colors::BROADCAST_TEXT_DARK,
+    }
 }
 
 /// Get error text color for form validation messages
@@ -397,13 +409,14 @@ pub fn action_button_text() -> Color {
 }
 
 /// Create styled primary button (blue background, white text)
-/// 
+///
 /// This creates a button with the same blue background used for active toolbar buttons,
 /// providing visual consistency throughout the application.
-pub fn primary_button_style() -> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
+pub fn primary_button_style()
+-> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
     |_theme, status| {
         use iced::widget::button::Status;
-        
+
         match status {
             Status::Active => iced::widget::button::Style {
                 background: Some(Background::from(primary_action_background())),
@@ -434,13 +447,14 @@ pub fn primary_button_style() -> fn(&Theme, iced::widget::button::Status) -> ice
 }
 
 /// Create styled checkbox (blue accent color when checked)
-/// 
+///
 /// This creates a checkbox with the same blue used for primary buttons and active toolbar buttons,
 /// providing visual consistency throughout the application.
-pub fn primary_checkbox_style() -> fn(&Theme, iced::widget::checkbox::Status) -> iced::widget::checkbox::Style {
+pub fn primary_checkbox_style()
+-> fn(&Theme, iced::widget::checkbox::Status) -> iced::widget::checkbox::Style {
     |_theme, status| {
         use iced::widget::checkbox::Status;
-        
+
         match status {
             Status::Active { is_checked } => iced::widget::checkbox::Style {
                 background: if is_checked {
@@ -514,13 +528,14 @@ pub fn primary_checkbox_style() -> fn(&Theme, iced::widget::checkbox::Status) ->
 }
 
 /// Create styled text input (blue border when focused)
-/// 
+///
 /// This creates a text input with the same blue used for primary buttons,
 /// providing visual consistency throughout the application.
-pub fn primary_text_input_style() -> fn(&Theme, iced::widget::text_input::Status) -> iced::widget::text_input::Style {
+pub fn primary_text_input_style()
+-> fn(&Theme, iced::widget::text_input::Status) -> iced::widget::text_input::Style {
     |_theme, status| {
         use iced::widget::text_input::Status;
-        
+
         match status {
             Status::Active => iced::widget::text_input::Style {
                 background: Background::from(match _theme {

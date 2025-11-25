@@ -160,6 +160,22 @@ pub const INFO_TEXT_DARK: Color = Color::from_rgb(0.5, 0.8, 1.0);
 /// Dark blue for good contrast and readability
 pub const INFO_TEXT_LIGHT: Color = Color::from_rgb(0.2, 0.5, 0.8);
 
+/// Broadcast message text (e.g., [BROADCAST] announcements) - Dark theme
+/// Bright red to stand out as important announcements
+pub const BROADCAST_TEXT_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
+
+/// Broadcast message text (e.g., [BROADCAST] announcements) - Light theme
+/// Dark red for visibility and importance
+pub const BROADCAST_TEXT_LIGHT: Color = Color::from_rgb(0.8, 0.0, 0.0);
+
+/// Admin user text in user list - Dark theme
+/// Red to indicate admin status
+pub const ADMIN_USER_TEXT_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
+
+/// Admin user text in user list - Light theme
+/// Dark red to indicate admin status
+pub const ADMIN_USER_TEXT_LIGHT: Color = Color::from_rgb(0.8, 0.0, 0.0);
+
 // ============================================================================
 // Empty View Colors
 // ============================================================================
