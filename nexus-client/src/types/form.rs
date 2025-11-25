@@ -8,6 +8,8 @@ const ALL_PERMISSIONS: &[&str] = &[
     "user_info",
     "chat_send",
     "chat_receive",
+    "chat_topic",
+    "chat_topic_update",
     "user_broadcast",
     "user_create",
     "user_delete",

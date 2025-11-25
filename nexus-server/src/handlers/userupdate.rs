@@ -42,7 +42,7 @@ pub async fn handle_userupdate(
 
     // Check UserEdit permission
     let has_permission = match ctx
-        .user_db
+        .db.users
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
         .await
     {
@@ -77,7 +77,7 @@ pub async fn handle_userupdate(
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
-        .user_db
+        .db.users
         .get_user_by_username(&requesting_user.username)
         .await
     {
@@ -108,7 +108,7 @@ pub async fn handle_userupdate(
                 // Check permission delegation authority
                 if !requesting_account.is_admin {
                     let has_perm = match ctx
-                        .user_db
+                        .db.users
                         .has_permission(requesting_user.db_user_id, perm)
                         .await
                     {
@@ -141,9 +141,9 @@ pub async fn handle_userupdate(
         // Apply permission merge logic for non-admins
         if !requesting_account.is_admin {
             // Get target user's account
-            if let Ok(Some(target_account)) = ctx.user_db.get_user_by_username(&username).await {
+            if let Ok(Some(target_account)) = ctx.db.users.get_user_by_username(&username).await {
                 // Get target user's current permissions
-                if let Ok(target_perms) = ctx.user_db.get_user_permissions(target_account.id).await
+                if let Ok(target_perms) = ctx.db.users.get_user_permissions(target_account.id).await
                 {
                     // Start with an empty set for the final permissions
                     let mut final_perms = Permissions::new();
@@ -152,7 +152,7 @@ pub async fn handle_userupdate(
                     // (these are preserved and cannot be modified)
                     for target_perm in &target_perms.permissions {
                         let requester_has_perm = match ctx
-                            .user_db
+                            .db.users
                             .has_permission(requesting_user.db_user_id, *target_perm)
                             .await
                         {
@@ -222,7 +222,7 @@ pub async fn handle_userupdate(
 
     // Attempt to update the user
     match ctx
-        .user_db
+        .db.users
         .update_user(
             &username,
             requested_username.as_deref(),
@@ -242,10 +242,10 @@ pub async fn handle_userupdate(
 
             // Notify all sessions of the updated user about their new permissions
             // Get the updated user's account to read final permissions
-            if let Ok(Some(updated_account)) = ctx.user_db.get_user_by_username(&username).await {
+            if let Ok(Some(updated_account)) = ctx.db.users.get_user_by_username(&username).await {
                 // Get the final permissions
                 if let Ok(final_permissions) =
-                    ctx.user_db.get_user_permissions(updated_account.id).await
+                    ctx.db.users.get_user_permissions(updated_account.id).await
                 {
                     let permission_strings: Vec<String> = final_permissions
                         .permissions
@@ -271,7 +271,7 @@ pub async fn handle_userupdate(
             // Update was blocked (user not found, last admin, or duplicate username)
             // We need to determine which error to return
             let error_message = if ctx
-                .user_db
+                .db.users
                 .get_user_by_username(&username)
                 .await
                 .ok()
@@ -334,7 +334,7 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -398,7 +398,7 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -426,12 +426,12 @@ mod tests {
 
         // Verify username was changed
         let user = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("bobby")
             .await
             .unwrap();
         assert!(user.is_some());
-        let user = test_ctx.user_db.get_user_by_username("bob").await.unwrap();
+        let user = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
         assert!(user.is_none());
     }
 
@@ -531,7 +531,7 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -573,7 +573,7 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -609,12 +609,12 @@ mod tests {
 
         // Create two users
         test_ctx
-            .user_db
+            .db.users
             .create_user("alice", "hash", false, &Permissions::new())
             .await
             .unwrap();
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -651,7 +651,7 @@ mod tests {
 
         // Create a user
         test_ctx
-            .user_db
+            .db.users
             .create_user("alice", "oldhash", false, &Permissions::new())
             .await
             .unwrap();
@@ -679,7 +679,7 @@ mod tests {
 
         // Verify password was changed (hash should be different)
         let user = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -696,7 +696,7 @@ mod tests {
 
         // Create a user with no permissions
         let bob = test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -725,14 +725,14 @@ mod tests {
         // Verify permissions were set
         assert!(
             test_ctx
-                .user_db
+                .db.users
                 .has_permission(bob.id, Permission::UserList)
                 .await
                 .unwrap()
         );
         assert!(
             test_ctx
-                .user_db
+                .db.users
                 .has_permission(bob.id, Permission::ChatSend)
                 .await
                 .unwrap()
@@ -749,7 +749,7 @@ mod tests {
         // Create a user with a specific password hash
         let original_hash = "original_hash_12345";
         test_ctx
-            .user_db
+            .db.users
             .create_user("alice", original_hash, false, &Permissions::new())
             .await
             .unwrap();
@@ -777,7 +777,7 @@ mod tests {
 
         // Verify password was NOT changed
         let user = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -818,7 +818,7 @@ mod tests {
 
         // Get Alice's user ID for verification later
         let alice = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -852,7 +852,7 @@ mod tests {
         // - chat_send: Bob can't modify this (he doesn't have it), Alice should keep it
         assert!(
             test_ctx
-                .user_db
+                .db.users
                 .has_permission(alice.id, Permission::UserList)
                 .await
                 .unwrap(),
@@ -860,7 +860,7 @@ mod tests {
         );
         assert!(
             test_ctx
-                .user_db
+                .db.users
                 .has_permission(alice.id, Permission::UserInfo)
                 .await
                 .unwrap(),
@@ -868,7 +868,7 @@ mod tests {
         );
         assert!(
             test_ctx
-                .user_db
+                .db.users
                 .has_permission(alice.id, Permission::ChatSend)
                 .await
                 .unwrap(),

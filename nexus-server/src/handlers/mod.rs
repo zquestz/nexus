@@ -3,6 +3,7 @@
 // Handler modules (alphabetically ordered)
 mod broadcast;
 mod chat;
+mod chattopicupdate;
 mod errors;
 mod handshake;
 mod login;
@@ -19,6 +20,7 @@ pub mod testing;
 // Public exports
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
+pub use chattopicupdate::handle_chattopicupdate;
 pub use errors::*;
 pub use handshake::handle_handshake;
 pub use login::handle_login;
@@ -29,7 +31,7 @@ pub use userinfo::handle_userinfo;
 pub use userlist::handle_userlist;
 pub use userupdate::handle_userupdate;
 
-use crate::db::UserDb;
+use crate::db::Database;
 use crate::users::UserManager;
 use nexus_common::io::send_server_message;
 use nexus_common::protocol::ServerMessage;
@@ -43,7 +45,7 @@ pub struct HandlerContext<'a> {
     pub writer: &'a mut OwnedWriteHalf,
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
-    pub user_db: &'a UserDb,
+    pub db: &'a Database,
     pub tx: &'a mpsc::UnboundedSender<ServerMessage>,
     pub debug: bool,
 }

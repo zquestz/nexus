@@ -1,0 +1,334 @@
+//! Handler for ChatTopicUpdate command
+
+use super::{
+    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_TOPIC_CONTAINS_NEWLINES,
+    ERR_TOPIC_TOO_LONG, HandlerContext,
+};
+use crate::db::Permission;
+use nexus_common::protocol::ServerMessage;
+use std::io;
+
+/// Maximum topic length in characters
+const MAX_TOPIC_LENGTH: usize = 256;
+
+/// Handle ChatTopicUpdate command
+pub async fn handle_chattopicupdate(
+    topic: String,
+    session_id: Option<u32>,
+    ctx: &mut HandlerContext<'_>,
+) -> io::Result<()> {
+    // 1. Check if user is logged in (check authentication first)
+    let id = match session_id {
+        Some(id) => id,
+        None => {
+            return ctx
+                .send_error(ERR_NOT_LOGGED_IN, Some("ChatTopicUpdate"))
+                .await;
+        }
+    };
+
+    // 2. Validate topic length (before expensive user lookup)
+    if topic.len() > MAX_TOPIC_LENGTH {
+        return ctx
+            .send_error(ERR_TOPIC_TOO_LONG, Some("ChatTopicUpdate"))
+            .await;
+    }
+
+    // 3. Validate topic does not contain newlines
+    if topic.contains('\n') || topic.contains('\r') {
+        return ctx
+            .send_error(ERR_TOPIC_CONTAINS_NEWLINES, Some("ChatTopicUpdate"))
+            .await;
+    }
+
+    // 4. Get user from session
+    let user = match ctx.user_manager.get_user_by_session_id(id).await {
+        Some(u) => u,
+        None => {
+            return ctx
+                .send_error(ERR_NOT_LOGGED_IN, Some("ChatTopicUpdate"))
+                .await;
+        }
+    };
+
+    // 5. Check if user has ChatTopicUpdate permission
+    let has_permission = match ctx
+        .db
+        .users
+        .has_permission(user.db_user_id, Permission::ChatTopicUpdate)
+        .await
+    {
+        Ok(has_perm) => has_perm,
+        Err(e) => {
+            eprintln!("Database error checking ChatTopicUpdate permission: {}", e);
+            return ctx.send_error(ERR_DATABASE, Some("ChatTopicUpdate")).await;
+        }
+    };
+
+    if !has_permission {
+        eprintln!(
+            "Permission denied: User '{}' (IP: {}) attempted ChatTopicUpdate without permission",
+            user.username, ctx.peer_addr
+        );
+        return ctx
+            .send_error(ERR_PERMISSION_DENIED, Some("ChatTopicUpdate"))
+            .await;
+    }
+
+    // 6. Save topic to database
+    if let Err(e) = ctx.db.config.set_topic(&topic).await {
+        eprintln!("Database error setting topic: {}", e);
+        return ctx.send_error(ERR_DATABASE, Some("ChatTopicUpdate")).await;
+    }
+
+    // 7. Broadcast ChatTopic to all users with ChatTopic permission
+    ctx.user_manager
+        .broadcast_to_permission(
+            ServerMessage::ChatTopic {
+                topic: topic.clone(),
+                username: user.username.clone(),
+            },
+            &ctx.db.users,
+            Permission::ChatTopic,
+        )
+        .await;
+
+    // 8. Send success response to updater
+    ctx.send_message(&ServerMessage::ChatTopicUpdateResponse {
+        success: true,
+        error: None,
+    })
+    .await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Permission;
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use nexus_common::protocol::ServerMessage;
+
+    #[tokio::test]
+    async fn test_chattopic_requires_login() {
+        let mut test_ctx = create_test_context().await;
+
+        let result = handle_chattopicupdate(
+            "Test topic".to_string(),
+            None,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, ERR_NOT_LOGGED_IN);
+                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_requires_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user without ChatTopic permission
+        let session_id = login_user(&mut test_ctx, "testuser", "password", &[], false).await;
+
+        let result = handle_chattopicupdate(
+            "Test topic".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, ERR_PERMISSION_DENIED);
+                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_too_long() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user with ChatTopicUpdate permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::ChatTopicUpdate],
+            false,
+        )
+        .await;
+
+        // Create topic that's too long (> 256 chars)
+        let long_topic = "a".repeat(257);
+
+        let result = handle_chattopicupdate(
+            long_topic,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, ERR_TOPIC_TOO_LONG);
+                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_at_limit() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user with ChatTopicUpdate permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::ChatTopicUpdate],
+            false,
+        )
+        .await;
+
+        // Create topic at exactly 256 chars
+        let topic = "a".repeat(256);
+
+        let result = handle_chattopicupdate(
+            topic.clone(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
+        }
+
+        // Verify topic was saved
+        let saved_topic = test_ctx.db.config.get_topic().await.unwrap();
+        assert_eq!(saved_topic, topic);
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_empty_allowed() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user with ChatTopicUpdate permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::ChatTopicUpdate],
+            false,
+        )
+        .await;
+
+        let result = handle_chattopicupdate(
+            "".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
+        }
+
+        // Verify empty topic was saved
+        let saved_topic = test_ctx.db.config.get_topic().await.unwrap();
+        assert_eq!(saved_topic, "");
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_newlines_rejected() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user with ChatTopicUpdate permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::ChatTopicUpdate],
+            false,
+        )
+        .await;
+
+        // Test with \n
+        let result = handle_chattopicupdate(
+            "Topic with\nnewline".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, ERR_TOPIC_CONTAINS_NEWLINES);
+                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_admin_has_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login admin user (admins automatically have all permissions)
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let result = handle_chattopicupdate(
+            "Admin topic".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
+        }
+    }
+}

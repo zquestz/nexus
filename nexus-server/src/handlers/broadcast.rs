@@ -65,7 +65,7 @@ pub async fn handle_user_broadcast(
 
     // Check permission
     let has_perm = match ctx
-        .user_db
+        .db.users
         .has_permission(user.db_user_id, Permission::UserBroadcast)
         .await
     {

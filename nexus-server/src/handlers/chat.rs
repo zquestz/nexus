@@ -73,7 +73,7 @@ pub async fn handle_chat_send(
 
     // Check permission
     let has_perm = match ctx
-        .user_db
+        .db.users
         .has_permission(user.db_user_id, Permission::ChatSend)
         .await
     {
@@ -105,7 +105,7 @@ pub async fn handle_chat_send(
                 username: user.username.clone(),
                 message: message.clone(),
             },
-            ctx.user_db,
+            &ctx.db.users,
             Permission::ChatReceive,
         )
         .await;

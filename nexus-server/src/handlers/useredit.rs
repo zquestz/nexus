@@ -35,7 +35,7 @@ pub async fn handle_useredit(
 
     // Check UserEdit permission
     let has_permission = match ctx
-        .user_db
+        .db.users
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
         .await
     {
@@ -70,7 +70,7 @@ pub async fn handle_useredit(
     }
 
     // Look up target user in database
-    let target_user = match ctx.user_db.get_user_by_username(&username).await {
+    let target_user = match ctx.db.users.get_user_by_username(&username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             eprintln!("UserEdit request for non-existent user: {}", username);
@@ -87,7 +87,7 @@ pub async fn handle_useredit(
     };
 
     // Fetch user permissions for response
-    let user_permissions = match ctx.user_db.get_user_permissions(target_user.id).await {
+    let user_permissions = match ctx.db.users.get_user_permissions(target_user.id).await {
         Ok(perms) => perms,
         Err(e) => {
             eprintln!("Database error getting permissions: {}", e);
@@ -143,7 +143,7 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -202,7 +202,7 @@ mod tests {
         perms.permissions.insert(db::Permission::ChatSend);
 
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &perms)
             .await
             .unwrap();
@@ -241,7 +241,7 @@ mod tests {
 
         // Create another admin
         test_ctx
-            .user_db
+            .db.users
             .create_user("admin2", "hash", true, &db::Permissions::new())
             .await
             .unwrap();
@@ -286,7 +286,7 @@ mod tests {
 
         // Create another user
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();

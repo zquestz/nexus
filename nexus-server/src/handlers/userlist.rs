@@ -36,7 +36,7 @@ pub async fn handle_userlist(
 
     // Check UserList permission
     let has_perm = match ctx
-        .user_db
+        .db.users
         .has_permission(user.db_user_id, Permission::UserList)
         .await
     {
@@ -68,7 +68,7 @@ pub async fn handle_userlist(
     
     for user in all_users {
         // Get user account to check admin status
-        let is_admin = match ctx.user_db.get_user_by_id(user.db_user_id).await {
+        let is_admin = match ctx.db.users.get_user_by_id(user.db_user_id).await {
             Ok(Some(account)) => account.is_admin,
             _ => false, // Default to non-admin if lookup fails
         };

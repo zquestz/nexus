@@ -1,5 +1,6 @@
 //! Database module for persistent storage
 
+pub mod config;
 pub mod password;
 pub mod permissions;
 pub mod users;
@@ -7,12 +8,30 @@ pub mod users;
 #[cfg(test)]
 pub mod testing;
 
+pub use config::ConfigDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 pub use users::UserDb;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
+
+/// Combined database access for all database operations
+#[derive(Clone)]
+pub struct Database {
+    pub users: UserDb,
+    pub config: ConfigDb,
+}
+
+impl Database {
+    /// Create a new Database instance from a connection pool
+    pub fn new(pool: SqlitePool) -> Self {
+        Self {
+            users: UserDb::new(pool.clone()),
+            config: ConfigDb::new(pool),
+        }
+    }
+}
 
 /// Maximum number of concurrent database connections in the pool
 const MAX_DB_CONNECTIONS: u32 = 5;

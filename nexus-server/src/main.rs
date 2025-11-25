@@ -49,7 +49,7 @@ async fn main() {
 
     // Create database and user manager instances
     // Note: SqlitePool uses Arc internally, so clone() is cheap
-    let user_db = db::UserDb::new(pool.clone());
+    let database = db::Database::new(pool);
     let user_manager = UserManager::new();
 
     // Create socket address (flow_info and scope_id set to 0)
@@ -74,7 +74,7 @@ async fn main() {
             Ok((socket, peer_addr)) => {
                 // Clone references for the spawned task
                 let user_manager_clone = user_manager.clone();
-                let user_db_clone = user_db.clone();
+                let database_clone = database.clone();
 
                 // Spawn a new task to handle this connection
                 tokio::spawn(async move {
@@ -82,7 +82,7 @@ async fn main() {
                         socket,
                         peer_addr,
                         user_manager_clone,
-                        user_db_clone,
+                        database_clone,
                         debug,
                     )
                     .await

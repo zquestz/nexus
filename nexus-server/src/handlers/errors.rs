@@ -51,3 +51,10 @@ pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
 
 /// Error message when user to edit is not found
 pub const ERR_USER_NOT_FOUND: &str = "User not found";
+
+// Chat Topic Errors
+/// Error message when topic is too long
+pub const ERR_TOPIC_TOO_LONG: &str = "Topic cannot exceed 256 characters";
+
+/// Error message when topic contains newlines
+pub const ERR_TOPIC_CONTAINS_NEWLINES: &str = "Topic cannot contain newlines";

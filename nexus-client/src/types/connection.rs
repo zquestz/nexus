@@ -61,4 +61,6 @@ pub struct NetworkConnection {
     pub is_admin: bool,
     /// User's permissions
     pub permissions: Vec<String>,
+    /// Chat topic received on login (if user has ChatTopic permission)
+    pub chat_topic: Option<String>,
 }

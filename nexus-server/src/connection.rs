@@ -1,6 +1,6 @@
 //! Client connection handling
 
-use crate::db::UserDb;
+use crate::db::Database;
 use crate::handlers::{self, HandlerContext};
 use crate::users::UserManager;
 use nexus_common::io::send_server_message;
@@ -17,7 +17,7 @@ pub async fn handle_connection(
     socket: TcpStream,
     peer_addr: SocketAddr,
     user_manager: UserManager,
-    user_db: UserDb,
+    db: Database,
     debug: bool,
 ) -> io::Result<()> {
     // Enable TCP keepalive to detect dead connections
@@ -59,7 +59,7 @@ pub async fn handle_connection(
                     &mut handshake_complete,
                     &mut writer,
                     &user_manager,
-                    &user_db,
+                    &db,
                     peer_addr,
                     &tx,
                     debug,
@@ -105,7 +105,7 @@ async fn handle_client_message(
     handshake_complete: &mut bool,
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
     user_manager: &UserManager,
-    user_db: &UserDb,
+    db: &Database,
     peer_addr: SocketAddr,
     tx: &mpsc::UnboundedSender<ServerMessage>,
     debug: bool,
@@ -123,7 +123,7 @@ async fn handle_client_message(
         writer,
         peer_addr,
         user_manager,
-        user_db,
+        db,
         tx,
         debug,
     };
@@ -132,6 +132,9 @@ async fn handle_client_message(
         Ok(msg) => match msg {
             ClientMessage::ChatSend { message } => {
                 handlers::handle_chat_send(message, *session_id, &mut ctx).await?;
+            }
+            ClientMessage::ChatTopicUpdate { topic } => {
+                handlers::handle_chattopicupdate(topic, *session_id, &mut ctx).await?;
             }
             ClientMessage::Handshake { version } => {
                 handlers::handle_handshake(version, handshake_complete, &mut ctx).await?;

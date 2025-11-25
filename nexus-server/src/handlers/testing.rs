@@ -1,7 +1,7 @@
 //! Shared test utilities for handler tests
 
 use super::HandlerContext;
-use crate::db::UserDb;
+use crate::db::Database;
 use crate::users::UserManager;
 use nexus_common::protocol::ServerMessage;
 use std::net::SocketAddr;
@@ -13,7 +13,7 @@ pub struct TestContext {
     pub client: TcpStream,
     pub write_half: tokio::net::tcp::OwnedWriteHalf,
     pub user_manager: UserManager,
-    pub user_db: UserDb,
+    pub db: Database,
     pub tx: mpsc::UnboundedSender<ServerMessage>,
     pub peer_addr: SocketAddr,
     pub _rx: mpsc::UnboundedReceiver<ServerMessage>, // Keep receiver alive to prevent channel closure
@@ -26,7 +26,7 @@ impl TestContext {
             writer: &mut self.write_half,
             peer_addr: self.peer_addr,
             user_manager: &self.user_manager,
-            user_db: &self.user_db,
+            db: &self.db,
             tx: &self.tx,
             debug: false, // Tests don't need debug logging
         }
@@ -46,7 +46,7 @@ pub async fn create_test_context() -> TestContext {
         .await
         .expect("Failed to run migrations");
 
-    let user_db = UserDb::new(pool);
+    let db = Database::new(pool);
     let user_manager = UserManager::new();
 
     // Create TCP listener on localhost
@@ -69,7 +69,7 @@ pub async fn create_test_context() -> TestContext {
         client,
         write_half,
         user_manager,
-        user_db,
+        db,
         tx,
         peer_addr,
         _rx: rx,
@@ -109,7 +109,8 @@ pub async fn login_user_with_features(
 
     // Create user in database
     let user = test_ctx
-        .user_db
+        .db
+        .users
         .create_user(username, &hashed, is_admin, &perms)
         .await
         .unwrap();

@@ -32,6 +32,7 @@ struct LoginInfo {
     session_id: String,
     is_admin: bool,
     permissions: Vec<String>,
+    chat_topic: Option<String>,
 }
 
 /// Type alias for the connection registry
@@ -162,11 +163,13 @@ async fn perform_login(
             session_id: Some(id),
             is_admin,
             permissions,
+            server_info,
             ..
         }) => Ok(LoginInfo {
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
+            chat_topic: server_info.map(|info| info.chat_topic),
         }),
         Ok(ServerMessage::LoginResponse {
             success: true,
@@ -216,6 +219,7 @@ async fn setup_communication_channels(
         })))),
         is_admin: login_info.is_admin,
         permissions: login_info.permissions,
+        chat_topic: login_info.chat_topic,
     })
 }
 

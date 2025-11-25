@@ -40,7 +40,7 @@ pub async fn handle_userinfo(
 
     // Check UserInfo permission
     let has_perm = match ctx
-        .user_db
+        .db.users
         .has_permission(requesting_user.db_user_id, Permission::UserInfo)
         .await
     {
@@ -82,7 +82,7 @@ pub async fn handle_userinfo(
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
-        .user_db
+        .db.users
         .get_user_by_username(&requesting_user.username)
         .await
     {
@@ -96,7 +96,7 @@ pub async fn handle_userinfo(
 
     // Fetch target user account for admin status and created_at
     let target_account = match ctx
-        .user_db
+        .db.users
         .get_user_by_username(&requested_username)
         .await
     {
@@ -187,7 +187,7 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let user = test_ctx
-            .user_db
+            .db.users
             .create_user("alice", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -230,7 +230,7 @@ mod tests {
             set
         };
         let user = test_ctx
-            .user_db
+            .db.users
             .create_user("alice", &hashed, false, &perms)
             .await
             .unwrap();
@@ -299,14 +299,14 @@ mod tests {
             set
         };
         let requester = test_ctx
-            .user_db
+            .db.users
             .create_user("requester", &hashed, false, &perms)
             .await
             .unwrap();
 
         // Create target user
         let target = test_ctx
-            .user_db
+            .db.users
             .create_user("target", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -389,14 +389,14 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let admin = test_ctx
-            .user_db
+            .db.users
             .create_user("admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create target user (non-admin)
         let target = test_ctx
-            .user_db
+            .db.users
             .create_user("target", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -486,13 +486,13 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let admin1 = test_ctx
-            .user_db
+            .db.users
             .create_user("admin1", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
 
         let admin2 = test_ctx
-            .user_db
+            .db.users
             .create_user("admin2", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();

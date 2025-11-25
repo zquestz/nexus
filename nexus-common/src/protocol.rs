@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 pub enum ClientMessage {
     /// Send a chat message to #server
     ChatSend { message: String },
+    /// Update the chat topic
+    ChatTopicUpdate { topic: String },
     /// Handshake - must be sent first
     Handshake { version: String },
     /// Login request
@@ -62,6 +64,14 @@ pub enum ServerMessage {
         username: String,
         message: String,
     },
+    /// Chat topic broadcast (sent to users with ChatTopic permission when topic changes)
+    ChatTopic { topic: String, username: String },
+    /// Chat topic update response
+    ChatTopicUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// Error message
     Error {
         message: String,
@@ -83,6 +93,8 @@ pub enum ServerMessage {
         is_admin: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -140,6 +152,13 @@ pub enum ServerMessage {
     },
 }
 
+/// Server information sent to clients on login
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerInfo {
+    /// Current chat topic (empty string if not set)
+    pub chat_topic: String,
+}
+
 /// Information about a connected user (basic info for lists)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
@@ -173,6 +192,10 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::ChatSend { message } => f
                 .debug_struct("ChatSend")
                 .field("message", message)
+                .finish(),
+            ClientMessage::ChatTopicUpdate { topic } => f
+                .debug_struct("ChatTopicUpdate")
+                .field("topic", topic)
                 .finish(),
             ClientMessage::Handshake { version } => f
                 .debug_struct("Handshake")

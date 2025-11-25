@@ -5,8 +5,8 @@ use super::{
     ERR_HANDSHAKE_REQUIRED, ERR_INVALID_CREDENTIALS,
 };
 use super::{HandlerContext, current_timestamp};
-use crate::db;
-use nexus_common::protocol::{ServerMessage, UserInfo};
+use crate::db::{self, Permission};
+use nexus_common::protocol::{ServerMessage, ServerInfo, UserInfo};
 use std::io;
 
 /// Handle a login request from the client
@@ -35,7 +35,7 @@ pub async fn handle_login(
     }
 
     // Determine if this is the first user (will auto-become admin)
-    let is_first_user = match ctx.user_db.has_any_users().await {
+    let is_first_user = match ctx.db.users.has_any_users().await {
         Ok(has_users) => !has_users,
         Err(e) => {
             eprintln!("Database error checking for users: {}", e);
@@ -46,7 +46,7 @@ pub async fn handle_login(
     };
 
     // Look up user account in database
-    let account = match ctx.user_db.get_user_by_username(&username).await {
+    let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
             eprintln!("Database error looking up user {}: {}", username, e);
@@ -91,7 +91,7 @@ pub async fn handle_login(
 
         // Admin gets all permissions automatically (no need to store in table)
         match ctx
-            .user_db
+            .db.users
             .create_user(&username, &hashed_password, true, &db::Permissions::new())
             .await
         {
@@ -140,7 +140,7 @@ pub async fn handle_login(
         vec![]
     } else {
         // Fetch permissions from database for non-admin users
-        match ctx.user_db.get_user_permissions(authenticated_account.id).await {
+        match ctx.db.users.get_user_permissions(authenticated_account.id).await {
             Ok(perms) => perms.to_vec().iter().map(|p| p.as_str().to_string()).collect(),
             Err(e) => {
                 eprintln!("Error fetching permissions for {}: {}", authenticated_account.username, e);
@@ -149,11 +149,27 @@ pub async fn handle_login(
         }
     };
 
+    // Fetch server info if user has ChatTopic permission
+    let server_info = if authenticated_account.is_admin || 
+        ctx.db.users.has_permission(authenticated_account.id, Permission::ChatTopic).await.unwrap_or(false) {
+        // Fetch chat topic from database
+        match ctx.db.config.get_topic().await {
+            Ok(chat_topic) => Some(ServerInfo { chat_topic }),
+            Err(e) => {
+                eprintln!("Error fetching chat topic for {}: {}", authenticated_account.username, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let response = ServerMessage::LoginResponse {
         success: true,
         session_id: Some(id.to_string()),
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
+        server_info,
         error: None,
     };
     ctx.send_message(&response).await?;
@@ -240,6 +256,7 @@ mod tests {
                 is_admin,
                 permissions,
                 error,
+                ..
             } => {
                 assert!(success, "Login should indicate success");
                 assert!(session_id.is_some(), "Should return session ID");
@@ -252,7 +269,7 @@ mod tests {
 
         // Verify user was created as admin in database
         let user = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -277,7 +294,7 @@ mod tests {
             set
         };
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", &hashed, false, &perms)
             .await
             .unwrap();
@@ -315,6 +332,7 @@ mod tests {
                 is_admin,
                 permissions,
                 error,
+                ..
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
@@ -337,7 +355,7 @@ mod tests {
         let password = "correctpassword";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .user_db
+            .db.users
             .create_user("bob", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -369,7 +387,7 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .user_db
+            .db.users
             .create_user("existing", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -404,7 +422,7 @@ mod tests {
         let admin_password = "adminpass";
         let admin_hashed = db::hash_password(admin_password).unwrap();
         let _admin = test_ctx
-            .user_db
+            .db.users
             .create_user("admin", &admin_hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -422,7 +440,7 @@ mod tests {
             set
         };
         let _user = test_ctx
-            .user_db
+            .db.users
             .create_user("alice", &hashed, false, &perms)
             .await
             .unwrap();
@@ -458,6 +476,7 @@ mod tests {
                 is_admin,
                 permissions,
                 error,
+                ..
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
@@ -485,7 +504,7 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         test_ctx
-            .user_db
+            .db.users
             .create_user("alice", &hashed, false, &db::Permissions::new())
             .await
             .unwrap();
@@ -522,5 +541,184 @@ mod tests {
             result2.is_err(),
             "Second login on same connection should fail"
         );
+    }
+
+    #[tokio::test]
+    async fn test_login_includes_server_info_with_chat_topic() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with ChatTopic permission
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(Permission::ChatTopic);
+        test_ctx
+            .db.users
+            .create_user("alice", &hashed, false, &perms)
+            .await
+            .unwrap();
+
+        // Set a topic
+        test_ctx
+            .db
+            .config
+            .set_topic("Test server topic")
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        let result = handle_login(
+            "alice".to_string(),
+            password.to_string(),
+            vec![],
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+
+        // Verify LoginResponse includes server_info with chat_topic
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success,
+                server_info,
+                ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(server_info.is_some(), "Should include server_info");
+                let info = server_info.unwrap();
+                assert_eq!(info.chat_topic, "Test server topic", "Should include chat topic");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_excludes_server_info_without_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user without ChatTopic permission
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        test_ctx
+            .db.users
+            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Set a topic (user shouldn't see it)
+        test_ctx
+            .db
+            .config
+            .set_topic("Secret topic")
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        let result = handle_login(
+            "alice".to_string(),
+            password.to_string(),
+            vec![],
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+
+        // Verify LoginResponse excludes server_info
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success,
+                server_info,
+                ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(server_info.is_none(), "Should NOT include server_info without permission");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_admin_receives_server_info() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user (no explicit ChatTopic permission needed)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        test_ctx
+            .db.users
+            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Set a topic
+        test_ctx
+            .db
+            .config
+            .set_topic("Admin can see this")
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        let result = handle_login(
+            "admin".to_string(),
+            password.to_string(),
+            vec![],
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Read response
+        drop(test_ctx.write_half);
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+
+        // Verify admin receives server_info
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success,
+                is_admin,
+                server_info,
+                ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert_eq!(is_admin, Some(true), "Should be admin");
+                assert!(server_info.is_some(), "Admin should receive server_info");
+                let info = server_info.unwrap();
+                assert_eq!(info.chat_topic, "Admin can see this");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
     }
 }

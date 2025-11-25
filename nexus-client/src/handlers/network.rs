@@ -57,6 +57,7 @@ impl NexusApp {
                 let conn_tx = conn.tx.clone();
                 let should_request_userlist =
                     conn.is_admin || conn.permissions.contains(&"user_list".to_string());
+                let chat_topic = conn.chat_topic.clone();
 
                 // Create server connection
                 let server_conn = ServerConnection {
@@ -98,6 +99,9 @@ impl NexusApp {
                         return Task::none();
                     }
                 }
+
+                // Add chat topic message if present
+                self.add_topic_message_if_present(connection_id, chat_topic);
 
                 // Clear connection form
                 self.connection_form.clear();
@@ -146,6 +150,7 @@ impl NexusApp {
                 let conn_tx = conn.tx.clone();
                 let should_request_userlist =
                     conn.is_admin || conn.permissions.contains(&"user_list".to_string());
+                let chat_topic = conn.chat_topic.clone();
 
                 // Create server connection with passed display_name
                 let server_conn = ServerConnection {
@@ -176,6 +181,9 @@ impl NexusApp {
                 // Add to connections and make it active
                 self.connections.insert(conn_id, server_conn);
                 self.active_connection = Some(conn_id);
+
+                // Add chat topic message if present
+                self.add_topic_message_if_present(conn_id, chat_topic);
 
                 // Request initial user list (only if user has permission)
                 if should_request_userlist {
@@ -267,6 +275,21 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Add chat topic message if present and not empty
+    fn add_topic_message_if_present(&mut self, connection_id: usize, chat_topic: Option<String>) {
+        if let Some(topic) = chat_topic {
+            if !topic.is_empty() {
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    conn.chat_messages.push(ChatMessage {
+                        username: MSG_USERNAME_INFO.to_string(),
+                        message: format!("Topic: {}", topic),
+                        timestamp: Local::now(),
+                    });
+                }
+            }
+        }
+    }
+
     /// Process a specific server message and update state
     pub fn handle_server_message(
         &mut self,
@@ -279,6 +302,21 @@ impl NexusApp {
         };
 
         match msg {
+            ServerMessage::ChatTopic { topic, username } => {
+                let message = if topic.is_empty() {
+                    format!("Topic cleared by {}", username)
+                } else {
+                    format!("Topic set by {}: {}", username, topic)
+                };
+                self.add_chat_message(
+                    connection_id,
+                    ChatMessage {
+                        username: MSG_USERNAME_INFO.to_string(),
+                        message,
+                        timestamp: Local::now(),
+                    },
+                )
+            }
             ServerMessage::ChatMessage {
                 session_id: _,
                 username,
@@ -547,6 +585,22 @@ impl NexusApp {
                     return self.add_chat_message(connection_id, message);
                 }
                 Task::none()
+            }
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                let message = if success {
+                    ChatMessage {
+                        username: MSG_USERNAME_SYSTEM.to_string(),
+                        message: "Topic updated successfully".to_string(),
+                        timestamp: Local::now(),
+                    }
+                } else {
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message: format!("Failed to update topic: {}", error.unwrap_or_default()),
+                        timestamp: Local::now(),
+                    }
+                };
+                self.add_chat_message(connection_id, message)
             }
             ServerMessage::Error { message, command } => {
                 // Close edit user panel if the error is for UserEdit command

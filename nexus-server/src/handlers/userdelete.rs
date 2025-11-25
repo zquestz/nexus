@@ -45,7 +45,7 @@ pub async fn handle_userdelete(
 
     // Fetch requesting user account for permission check
     let requesting_user = match ctx
-        .user_db
+        .db.users
         .get_user_by_id(requesting_user_session.db_user_id)
         .await
     {
@@ -66,7 +66,7 @@ pub async fn handle_userdelete(
     // Check UserDelete permission
     let has_permission = requesting_user.is_admin
         || match ctx
-            .user_db
+            .db.users
             .has_permission(requesting_user.id, Permission::UserDelete)
             .await
         {
@@ -88,7 +88,7 @@ pub async fn handle_userdelete(
     }
 
     // Look up target user in database
-    let target_user = match ctx.user_db.get_user_by_username(&target_username).await {
+    let target_user = match ctx.db.users.get_user_by_username(&target_username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             let response = ServerMessage::UserDeleteResponse {
@@ -140,7 +140,7 @@ pub async fn handle_userdelete(
     }
 
     // Delete user from database (atomic last-admin protection)
-    match ctx.user_db.delete_user(target_user.id).await {
+    match ctx.db.users.delete_user(target_user.id).await {
         Ok(deleted) => {
             if deleted {
                 // Send success response to the admin who deleted the user
@@ -202,7 +202,7 @@ mod tests {
 
         // Create target user
         let target = test_ctx
-            .user_db
+            .db.users
             .create_user("bob", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -239,7 +239,7 @@ mod tests {
         }
 
         // Verify target user still exists
-        let still_exists = test_ctx.user_db.get_user_by_id(target.id).await.unwrap();
+        let still_exists = test_ctx.db.users.get_user_by_id(target.id).await.unwrap();
         assert!(
             still_exists.is_some(),
             "User should not be deleted without permission"
@@ -345,7 +345,7 @@ mod tests {
         }
 
         // Verify admin still exists
-        let still_exists = test_ctx.user_db.get_user_by_username("admin").await.unwrap();
+        let still_exists = test_ctx.db.users.get_user_by_username("admin").await.unwrap();
         assert!(
             still_exists.is_some(),
             "Admin should not be able to delete themselves"
@@ -360,7 +360,7 @@ mod tests {
         let password = "password";
         let hashed = db::hash_password(password).unwrap();
         let _admin = test_ctx
-            .user_db
+            .db.users
             .create_user("only_admin", &hashed, true, &db::Permissions::new())
             .await
             .unwrap();
@@ -411,7 +411,7 @@ mod tests {
 
         // Verify only admin still exists in database
         let remaining_admin = test_ctx
-            .user_db
+            .db.users
             .get_user_by_username("only_admin")
             .await
             .unwrap();
@@ -434,14 +434,14 @@ mod tests {
 
         // Create offline user to delete
         let offline_user = test_ctx
-            .user_db
+            .db.users
             .create_user("offline_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
 
         // Create online user to delete
         let online_user = test_ctx
-            .user_db
+            .db.users
             .create_user("online_user", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -476,7 +476,7 @@ mod tests {
         .await;
         assert!(result1.is_ok(), "Should successfully delete offline user");
         let deleted1 = test_ctx
-            .user_db
+            .db.users
             .get_user_by_id(offline_user.id)
             .await
             .unwrap();
@@ -494,7 +494,7 @@ mod tests {
         .await;
         assert!(result2.is_ok(), "Should successfully delete online user");
         let deleted2 = test_ctx
-            .user_db
+            .db.users
             .get_user_by_id(online_user.id)
             .await
             .unwrap();
@@ -527,7 +527,7 @@ mod tests {
 
         // Create target user
         let target = test_ctx
-            .user_db
+            .db.users
             .create_user("target", "hash", false, &db::Permissions::new())
             .await
             .unwrap();
@@ -562,7 +562,7 @@ mod tests {
         }
 
         // Verify target is deleted
-        let deleted = test_ctx.user_db.get_user_by_id(target.id).await.unwrap();
+        let deleted = test_ctx.db.users.get_user_by_id(target.id).await.unwrap();
         assert!(deleted.is_none(), "Target user should be deleted");
     }
 }
