@@ -54,7 +54,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         let topic = config_db.get_topic().await.unwrap();
-        assert_eq!(topic, "Welcome to Nexus!");
+        assert_eq!(topic, "");
     }
 
     #[tokio::test]

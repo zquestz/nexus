@@ -6,6 +6,6 @@ CREATE TABLE IF NOT EXISTS server_config (
     value TEXT NOT NULL
 );
 
--- Insert default topic (welcome message)
+-- Insert default topic (empty - no topic set by default)
 INSERT INTO server_config (key, value) 
-VALUES ('topic', 'Welcome to Nexus!');
+VALUES ('topic', '');

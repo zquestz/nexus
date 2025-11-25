@@ -320,6 +320,7 @@ mod tests {
             session_id: Some("abc123".to_string()),
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
+            server_info: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -334,6 +335,7 @@ mod tests {
             session_id: None,
             is_admin: None,
             permissions: None,
+            server_info: None,
             error: Some("Invalid credentials".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -348,6 +350,7 @@ mod tests {
             session_id: Some("admin123".to_string()),
             is_admin: Some(true),
             permissions: Some(vec![]),
+            server_info: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -364,6 +367,7 @@ mod tests {
             session_id: Some("user123".to_string()),
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            server_info: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
