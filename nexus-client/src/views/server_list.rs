@@ -49,6 +49,7 @@ pub fn server_list_panel<'a>(
 
             let mut btn = button(text(&conn.display_name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
+                .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING);
 
             if is_active {
@@ -59,15 +60,13 @@ pub fn server_list_panel<'a>(
                 });
             }
 
-            btn = btn
-                .on_press(Message::SwitchToConnection(*conn_id))
-                .height(SERVER_LIST_BUTTON_HEIGHT);
+            btn = btn.on_press(Message::SwitchToConnection(*conn_id));
 
             // Disconnect button (square icon button)
             let disconnect_btn = icon_button("X", Message::DisconnectFromServer(*conn_id));
 
             let server_row = row![btn, disconnect_btn]
-                .spacing(SMALL_PADDING)
+                .spacing(SERVER_LIST_ITEM_SPACING)
                 .align_y(alignment::Vertical::Center);
 
             connected_column = connected_column.push(server_row);
@@ -125,11 +124,10 @@ pub fn server_list_panel<'a>(
                 .padding(INPUT_PADDING)
                 .on_press(bookmark_message);
 
-            // Action buttons (square icon buttons)
+            // Action button (square icon button)
             let edit_btn = icon_button("Edit", Message::ShowEditBookmark(index));
-            let delete_btn = icon_button("Del", Message::DeleteBookmark(index));
 
-            let bookmark_row = row![btn, edit_btn, delete_btn]
+            let bookmark_row = row![btn, edit_btn]
                 .spacing(SERVER_LIST_ITEM_SPACING)
                 .align_y(alignment::Vertical::Center);
 

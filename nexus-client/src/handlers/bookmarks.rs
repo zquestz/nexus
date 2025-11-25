@@ -134,6 +134,8 @@ impl NexusApp {
         if let Err(e) = self.config.save() {
             self.connection_form.error = Some(format!("Failed to save config: {}", e));
         }
+        // Close the bookmark edit dialog if it's open
+        self.bookmark_edit = BookmarkEditState::default();
         Task::none()
     }
 

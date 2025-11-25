@@ -100,20 +100,36 @@ pub fn bookmark_edit_view<'a>(
             .size(TEXT_SIZE)
             .into(),
         text("").size(SPACER_SIZE_MEDIUM).into(),
-        row![
-            if can_save {
-                button(text("Save").size(TEXT_SIZE))
-                    .on_press(Message::SaveBookmark)
+        {
+            let mut buttons: Vec<Element<'a, Message>> = vec![
+                if can_save {
+                    button(text("Save").size(TEXT_SIZE))
+                        .on_press(Message::SaveBookmark)
+                        .padding(BUTTON_PADDING)
+                        .into()
+                } else {
+                    button(text("Save").size(TEXT_SIZE))
+                        .padding(BUTTON_PADDING)
+                        .into()
+                },
+                button(text("Cancel").size(TEXT_SIZE))
+                    .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
-            } else {
-                button(text("Save").size(TEXT_SIZE)).padding(BUTTON_PADDING)
-            },
-            button(text("Cancel").size(TEXT_SIZE))
-                .on_press(Message::CancelBookmarkEdit)
-                .padding(BUTTON_PADDING),
-        ]
-        .spacing(ELEMENT_SPACING)
-        .into(),
+                    .into(),
+            ];
+
+            // Add Delete button only when editing (not adding)
+            if let BookmarkEditMode::Edit(index) = bookmark_edit_mode {
+                buttons.push(
+                    button(text("Delete").size(TEXT_SIZE))
+                        .on_press(Message::DeleteBookmark(*index))
+                        .padding(BUTTON_PADDING)
+                        .into(),
+                );
+            }
+
+            row(buttons).spacing(ELEMENT_SPACING).into()
+        },
     ]);
 
     let content = column(column_items)
