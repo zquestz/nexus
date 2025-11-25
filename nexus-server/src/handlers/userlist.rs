@@ -92,8 +92,8 @@ pub async fn handle_userlist(
         })
         .collect();
     
-    // Sort by username for consistent ordering
-    user_infos.sort_by(|a, b| a.username.cmp(&b.username));
+    // Sort by username (case-insensitive) for consistent ordering
+    user_infos.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
 
     // Send user list response
     let response = ServerMessage::UserListResponse { users: user_infos };

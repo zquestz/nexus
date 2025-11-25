@@ -227,6 +227,8 @@ impl NexusApp {
                     is_admin: user.is_admin,
                     session_ids: user.session_ids.clone(),
                 });
+                // Sort to maintain alphabetical order
+                conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
@@ -241,6 +243,8 @@ impl NexusApp {
                 username,
             } => {
                 conn.online_users.retain(|u| !u.session_ids.contains(&session_id));
+                // Sort to maintain alphabetical order (in case multiple sessions were removed)
+                conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {

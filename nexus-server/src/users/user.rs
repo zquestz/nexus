@@ -16,6 +16,7 @@ pub struct User {
     /// Remote address of the user's connection
     pub address: SocketAddr,
     /// When the user account was created (Unix timestamp from database)
+    #[allow(dead_code)]
     pub created_at: i64,
     /// When the user logged in (Unix timestamp)
     pub login_time: u64,
