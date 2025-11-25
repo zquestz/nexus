@@ -3,6 +3,13 @@ name = "nexus-client"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.bundle]
+name = "Nexus BBS"
+identifier = "at.greyh.nexus"
+icon = ["assets/macos/nexus.icns"]
+category = "Network"
+short_description = "BBS client for Yggdrasil network"
+
 [dependencies]
 nexus-common = { path = "../nexus-common" }
 iced = { version = "0.13", features = ["tokio"] }

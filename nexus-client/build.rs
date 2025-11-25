@@ -9,6 +9,14 @@ fn main() {
     // Generate the icon font and module
     iced_fontello::build("fonts/icons.toml").expect("Failed to build icon font");
 
+    // macOS icon configuration
+    #[cfg(target_os = "macos")]
+    {
+        println!("cargo::rerun-if-changed=assets/macos/nexus.icns");
+        // The icon will be included in the app bundle via Info.plist
+        // For cargo-bundle, place nexus.icns in assets/macos/
+    }
+
     // Format the entire codebase after generating icon.rs
     // Try cargo fmt, but don't fail the build if it's not available
     if let Ok(status) = Command::new("cargo").arg("fmt").arg("--all").status() {

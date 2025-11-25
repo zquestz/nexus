@@ -62,11 +62,29 @@ First user to connect becomes admin automatically.
 
 Use the GUI to manage server bookmarks, chat, view users, and manage permissions.
 
-## Linux Desktop Integration
+## Platform Integration
+
+### Linux Desktop Integration
 
 For Linux systems, desktop integration files (icon and .desktop file) are available in `nexus-client/assets/linux/`.
 
 See `nexus-client/assets/linux/README.md` for installation instructions.
+
+### macOS App Bundle
+
+For macOS, you can create a proper `.app` bundle with icon:
+
+```bash
+# Install cargo-bundle
+cargo install cargo-bundle
+
+# Build the app bundle
+cargo bundle --release
+
+# The app will be at: target/release/bundle/osx/Nexus BBS.app
+```
+
+See `nexus-client/assets/macos/README.md` for detailed instructions and manual bundling.
 
 ## Testing
 
