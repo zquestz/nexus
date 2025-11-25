@@ -113,7 +113,7 @@ impl NexusApp {
     }
 
     /// Handle bookmark connection attempt result (success or failure)
-    /// 
+    ///
     /// This variant is used when connecting from bookmarks to avoid race conditions
     /// with the shared connection_form state.
     pub fn handle_bookmark_connection_result(
@@ -125,8 +125,13 @@ impl NexusApp {
         match result {
             Ok(conn) => {
                 let session_id = conn.session_id.parse().unwrap_or(0);
-                let connection_id = conn.connection_id;
-                
+                let conn_id = conn.connection_id;
+
+                // Clear the connecting lock for this bookmark
+                if let Some(idx) = bookmark_index {
+                    self.connecting_bookmarks.remove(&idx);
+                }
+
                 // Extract username from bookmark if we have one
                 let username = if let Some(idx) = bookmark_index {
                     if let Some(bookmark) = self.config.get_bookmark(idx) {
@@ -160,7 +165,7 @@ impl NexusApp {
                             return Task::none();
                         }
                     },
-                    connection_id,
+                    connection_id: conn_id,
                     message_input: String::new(),
                     broadcast_message: String::new(),
                     user_management: crate::types::UserManagementState::default(),
@@ -169,15 +174,15 @@ impl NexusApp {
                 };
 
                 // Add to connections and make it active
-                self.connections.insert(connection_id, server_conn);
-                self.active_connection = Some(connection_id);
+                self.connections.insert(conn_id, server_conn);
+                self.active_connection = Some(conn_id);
 
                 // Request initial user list (only if user has permission)
                 if should_request_userlist {
                     if let Err(_e) = conn_tx.send(ClientMessage::UserList) {
                         // Channel send failed - connection is broken
                         // Remove the connection we just added since it's broken
-                        self.connections.remove(&connection_id);
+                        self.connections.remove(&conn_id);
                         self.active_connection = None;
                         return Task::none();
                     }
@@ -187,10 +192,16 @@ impl NexusApp {
                 text_input::focus(text_input::Id::from(InputId::ChatInput))
             }
             Err(error) => {
+                // Clear the connecting lock for this bookmark
+                if let Some(idx) = bookmark_index {
+                    self.connecting_bookmarks.remove(&idx);
+                }
+
                 // For auto-connect failures, we could show a system message
                 // but for now we just fail silently
                 // TODO: Consider showing failed auto-connect attempts in a notification area
                 eprintln!("Bookmark connection failed: {}", error);
+
                 Task::none()
             }
         }
@@ -310,7 +321,11 @@ impl NexusApp {
             }
             ServerMessage::UserConnected { user } => {
                 // Check if user already exists (multi-device connection)
-                if let Some(existing_user) = conn.online_users.iter_mut().find(|u| u.username == user.username) {
+                if let Some(existing_user) = conn
+                    .online_users
+                    .iter_mut()
+                    .find(|u| u.username == user.username)
+                {
                     // User already exists - merge session_ids
                     for session_id in &user.session_ids {
                         if !existing_user.session_ids.contains(session_id) {
@@ -325,7 +340,8 @@ impl NexusApp {
                         session_ids: user.session_ids.clone(),
                     });
                     // Sort to maintain alphabetical order
-                    conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                    conn.online_users
+                        .sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
                 }
                 self.add_chat_message(
                     connection_id,
@@ -341,9 +357,13 @@ impl NexusApp {
                 username,
             } => {
                 // Remove the specific session_id from the user's sessions
-                if let Some(user) = conn.online_users.iter_mut().find(|u| u.username == username) {
+                if let Some(user) = conn
+                    .online_users
+                    .iter_mut()
+                    .find(|u| u.username == username)
+                {
                     user.session_ids.retain(|&sid| sid != session_id);
-                    
+
                     // If user has no more sessions, remove them entirely
                     if user.session_ids.is_empty() {
                         conn.online_users.retain(|u| u.username != username);
@@ -540,7 +560,7 @@ impl NexusApp {
                         }
                     }
                 }
-                
+
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {

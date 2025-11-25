@@ -11,12 +11,12 @@ mod views;
 use iced::widget::text_input;
 use iced::{Element, Subscription, Task, Theme};
 
-use std::collections::HashMap;
+use config::ThemePreference;
+use std::collections::{HashMap, HashSet};
 use types::{
     BookmarkEditState, ConnectionFormState, DEFAULT_PORT, InputId, Message, ServerConnection,
     UiState, UserManagementState,
 };
-use config::ThemePreference;
 
 /// Default window width
 const WINDOW_WIDTH: f32 = 1200.0;
@@ -63,6 +63,8 @@ struct NexusApp {
     ui_state: UiState,
     /// Default user management state when no connection active
     default_user_mgmt: UserManagementState,
+    /// Set of bookmark indices currently connecting (prevents duplicate attempts)
+    connecting_bookmarks: HashSet<usize>,
 }
 
 impl Default for NexusApp {
@@ -87,6 +89,7 @@ impl Default for NexusApp {
                 show_broadcast: false,
             },
             default_user_mgmt: UserManagementState::default(),
+            connecting_bookmarks: HashSet::new(),
         }
     }
 }

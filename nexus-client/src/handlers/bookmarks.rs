@@ -60,13 +60,28 @@ impl NexusApp {
 
     /// Connect to a bookmarked server
     pub fn handle_connect_to_bookmark(&mut self, index: usize) -> Task<Message> {
+        // Check if this bookmark is already connecting
+        if self.connecting_bookmarks.contains(&index) {
+            return Task::none();
+        }
+
         // Get bookmark data
         if let Some(bookmark) = self.config.get_bookmark(index) {
+            // Mark this bookmark as connecting
+            self.connecting_bookmarks.insert(index);
+
+            // Generate connection ID
+            let connection_id = self.next_connection_id;
+            self.next_connection_id += 1;
+
             // Validate port
             let port: u16 = match bookmark.port.parse() {
                 Ok(p) => p,
                 Err(_) => {
-                    self.connection_form.error = Some(format!("Invalid port in bookmark: {}", bookmark.name));
+                    // Clear the connecting lock on validation failure
+                    self.connecting_bookmarks.remove(&index);
+                    self.connection_form.error =
+                        Some(format!("Invalid port in bookmark: {}", bookmark.name));
                     return Task::none();
                 }
             };
@@ -75,8 +90,6 @@ impl NexusApp {
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
             let server_name = bookmark.name.clone();
-            let connection_id = self.next_connection_id;
-            self.next_connection_id += 1;
 
             // Store bookmark index for this connection
             let bookmark_index = Some(index);
