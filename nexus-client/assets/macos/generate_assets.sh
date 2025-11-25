@@ -39,9 +39,9 @@ fi
 echo "Generating assets from $SVG_SOURCE"
 echo ""
 
-# Generate macOS PNG (1024x1024)
+# Generate macOS PNG (1024x1024) with transparency
 echo "Generating macOS PNG (1024x1024)..."
-"$CONVERT_CMD" "$SVG_SOURCE" -resize 1024x1024 "${MACOS_DIR}/nexus.png"
+"$CONVERT_CMD" -background none "$SVG_SOURCE" -resize 1024x1024 "${MACOS_DIR}/nexus.png"
 echo "✓ nexus.png"
 
 # Generate macOS ICNS
