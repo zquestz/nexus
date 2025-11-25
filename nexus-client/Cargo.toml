@@ -7,7 +7,7 @@ edition = "2024"
 name = "Nexus BBS"
 identifier = "at.greyh.nexus"
 icon = ["assets/macos/nexus.icns"]
-category = "Network"
+category = "public.app-category.social-networking"
 short_description = "BBS client for Yggdrasil network"
 
 [dependencies]
