@@ -68,4 +68,22 @@ impl NexusApp {
         }
         Task::none()
     }
+
+    /// Toggle between light and dark theme
+    pub fn handle_toggle_theme(&mut self) -> Task<Message> {
+        use crate::config::ThemePreference;
+        
+        // Toggle theme preference
+        self.config.theme = match self.config.theme {
+            ThemePreference::Light => ThemePreference::Dark,
+            ThemePreference::Dark => ThemePreference::Light,
+        };
+        
+        // Save config to persist theme preference
+        if let Err(e) = self.config.save() {
+            eprintln!("Failed to save theme preference: {}", e);
+        }
+        
+        Task::none()
+    }
 }

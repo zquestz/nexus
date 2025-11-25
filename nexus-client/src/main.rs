@@ -16,6 +16,7 @@ use types::{
     BookmarkEditState, ConnectionFormState, DEFAULT_PORT, InputId, Message, ServerConnection,
     UiState, UserManagementState,
 };
+use config::ThemePreference;
 
 /// Default window width
 const WINDOW_WIDTH: f32 = 1200.0;
@@ -31,7 +32,7 @@ const MIN_WINDOW_HEIGHT: f32 = 500.0;
 
 pub fn main() -> iced::Result {
     iced::application("Nexus BBS", NexusApp::update, NexusApp::view)
-        .theme(|_| Theme::Dark)
+        .theme(NexusApp::theme)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {
             size: iced::Size::new(WINDOW_WIDTH, WINDOW_HEIGHT),
@@ -192,6 +193,7 @@ impl NexusApp {
             Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleEditUser => self.handle_toggle_edit_user(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
+            Message::ToggleTheme => self.handle_toggle_theme(),
 
             // Network events
             Message::ConnectionResult(result) => self.handle_connection_result(result),
@@ -260,5 +262,13 @@ impl NexusApp {
             self.ui_state.show_edit_user,
             self.ui_state.show_broadcast,
         )
+    }
+
+    /// Get the current theme based on configuration
+    fn theme(&self) -> Theme {
+        match self.config.theme {
+            ThemePreference::Light => Theme::Light,
+            ThemePreference::Dark => Theme::Dark,
+        }
     }
 }

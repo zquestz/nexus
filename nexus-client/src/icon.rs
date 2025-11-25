@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 1f2d5379bc8dce57b13888cb86c12a397e5cc02965b6a6e15da6447498334d17
+// faf0f1c0e44a4c82adeb0a1503b27fa3d1a179de3c8f24e6df9404aec0f5827f
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -24,6 +24,10 @@ pub fn logout<'a>() -> Text<'a> {
 
 pub fn megaphone<'a>() -> Text<'a> {
     icon("\u{1F4E3}")
+}
+
+pub fn sun<'a>() -> Text<'a> {
+    icon("\u{F185}")
 }
 
 pub fn user_plus<'a>() -> Text<'a> {

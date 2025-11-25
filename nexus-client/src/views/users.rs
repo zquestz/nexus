@@ -3,6 +3,7 @@
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    primary_button_style, primary_checkbox_style, primary_text_input_style,
 };
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
@@ -50,7 +51,8 @@ pub fn users_view<'a>(
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::AdminUsername))
             .padding(INPUT_PADDING)
-            .size(TEXT_SIZE);
+            .size(TEXT_SIZE)
+            .style(primary_text_input_style());
 
         let password_input = text_input("Password", &user_management.password)
             .on_input(Message::AdminPasswordChanged)
@@ -58,14 +60,18 @@ pub fn users_view<'a>(
             .id(text_input::Id::from(InputId::AdminPassword))
             .secure(true)
             .padding(INPUT_PADDING)
-            .size(TEXT_SIZE);
+            .size(TEXT_SIZE)
+            .style(primary_text_input_style());
 
         let admin_checkbox = if conn.is_admin {
             checkbox("Make Admin", user_management.is_admin)
                 .on_toggle(Message::AdminIsAdminToggled)
                 .size(TEXT_SIZE)
+                .style(primary_checkbox_style())
         } else {
-            checkbox("Make Admin", user_management.is_admin).size(TEXT_SIZE)
+            checkbox("Make Admin", user_management.is_admin)
+                .size(TEXT_SIZE)
+                .style(primary_checkbox_style())
         };
 
         let permissions_title = text("Permissions:").size(TEXT_SIZE);
@@ -79,9 +85,12 @@ pub fn users_view<'a>(
                         Message::AdminPermissionToggled(perm_name.clone(), checked)
                     })
                     .size(TEXT_SIZE)
+                    .style(primary_checkbox_style())
             } else {
                 // Cannot toggle permissions they don't have
-                checkbox(permission.as_str(), *enabled).size(TEXT_SIZE)
+                checkbox(permission.as_str(), *enabled)
+                    .size(TEXT_SIZE)
+                    .style(primary_checkbox_style())
             };
             permissions_column = permissions_column.push(checkbox_widget);
         }
@@ -90,13 +99,17 @@ pub fn users_view<'a>(
             button(text("Create").size(TEXT_SIZE))
                 .on_press(Message::CreateUserPressed)
                 .padding(BUTTON_PADDING)
+                .style(primary_button_style())
         } else {
-            button(text("Create").size(TEXT_SIZE)).padding(BUTTON_PADDING)
+            button(text("Create").size(TEXT_SIZE))
+                .padding(BUTTON_PADDING)
+                .style(primary_button_style())
         };
 
         let cancel_button = button(text("Cancel").size(TEXT_SIZE))
             .on_press(Message::ToggleAddUser)
-            .padding(BUTTON_PADDING);
+            .padding(BUTTON_PADDING)
+            .style(primary_button_style());
 
         let create_form = column![
             create_title,
@@ -152,27 +165,35 @@ pub fn users_view<'a>(
                     .on_submit(submit_action)
                     .id(text_input::Id::from(InputId::EditUsername))
                     .padding(INPUT_PADDING)
-                    .size(TEXT_SIZE);
+                    .size(TEXT_SIZE)
+                    .style(primary_text_input_style());
 
                 let edit_button = if can_edit {
                     button(text("Edit").size(TEXT_SIZE))
                         .on_press(Message::EditUserPressed)
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 } else {
-                    button(text("Edit").size(TEXT_SIZE)).padding(BUTTON_PADDING)
+                    button(text("Edit").size(TEXT_SIZE))
+                        .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 };
 
                 let delete_button = if can_delete {
                     button(text("Delete").size(TEXT_SIZE))
                         .on_press(Message::DeleteUserPressed(username.to_string()))
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 } else {
-                    button(text("Delete").size(TEXT_SIZE)).padding(BUTTON_PADDING)
+                    button(text("Delete").size(TEXT_SIZE))
+                        .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 };
 
                 let cancel_button = button(text("Cancel").size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
-                    .padding(BUTTON_PADDING);
+                    .padding(BUTTON_PADDING)
+                    .style(primary_button_style());
 
                 let edit_form = column![
                     edit_title,
@@ -218,7 +239,8 @@ pub fn users_view<'a>(
                     .on_submit(submit_action.clone())
                     .id(text_input::Id::from(InputId::EditNewUsername))
                     .padding(INPUT_PADDING)
-                    .size(TEXT_SIZE);
+                    .size(TEXT_SIZE)
+                    .style(primary_text_input_style());
 
                 let password_input =
                     text_input("Password (leave empty to keep current)", new_password)
@@ -227,14 +249,18 @@ pub fn users_view<'a>(
                         .id(text_input::Id::from(InputId::EditNewPassword))
                         .secure(true)
                         .padding(INPUT_PADDING)
-                        .size(TEXT_SIZE);
+                        .size(TEXT_SIZE)
+                        .style(primary_text_input_style());
 
                 let admin_checkbox = if conn.is_admin {
                     checkbox("Make Admin", *is_admin)
                         .on_toggle(Message::EditIsAdminToggled)
                         .size(TEXT_SIZE)
+                        .style(primary_checkbox_style())
                 } else {
-                    checkbox("Make Admin", *is_admin).size(TEXT_SIZE)
+                    checkbox("Make Admin", *is_admin)
+                        .size(TEXT_SIZE)
+                        .style(primary_checkbox_style())
                 };
 
                 let permissions_title = text("Permissions:").size(TEXT_SIZE);
@@ -249,9 +275,12 @@ pub fn users_view<'a>(
                                 Message::EditPermissionToggled(perm_name.clone(), checked)
                             })
                             .size(TEXT_SIZE)
+                            .style(primary_checkbox_style())
                     } else {
                         // Cannot toggle permissions they don't have
-                        checkbox(permission.as_str(), *enabled).size(TEXT_SIZE)
+                        checkbox(permission.as_str(), *enabled)
+                            .size(TEXT_SIZE)
+                            .style(primary_checkbox_style())
                     };
                     permissions_column = permissions_column.push(checkbox_widget);
                 }
@@ -260,13 +289,17 @@ pub fn users_view<'a>(
                     button(text("Update").size(TEXT_SIZE))
                         .on_press(Message::UpdateUserPressed)
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 } else {
-                    button(text("Update").size(TEXT_SIZE)).padding(BUTTON_PADDING)
+                    button(text("Update").size(TEXT_SIZE))
+                        .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                 };
 
                 let cancel_button = button(text("Cancel").size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
-                    .padding(BUTTON_PADDING);
+                    .padding(BUTTON_PADDING)
+                    .style(primary_button_style());
 
                 let update_form = column![
                     update_title,

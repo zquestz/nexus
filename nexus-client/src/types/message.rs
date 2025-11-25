@@ -97,6 +97,8 @@ pub enum Message {
     ToggleBroadcast,
     /// Toolbar: Toggle Edit User panel
     ToggleEditUser,
+    /// Toolbar: Toggle light/dark theme
+    ToggleTheme,
     /// Toolbar: Toggle user list sidebar
     ToggleUserList,
     /// User edit panel: Update button pressed (stage 2)

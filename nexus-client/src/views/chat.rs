@@ -1,8 +1,10 @@
 //! Chat interface for active server connections
 
 use super::style::{
-    CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, ERROR_TEXT_COLOR, INFO_TEXT_COLOR,
-    INPUT_PADDING, SMALL_PADDING, SMALL_SPACING, SYSTEM_TEXT_COLOR,
+    CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING,
+    INPUT_PADDING, SMALL_PADDING, SMALL_SPACING, primary_button_style,
+    primary_text_input_style, system_text_color, info_text_color, error_message_color,
+    chat_text_color,
 };
 use crate::types::{InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
@@ -33,21 +35,28 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
             let display = if msg.username == "System" {
                 text(format!("[{}] [SYS] {}", time_str, msg.message))
                     .size(CHAT_MESSAGE_SIZE)
-                    .color(SYSTEM_TEXT_COLOR)
+                    .style(|theme| iced::widget::text::Style {
+                        color: Some(system_text_color(theme)),
+                    })
                     .font(iced::Font::MONOSPACE)
             } else if msg.username == "Error" {
                 text(format!("[{}] [ERR] {}", time_str, msg.message))
                     .size(CHAT_MESSAGE_SIZE)
-                    .color(ERROR_TEXT_COLOR)
+                    .color(error_message_color())
                     .font(iced::Font::MONOSPACE)
             } else if msg.username == "Info" {
                 text(format!("[{}] [INFO] {}", time_str, msg.message))
                     .size(CHAT_MESSAGE_SIZE)
-                    .color(INFO_TEXT_COLOR)
+                    .style(|theme| iced::widget::text::Style {
+                        color: Some(info_text_color(theme)),
+                    })
                     .font(iced::Font::MONOSPACE)
             } else {
                 text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                     .size(CHAT_MESSAGE_SIZE)
+                    .style(|theme| iced::widget::text::Style {
+                        color: Some(chat_text_color(theme)),
+                    })
                     .font(iced::Font::MONOSPACE)
             };
             chat_column = chat_column.push(display);
@@ -64,7 +73,9 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
             .push(
                 text("You do not have permission to view chat messages")
                     .size(CHAT_MESSAGE_SIZE)
-                    .color(SYSTEM_TEXT_COLOR)
+                    .style(|theme| iced::widget::text::Style {
+                        color: Some(system_text_color(theme)),
+                    })
                     .font(iced::Font::MONOSPACE),
             );
 
@@ -82,18 +93,23 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
+                .style(primary_text_input_style())
         } else {
             text_input("No permission to send messages", message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
+                .style(primary_text_input_style())
         },
         if can_send {
             button(text("Send").size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
                 .padding(INPUT_PADDING)
+                .style(primary_button_style())
         } else {
-            button(text("Send").size(CHAT_MESSAGE_SIZE)).padding(INPUT_PADDING)
+            button(text("Send").size(CHAT_MESSAGE_SIZE))
+                .padding(INPUT_PADDING)
+                .style(primary_button_style())
         },
     ]
     .spacing(SMALL_SPACING);

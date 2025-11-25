@@ -1,21 +1,22 @@
 //! Server list panel (left sidebar)
 
 use super::style::{
-    BORDER_WIDTH, EMPTY_STATE_COLOR, FORM_PADDING, INPUT_PADDING,
-    PANEL_SPACING, SECTION_TITLE_COLOR, SECTION_TITLE_SIZE, SEPARATOR_COLOR, SEPARATOR_HEIGHT,
-    SERVER_LIST_BACKGROUND_COLOR, SERVER_LIST_BORDER_COLOR, SERVER_LIST_BUTTON_HEIGHT,
-    SERVER_LIST_BUTTON_SIZE, SERVER_LIST_DISCONNECT_ICON_SIZE,
+    BORDER_WIDTH, FORM_PADDING, INPUT_PADDING,
+    PANEL_SPACING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT,
+    SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_BUTTON_SIZE, SERVER_LIST_DISCONNECT_ICON_SIZE,
     SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
     TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING,
     TOOLTIP_BACKGROUND_COLOR, NO_SPACING,
-    DISCONNECT_ICON_COLOR, DISCONNECT_ICON_HOVER_COLOR, EDIT_ICON_COLOR, EDIT_ICON_HOVER_COLOR,
-    BOOKMARK_ROW_ALT_COLOR, BOOKMARK_BUTTON_HOVER_COLOR,
+    sidebar_background, sidebar_border, section_title_color, empty_state_color,
+    separator_color, alt_row_color, button_text_color, tooltip_text_color, tooltip_border,
+    primary_button_style, disconnect_icon_color, disconnect_icon_hover_color,
+    edit_icon_color, edit_icon_hover_color, interactive_hover_color,
 };
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
 use iced::widget::{button, column, container, row, scrollable, text, tooltip, Column};
-use iced::{alignment, Background, Border, Color, Element, Fill};
+use iced::{alignment, Background, Border, Element, Fill};
 use std::collections::HashMap;
 
 /// Displays connected servers and saved bookmarks
@@ -33,7 +34,11 @@ pub fn server_list_panel<'a>(
     // === CONNECTED SERVERS SECTION ===
     let connected_title = text("Connected")
         .size(SECTION_TITLE_SIZE)
-        .color(SECTION_TITLE_COLOR);
+        .style(|theme| {
+            iced::widget::text::Style {
+                color: Some(section_title_color(theme)),
+            }
+        });
     let mut connected_column = Column::new()
         .spacing(SERVER_LIST_ITEM_SPACING);
 
@@ -41,7 +46,11 @@ pub fn server_list_panel<'a>(
         connected_column = connected_column.push(
             text("No connections")
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
-                .color(EMPTY_STATE_COLOR),
+                .style(|theme| {
+                    iced::widget::text::Style {
+                        color: Some(empty_state_color(theme)),
+                    }
+                }),
         );
     } else {
         // Sort connections by connection_id for consistent ordering
@@ -57,12 +66,12 @@ pub fn server_list_panel<'a>(
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
                 .on_press(Message::SwitchToConnection(**conn_id))
-                .style(move |_theme, status| button::Style {
+                .style(move |theme, status| button::Style {
                     background: None,
                     text_color: match status {
-                        button::Status::Hovered => BOOKMARK_BUTTON_HOVER_COLOR,
-                        _ if is_active => BOOKMARK_BUTTON_HOVER_COLOR,
-                        _ => Color::WHITE,
+                        button::Status::Hovered => interactive_hover_color(),
+                        _ if is_active => interactive_hover_color(),
+                        _ => button_text_color(theme),
                     },
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
@@ -73,8 +82,10 @@ pub fn server_list_panel<'a>(
                 transparent_icon_button(icon::logout(), Message::DisconnectFromServer(**conn_id)),
                 container(text("Disconnect").size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|_theme| container::Style {
+                    .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        text_color: Some(tooltip_text_color(theme)),
+                        border: tooltip_border(),
                         ..Default::default()
                     }),
                 tooltip::Position::Right,
@@ -90,9 +101,9 @@ pub fn server_list_panel<'a>(
             let is_even = index % 2 == 0;
             let row_container = container(server_row)
                 .width(Fill)
-                .style(move |_theme| container::Style {
+                .style(move |theme| container::Style {
                     background: if is_even {
-                        Some(Background::Color(BOOKMARK_ROW_ALT_COLOR))
+                        Some(Background::Color(alt_row_color(theme)))
                     } else {
                         None
                     },
@@ -113,8 +124,8 @@ pub fn server_list_panel<'a>(
     let separator = container(text(""))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
-        .style(|_theme| container::Style {
-            background: Some(Background::Color(SEPARATOR_COLOR)),
+        .style(|theme| container::Style {
+            background: Some(Background::Color(separator_color(theme))),
             ..Default::default()
         });
     main_column = main_column.push(separator);
@@ -122,7 +133,11 @@ pub fn server_list_panel<'a>(
     // === BOOKMARKS SECTION ===
     let bookmarks_title = text("Bookmarks")
         .size(SECTION_TITLE_SIZE)
-        .color(SECTION_TITLE_COLOR);
+        .style(|theme| {
+            iced::widget::text::Style {
+                color: Some(section_title_color(theme)),
+            }
+        });
     let mut bookmarks_column = Column::new()
         .spacing(SERVER_LIST_ITEM_SPACING);
 
@@ -130,10 +145,19 @@ pub fn server_list_panel<'a>(
         bookmarks_column = bookmarks_column.push(
             text("No bookmarks")
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
-                .color(EMPTY_STATE_COLOR),
+                .style(|theme| {
+                    iced::widget::text::Style {
+                        color: Some(empty_state_color(theme)),
+                    }
+                }),
         );
     } else {
         for (index, bookmark) in bookmarks.iter().enumerate() {
+            // Check if this bookmark is currently connected
+            let is_connected = connections
+                .iter()
+                .any(|(_, conn)| conn.bookmark_index == Some(index));
+
             // Determine message based on whether bookmark is currently connected
             let bookmark_message = if let Some(conn_id) = connections
                 .iter()
@@ -153,11 +177,12 @@ pub fn server_list_panel<'a>(
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
                 .on_press(bookmark_message)
-                .style(|_theme, status| button::Style {
+                .style(move |theme, status| button::Style {
                     background: None,
                     text_color: match status {
-                        button::Status::Hovered => BOOKMARK_BUTTON_HOVER_COLOR,
-                        _ => Color::WHITE,
+                        button::Status::Hovered => interactive_hover_color(),
+                        _ if is_connected => interactive_hover_color(),
+                        _ => button_text_color(theme),
                     },
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
@@ -168,8 +193,10 @@ pub fn server_list_panel<'a>(
                 transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
                 container(text("Edit").size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|_theme| container::Style {
+                    .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        text_color: Some(tooltip_text_color(theme)),
+                        border: tooltip_border(),
                         ..Default::default()
                     }),
                 tooltip::Position::Right,
@@ -185,9 +212,9 @@ pub fn server_list_panel<'a>(
             let is_even = index % 2 == 0;
             let row_container = container(bookmark_row)
                 .width(Fill)
-                .style(move |_theme| container::Style {
+                .style(move |theme| container::Style {
                     background: if is_even {
-                        Some(Background::Color(BOOKMARK_ROW_ALT_COLOR))
+                        Some(Background::Color(alt_row_color(theme)))
                     } else {
                         None
                     },
@@ -201,6 +228,7 @@ pub fn server_list_panel<'a>(
     let add_btn = button(text("Add Bookmark").size(SERVER_LIST_BUTTON_SIZE))
         .on_press(Message::ShowAddBookmark)
         .padding(INPUT_PADDING)
+        .style(primary_button_style())
         .width(Fill);
 
     let bookmarks_section = column![
@@ -217,10 +245,10 @@ pub fn server_list_panel<'a>(
     container(main_column)
         .height(Fill)
         .width(SERVER_LIST_PANEL_WIDTH)
-        .style(|_theme| container::Style {
-            background: Some(Background::Color(SERVER_LIST_BACKGROUND_COLOR)),
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_background(theme))),
             border: Border {
-                color: SERVER_LIST_BORDER_COLOR,
+                color: sidebar_border(theme),
                 width: BORDER_WIDTH,
                 ..Default::default()
             },
@@ -240,11 +268,11 @@ fn transparent_icon_button<'a>(
         .on_press(message)
         .width(SERVER_LIST_BUTTON_HEIGHT)
         .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(|_theme, status| button::Style {
+        .style(|theme, status| button::Style {
             background: None,
             text_color: match status {
-                button::Status::Hovered => DISCONNECT_ICON_HOVER_COLOR,
-                _ => DISCONNECT_ICON_COLOR,
+                button::Status::Hovered => disconnect_icon_hover_color(theme),
+                _ => disconnect_icon_color(theme),
             },
             border: Border::default(),
             shadow: iced::Shadow::default(),
@@ -260,11 +288,11 @@ fn transparent_edit_button<'a>(
         .on_press(message)
         .width(SERVER_LIST_BUTTON_HEIGHT)
         .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(|_theme, status| button::Style {
+        .style(|theme, status| button::Style {
             background: None,
             text_color: match status {
-                button::Status::Hovered => EDIT_ICON_HOVER_COLOR,
-                _ => EDIT_ICON_COLOR,
+                button::Status::Hovered => edit_icon_hover_color(theme),
+                _ => edit_icon_color(theme),
             },
             border: Border::default(),
             shadow: iced::Shadow::default(),

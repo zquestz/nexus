@@ -3,6 +3,7 @@
 mod bookmark;
 mod broadcast;
 mod chat;
+mod colors;
 mod connection;
 mod layout;
 mod server_list;

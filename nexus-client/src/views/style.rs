@@ -1,10 +1,23 @@
 //! Shared UI styling constants for consistent appearance across views
 //!
-//! Note: Some constants may have the same numeric values but represent
-//! semantically different UI elements. This allows independent changes
-//! to specific UI components without affecting others.
+//! This module provides helper functions that return theme-aware colors.
+//! All actual color values are defined in the `colors` module.
+//!
+//! ## Usage
+//!
+//! Always use these helper functions in view code, never hardcode colors:
+//! ```
+//! // ✅ GOOD
+//! text("Hello").style(|theme| text::Style {
+//!     color: Some(section_title_color(theme)),
+//! })
+//!
+//! // ❌ BAD
+//! text("Hello").color(Color::from_rgb(0.7, 0.7, 0.7))
+//! ```
 
-use iced::Color;
+use super::colors;
+use iced::{Background, Border, Color, Theme};
 
 // ============================================================================
 // Font Sizes
@@ -50,10 +63,13 @@ pub const TOOLTIP_GAP: u16 = 5;
 pub const TOOLTIP_PADDING: u16 = 4;
 
 /// Tooltip background padding (inside the tooltip box)
-pub const TOOLTIP_BACKGROUND_PADDING: u16 = 2;
+pub const TOOLTIP_BACKGROUND_PADDING: u16 = 6;
 
-/// Tooltip background color (semi-transparent black)
-pub const TOOLTIP_BACKGROUND_COLOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.8);
+/// Tooltip background color (semi-transparent black, works in both themes)
+pub const TOOLTIP_BACKGROUND_COLOR: Color = colors::TOOLTIP_BACKGROUND;
+
+/// Tooltip border radius (rounded corners)
+pub const TOOLTIP_BORDER_RADIUS: f32 = 2.0;
 
 /// Empty view message text size
 pub const EMPTY_VIEW_SIZE: u16 = 16;
@@ -167,65 +183,452 @@ pub const BORDER_WIDTH: f32 = 1.0;
 pub const USER_LIST_PANEL_WIDTH: u16 = 180;
 
 // ============================================================================
-// Colors
+// Theme-Aware Color Helper Functions
+// ============================================================================
+//
+// All color values are defined in the `colors` module. These helper functions
+// provide a clean API for getting theme-appropriate colors.
 // ============================================================================
 
-/// Error message color (red) - used in forms
-pub const ERROR_COLOR: Color = Color::from_rgb(1.0, 0.3, 0.3);
+/// Get toolbar background color for the current theme
+pub fn toolbar_background(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLBAR_BACKGROUND_LIGHT,
+        _ => colors::TOOLBAR_BACKGROUND_DARK,
+    }
+}
 
-/// Error text color (bright red) - used in chat
-pub const ERROR_TEXT_COLOR: Color = Color::from_rgb(1.0, 0.0, 0.0);
+/// Get sidebar panel background color for the current theme
+pub fn sidebar_background(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SIDEBAR_BACKGROUND_LIGHT,
+        _ => colors::SIDEBAR_BACKGROUND_DARK,
+    }
+}
 
-/// System message color (gray)
-pub const SYSTEM_TEXT_COLOR: Color = Color::from_rgb(0.7, 0.7, 0.7);
+/// Get sidebar panel border color for the current theme
+pub fn sidebar_border(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SIDEBAR_BORDER_LIGHT,
+        _ => colors::SIDEBAR_BORDER_DARK,
+    }
+}
 
-/// Info message color (light blue)
-pub const INFO_TEXT_COLOR: Color = Color::from_rgb(0.5, 0.8, 1.0);
+/// Get section title color for the current theme
+pub fn section_title_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SECTION_TITLE_LIGHT,
+        _ => colors::SECTION_TITLE_DARK,
+    }
+}
 
-/// Toolbar background color (dark gray)
-pub const TOOLBAR_BACKGROUND_COLOR: Color = Color::from_rgb(0.15, 0.15, 0.15);
+/// Get empty state text color for the current theme
+pub fn empty_state_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::EMPTY_STATE_LIGHT,
+        _ => colors::EMPTY_STATE_DARK,
+    }
+}
 
-/// Empty view text color (light gray)
-pub const EMPTY_VIEW_TEXT_COLOR: Color = Color::from_rgb(0.5, 0.5, 0.5);
+/// Get separator line color for the current theme
+pub fn separator_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SEPARATOR_LIGHT,
+        _ => colors::SEPARATOR_DARK,
+    }
+}
 
-/// Section title color (medium gray)
-pub const SECTION_TITLE_COLOR: Color = Color::from_rgb(0.7, 0.7, 0.7);
+/// Get alternating row background color for the current theme
+pub fn alt_row_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::ALT_ROW_BACKGROUND_LIGHT,
+        _ => colors::ALT_ROW_BACKGROUND_DARK,
+    }
+}
 
-/// Empty state text color (dark gray)
-pub const EMPTY_STATE_COLOR: Color = Color::from_rgb(0.4, 0.4, 0.4);
+/// Get default button text color for the current theme
+pub fn button_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::BUTTON_TEXT_LIGHT,
+        _ => colors::BUTTON_TEXT_DARK,
+    }
+}
 
-/// Separator line color (dark gray)
-pub const SEPARATOR_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
+/// Get toolbar icon default color for the current theme
+pub fn toolbar_icon_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLBAR_ICON_LIGHT,
+        _ => colors::TOOLBAR_ICON_DARK,
+    }
+}
 
-/// Server list panel background color (very dark gray)
-pub const SERVER_LIST_BACKGROUND_COLOR: Color = Color::from_rgb(0.12, 0.12, 0.12);
+/// Get toolbar icon disabled color for the current theme
+pub fn toolbar_icon_disabled_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLBAR_ICON_DISABLED_LIGHT,
+        _ => colors::TOOLBAR_ICON_DISABLED_DARK,
+    }
+}
 
-/// Server list border color (dark gray)
-pub const SERVER_LIST_BORDER_COLOR: Color = Color::from_rgb(0.2, 0.2, 0.2);
+/// Get tooltip text color for the current theme
+pub fn tooltip_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLTIP_TEXT_LIGHT,
+        _ => colors::TOOLTIP_TEXT_DARK,
+    }
+}
 
-/// Bookmark row alternate background color (slightly lighter than sidebar)
-pub const BOOKMARK_ROW_ALT_COLOR: Color = Color::from_rgb(0.15, 0.15, 0.15);
+/// Create a tooltip container border with rounded corners
+pub fn tooltip_border() -> Border {
+    Border {
+        radius: TOOLTIP_BORDER_RADIUS.into(),
+        ..Default::default()
+    }
+}
 
-/// Bookmark button hover color (bright blue)
-pub const BOOKMARK_BUTTON_HOVER_COLOR: Color = Color::from_rgb(0.3, 0.5, 0.7);
+/// Get chat message text color for the current theme (regular messages)
+pub fn chat_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::CHAT_TEXT_LIGHT,
+        _ => colors::CHAT_TEXT_DARK,
+    }
+}
 
-/// Toolbar icon default color (light gray)
-pub const TOOLBAR_ICON_COLOR: Color = Color::from_rgb(0.7, 0.7, 0.7);
+/// Get system message text color for the current theme
+pub fn system_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SYSTEM_TEXT_LIGHT,
+        _ => colors::SYSTEM_TEXT_DARK,
+    }
+}
 
-/// Toolbar icon hover color (bright blue)
-pub const TOOLBAR_ICON_HOVER_COLOR: Color = Color::from_rgb(0.5, 0.7, 1.0);
+/// Get info message text color for the current theme
+pub fn info_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::INFO_TEXT_LIGHT,
+        _ => colors::INFO_TEXT_DARK,
+    }
+}
 
-/// Toolbar icon disabled color (dimmed gray)
-pub const TOOLBAR_ICON_DISABLED_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
+/// Get empty view text color for the current theme
+pub fn empty_view_text_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::EMPTY_VIEW_TEXT_LIGHT,
+        _ => colors::EMPTY_VIEW_TEXT_DARK,
+    }
+}
 
-/// Disconnect icon default color (light gray)
-pub const DISCONNECT_ICON_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
+/// Get disconnect icon default color for the current theme
+pub fn disconnect_icon_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::DISCONNECT_ICON_LIGHT,
+        _ => colors::DISCONNECT_ICON_DARK,
+    }
+}
 
-/// Disconnect icon hover color (red)
-pub const DISCONNECT_ICON_HOVER_COLOR: Color = Color::from_rgb(1.0, 0.3, 0.3);
+/// Get disconnect icon hover color for the current theme
+pub fn disconnect_icon_hover_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::DISCONNECT_ICON_HOVER_LIGHT,
+        _ => colors::DISCONNECT_ICON_HOVER_DARK,
+    }
+}
 
-/// Edit/cog icon default color (light gray)
-pub const EDIT_ICON_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
+/// Get edit/cog icon default color for the current theme
+pub fn edit_icon_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::EDIT_ICON_LIGHT,
+        _ => colors::EDIT_ICON_DARK,
+    }
+}
 
-/// Edit/cog icon hover color (blue)
-pub const EDIT_ICON_HOVER_COLOR: Color = Color::from_rgb(0.5, 0.7, 1.0);
+/// Get edit/cog icon hover color for the current theme
+pub fn edit_icon_hover_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::EDIT_ICON_HOVER_LIGHT,
+        _ => colors::EDIT_ICON_HOVER_DARK,
+    }
+}
+
+/// Get interactive element hover color (theme-independent signature blue)
+/// 
+/// Used for button hover states, active server/bookmark selection, and clickable items.
+/// This is our signature blue color used throughout the application for consistency.
+pub fn interactive_hover_color() -> Color {
+    colors::INTERACTIVE_HOVER
+}
+
+/// Get error message text color for chat messages
+pub fn error_message_color() -> Color {
+    colors::ERROR_MESSAGE
+}
+
+/// Get error text color for form validation messages
+pub fn form_error_color() -> Color {
+    colors::FORM_ERROR
+}
+
+/// Get primary action button background color
+pub fn primary_action_background() -> Color {
+    colors::PRIMARY_ACTION_BG
+}
+
+/// Get primary action button background color when hovered
+pub fn primary_action_background_hovered() -> Color {
+    colors::PRIMARY_ACTION_BG_HOVER
+}
+
+/// Get primary action button background color when pressed
+pub fn primary_action_background_pressed() -> Color {
+    colors::PRIMARY_ACTION_BG_PRESSED
+}
+
+/// Get disabled button background color
+pub fn disabled_action_background() -> Color {
+    colors::DISABLED_ACTION_BG
+}
+
+/// Get disabled button text color
+pub fn disabled_action_text() -> Color {
+    colors::DISABLED_ACTION_TEXT
+}
+
+/// Get text color for buttons with colored backgrounds
+pub fn action_button_text() -> Color {
+    colors::ACTION_BUTTON_TEXT
+}
+
+/// Create styled primary button (blue background, white text)
+/// 
+/// This creates a button with the same blue background used for active toolbar buttons,
+/// providing visual consistency throughout the application.
+pub fn primary_button_style() -> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
+    |_theme, status| {
+        use iced::widget::button::Status;
+        
+        match status {
+            Status::Active => iced::widget::button::Style {
+                background: Some(Background::from(primary_action_background())),
+                text_color: action_button_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+            Status::Hovered => iced::widget::button::Style {
+                background: Some(Background::from(primary_action_background_hovered())),
+                text_color: action_button_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+            Status::Pressed => iced::widget::button::Style {
+                background: Some(Background::from(primary_action_background_pressed())),
+                text_color: action_button_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+            Status::Disabled => iced::widget::button::Style {
+                background: Some(Background::from(disabled_action_background())),
+                text_color: disabled_action_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+        }
+    }
+}
+
+/// Create styled checkbox (blue accent color when checked)
+/// 
+/// This creates a checkbox with the same blue used for primary buttons and active toolbar buttons,
+/// providing visual consistency throughout the application.
+pub fn primary_checkbox_style() -> fn(&Theme, iced::widget::checkbox::Status) -> iced::widget::checkbox::Style {
+    |_theme, status| {
+        use iced::widget::checkbox::Status;
+        
+        match status {
+            Status::Active { is_checked } => iced::widget::checkbox::Style {
+                background: if is_checked {
+                    Background::from(primary_action_background())
+                } else {
+                    Background::from(match _theme {
+                        Theme::Light => colors::CHECKBOX_UNCHECKED_BG_LIGHT,
+                        _ => colors::CHECKBOX_UNCHECKED_BG_DARK,
+                    })
+                },
+                icon_color: action_button_text(),
+                border: Border {
+                    color: if is_checked {
+                        primary_action_background()
+                    } else {
+                        match _theme {
+                            Theme::Light => colors::CHECKBOX_UNCHECKED_BORDER_LIGHT,
+                            _ => colors::CHECKBOX_UNCHECKED_BORDER_DARK,
+                        }
+                    },
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                text_color: None,
+            },
+            Status::Hovered { is_checked } => iced::widget::checkbox::Style {
+                background: if is_checked {
+                    Background::from(primary_action_background())
+                } else {
+                    Background::from(match _theme {
+                        Theme::Light => colors::CHECKBOX_UNCHECKED_BG_HOVER_LIGHT,
+                        _ => colors::CHECKBOX_UNCHECKED_BG_HOVER_DARK,
+                    })
+                },
+                icon_color: action_button_text(),
+                border: Border {
+                    color: primary_action_background(),
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                text_color: None,
+            },
+            Status::Disabled { is_checked } => iced::widget::checkbox::Style {
+                background: if is_checked {
+                    Background::from(disabled_action_background())
+                } else {
+                    Background::from(match _theme {
+                        Theme::Light => colors::CHECKBOX_UNCHECKED_BG_LIGHT,
+                        _ => colors::CHECKBOX_UNCHECKED_BG_DARK,
+                    })
+                },
+                icon_color: match _theme {
+                    Theme::Light => colors::CHECKBOX_DISABLED_ICON_LIGHT,
+                    _ => colors::CHECKBOX_DISABLED_ICON_DARK,
+                },
+                border: Border {
+                    color: match _theme {
+                        Theme::Light => colors::CHECKBOX_DISABLED_BORDER_LIGHT,
+                        _ => colors::CHECKBOX_DISABLED_BORDER_DARK,
+                    },
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                text_color: Some(match _theme {
+                    Theme::Light => colors::CHECKBOX_DISABLED_TEXT_LIGHT,
+                    _ => colors::CHECKBOX_DISABLED_TEXT_DARK,
+                }),
+            },
+        }
+    }
+}
+
+/// Create styled text input (blue border when focused)
+/// 
+/// This creates a text input with the same blue used for primary buttons,
+/// providing visual consistency throughout the application.
+pub fn primary_text_input_style() -> fn(&Theme, iced::widget::text_input::Status) -> iced::widget::text_input::Style {
+    |_theme, status| {
+        use iced::widget::text_input::Status;
+        
+        match status {
+            Status::Active => iced::widget::text_input::Style {
+                background: Background::from(match _theme {
+                    Theme::Light => colors::TEXT_INPUT_BG_LIGHT,
+                    _ => colors::TEXT_INPUT_BG_DARK,
+                }),
+                border: Border {
+                    color: match _theme {
+                        Theme::Light => colors::TEXT_INPUT_BORDER_LIGHT,
+                        _ => colors::TEXT_INPUT_BORDER_DARK,
+                    },
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                icon: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_ICON_LIGHT,
+                    _ => colors::TEXT_INPUT_ICON_DARK,
+                },
+                placeholder: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_PLACEHOLDER_LIGHT,
+                    _ => colors::TEXT_INPUT_PLACEHOLDER_DARK,
+                },
+                value: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_VALUE_LIGHT,
+                    _ => colors::TEXT_INPUT_VALUE_DARK,
+                },
+                selection: primary_action_background(),
+            },
+            Status::Focused => iced::widget::text_input::Style {
+                background: Background::from(match _theme {
+                    Theme::Light => colors::TEXT_INPUT_BG_LIGHT,
+                    _ => colors::TEXT_INPUT_BG_DARK,
+                }),
+                border: Border {
+                    color: primary_action_background(),
+                    width: 2.0,
+                    radius: 2.0.into(),
+                },
+                icon: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_ICON_LIGHT,
+                    _ => colors::TEXT_INPUT_ICON_DARK,
+                },
+                placeholder: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_PLACEHOLDER_LIGHT,
+                    _ => colors::TEXT_INPUT_PLACEHOLDER_DARK,
+                },
+                value: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_VALUE_LIGHT,
+                    _ => colors::TEXT_INPUT_VALUE_DARK,
+                },
+                selection: primary_action_background(),
+            },
+            Status::Hovered => iced::widget::text_input::Style {
+                background: Background::from(match _theme {
+                    Theme::Light => colors::TEXT_INPUT_BG_LIGHT,
+                    _ => colors::TEXT_INPUT_BG_DARK,
+                }),
+                border: Border {
+                    color: primary_action_background(),
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                icon: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_ICON_LIGHT,
+                    _ => colors::TEXT_INPUT_ICON_DARK,
+                },
+                placeholder: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_PLACEHOLDER_LIGHT,
+                    _ => colors::TEXT_INPUT_PLACEHOLDER_DARK,
+                },
+                value: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_VALUE_LIGHT,
+                    _ => colors::TEXT_INPUT_VALUE_DARK,
+                },
+                selection: primary_action_background(),
+            },
+            Status::Disabled => iced::widget::text_input::Style {
+                background: Background::from(match _theme {
+                    Theme::Light => colors::TEXT_INPUT_DISABLED_BG_LIGHT,
+                    _ => colors::TEXT_INPUT_DISABLED_BG_DARK,
+                }),
+                border: Border {
+                    color: match _theme {
+                        Theme::Light => colors::TEXT_INPUT_DISABLED_BORDER_LIGHT,
+                        _ => colors::TEXT_INPUT_DISABLED_BORDER_DARK,
+                    },
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                icon: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_DISABLED_ICON_LIGHT,
+                    _ => colors::TEXT_INPUT_DISABLED_ICON_DARK,
+                },
+                placeholder: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_DISABLED_PLACEHOLDER_LIGHT,
+                    _ => colors::TEXT_INPUT_DISABLED_PLACEHOLDER_DARK,
+                },
+                value: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_DISABLED_VALUE_LIGHT,
+                    _ => colors::TEXT_INPUT_DISABLED_VALUE_DARK,
+                },
+                selection: match _theme {
+                    Theme::Light => colors::TEXT_INPUT_DISABLED_SELECTION_LIGHT,
+                    _ => colors::TEXT_INPUT_DISABLED_SELECTION_DARK,
+                },
+            },
+        }
+    }
+}

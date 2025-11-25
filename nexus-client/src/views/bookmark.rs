@@ -1,8 +1,9 @@
 //! Bookmark add/edit form
 
 use super::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, ERROR_COLOR, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, form_error_color,
 };
 use crate::types::{BookmarkEditMode, InputId, Message};
 use iced::widget::{button, checkbox, column, container, row, text, text_input};
@@ -53,7 +54,7 @@ pub fn bookmark_edit_view<'a>(
 
     // Show error if present
     if let Some(error) = bookmark_error {
-        column_items.push(text(error).size(TEXT_SIZE).color(ERROR_COLOR).into());
+        column_items.push(text(error).size(TEXT_SIZE).color(form_error_color()).into());
         column_items.push(text("").size(SPACER_SIZE_MEDIUM).into());
     }
 
@@ -64,6 +65,7 @@ pub fn bookmark_edit_view<'a>(
             .id(text_input::Id::from(InputId::BookmarkName))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
+            .style(primary_text_input_style())
             .into(),
         text_input("IPv6 Address", bookmark_address)
             .on_input(Message::BookmarkAddressChanged)
@@ -71,6 +73,7 @@ pub fn bookmark_edit_view<'a>(
             .id(text_input::Id::from(InputId::BookmarkAddress))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
+            .style(primary_text_input_style())
             .into(),
         text_input("Port", bookmark_port)
             .on_input(Message::BookmarkPortChanged)
@@ -78,6 +81,7 @@ pub fn bookmark_edit_view<'a>(
             .id(text_input::Id::from(InputId::BookmarkPort))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
+            .style(primary_text_input_style())
             .into(),
         text_input("Username (optional)", bookmark_username)
             .on_input(Message::BookmarkUsernameChanged)
@@ -85,6 +89,7 @@ pub fn bookmark_edit_view<'a>(
             .id(text_input::Id::from(InputId::BookmarkUsername))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
+            .style(primary_text_input_style())
             .into(),
         text_input("Password (optional)", bookmark_password)
             .on_input(Message::BookmarkPasswordChanged)
@@ -93,11 +98,13 @@ pub fn bookmark_edit_view<'a>(
             .secure(true)
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
+            .style(primary_text_input_style())
             .into(),
         text("").size(SPACER_SIZE_SMALL).into(),
         checkbox("Auto-connect at startup", bookmark_auto_connect)
             .on_toggle(Message::BookmarkAutoConnectToggled)
             .size(TEXT_SIZE)
+            .style(primary_checkbox_style())
             .into(),
         text("").size(SPACER_SIZE_MEDIUM).into(),
         {
@@ -106,15 +113,18 @@ pub fn bookmark_edit_view<'a>(
                     button(text("Save").size(TEXT_SIZE))
                         .on_press(Message::SaveBookmark)
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                         .into()
                 } else {
                     button(text("Save").size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                         .into()
                 },
                 button(text("Cancel").size(TEXT_SIZE))
                     .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
+                    .style(primary_button_style())
                     .into(),
             ];
 
@@ -124,6 +134,7 @@ pub fn bookmark_edit_view<'a>(
                     button(text("Delete").size(TEXT_SIZE))
                         .on_press(Message::DeleteBookmark(*index))
                         .padding(BUTTON_PADDING)
+                        .style(primary_button_style())
                         .into(),
                 );
             }

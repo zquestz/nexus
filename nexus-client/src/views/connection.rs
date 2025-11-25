@@ -1,8 +1,9 @@
 //! Connection form for new server connections
 
 use super::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, ERROR_TEXT_COLOR, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
+    primary_text_input_style, error_message_color,
 };
 use crate::types::{InputId, Message};
 use iced::widget::{button, column, container, text, text_input};
@@ -43,28 +44,32 @@ pub fn connection_form_view<'a>(
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerName))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
 
     let server_input = text_input("Server IPv6 Address", server_address)
         .on_input(Message::ServerAddressChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerAddress))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
 
     let port_input = text_input("Port", port)
         .on_input(Message::PortChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Port))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
 
     let username_input = text_input("Username", username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Username))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
 
     let password_input = text_input("Password", password)
         .on_input(Message::PasswordChanged)
@@ -72,21 +77,25 @@ pub fn connection_form_view<'a>(
         .id(text_input::Id::from(InputId::Password))
         .secure(true)
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
 
     let connect_button = if can_connect && !is_connecting {
         button(text("Connect").size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
+            .style(primary_button_style())
     } else {
-        button(text("Connect").size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(text("Connect").size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(primary_button_style())
     };
 
     let mut column_items = vec![title.into(), text("").size(SPACER_SIZE_LARGE).into()];
 
     // Show error if present (at top for visibility)
     if let Some(error) = connection_error {
-        column_items.push(text(error).size(TEXT_SIZE).color(ERROR_TEXT_COLOR).into());
+        column_items.push(text(error).size(TEXT_SIZE).color(error_message_color()).into());
         column_items.push(text("").size(SPACER_SIZE_MEDIUM).into());
     }
 

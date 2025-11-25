@@ -8,19 +8,35 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 const CONFIG_FILE_MODE: u32 = 0o600;
 
-/// Application configuration containing server bookmarks
+/// Application configuration containing server bookmarks and theme preference
 ///
 /// The config is persisted to disk as JSON in the platform-specific
 /// configuration directory (e.g., ~/.config/nexus/config.json on Linux).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Config {
     pub bookmarks: Vec<ServerBookmark>,
+    #[serde(default)]
+    pub theme: ThemePreference,
+}
+
+/// Theme preference (Light or Dark mode)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ThemePreference {
+    Light,
+    Dark,
+}
+
+impl Default for ThemePreference {
+    fn default() -> Self {
+        Self::Dark
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             bookmarks: Vec::new(),
+            theme: ThemePreference::default(),
         }
     }
 }
@@ -137,6 +153,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.bookmarks.len(), 0);
+        assert_eq!(config.theme, ThemePreference::Dark);
     }
 
     #[test]
