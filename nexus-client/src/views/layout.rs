@@ -3,12 +3,14 @@
 use super::style::{
     BUTTON_ACTIVE_COLOR, BUTTON_INACTIVE_COLOR, EMPTY_VIEW_SIZE, EMPTY_VIEW_TEXT_COLOR,
     PANEL_SPACING, TOOLBAR_BACKGROUND_COLOR, TOOLBAR_BUTTON_PADDING, TOOLBAR_BUTTON_SIZE,
-    TOOLBAR_PADDING, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
+    TOOLBAR_ICON_SIZE, TOOLBAR_PADDING, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
 };
+use crate::icon;
 use crate::types::{
     BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
 };
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Background, Center, Element, Fill};
 use std::collections::HashMap;
 
@@ -213,31 +215,49 @@ fn build_toolbar(
             // Spacer to push collapse buttons to the right
             container(text("")).width(Fill),
             // Left collapse button (bookmarks)
-            button(text(if show_bookmarks { "[<]" } else { "[>]" }).size(TOOLBAR_BUTTON_SIZE))
-                .on_press(Message::ToggleBookmarks)
-                .padding(TOOLBAR_BUTTON_PADDING)
-                .style(move |theme, status| {
-                    let mut style = button::primary(theme, status);
-                    if !show_bookmarks_copy {
-                        style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
-                    }
-                    style
-                }),
-            // Right collapse button (user list)
-            if can_view_user_list {
-                button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
-                    .on_press(Message::ToggleUserList)
+            tooltip(
+                button(if show_bookmarks { icon::collapse_left() } else { icon::expand_right() }.size(TOOLBAR_ICON_SIZE))
+                    .on_press(Message::ToggleBookmarks)
                     .padding(TOOLBAR_BUTTON_PADDING)
                     .style(move |theme, status| {
                         let mut style = button::primary(theme, status);
-                        if !show_user_list_copy {
+                        if !show_bookmarks_copy {
                             style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
                         }
                         style
-                    })
+                    }),
+                text(if show_bookmarks { "Hide Bookmarks" } else { "Show Bookmarks" }).size(TOOLTIP_TEXT_SIZE),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING),
+            // Right collapse button (user list)
+            if can_view_user_list {
+                tooltip(
+                    button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleUserList)
+                        .padding(TOOLBAR_BUTTON_PADDING)
+                        .style(move |theme, status| {
+                            let mut style = button::primary(theme, status);
+                            if !show_user_list_copy {
+                                style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
+                            }
+                            style
+                        }),
+                    text(if show_user_list { "Hide User List" } else { "Show User List" }).size(TOOLTIP_TEXT_SIZE),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             } else {
-                button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
-                    .padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
+                        .padding(TOOLBAR_BUTTON_PADDING),
+                    text("User List (no permission)").size(TOOLTIP_TEXT_SIZE),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             },
         ]
         .spacing(TOOLBAR_SPACING)

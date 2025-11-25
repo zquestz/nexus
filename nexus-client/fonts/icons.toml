@@ -1,0 +1,8 @@
+# Icon font definition for Nexus client
+module = "icon"
+
+[glyphs]
+cancel = "fontawesome-cancel"
+cog = "fontawesome-cog"
+collapse_left = "fontawesome-collapse-left"
+expand_right = "fontawesome-expand-right"

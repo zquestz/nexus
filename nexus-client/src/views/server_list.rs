@@ -5,11 +5,13 @@ use super::style::{
     PANEL_SPACING, SECTION_TITLE_COLOR, SECTION_TITLE_SIZE, SEPARATOR_COLOR, SEPARATOR_HEIGHT,
     SERVER_LIST_BACKGROUND_COLOR, SERVER_LIST_BORDER_COLOR, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_BUTTON_SIZE, SERVER_LIST_ICON_BUTTON_SIZE, SERVER_LIST_ITEM_SPACING,
-    SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE,
-    SERVER_LIST_TEXT_SIZE, SMALL_PADDING,
+    SERVER_LIST_ICON_SIZE, SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING,
+    SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE, SMALL_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
 };
+use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
-use iced::widget::{button, column, container, row, scrollable, text, Column};
+use iced::widget::{button, column, container, row, scrollable, text, tooltip, Column};
 use iced::{alignment, Background, Border, Color, Element, Fill};
 use std::collections::HashMap;
 
@@ -63,7 +65,13 @@ pub fn server_list_panel<'a>(
             btn = btn.on_press(Message::SwitchToConnection(*conn_id));
 
             // Disconnect button (square icon button)
-            let disconnect_btn = icon_button("X", Message::DisconnectFromServer(*conn_id));
+            let disconnect_btn = tooltip(
+                icon_button_widget(icon::cancel(), Message::DisconnectFromServer(*conn_id)),
+                text("Disconnect").size(TOOLTIP_TEXT_SIZE),
+                tooltip::Position::Right,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
 
             let server_row = row![btn, disconnect_btn]
                 .spacing(SERVER_LIST_ITEM_SPACING)
@@ -125,7 +133,13 @@ pub fn server_list_panel<'a>(
                 .on_press(bookmark_message);
 
             // Action button (square icon button)
-            let edit_btn = icon_button("Edit", Message::ShowEditBookmark(index));
+            let edit_btn = tooltip(
+                icon_button_widget(icon::cog(), Message::ShowEditBookmark(index)),
+                text("Edit").size(TOOLTIP_TEXT_SIZE),
+                tooltip::Position::Right,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
 
             let bookmark_row = row![btn, edit_btn]
                 .spacing(SERVER_LIST_ITEM_SPACING)
@@ -166,10 +180,10 @@ pub fn server_list_panel<'a>(
         .into()
 }
 
-/// Helper function to create square icon buttons
-fn icon_button<'a>(label: &'a str, message: Message) -> button::Button<'a, Message> {
+/// Helper function to create square icon buttons with icon widget
+fn icon_button_widget<'a>(icon: iced::widget::Text<'a>, message: Message) -> button::Button<'a, Message> {
     button(
-        container(text(label).size(SERVER_LIST_SMALL_TEXT_SIZE))
+        container(icon.size(SERVER_LIST_ICON_SIZE))
             .center_x(SERVER_LIST_ICON_BUTTON_SIZE)
             .center_y(SERVER_LIST_ICON_BUTTON_SIZE),
     )

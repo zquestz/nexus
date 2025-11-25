@@ -37,6 +37,18 @@ pub const TOOLBAR_TITLE_SIZE: u16 = 16;
 /// Toolbar button text size
 pub const TOOLBAR_BUTTON_SIZE: u16 = 12;
 
+/// Toolbar icon size (for collapse/expand icons)
+pub const TOOLBAR_ICON_SIZE: u16 = 16;
+
+/// Tooltip text size (smaller, less imposing)
+pub const TOOLTIP_TEXT_SIZE: u16 = 11;
+
+/// Tooltip gap (distance between element and tooltip)
+pub const TOOLTIP_GAP: u16 = 5;
+
+/// Tooltip padding (internal padding)
+pub const TOOLTIP_PADDING: u16 = 4;
+
 /// Empty view message text size
 pub const EMPTY_VIEW_SIZE: u16 = 16;
 
@@ -51,6 +63,9 @@ pub const SERVER_LIST_BUTTON_SIZE: u16 = 12;
 
 /// Server list small text size (empty states, action buttons)
 pub const SERVER_LIST_SMALL_TEXT_SIZE: u16 = 11;
+
+/// Server list icon size (for cog/edit icons)
+pub const SERVER_LIST_ICON_SIZE: u16 = 14;
 
 /// User list title size
 pub const USER_LIST_TITLE_SIZE: u16 = 16;
