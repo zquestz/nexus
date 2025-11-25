@@ -144,6 +144,11 @@ pub enum ServerMessage {
     },
     /// User list response
     UserListResponse { users: Vec<UserInfo> },
+    /// User updated event (broadcast when user's admin status or username changes)
+    UserUpdated {
+        previous_username: String,
+        user: UserInfo,
+    },
     /// User update response
     UserUpdateResponse {
         success: bool,

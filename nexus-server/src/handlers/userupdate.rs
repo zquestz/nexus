@@ -5,7 +5,7 @@ use super::{
     ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, ERR_USERNAME_EXISTS, HandlerContext,
 };
 use crate::db::{Permission, Permissions, hash_password};
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 
 /// Handle a user update request from the client
@@ -30,7 +30,11 @@ pub async fn handle_userupdate(
     };
 
     // Get requesting user from session
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(requesting_session_id).await {
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
         Some(u) => u,
         None => {
             eprintln!("UserUpdate request from unknown user {}", ctx.peer_addr);
@@ -42,7 +46,8 @@ pub async fn handle_userupdate(
 
     // Check UserEdit permission
     let has_permission = match ctx
-        .db.users
+        .db
+        .users
         .has_permission(requesting_user.db_user_id, Permission::UserEdit)
         .await
     {
@@ -77,7 +82,8 @@ pub async fn handle_userupdate(
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
-        .db.users
+        .db
+        .users
         .get_user_by_username(&requesting_user.username)
         .await
     {
@@ -108,7 +114,8 @@ pub async fn handle_userupdate(
                 // Check permission delegation authority
                 if !requesting_account.is_admin {
                     let has_perm = match ctx
-                        .db.users
+                        .db
+                        .users
                         .has_permission(requesting_user.db_user_id, perm)
                         .await
                     {
@@ -152,7 +159,8 @@ pub async fn handle_userupdate(
                     // (these are preserved and cannot be modified)
                     for target_perm in &target_perms.permissions {
                         let requester_has_perm = match ctx
-                            .db.users
+                            .db
+                            .users
                             .has_permission(requesting_user.db_user_id, *target_perm)
                             .await
                         {
@@ -220,9 +228,16 @@ pub async fn handle_userupdate(
         }
     }
 
+    // Get old username and admin status before update (to detect changes)
+    let old_account = match ctx.db.users.get_user_by_username(&username).await {
+        Ok(Some(acc)) => Some((acc.username.clone(), acc.is_admin)),
+        _ => None,
+    };
+
     // Attempt to update the user
     match ctx
-        .db.users
+        .db
+        .users
         .update_user(
             &username,
             requested_username.as_deref(),
@@ -242,7 +257,11 @@ pub async fn handle_userupdate(
 
             // Notify all sessions of the updated user about their new permissions
             // Get the updated user's account to read final permissions
-            if let Ok(Some(updated_account)) = ctx.db.users.get_user_by_username(&username).await {
+            // Use the final username (in case it changed)
+            let final_username = requested_username.as_ref().unwrap_or(&username);
+            if let Ok(Some(updated_account)) =
+                ctx.db.users.get_user_by_username(final_username).await
+            {
                 // Get the final permissions
                 if let Ok(final_permissions) =
                     ctx.db.users.get_user_permissions(updated_account.id).await
@@ -263,6 +282,55 @@ pub async fn handle_userupdate(
                         .broadcast_to_username(&updated_account.username, &permissions_update)
                         .await;
                 }
+
+                // Check if username or admin status changed
+                let username_changed = old_account
+                    .as_ref()
+                    .map(|(old_name, _)| old_name != &updated_account.username)
+                    .unwrap_or(false);
+                let admin_status_changed = old_account
+                    .as_ref()
+                    .map(|(_, old_admin)| *old_admin != updated_account.is_admin)
+                    .unwrap_or(false);
+
+                // Only broadcast UserUpdated if username or admin status changed
+                if username_changed || admin_status_changed {
+                    let session_ids = ctx
+                        .user_manager
+                        .get_session_ids_for_user(&updated_account.username)
+                        .await;
+
+                    // Get earliest login time from all sessions
+                    let login_time = if !session_ids.is_empty() {
+                        let users = ctx.user_manager.get_all_users().await;
+                        users
+                            .iter()
+                            .filter(|u| u.username == updated_account.username)
+                            .map(|u| u.login_time)
+                            .min()
+                            .unwrap_or(0)
+                    } else {
+                        0 // User not currently online
+                    };
+
+                    let user_info = UserInfo {
+                        username: updated_account.username.clone(),
+                        login_time,
+                        is_admin: updated_account.is_admin,
+                        session_ids,
+                    };
+
+                    let user_updated = ServerMessage::UserUpdated {
+                        previous_username: old_account
+                            .as_ref()
+                            .map(|(name, _)| name.clone())
+                            .unwrap_or(updated_account.username.clone()),
+                        user: user_info,
+                    };
+                    ctx.user_manager
+                        .broadcast_to_permission(user_updated, &ctx.db.users, Permission::UserList)
+                        .await;
+                }
             }
 
             Ok(())
@@ -271,7 +339,8 @@ pub async fn handle_userupdate(
             // Update was blocked (user not found, last admin, or duplicate username)
             // We need to determine which error to return
             let error_message = if ctx
-                .db.users
+                .db
+                .users
                 .get_user_by_username(&username)
                 .await
                 .ok()
@@ -334,7 +403,8 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -398,7 +468,8 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -426,7 +497,8 @@ mod tests {
 
         // Verify username was changed
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("bobby")
             .await
             .unwrap();
@@ -531,7 +603,8 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -573,7 +646,8 @@ mod tests {
 
         // Create another user to edit
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -609,12 +683,14 @@ mod tests {
 
         // Create two users
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", "hash", false, &Permissions::new())
             .await
             .unwrap();
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -651,7 +727,8 @@ mod tests {
 
         // Create a user
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", "oldhash", false, &Permissions::new())
             .await
             .unwrap();
@@ -679,7 +756,8 @@ mod tests {
 
         // Verify password was changed (hash should be different)
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -696,7 +774,8 @@ mod tests {
 
         // Create a user with no permissions
         let bob = test_ctx
-            .db.users
+            .db
+            .users
             .create_user("bob", "hash", false, &Permissions::new())
             .await
             .unwrap();
@@ -725,14 +804,16 @@ mod tests {
         // Verify permissions were set
         assert!(
             test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(bob.id, Permission::UserList)
                 .await
                 .unwrap()
         );
         assert!(
             test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(bob.id, Permission::ChatSend)
                 .await
                 .unwrap()
@@ -749,7 +830,8 @@ mod tests {
         // Create a user with a specific password hash
         let original_hash = "original_hash_12345";
         test_ctx
-            .db.users
+            .db
+            .users
             .create_user("alice", original_hash, false, &Permissions::new())
             .await
             .unwrap();
@@ -777,7 +859,8 @@ mod tests {
 
         // Verify password was NOT changed
         let user = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -818,7 +901,8 @@ mod tests {
 
         // Get Alice's user ID for verification later
         let alice = test_ctx
-            .db.users
+            .db
+            .users
             .get_user_by_username("alice")
             .await
             .unwrap()
@@ -852,7 +936,8 @@ mod tests {
         // - chat_send: Bob can't modify this (he doesn't have it), Alice should keep it
         assert!(
             test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(alice.id, Permission::UserList)
                 .await
                 .unwrap(),
@@ -860,7 +945,8 @@ mod tests {
         );
         assert!(
             test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(alice.id, Permission::UserInfo)
                 .await
                 .unwrap(),
@@ -868,7 +954,8 @@ mod tests {
         );
         assert!(
             test_ctx
-                .db.users
+                .db
+                .users
                 .has_permission(alice.id, Permission::ChatSend)
                 .await
                 .unwrap(),

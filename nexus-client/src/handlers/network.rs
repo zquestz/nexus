@@ -427,6 +427,27 @@ impl NexusApp {
                     .collect();
                 Task::none()
             }
+            ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } => {
+                // Update the user's info in the online_users list
+                // Use previous_username to find the user (in case username changed)
+                if let Some(existing_user) = conn
+                    .online_users
+                    .iter_mut()
+                    .find(|u| u.username == previous_username)
+                {
+                    existing_user.username = user.username.clone();
+                    existing_user.is_admin = user.is_admin;
+                    existing_user.session_ids = user.session_ids;
+
+                    // Re-sort the list since username may have changed
+                    conn.online_users
+                        .sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                }
+                Task::none()
+            }
             ServerMessage::UserInfoResponse { user, error } => {
                 let message = if let Some(err) = error {
                     ChatMessage {

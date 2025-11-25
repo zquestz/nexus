@@ -15,4 +15,14 @@ impl UserManager {
         let users = self.users.read().await;
         users.get(&session_id).cloned()
     }
+
+    /// Get all session IDs for a given username
+    pub async fn get_session_ids_for_user(&self, username: &str) -> Vec<u32> {
+        let users = self.users.read().await;
+        users
+            .iter()
+            .filter(|(_, user)| user.username == username)
+            .map(|(session_id, _)| *session_id)
+            .collect()
+    }
 }
