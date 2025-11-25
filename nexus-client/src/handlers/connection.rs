@@ -58,6 +58,11 @@ impl NexusApp {
 
     /// Handle connect button press
     pub fn handle_connect_pressed(&mut self) -> Task<Message> {
+        // Prevent duplicate connection attempts
+        if self.connection_form.is_connecting {
+            return Task::none();
+        }
+
         self.connection_form.error = None;
 
         // Validate port early
@@ -68,6 +73,9 @@ impl NexusApp {
                 return Task::none();
             }
         };
+
+        // Mark as connecting
+        self.connection_form.is_connecting = true;
 
         let server_address = self.connection_form.server_address.clone();
         let username = self.connection_form.username.clone();

@@ -24,6 +24,9 @@ impl NexusApp {
         &mut self,
         result: Result<crate::types::NetworkConnection, String>,
     ) -> Task<Message> {
+        // Clear connecting flag
+        self.connection_form.is_connecting = false;
+
         match result {
             Ok(conn) => {
                 self.connection_form.error = None;

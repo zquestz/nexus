@@ -20,6 +20,7 @@ pub fn connection_form_view<'a>(
     username: &'a str,
     password: &'a str,
     connection_error: &'a Option<String>,
+    is_connecting: bool,
 ) -> Element<'a, Message> {
     // Validate required fields (server name and password are optional)
     let can_connect =
@@ -73,7 +74,7 @@ pub fn connection_form_view<'a>(
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let connect_button = if can_connect {
+    let connect_button = if can_connect && !is_connecting {
         button(text("Connect").size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)

@@ -50,6 +50,7 @@ pub fn main_layout<'a>(
     username: &'a str,
     password: &'a str,
     connection_error: &'a Option<String>,
+    is_connecting: bool,
     bookmark_name: &'a str,
     bookmark_address: &'a str,
     bookmark_port: &'a str,
@@ -121,6 +122,7 @@ pub fn main_layout<'a>(
             username,
             password,
             connection_error,
+            is_connecting,
         )
     };
 

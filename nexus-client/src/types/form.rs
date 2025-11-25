@@ -51,6 +51,8 @@ pub struct ConnectionFormState {
     pub password: String,
     /// Connection error message
     pub error: Option<String>,
+    /// Whether a connection attempt is currently in progress
+    pub is_connecting: bool,
 }
 
 impl ConnectionFormState {

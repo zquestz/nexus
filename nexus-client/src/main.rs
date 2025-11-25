@@ -242,6 +242,7 @@ impl NexusApp {
             &self.connection_form.username,
             &self.connection_form.password,
             &self.connection_form.error,
+            self.connection_form.is_connecting,
             &self.bookmark_edit.bookmark.name,
             &self.bookmark_edit.bookmark.address,
             &self.bookmark_edit.bookmark.port,
