@@ -217,15 +217,15 @@ pub async fn handle_userupdate(
     };
 
     // Validate new username if provided
-    if let Some(ref new_name) = requested_username {
-        if new_name.trim().is_empty() {
-            eprintln!("UserUpdate from {} with empty username", ctx.peer_addr);
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some("Username cannot be empty".to_string()),
-            };
-            return ctx.send_message(&response).await;
-        }
+    if let Some(ref new_name) = requested_username
+        && new_name.trim().is_empty()
+    {
+        eprintln!("UserUpdate from {} with empty username", ctx.peer_addr);
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some("Username cannot be empty".to_string()),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Get old username and admin status before update (to detect changes)

@@ -72,7 +72,7 @@ impl HandlerContext<'_> {
         command: Option<&str>,
     ) -> io::Result<()> {
         self.send_error(message, command).await?;
-        Err(io::Error::new(io::ErrorKind::Other, message))
+        Err(io::Error::other(message))
     }
 }
 

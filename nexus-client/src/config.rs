@@ -20,16 +20,11 @@ pub struct Config {
 }
 
 /// Theme preference (Light or Dark mode)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum ThemePreference {
     Light,
+    #[default]
     Dark,
-}
-
-impl Default for ThemePreference {
-    fn default() -> Self {
-        Self::Dark
-    }
 }
 
 impl Config {
@@ -48,14 +43,12 @@ impl Config {
     /// - Config file cannot be read
     /// - Config file contains invalid JSON
     pub fn load() -> Self {
-        if let Some(path) = Self::config_path() {
-            if path.exists() {
-                if let Ok(contents) = fs::read_to_string(&path) {
-                    if let Ok(config) = serde_json::from_str(&contents) {
-                        return config;
-                    }
-                }
-            }
+        if let Some(path) = Self::config_path()
+            && path.exists()
+            && let Ok(contents) = fs::read_to_string(&path)
+            && let Ok(config) = serde_json::from_str(&contents)
+        {
+            return config;
         }
         Self::default()
     }

@@ -236,7 +236,7 @@ impl NexusApp {
     /// Render the current application state to the UI
     ///
     /// Delegates to `views::main_layout()` for all rendering logic.
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         // Get current connection state or use defaults
         let (message_input, user_management) = self
             .active_connection

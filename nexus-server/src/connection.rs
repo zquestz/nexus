@@ -81,19 +81,19 @@ pub async fn handle_connection(
     }
 
     // Remove user on disconnect
-    if let Some(id) = session_id {
-        if let Some(user) = user_manager.remove_user(id).await {
-            if debug {
-                println!("User '{}' disconnected", user.username);
-            }
-            // Broadcast disconnection to all users
-            user_manager
-                .broadcast(ServerMessage::UserDisconnected {
-                    session_id: id,
-                    username: user.username.clone(),
-                })
-                .await;
+    if let Some(id) = session_id
+        && let Some(user) = user_manager.remove_user(id).await
+    {
+        if debug {
+            println!("User '{}' disconnected", user.username);
         }
+        // Broadcast disconnection to all users
+        user_manager
+            .broadcast(ServerMessage::UserDisconnected {
+                session_id: id,
+                username: user.username.clone(),
+            })
+            .await;
     }
 
     Ok(())

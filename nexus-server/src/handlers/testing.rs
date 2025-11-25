@@ -21,7 +21,7 @@ pub struct TestContext {
 
 impl TestContext {
     /// Create a HandlerContext from this TestContext
-    pub fn handler_context(&mut self) -> HandlerContext {
+    pub fn handler_context(&mut self) -> HandlerContext<'_> {
         HandlerContext {
             writer: &mut self.write_half,
             peer_addr: self.peer_addr,

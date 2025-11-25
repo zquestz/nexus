@@ -25,7 +25,7 @@ impl ConfigDb {
             .bind("topic")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(result)
     }
@@ -37,7 +37,7 @@ impl ConfigDb {
             .bind(topic)
             .execute(&self.pool)
             .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }

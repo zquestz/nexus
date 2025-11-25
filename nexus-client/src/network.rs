@@ -241,11 +241,10 @@ fn spawn_network_task(
                         Ok(0) => break, // Connection closed
                         Ok(_) => {
                             // Parse and send message to UI
-                            if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(line.trim()) {
-                                if msg_tx.send(server_msg).is_err() {
+                            if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(line.trim())
+                                && msg_tx.send(server_msg).is_err() {
                                     break; // UI closed
                                 }
-                            }
                             line.clear();
                         }
                         Err(_) => break,

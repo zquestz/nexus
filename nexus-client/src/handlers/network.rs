@@ -88,16 +88,13 @@ impl NexusApp {
                 self.active_connection = Some(connection_id);
 
                 // Request initial user list (only if user has permission)
-                if should_request_userlist {
-                    if let Err(e) = conn_tx.send(ClientMessage::UserList) {
-                        // Channel send failed - connection is broken, show error
-                        self.connection_form.error =
-                            Some(format!("{}: {}", ERR_CONNECTION_BROKEN, e));
-                        // Remove the connection we just added since it's broken
-                        self.connections.remove(&connection_id);
-                        self.active_connection = None;
-                        return Task::none();
-                    }
+                if should_request_userlist && let Err(e) = conn_tx.send(ClientMessage::UserList) {
+                    // Channel send failed - connection is broken, show error
+                    self.connection_form.error = Some(format!("{}: {}", ERR_CONNECTION_BROKEN, e));
+                    // Remove the connection we just added since it's broken
+                    self.connections.remove(&connection_id);
+                    self.active_connection = None;
+                    return Task::none();
                 }
 
                 // Add chat topic message if present
@@ -186,14 +183,12 @@ impl NexusApp {
                 self.add_topic_message_if_present(conn_id, chat_topic);
 
                 // Request initial user list (only if user has permission)
-                if should_request_userlist {
-                    if let Err(_e) = conn_tx.send(ClientMessage::UserList) {
-                        // Channel send failed - connection is broken
-                        // Remove the connection we just added since it's broken
-                        self.connections.remove(&conn_id);
-                        self.active_connection = None;
-                        return Task::none();
-                    }
+                if should_request_userlist && let Err(_e) = conn_tx.send(ClientMessage::UserList) {
+                    // Channel send failed - connection is broken
+                    // Remove the connection we just added since it's broken
+                    self.connections.remove(&conn_id);
+                    self.active_connection = None;
+                    return Task::none();
                 }
 
                 // Focus the chat input
@@ -277,16 +272,15 @@ impl NexusApp {
 
     /// Add chat topic message if present and not empty
     fn add_topic_message_if_present(&mut self, connection_id: usize, chat_topic: Option<String>) {
-        if let Some(topic) = chat_topic {
-            if !topic.is_empty() {
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.chat_messages.push(ChatMessage {
-                        username: MSG_USERNAME_INFO.to_string(),
-                        message: format!("Topic: {}", topic),
-                        timestamp: Local::now(),
-                    });
-                }
-            }
+        if let Some(topic) = chat_topic
+            && !topic.is_empty()
+            && let Some(conn) = self.connections.get_mut(&connection_id)
+        {
+            conn.chat_messages.push(ChatMessage {
+                username: MSG_USERNAME_INFO.to_string(),
+                message: format!("Topic: {}", topic),
+                timestamp: Local::now(),
+            });
         }
     }
 
@@ -471,10 +465,10 @@ impl NexusApp {
                     info.push_str(&user.username);
 
                     // Add admin status if present (only visible to admins)
-                    if let Some(is_admin) = user.is_admin {
-                        if is_admin {
-                            info.push_str(" • Admin");
-                        }
+                    if let Some(is_admin) = user.is_admin
+                        && is_admin
+                    {
+                        info.push_str(" • Admin");
                     }
 
                     // Add session count
@@ -492,10 +486,10 @@ impl NexusApp {
                     }
 
                     // Add addresses if present (only visible to admins)
-                    if let Some(addresses) = user.addresses {
-                        if !addresses.is_empty() {
-                            info.push_str(&format!(" • IPs: {}", addresses.join(", ")));
-                        }
+                    if let Some(addresses) = user.addresses
+                        && !addresses.is_empty()
+                    {
+                        info.push_str(&format!(" • IPs: {}", addresses.join(", ")));
                     }
 
                     ChatMessage {
@@ -584,17 +578,18 @@ impl NexusApp {
 
                     // If user just gained user_list permission, refresh the list
                     // (it may be stale from missed join/leave events while permission was revoked)
-                    if !had_user_list && has_user_list {
-                        if let Err(e) = conn.tx.send(ClientMessage::UserList) {
-                            // Channel send failed - add error to chat
-                            let error_msg = format!("{}: {}", ERR_USERLIST_FAILED, e);
-                            let chat_msg = ChatMessage {
-                                username: MSG_USERNAME_ERROR.to_string(),
-                                message: error_msg,
-                                timestamp: Local::now(),
-                            };
-                            conn.chat_messages.push(chat_msg);
-                        }
+                    if !had_user_list
+                        && has_user_list
+                        && let Err(e) = conn.tx.send(ClientMessage::UserList)
+                    {
+                        // Channel send failed - add error to chat
+                        let error_msg = format!("{}: {}", ERR_USERLIST_FAILED, e);
+                        let chat_msg = ChatMessage {
+                            username: MSG_USERNAME_ERROR.to_string(),
+                            message: error_msg,
+                            timestamp: Local::now(),
+                        };
+                        conn.chat_messages.push(chat_msg);
                     }
 
                     // Notify user in chat
@@ -625,14 +620,15 @@ impl NexusApp {
             }
             ServerMessage::Error { message, command } => {
                 // Close edit user panel if the error is for UserEdit command
-                if let Some(cmd) = command {
-                    if cmd == "UserEdit" && self.ui_state.show_edit_user {
-                        self.ui_state.show_edit_user = false;
-                        if let Some(conn_id) = self.active_connection {
-                            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                                conn.user_management.clear_edit_user();
-                            }
-                        }
+                if let Some(cmd) = command
+                    && cmd == "UserEdit"
+                    && self.ui_state.show_edit_user
+                {
+                    self.ui_state.show_edit_user = false;
+                    if let Some(conn_id) = self.active_connection
+                        && let Some(conn) = self.connections.get_mut(&conn_id)
+                    {
+                        conn.user_management.clear_edit_user();
                     }
                 }
 

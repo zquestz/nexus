@@ -32,26 +32,26 @@ impl NexusApp {
             return text_input::focus(text_input::Id::from(next_field));
         } else if self.ui_state.show_edit_user {
             // On edit user screen, handle both stages
-            if let Some(conn_id) = self.active_connection {
-                if let Some(conn) = self.connections.get(&conn_id) {
-                    match &conn.user_management.edit_state {
-                        UserEditState::SelectingUser { .. } => {
-                            // Stage 1: Only username field
-                            self.focused_field = InputId::EditUsername;
-                            return text_input::focus(text_input::Id::from(InputId::EditUsername));
-                        }
-                        UserEditState::EditingUser { .. } => {
-                            // Stage 2: Cycle through edit fields
-                            let next_field = match self.focused_field {
-                                InputId::EditNewUsername => InputId::EditNewPassword,
-                                InputId::EditNewPassword => InputId::EditNewUsername,
-                                _ => InputId::EditNewUsername,
-                            };
-                            self.focused_field = next_field.clone();
-                            return text_input::focus(text_input::Id::from(next_field));
-                        }
-                        UserEditState::None => {}
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+            {
+                match &conn.user_management.edit_state {
+                    UserEditState::SelectingUser { .. } => {
+                        // Stage 1: Only username field
+                        self.focused_field = InputId::EditUsername;
+                        return text_input::focus(text_input::Id::from(InputId::EditUsername));
                     }
+                    UserEditState::EditingUser { .. } => {
+                        // Stage 2: Cycle through edit fields
+                        let next_field = match self.focused_field {
+                            InputId::EditNewUsername => InputId::EditNewPassword,
+                            InputId::EditNewPassword => InputId::EditNewUsername,
+                            _ => InputId::EditNewUsername,
+                        };
+                        self.focused_field = next_field.clone();
+                        return text_input::focus(text_input::Id::from(next_field));
+                    }
+                    UserEditState::None => {}
                 }
             }
         } else if self.ui_state.show_broadcast {
@@ -82,10 +82,9 @@ impl NexusApp {
             modifiers,
             ..
         }) = event
+            && !modifiers.shift()
         {
-            if !modifiers.shift() {
-                return self.update(Message::TabPressed);
-            }
+            return self.update(Message::TabPressed);
         }
         // Handle Enter key
         if let Event::Keyboard(keyboard::Event::KeyPressed {
@@ -103,44 +102,44 @@ impl NexusApp {
                 }
             } else if self.ui_state.show_add_user {
                 // On add user screen, try to create user
-                if let Some(conn_id) = self.active_connection {
-                    if let Some(conn) = self.connections.get(&conn_id) {
-                        let can_create = !conn.user_management.username.trim().is_empty()
-                            && !conn.user_management.password.trim().is_empty();
-                        if can_create {
-                            return self.update(Message::CreateUserPressed);
-                        }
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                {
+                    let can_create = !conn.user_management.username.trim().is_empty()
+                        && !conn.user_management.password.trim().is_empty();
+                    if can_create {
+                        return self.update(Message::CreateUserPressed);
                     }
                 }
             } else if self.ui_state.show_edit_user {
                 // On edit user screen, handle Enter for both stages
-                if let Some(conn_id) = self.active_connection {
-                    if let Some(conn) = self.connections.get(&conn_id) {
-                        match &conn.user_management.edit_state {
-                            UserEditState::SelectingUser { username } => {
-                                // Stage 1: Submit edit request
-                                if !username.trim().is_empty() {
-                                    return self.update(Message::EditUserPressed);
-                                }
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                {
+                    match &conn.user_management.edit_state {
+                        UserEditState::SelectingUser { username } => {
+                            // Stage 1: Submit edit request
+                            if !username.trim().is_empty() {
+                                return self.update(Message::EditUserPressed);
                             }
-                            UserEditState::EditingUser { new_username, .. } => {
-                                // Stage 2: Submit update
-                                if !new_username.trim().is_empty() {
-                                    return self.update(Message::UpdateUserPressed);
-                                }
-                            }
-                            UserEditState::None => {}
                         }
+                        UserEditState::EditingUser { new_username, .. } => {
+                            // Stage 2: Submit update
+                            if !new_username.trim().is_empty() {
+                                return self.update(Message::UpdateUserPressed);
+                            }
+                        }
+                        UserEditState::None => {}
                     }
                 }
             } else if self.ui_state.show_broadcast {
                 // On broadcast screen, try to send broadcast
-                if let Some(conn_id) = self.active_connection {
-                    if let Some(conn) = self.connections.get(&conn_id) {
-                        let can_send = !conn.broadcast_message.trim().is_empty();
-                        if can_send {
-                            return self.update(Message::SendBroadcastPressed);
-                        }
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                {
+                    let can_send = !conn.broadcast_message.trim().is_empty();
+                    if can_send {
+                        return self.update(Message::SendBroadcastPressed);
                     }
                 }
             } else if self.active_connection.is_none() {

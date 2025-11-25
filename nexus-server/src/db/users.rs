@@ -309,26 +309,27 @@ impl UserDb {
         };
 
         // Check if we're trying to demote the last admin
-        if let Some(false) = requested_is_admin {
-            if user.is_admin {
-                // Check if this is the last admin
-                let admin_count: (i64,) = sqlx::query_as(SQL_COUNT_ADMINS)
-                    .fetch_one(&self.pool)
-                    .await?;
+        if let Some(false) = requested_is_admin
+            && user.is_admin
+        {
+            // Check if this is the last admin
+            let admin_count: (i64,) = sqlx::query_as(SQL_COUNT_ADMINS)
+                .fetch_one(&self.pool)
+                .await?;
 
-                if admin_count.0 <= 1 {
-                    // Cannot demote the last admin
-                    return Ok(false);
-                }
+            if admin_count.0 <= 1 {
+                // Cannot demote the last admin
+                return Ok(false);
             }
         }
 
         // Check if new username already exists (and it's not the same user)
-        if let Some(new_name) = requested_username {
-            if new_name != username && self.get_user_by_username(new_name).await?.is_some() {
-                // Username already taken
-                return Ok(false);
-            }
+        if let Some(new_name) = requested_username
+            && new_name != username
+            && self.get_user_by_username(new_name).await?.is_some()
+        {
+            // Username already taken
+            return Ok(false);
         }
 
         // Build the final values for each field

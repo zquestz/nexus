@@ -94,10 +94,10 @@ impl NexusApp {
 
     /// Handle chat message input change
     pub fn handle_message_input_changed(&mut self, input: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.message_input = input;
-            }
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.message_input = input;
         }
         self.focused_field = InputId::ChatInput;
         Task::none()
@@ -105,40 +105,40 @@ impl NexusApp {
 
     /// Handle send chat message button press
     pub fn handle_send_message_pressed(&mut self) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get(&conn_id) {
-                let message = conn.message_input.trim();
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get(&conn_id)
+        {
+            let message = conn.message_input.trim();
 
-                // Validate message is not empty
-                if message.is_empty() {
-                    return Task::none();
-                }
+            // Validate message is not empty
+            if message.is_empty() {
+                return Task::none();
+            }
 
-                // Validate message length
-                if message.len() > MAX_CHAT_LENGTH {
-                    let error_msg = format!(
-                        "{} ({} characters, max {})",
-                        ERR_MESSAGE_TOO_LONG,
-                        message.len(),
-                        MAX_CHAT_LENGTH
-                    );
-                    return self.add_chat_error(conn_id, error_msg);
-                }
+            // Validate message length
+            if message.len() > MAX_CHAT_LENGTH {
+                let error_msg = format!(
+                    "{} ({} characters, max {})",
+                    ERR_MESSAGE_TOO_LONG,
+                    message.len(),
+                    MAX_CHAT_LENGTH
+                );
+                return self.add_chat_error(conn_id, error_msg);
+            }
 
-                let msg = ClientMessage::ChatSend {
-                    message: message.to_string(),
-                };
+            let msg = ClientMessage::ChatSend {
+                message: message.to_string(),
+            };
 
-                // Send message and handle errors
-                if let Err(e) = conn.tx.send(msg) {
-                    let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
-                    return self.add_chat_error(conn_id, error_msg);
-                }
+            // Send message and handle errors
+            if let Err(e) = conn.tx.send(msg) {
+                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                return self.add_chat_error(conn_id, error_msg);
+            }
 
-                // Clear message after successful send
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.message_input.clear();
-                }
+            // Clear message after successful send
+            if let Some(conn) = self.connections.get_mut(&conn_id) {
+                conn.message_input.clear();
             }
         }
         Task::none()
@@ -146,13 +146,12 @@ impl NexusApp {
 
     /// Request detailed user information from server
     pub fn handle_request_user_info(&mut self, username: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get(&conn_id) {
-                if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
-                    let error_msg = format!("Failed to request user info: {}", e);
-                    return self.add_chat_error(conn_id, error_msg);
-                }
-            }
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get(&conn_id)
+            && let Err(e) = conn.tx.send(ClientMessage::UserInfo { username })
+        {
+            let error_msg = format!("Failed to request user info: {}", e);
+            return self.add_chat_error(conn_id, error_msg);
         }
         Task::none()
     }
