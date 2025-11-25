@@ -11,8 +11,8 @@ A modern BBS (Bulletin Board System) for the [Yggdrasil](https://yggdrasil-netwo
 
 ⚠️ **Under Heavy Development** - Expect breaking changes
 
-🟢 **Server**: Production-ready (112 tests passing)  
-🟢 **Client**: Feature-complete GUI with multi-server support
+**Server**: Functional with test coverage  
+**Client**: GUI with multi-server support
 
 ## Features
 
@@ -71,7 +71,7 @@ See `nexus-client/assets/linux/README.md` for installation instructions.
 ## Testing
 
 ```bash
-cargo test --workspace  # 134 tests total
+cargo test --workspace
 ```
 
 ## Database & Configuration
