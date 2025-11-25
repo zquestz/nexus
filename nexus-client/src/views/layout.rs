@@ -1,17 +1,18 @@
 //! Main application layout and toolbar
 
 use super::style::{
-    BUTTON_ACTIVE_COLOR, BUTTON_INACTIVE_COLOR, EMPTY_VIEW_SIZE, EMPTY_VIEW_TEXT_COLOR,
+    BOOKMARK_BUTTON_HOVER_COLOR, EMPTY_VIEW_SIZE, EMPTY_VIEW_TEXT_COLOR,
     PANEL_SPACING, TOOLBAR_BACKGROUND_COLOR, TOOLBAR_BUTTON_PADDING, TOOLBAR_BUTTON_SIZE,
-    TOOLBAR_ICON_SIZE, TOOLBAR_PADDING, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    TOOLBAR_ICON_SIZE, TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_ICON_SPACING, TOOLBAR_TITLE_SIZE, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_BACKGROUND_COLOR,
+    TOOLBAR_ICON_COLOR, TOOLBAR_ICON_HOVER_COLOR, TOOLBAR_ICON_DISABLED_COLOR,
 };
 use crate::icon;
 use crate::types::{
     BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
 };
 use iced::widget::{button, column, container, row, text, tooltip};
-use iced::{Background, Center, Element, Fill};
+use iced::{Background, Border, Center, Color, Element, Fill};
 use std::collections::HashMap;
 
 use super::{
@@ -166,9 +167,7 @@ fn build_toolbar(
     permissions: &[String],
     can_view_user_list: bool,
 ) -> Element<'static, Message> {
-    // Need to capture these for the closures
-    let show_bookmarks_copy = show_bookmarks;
-    let show_user_list_copy = show_user_list;
+    // Need to capture this for the closures
     let show_broadcast_copy = show_broadcast;
 
     // Check permissions (avoid string allocations)
@@ -180,88 +179,225 @@ fn build_toolbar(
         row![
             // Title
             text("Nexus BBS").size(TOOLBAR_TITLE_SIZE),
+            // Main icon group (Broadcast, User Create, User Edit)
+            row![
             // Broadcast button
             if is_connected && has_broadcast {
-                button(text("Broadcast").size(TOOLBAR_BUTTON_SIZE))
-                    .on_press(Message::ToggleBroadcast)
-                    .padding(TOOLBAR_BUTTON_PADDING)
-                    .style(move |theme, status| {
-                        let mut style = button::primary(theme, status);
-                        if show_broadcast_copy {
-                            style.background = Some(Background::Color(BUTTON_ACTIVE_COLOR));
-                        }
-                        style
-                    })
+                tooltip(
+                    button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleBroadcast)
+                        .style(move |_theme, status| {
+                            if show_broadcast_copy {
+                                // Active state - blue background
+                                button::Style {
+                                    background: Some(Background::Color(BOOKMARK_BUTTON_HOVER_COLOR)),
+                                    text_color: Color::WHITE,
+                                    border: Border::default(),
+                                    shadow: iced::Shadow::default(),
+                                }
+                            } else {
+                                // Default state - transparent with hover
+                                button::Style {
+                                    background: None,
+                                    text_color: match status {
+                                        button::Status::Hovered => TOOLBAR_ICON_HOVER_COLOR,
+                                        _ => TOOLBAR_ICON_COLOR,
+                                    },
+                                    border: Border::default(),
+                                    shadow: iced::Shadow::default(),
+                                }
+                            }
+                        }),
+                    container(text("Broadcast").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             } else {
-                button(text("Broadcast").size(TOOLBAR_BUTTON_SIZE)).padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
+                        .style(|_theme, _status| button::Style {
+                            background: None,
+                            text_color: TOOLBAR_ICON_DISABLED_COLOR,
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("Broadcast").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             },
             // User Create button
             if is_connected && has_user_create {
-                button(text("User Create").size(TOOLBAR_BUTTON_SIZE))
-                    .on_press(Message::ToggleAddUser)
-                    .padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleAddUser)
+                        .style(|_theme, status| button::Style {
+                            background: None,
+                            text_color: match status {
+                                button::Status::Hovered => TOOLBAR_ICON_HOVER_COLOR,
+                                _ => TOOLBAR_ICON_COLOR,
+                            },
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("User Create").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             } else {
-                button(text("User Create").size(TOOLBAR_BUTTON_SIZE))
-                    .padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
+                        .style(|_theme, _status| button::Style {
+                            background: None,
+                            text_color: TOOLBAR_ICON_DISABLED_COLOR,
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("User Create").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             },
             // User Edit button
             if is_connected && has_user_edit {
-                button(text("User Edit").size(TOOLBAR_BUTTON_SIZE))
-                    .on_press(Message::ToggleEditUser)
-                    .padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(icon::users().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleEditUser)
+                        .style(|_theme, status| button::Style {
+                            background: None,
+                            text_color: match status {
+                                button::Status::Hovered => TOOLBAR_ICON_HOVER_COLOR,
+                                _ => TOOLBAR_ICON_COLOR,
+                            },
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("User Edit").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             } else {
-                button(text("User Edit").size(TOOLBAR_BUTTON_SIZE)).padding(TOOLBAR_BUTTON_PADDING)
+                tooltip(
+                    button(icon::users().size(TOOLBAR_ICON_SIZE))
+                        .style(|_theme, _status| button::Style {
+                            background: None,
+                            text_color: TOOLBAR_ICON_DISABLED_COLOR,
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }),
+                    container(text("User Edit").size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
             },
+            ].spacing(TOOLBAR_ICON_SPACING),
             // Spacer to push collapse buttons to the right
             container(text("")).width(Fill),
-            // Left collapse button (bookmarks)
-            tooltip(
-                button(if show_bookmarks { icon::collapse_left() } else { icon::expand_right() }.size(TOOLBAR_ICON_SIZE))
-                    .on_press(Message::ToggleBookmarks)
-                    .padding(TOOLBAR_BUTTON_PADDING)
-                    .style(move |theme, status| {
-                        let mut style = button::primary(theme, status);
-                        if !show_bookmarks_copy {
-                            style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
-                        }
-                        style
-                    }),
-                text(if show_bookmarks { "Hide Bookmarks" } else { "Show Bookmarks" }).size(TOOLTIP_TEXT_SIZE),
-                tooltip::Position::Bottom,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING),
-            // Right collapse button (user list)
-            if can_view_user_list {
+            // Collapse buttons group
+            row![
+                // Left collapse button (bookmarks)
                 tooltip(
-                    button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
-                        .on_press(Message::ToggleUserList)
-                        .padding(TOOLBAR_BUTTON_PADDING)
-                        .style(move |theme, status| {
-                            let mut style = button::primary(theme, status);
-                            if !show_user_list_copy {
-                                style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
-                            }
-                            style
+                    button(if show_bookmarks { icon::collapse_left() } else { icon::expand_right() }.size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleBookmarks)
+                        .style(|_theme, status| button::Style {
+                            background: None,
+                            text_color: match status {
+                                button::Status::Hovered => TOOLBAR_ICON_HOVER_COLOR,
+                                _ => TOOLBAR_ICON_COLOR,
+                            },
+                            border: Border::default(),
+                            shadow: iced::Shadow::default(),
                         }),
-                    text(if show_user_list { "Hide User List" } else { "Show User List" }).size(TOOLTIP_TEXT_SIZE),
+                    container(text(if show_bookmarks { "Hide Bookmarks" } else { "Show Bookmarks" }).size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                            ..Default::default()
+                        }),
                     tooltip::Position::Bottom,
                 )
                 .gap(TOOLTIP_GAP)
-                .padding(TOOLTIP_PADDING)
-            } else {
-                tooltip(
-                    button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
-                        .padding(TOOLBAR_BUTTON_PADDING),
-                    text("User List (no permission)").size(TOOLTIP_TEXT_SIZE),
-                    tooltip::Position::Bottom,
-                )
-                .gap(TOOLTIP_GAP)
-                .padding(TOOLTIP_PADDING)
-            },
+                .padding(TOOLTIP_PADDING),
+                // Right collapse button (user list)
+                if can_view_user_list {
+                    tooltip(
+                        button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
+                            .on_press(Message::ToggleUserList)
+                            .style(|_theme, status| button::Style {
+                                background: None,
+                                text_color: match status {
+                                    button::Status::Hovered => TOOLBAR_ICON_HOVER_COLOR,
+                                    _ => TOOLBAR_ICON_COLOR,
+                                },
+                                border: Border::default(),
+                                shadow: iced::Shadow::default(),
+                            }),
+                        container(text(if show_user_list { "Hide User List" } else { "Show User List" }).size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(|_theme| container::Style {
+                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                                ..Default::default()
+                            }),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                } else {
+                    tooltip(
+                        button(if show_user_list { icon::expand_right() } else { icon::collapse_left() }.size(TOOLBAR_ICON_SIZE))
+                            .style(|_theme, _status| button::Style {
+                                background: None,
+                                text_color: TOOLBAR_ICON_DISABLED_COLOR,
+                                border: Border::default(),
+                                shadow: iced::Shadow::default(),
+                            }),
+                        container(text("User List").size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(|_theme| container::Style {
+                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                                ..Default::default()
+                            }),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                },
+            ].spacing(TOOLBAR_ICON_SPACING),
         ]
         .spacing(TOOLBAR_SPACING)
-        .padding(TOOLBAR_PADDING)
+        .padding([TOOLBAR_PADDING_VERTICAL, TOOLBAR_PADDING_HORIZONTAL])
         .align_y(Center),
     )
     .width(Fill)

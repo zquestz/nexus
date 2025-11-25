@@ -38,7 +38,7 @@ pub const TOOLBAR_TITLE_SIZE: u16 = 16;
 pub const TOOLBAR_BUTTON_SIZE: u16 = 12;
 
 /// Toolbar icon size (for collapse/expand icons)
-pub const TOOLBAR_ICON_SIZE: u16 = 16;
+pub const TOOLBAR_ICON_SIZE: u16 = 20;
 
 /// Tooltip text size (smaller, less imposing)
 pub const TOOLTIP_TEXT_SIZE: u16 = 11;
@@ -48,6 +48,12 @@ pub const TOOLTIP_GAP: u16 = 5;
 
 /// Tooltip padding (internal padding)
 pub const TOOLTIP_PADDING: u16 = 4;
+
+/// Tooltip background padding (inside the tooltip box)
+pub const TOOLTIP_BACKGROUND_PADDING: u16 = 2;
+
+/// Tooltip background color (semi-transparent black)
+pub const TOOLTIP_BACKGROUND_COLOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.8);
 
 /// Empty view message text size
 pub const EMPTY_VIEW_SIZE: u16 = 16;
@@ -92,8 +98,11 @@ pub const FORM_PADDING: u16 = 20;
 /// Toolbar button padding
 pub const TOOLBAR_BUTTON_PADDING: u16 = 8;
 
-/// Toolbar container padding
-pub const TOOLBAR_PADDING: u16 = 8;
+/// Toolbar horizontal padding (matches FORM_PADDING for alignment)
+pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
+
+/// Toolbar vertical padding
+pub const TOOLBAR_PADDING_VERTICAL: u16 = 8;
 
 // ============================================================================
 // Spacing
@@ -111,8 +120,11 @@ pub const SMALL_SPACING: u16 = 5;
 /// Small padding (general use)
 pub const SMALL_PADDING: u16 = 5;
 
-/// Toolbar spacing between elements
-pub const TOOLBAR_SPACING: u16 = 10;
+/// Toolbar spacing between sections
+pub const TOOLBAR_SPACING: u16 = 20;
+
+/// Toolbar icon spacing within icon groups
+pub const TOOLBAR_ICON_SPACING: u16 = 0;
 
 /// Panel spacing (no gap between panels)
 pub const PANEL_SPACING: u16 = 0;
@@ -173,12 +185,6 @@ pub const INFO_TEXT_COLOR: Color = Color::from_rgb(0.5, 0.8, 1.0);
 /// Toolbar background color (dark gray)
 pub const TOOLBAR_BACKGROUND_COLOR: Color = Color::from_rgb(0.15, 0.15, 0.15);
 
-/// Active button background color (blue-gray)
-pub const BUTTON_ACTIVE_COLOR: Color = Color::from_rgb(0.3, 0.5, 0.7);
-
-/// Inactive/collapsed button color (medium gray)
-pub const BUTTON_INACTIVE_COLOR: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
 /// Empty view text color (light gray)
 pub const EMPTY_VIEW_TEXT_COLOR: Color = Color::from_rgb(0.5, 0.5, 0.5);
 
@@ -202,6 +208,15 @@ pub const BOOKMARK_ROW_ALT_COLOR: Color = Color::from_rgb(0.15, 0.15, 0.15);
 
 /// Bookmark button hover color (bright blue)
 pub const BOOKMARK_BUTTON_HOVER_COLOR: Color = Color::from_rgb(0.3, 0.5, 0.7);
+
+/// Toolbar icon default color (light gray)
+pub const TOOLBAR_ICON_COLOR: Color = Color::from_rgb(0.7, 0.7, 0.7);
+
+/// Toolbar icon hover color (bright blue)
+pub const TOOLBAR_ICON_HOVER_COLOR: Color = Color::from_rgb(0.5, 0.7, 1.0);
+
+/// Toolbar icon disabled color (dimmed gray)
+pub const TOOLBAR_ICON_DISABLED_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
 
 /// Disconnect icon default color (light gray)
 pub const DISCONNECT_ICON_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);

@@ -444,14 +444,28 @@ impl NexusApp {
                 }
                 Task::none()
             }
-            ServerMessage::Error { message, .. } => self.add_chat_message(
-                connection_id,
-                ChatMessage {
-                    username: MSG_USERNAME_ERROR.to_string(),
-                    message,
-                    timestamp: Local::now(),
-                },
-            ),
+            ServerMessage::Error { message, command } => {
+                // Close edit user panel if the error is for UserEdit command
+                if let Some(cmd) = command {
+                    if cmd == "UserEdit" && self.ui_state.show_edit_user {
+                        self.ui_state.show_edit_user = false;
+                        if let Some(conn_id) = self.active_connection {
+                            if let Some(conn) = self.connections.get_mut(&conn_id) {
+                                conn.user_management.clear_edit_user();
+                            }
+                        }
+                    }
+                }
+                
+                self.add_chat_message(
+                    connection_id,
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message,
+                        timestamp: Local::now(),
+                    },
+                )
+            }
             _ => Task::none(),
         }
     }

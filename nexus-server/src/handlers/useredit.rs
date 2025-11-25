@@ -1,6 +1,6 @@
 //! UserEdit message handler - Returns user details for editing
 
-use super::{ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, HandlerContext};
+use super::{ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, HandlerContext};
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
@@ -55,6 +55,17 @@ pub async fn handle_useredit(
         );
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserEdit"))
+            .await;
+    }
+
+    // Prevent self-editing
+    if requesting_user.username.eq_ignore_ascii_case(&username) {
+        eprintln!(
+            "UserEdit from {} (user: {}) attempting to edit themselves",
+            ctx.peer_addr, requesting_user.username
+        );
+        return ctx
+            .send_error(ERR_CANNOT_EDIT_SELF, Some("UserEdit"))
             .await;
     }
 
@@ -294,6 +305,31 @@ mod tests {
                 assert_eq!(username, "bob");
             }
             _ => panic!("Expected UserEditResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_useredit_cannot_edit_self() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to edit self
+        let result = handle_useredit(
+            "admin".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, ERR_CANNOT_EDIT_SELF);
+            }
+            _ => panic!("Expected Error message"),
         }
     }
 }

@@ -2,7 +2,10 @@
 module = "icon"
 
 [glyphs]
-cancel = "fontawesome-cancel"
 cog = "fontawesome-cog"
 collapse_left = "fontawesome-collapse-left"
 expand_right = "fontawesome-expand-right"
+logout = "fontawesome-logout"
+megaphone = "fontawesome-megaphone"
+user_plus = "fontawesome-user-plus"
+users = "fontawesome-users"

@@ -7,7 +7,8 @@ use super::style::{
     SERVER_LIST_BUTTON_SIZE, SERVER_LIST_DISCONNECT_ICON_SIZE,
     SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, NO_SPACING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_BACKGROUND_COLOR, NO_SPACING,
     DISCONNECT_ICON_COLOR, DISCONNECT_ICON_HOVER_COLOR, EDIT_ICON_COLOR, EDIT_ICON_HOVER_COLOR,
     BOOKMARK_ROW_ALT_COLOR, BOOKMARK_BUTTON_HOVER_COLOR,
 };
@@ -69,8 +70,13 @@ pub fn server_list_panel<'a>(
 
             // Disconnect button (transparent icon button with hover effect)
             let disconnect_btn = tooltip(
-                transparent_icon_button(icon::cancel(), Message::DisconnectFromServer(**conn_id)),
-                text("Disconnect").size(TOOLTIP_TEXT_SIZE),
+                transparent_icon_button(icon::logout(), Message::DisconnectFromServer(**conn_id)),
+                container(text("Disconnect").size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(|_theme| container::Style {
+                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        ..Default::default()
+                    }),
                 tooltip::Position::Right,
             )
             .gap(TOOLTIP_GAP)
@@ -160,7 +166,12 @@ pub fn server_list_panel<'a>(
             // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(
                 transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
-                text("Edit").size(TOOLTIP_TEXT_SIZE),
+                container(text("Edit").size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(|_theme| container::Style {
+                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        ..Default::default()
+                    }),
                 tooltip::Position::Right,
             )
             .gap(TOOLTIP_GAP)
