@@ -223,9 +223,9 @@ impl NexusApp {
             }
             ServerMessage::UserConnected { user } => {
                 conn.online_users.push(UserInfo {
-                    session_id: user.session_id,
                     username: user.username.clone(),
                     is_admin: user.is_admin,
+                    session_ids: user.session_ids.clone(),
                 });
                 self.add_chat_message(
                     connection_id,
@@ -240,7 +240,7 @@ impl NexusApp {
                 session_id,
                 username,
             } => {
-                conn.online_users.retain(|u| u.session_id != session_id);
+                conn.online_users.retain(|u| !u.session_ids.contains(&session_id));
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
@@ -254,9 +254,9 @@ impl NexusApp {
                 conn.online_users = users
                     .into_iter()
                     .map(|u| UserInfo {
-                        session_id: u.session_id,
                         username: u.username,
                         is_admin: u.is_admin,
+                        session_ids: u.session_ids,
                     })
                     .collect();
                 Task::none()
@@ -290,6 +290,12 @@ impl NexusApp {
                         }
                     }
 
+                    // Add session count
+                    let session_count = user.session_ids.len();
+                    if session_count > 1 {
+                        info.push_str(&format!(" • Sessions: {}", session_count));
+                    }
+
                     // Add online duration
                     info.push_str(&format!(" • Online: {}", duration_str));
 
@@ -298,9 +304,11 @@ impl NexusApp {
                         info.push_str(&format!(" • Features: {}", user.features.join(", ")));
                     }
 
-                    // Add address if present (only visible to admins)
-                    if let Some(address) = user.address {
-                        info.push_str(&format!(" • IP: {}", address));
+                    // Add addresses if present (only visible to admins)
+                    if let Some(addresses) = user.addresses {
+                        if !addresses.is_empty() {
+                            info.push_str(&format!(" • IPs: {}", addresses.join(", ")));
+                        }
                     }
 
                     ChatMessage {

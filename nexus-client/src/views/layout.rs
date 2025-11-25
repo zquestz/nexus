@@ -27,6 +27,7 @@ fn hidden_panel<'a>() -> Element<'a, Message> {
 const PERMISSION_USER_BROADCAST: &str = "user_broadcast";
 const PERMISSION_USER_CREATE: &str = "user_create";
 const PERMISSION_USER_EDIT: &str = "user_edit";
+const PERMISSION_USER_LIST: &str = "user_list";
 
 /// Main application layout with toolbar and three-panel layout
 ///
@@ -70,6 +71,9 @@ pub fn main_layout<'a>(
         .map(|conn| (conn.is_admin, conn.permissions.as_slice()))
         .unwrap_or((false, &[]));
 
+    // Check if user has permission to view user list
+    let can_view_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+
     // Top toolbar
     let toolbar = build_toolbar(
         show_bookmarks,
@@ -78,6 +82,7 @@ pub fn main_layout<'a>(
         active_connection.is_some(),
         is_admin,
         permissions,
+        can_view_user_list,
     );
 
     // Left panel: Server list
@@ -119,8 +124,8 @@ pub fn main_layout<'a>(
         )
     };
 
-    // Right panel: User list (only when connected and visible)
-    let user_list = if show_user_list {
+    // Right panel: User list (only when connected, visible, and user has permission)
+    let user_list = if show_user_list && can_view_user_list {
         active_connection
             .and_then(|conn_id| connections.get(&conn_id))
             .map(|conn| user_list_panel(conn))
@@ -155,6 +160,7 @@ fn build_toolbar(
     is_connected: bool,
     is_admin: bool,
     permissions: &[String],
+    can_view_user_list: bool,
 ) -> Element<'static, Message> {
     // Need to capture these for the closures
     let show_bookmarks_copy = show_bookmarks;
@@ -216,16 +222,21 @@ fn build_toolbar(
                     style
                 }),
             // Right collapse button (user list)
-            button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
-                .on_press(Message::ToggleUserList)
-                .padding(TOOLBAR_BUTTON_PADDING)
-                .style(move |theme, status| {
-                    let mut style = button::primary(theme, status);
-                    if !show_user_list_copy {
-                        style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
-                    }
-                    style
-                }),
+            if can_view_user_list {
+                button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
+                    .on_press(Message::ToggleUserList)
+                    .padding(TOOLBAR_BUTTON_PADDING)
+                    .style(move |theme, status| {
+                        let mut style = button::primary(theme, status);
+                        if !show_user_list_copy {
+                            style.background = Some(Background::Color(BUTTON_INACTIVE_COLOR));
+                        }
+                        style
+                    })
+            } else {
+                button(text(if show_user_list { "[>]" } else { "[<]" }).size(TOOLBAR_BUTTON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
+            },
         ]
         .spacing(TOOLBAR_SPACING)
         .padding(TOOLBAR_PADDING)

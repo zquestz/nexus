@@ -14,10 +14,10 @@ pub struct ChatMessage {
 /// User information for display
 #[derive(Debug, Clone)]
 pub struct UserInfo {
-    /// Session ID assigned by server
-    pub session_id: u32,
     /// Username
     pub username: String,
     /// Whether user is admin
     pub is_admin: bool,
+    /// All active session IDs for this user
+    pub session_ids: Vec<u32>,
 }

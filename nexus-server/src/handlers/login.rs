@@ -164,10 +164,10 @@ pub async fn handle_login(
 
     // Notify other users about new connection
     let user_info = UserInfo {
-        session_id: id,
         username,
         login_time: current_timestamp(),
         is_admin: authenticated_account.is_admin,
+        session_ids: vec![id],
     };
     ctx.user_manager
         .broadcast_except(id, ServerMessage::UserConnected { user: user_info })

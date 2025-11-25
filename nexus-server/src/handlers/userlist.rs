@@ -62,8 +62,10 @@ pub async fn handle_userlist(
     // Fetch all connected users
     let all_users = ctx.user_manager.get_all_users().await;
     
-    // Build user info list with admin status
-    let mut user_infos = Vec::new();
+    // Deduplicate by username and aggregate sessions
+    use std::collections::HashMap;
+    let mut user_map: HashMap<String, (u64, bool, Vec<u32>)> = HashMap::new(); // (earliest_login, is_admin, session_ids)
+    
     for user in all_users {
         // Get user account to check admin status
         let is_admin = match ctx.user_db.get_user_by_id(user.db_user_id).await {
@@ -71,13 +73,27 @@ pub async fn handle_userlist(
             _ => false, // Default to non-admin if lookup fails
         };
         
-        user_infos.push(UserInfo {
-            session_id: user.session_id,
-            username: user.username,
-            login_time: user.login_time,
-            is_admin,
-        });
+        user_map.entry(user.username.clone())
+            .and_modify(|(login_time, _, session_ids)| {
+                // Keep earliest login time
+                *login_time = (*login_time).min(user.login_time);
+                session_ids.push(user.session_id);
+            })
+            .or_insert((user.login_time, is_admin, vec![user.session_id]));
     }
+    
+    // Build deduplicated user info list
+    let mut user_infos: Vec<UserInfo> = user_map.into_iter()
+        .map(|(username, (login_time, is_admin, session_ids))| UserInfo {
+            username,
+            login_time,
+            is_admin,
+            session_ids,
+        })
+        .collect();
+    
+    // Sort by username for consistent ordering
+    user_infos.sort_by(|a, b| a.username.cmp(&b.username));
 
     // Send user list response
     let response = ServerMessage::UserListResponse { users: user_infos };
@@ -164,7 +180,8 @@ mod tests {
             ServerMessage::UserListResponse { users } => {
                 assert_eq!(users.len(), 1, "Should have 1 user in the list");
                 assert_eq!(users[0].username, "alice");
-                assert_eq!(users[0].session_id, session_id);
+                assert_eq!(users[0].session_ids.len(), 1);
+                assert_eq!(users[0].session_ids[0], session_id);
                 assert_eq!(users[0].is_admin, false, "alice should not be admin");
             }
             _ => panic!("Expected UserListResponse"),
@@ -195,6 +212,8 @@ mod tests {
             ServerMessage::UserListResponse { users } => {
                 assert_eq!(users.len(), 1, "Should have 1 user in the list");
                 assert_eq!(users[0].username, "admin");
+                assert_eq!(users[0].session_ids.len(), 1);
+                assert_eq!(users[0].session_ids[0], session_id);
                 assert_eq!(users[0].is_admin, true, "admin should have is_admin=true");
             }
             _ => panic!("Expected UserListResponse"),

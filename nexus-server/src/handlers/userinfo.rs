@@ -12,7 +12,7 @@ const ERR_TARGET_NOT_FOUND: &str = "User not found";
 
 /// Handle a userinfo request from the client
 pub async fn handle_userinfo(
-    requested_session_id: u32,
+    requested_username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
@@ -63,19 +63,22 @@ pub async fn handle_userinfo(
             .await;
     }
 
-    // Look up target user by session ID
-    let target_user = match ctx.user_manager.get_user_by_session_id(requested_session_id).await {
-        Some(u) => u,
-        None => {
-            // User not found - send response with None
-            let response = ServerMessage::UserInfoResponse {
-                user: None,
-                error: Some(ERR_TARGET_NOT_FOUND.to_string()),
-            };
-            ctx.send_message(&response).await?;
-            return Ok(());
-        }
-    };
+    // Look up all sessions for target username
+    let all_users = ctx.user_manager.get_all_users().await;
+    let target_sessions: Vec<_> = all_users
+        .into_iter()
+        .filter(|u| u.username == requested_username)
+        .collect();
+    
+    if target_sessions.is_empty() {
+        // User not found - send response with None
+        let response = ServerMessage::UserInfoResponse {
+            user: None,
+            error: Some(ERR_TARGET_NOT_FOUND.to_string()),
+        };
+        ctx.send_message(&response).await?;
+        return Ok(());
+    }
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
@@ -91,10 +94,10 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Fetch target user account for admin status
+    // Fetch target user account for admin status and created_at
     let target_account = match ctx
         .user_db
-        .get_user_by_username(&target_user.username)
+        .get_user_by_username(&requested_username)
         .await
     {
         Ok(Some(acc)) => acc,
@@ -105,28 +108,47 @@ pub async fn handle_userinfo(
         }
     };
 
+    // Aggregate session data
+    let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
+    let earliest_login = target_sessions.iter().map(|s| s.login_time).min().unwrap();
+    
+    // Collect unique features from all sessions
+    let mut all_features = std::collections::HashSet::new();
+    for session in &target_sessions {
+        for feature in &session.features {
+            all_features.insert(feature.clone());
+        }
+    }
+    let features: Vec<String> = all_features.into_iter().collect();
+    
+    // Collect IP addresses from all sessions (for admins only)
+    let addresses: Vec<String> = target_sessions
+        .iter()
+        .map(|s| s.address.to_string())
+        .collect();
+
     // Build response with appropriate visibility level
     let user_info = if requesting_account.is_admin {
-        // Admin gets all fields including target user's admin status
+        // Admin gets all fields including target user's admin status and addresses
         UserInfoDetailed {
-            session_id: target_user.session_id,
-            username: target_user.username.clone(),
-            login_time: target_user.login_time,
-            features: target_user.features.clone(),
-            created_at: target_user.created_at,
+            username: requested_username.clone(),
+            login_time: earliest_login,
+            session_ids: session_ids.clone(),
+            features,
+            created_at: target_account.created_at,
             is_admin: Some(target_account.is_admin),
-            address: Some(target_user.address.to_string()),
+            addresses: Some(addresses),
         }
     } else {
         // Non-admin gets filtered fields
         UserInfoDetailed {
-            session_id: target_user.session_id,
-            username: target_user.username.clone(),
-            login_time: target_user.login_time,
-            features: target_user.features.clone(),
-            created_at: target_user.created_at,
+            username: requested_username.clone(),
+            login_time: earliest_login,
+            session_ids,
+            features,
+            created_at: target_account.created_at,
             is_admin: None,
-            address: None,
+            addresses: None,
         }
     };
 
@@ -151,7 +173,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to get user info without being logged in
-        let result = handle_userinfo(1, None, &mut test_ctx.handler_context()).await;
+        let result = handle_userinfo("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserInfo should require login");
@@ -184,7 +206,7 @@ mod tests {
             .await;
 
         // Try to get user info without permission
-        let result = handle_userinfo(user_id, Some(user_id), &mut test_ctx.handler_context()).await;
+        let result = handle_userinfo("alice".to_string(), Some(user_id), &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(
@@ -226,10 +248,9 @@ mod tests {
             )
             .await;
 
-        // Request info for non-existent session_id
-        let non_existent_session_id = 9999;
+        // Request info for non-existent username
         let result = handle_userinfo(
-            non_existent_session_id,
+            "nonexistent".to_string(),
             Some(user_id),
             &mut test_ctx.handler_context(),
         )
@@ -317,7 +338,7 @@ mod tests {
 
         // Request info about target as non-admin
         let result = handle_userinfo(
-            target_id,
+            "target".to_string(),
             Some(requester_id),
             &mut test_ctx.handler_context(),
         )
@@ -340,8 +361,9 @@ mod tests {
                 let user_info = user.unwrap();
 
                 // Verify all basic fields are present
-                assert_eq!(user_info.session_id, target_id);
                 assert_eq!(user_info.username, "target");
+                assert_eq!(user_info.session_ids.len(), 1);
+                assert_eq!(user_info.session_ids[0], target_id);
                 assert_eq!(user_info.features, vec!["chat".to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
@@ -351,8 +373,8 @@ mod tests {
                     "Non-admin should not see is_admin field"
                 );
                 assert!(
-                    user_info.address.is_none(),
-                    "Non-admin should not see address field"
+                    user_info.addresses.is_none(),
+                    "Non-admin should not see addresses field"
                 );
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
@@ -406,7 +428,7 @@ mod tests {
 
         // Request info about target as admin
         let result =
-            handle_userinfo(target_id, Some(admin_id), &mut test_ctx.handler_context()).await;
+            handle_userinfo("target".to_string(), Some(admin_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
@@ -425,8 +447,9 @@ mod tests {
                 let user_info = user.unwrap();
 
                 // Verify all basic fields are present
-                assert_eq!(user_info.session_id, target_id);
                 assert_eq!(user_info.username, "target");
+                assert_eq!(user_info.session_ids.len(), 1);
+                assert_eq!(user_info.session_ids[0], target_id);
                 assert_eq!(user_info.features, vec!["chat".to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
@@ -441,12 +464,14 @@ mod tests {
                     "Target user is not admin"
                 );
 
-                assert!(user_info.address.is_some(), "Admin should see address field");
-                let address = user_info.address.unwrap();
+                assert!(user_info.addresses.is_some(), "Admin should see addresses field");
+                let addresses = user_info.addresses.unwrap();
+                assert!(!addresses.is_empty(), "Addresses should not be empty");
+                assert_eq!(addresses.len(), 1, "Should have 1 address");
                 assert!(
-                    !address.is_empty(),
+                    !addresses[0].is_empty(),
                     "Address should not be empty, got: {}",
-                    address
+                    addresses[0]
                 );
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
@@ -499,7 +524,7 @@ mod tests {
 
         // Admin1 requests info about admin2
         let result =
-            handle_userinfo(admin2_id, Some(admin1_id), &mut test_ctx.handler_context()).await;
+            handle_userinfo("admin2".to_string(), Some(admin1_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
@@ -518,7 +543,8 @@ mod tests {
                 let user_info = user.unwrap();
 
                 // Verify basic fields
-                assert_eq!(user_info.session_id, admin2_id);
+                assert_eq!(user_info.session_ids.len(), 1);
+                assert_eq!(user_info.session_ids[0], admin2_id);
                 assert_eq!(user_info.username, "admin2");
 
                 // Verify is_admin shows true for target admin
@@ -532,7 +558,7 @@ mod tests {
                     "Target user is admin"
                 );
 
-                assert!(user_info.address.is_some(), "Admin should see address field");
+                assert!(user_info.addresses.is_some(), "Admin should see address field");
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
         }

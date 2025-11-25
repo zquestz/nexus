@@ -68,7 +68,7 @@ pub enum Message {
     /// Connection form: Port field changed
     PortChanged(String),
     /// User list: User clicked to request info
-    RequestUserInfo(u32),
+    RequestUserInfo(String),
     /// Bookmark editor: Save button pressed
     SaveBookmark,
     /// Broadcast panel: Send button pressed

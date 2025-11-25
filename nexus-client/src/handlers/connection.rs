@@ -143,10 +143,10 @@ impl NexusApp {
     }
 
     /// Request detailed user information from server
-    pub fn handle_request_user_info(&mut self, session_id: u32) -> Task<Message> {
+    pub fn handle_request_user_info(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection {
             if let Some(conn) = self.connections.get(&conn_id) {
-                if let Err(e) = conn.tx.send(ClientMessage::UserInfo { session_id }) {
+                if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
                     let error_msg = format!("Failed to request user info: {}", e);
                     return self.add_chat_error(conn_id, error_msg);
                 }

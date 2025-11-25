@@ -176,10 +176,8 @@ async fn handle_client_message(
             ClientMessage::UserEdit { username } => {
                 handlers::handle_useredit(username, *session_id, &mut ctx).await?;
             }
-            ClientMessage::UserInfo {
-                session_id: requested_session_id,
-            } => {
-                handlers::handle_userinfo(requested_session_id, *session_id, &mut ctx).await?;
+            ClientMessage::UserInfo { username } => {
+                handlers::handle_userinfo(username, *session_id, &mut ctx).await?;
             }
             ClientMessage::UserList => {
                 handlers::handle_userlist(*session_id, &mut ctx).await?;

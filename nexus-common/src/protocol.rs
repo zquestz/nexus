@@ -39,7 +39,7 @@ pub enum ClientMessage {
     /// Request user details for editing (returns admin status and permissions)
     UserEdit { username: String },
     /// Request information about a specific user
-    UserInfo { session_id: u32 },
+    UserInfo { username: String },
     /// Request list of connected users
     UserList,
     /// Update a user account
@@ -143,27 +143,27 @@ pub enum ServerMessage {
 /// Information about a connected user (basic info for lists)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-    pub session_id: u32,
     pub username: String,
     pub login_time: u64,
     pub is_admin: bool,
+    pub session_ids: Vec<u32>,
 }
 
 /// Detailed information about a user (for UserInfo command)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfoDetailed {
-    pub session_id: u32,
     pub username: String,
     pub login_time: u64,
+    pub session_ids: Vec<u32>,
     pub features: Vec<String>,
     /// When the account was created (Unix timestamp)
     pub created_at: i64,
     /// Only included for admins viewing the info
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_admin: Option<bool>,
-    /// Only included for admins viewing the info
+    /// Only included for admins viewing the info (one per session)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub address: Option<String>,
+    pub addresses: Option<Vec<String>>,
 }
 
 // Custom Debug implementation that redacts passwords
@@ -212,9 +212,9 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("UserEdit")
                 .field("username", username)
                 .finish(),
-            ClientMessage::UserInfo { session_id } => f
+            ClientMessage::UserInfo { username } => f
                 .debug_struct("UserInfo")
-                .field("session_id", session_id)
+                .field("username", username)
                 .finish(),
             ClientMessage::UserList => f.debug_struct("UserList").finish(),
             ClientMessage::UserUpdate {
