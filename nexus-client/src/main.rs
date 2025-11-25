@@ -197,6 +197,11 @@ impl NexusApp {
 
             // Network events
             Message::ConnectionResult(result) => self.handle_connection_result(result),
+            Message::BookmarkConnectionResult {
+                result,
+                bookmark_index,
+                display_name,
+            } => self.handle_bookmark_connection_result(result, bookmark_index, display_name),
             Message::ServerMessageReceived(connection_id, msg) => {
                 self.handle_server_message_received(connection_id, msg)
             }

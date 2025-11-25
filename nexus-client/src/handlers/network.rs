@@ -102,11 +102,95 @@ impl NexusApp {
                 // Clear connection form
                 self.connection_form.clear();
 
-                // Focus chat input
+                // Focus the chat input
                 text_input::focus(text_input::Id::from(InputId::ChatInput))
             }
             Err(error) => {
                 self.connection_form.error = Some(error);
+                Task::none()
+            }
+        }
+    }
+
+    /// Handle bookmark connection attempt result (success or failure)
+    /// 
+    /// This variant is used when connecting from bookmarks to avoid race conditions
+    /// with the shared connection_form state.
+    pub fn handle_bookmark_connection_result(
+        &mut self,
+        result: Result<crate::types::NetworkConnection, String>,
+        bookmark_index: Option<usize>,
+        display_name: String,
+    ) -> Task<Message> {
+        match result {
+            Ok(conn) => {
+                let session_id = conn.session_id.parse().unwrap_or(0);
+                let connection_id = conn.connection_id;
+                
+                // Extract username from bookmark if we have one
+                let username = if let Some(idx) = bookmark_index {
+                    if let Some(bookmark) = self.config.get_bookmark(idx) {
+                        bookmark.username.clone()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+
+                let conn_tx = conn.tx.clone();
+                let should_request_userlist =
+                    conn.is_admin || conn.permissions.contains(&"user_list".to_string());
+
+                // Create server connection with passed display_name
+                let server_conn = ServerConnection {
+                    bookmark_index,
+                    session_id,
+                    username,
+                    display_name, // Use the display_name passed from the bookmark
+                    chat_messages: Vec::new(),
+                    online_users: Vec::new(),
+                    tx: conn.tx,
+                    shutdown_handle: match conn.shutdown {
+                        Some(handle) => handle,
+                        None => {
+                            // For bookmark connections, we can't show error in connection_form
+                            // since it might be used for something else
+                            // The connection just fails silently or we could log it
+                            return Task::none();
+                        }
+                    },
+                    connection_id,
+                    message_input: String::new(),
+                    broadcast_message: String::new(),
+                    user_management: crate::types::UserManagementState::default(),
+                    is_admin: conn.is_admin,
+                    permissions: conn.permissions,
+                };
+
+                // Add to connections and make it active
+                self.connections.insert(connection_id, server_conn);
+                self.active_connection = Some(connection_id);
+
+                // Request initial user list (only if user has permission)
+                if should_request_userlist {
+                    if let Err(_e) = conn_tx.send(ClientMessage::UserList) {
+                        // Channel send failed - connection is broken
+                        // Remove the connection we just added since it's broken
+                        self.connections.remove(&connection_id);
+                        self.active_connection = None;
+                        return Task::none();
+                    }
+                }
+
+                // Focus the chat input
+                text_input::focus(text_input::Id::from(InputId::ChatInput))
+            }
+            Err(error) => {
+                // For auto-connect failures, we could show a system message
+                // but for now we just fail silently
+                // TODO: Consider showing failed auto-connect attempts in a notification area
+                eprintln!("Bookmark connection failed: {}", error);
                 Task::none()
             }
         }

@@ -37,6 +37,12 @@ pub enum Message {
     ConnectPressed,
     /// Network: Connection attempt completed
     ConnectionResult(Result<NetworkConnection, String>),
+    /// Network: Bookmark connection attempt completed (with display name)
+    BookmarkConnectionResult {
+        result: Result<NetworkConnection, String>,
+        bookmark_index: Option<usize>,
+        display_name: String,
+    },
     /// Admin panel: Create User button pressed
     CreateUserPressed,
     /// Delete a bookmark by index

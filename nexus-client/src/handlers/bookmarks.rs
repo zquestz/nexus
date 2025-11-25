@@ -60,16 +60,51 @@ impl NexusApp {
 
     /// Connect to a bookmarked server
     pub fn handle_connect_to_bookmark(&mut self, index: usize) -> Task<Message> {
-        // Auto-fill connection form from bookmark
+        // Get bookmark data
         if let Some(bookmark) = self.config.get_bookmark(index) {
-            self.connection_form.server_name = bookmark.name.clone();
-            self.connection_form.server_address = bookmark.address.clone();
-            self.connection_form.port = bookmark.port.clone();
-            self.connection_form.username = bookmark.username.clone();
-            self.connection_form.password = bookmark.password.clone();
+            // Validate port
+            let port: u16 = match bookmark.port.parse() {
+                Ok(p) => p,
+                Err(_) => {
+                    self.connection_form.error = Some(format!("Invalid port in bookmark: {}", bookmark.name));
+                    return Task::none();
+                }
+            };
 
-            // Auto-connect
-            return self.update(Message::ConnectPressed);
+            let server_address = bookmark.address.clone();
+            let username = bookmark.username.clone();
+            let password = bookmark.password.clone();
+            let server_name = bookmark.name.clone();
+            let connection_id = self.next_connection_id;
+            self.next_connection_id += 1;
+
+            // Store bookmark index for this connection
+            let bookmark_index = Some(index);
+
+            // Clone server_name for the result handler closure
+            let display_name_for_result = server_name.clone();
+
+            // Connect directly without modifying connection_form
+            return Task::perform(
+                async move {
+                    crate::network::connect_to_server(
+                        server_address,
+                        port,
+                        username,
+                        password,
+                        connection_id,
+                    )
+                    .await
+                },
+                move |result| {
+                    let display_name = display_name_for_result.clone();
+                    Message::BookmarkConnectionResult {
+                        result,
+                        bookmark_index,
+                        display_name,
+                    }
+                },
+            );
         }
         Task::none()
     }
