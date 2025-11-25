@@ -185,7 +185,7 @@ mod tests {
                 assert_eq!(users[0].username, "alice");
                 assert_eq!(users[0].session_ids.len(), 1);
                 assert_eq!(users[0].session_ids[0], session_id);
-                assert_eq!(users[0].is_admin, false, "alice should not be admin");
+                assert!(!users[0].is_admin, "alice should not be admin");
             }
             _ => panic!("Expected UserListResponse"),
         }
@@ -217,7 +217,7 @@ mod tests {
                 assert_eq!(users[0].username, "admin");
                 assert_eq!(users[0].session_ids.len(), 1);
                 assert_eq!(users[0].session_ids[0], session_id);
-                assert_eq!(users[0].is_admin, true, "admin should have is_admin=true");
+                assert!(users[0].is_admin, "admin should have is_admin=true");
             }
             _ => panic!("Expected UserListResponse"),
         }

@@ -116,7 +116,7 @@ pub async fn login_user_with_features(
         .unwrap();
 
     // Add user to UserManager
-    let session_id = test_ctx
+    test_ctx
         .user_manager
         .add_user(
             user.id,
@@ -126,9 +126,7 @@ pub async fn login_user_with_features(
             test_ctx.tx.clone(),
             features,
         )
-        .await;
-
-    session_id
+        .await
 }
 
 /// Helper to read a ServerMessage from the client stream
@@ -138,5 +136,5 @@ pub async fn read_server_message(client: &mut TcpStream) -> ServerMessage {
     let mut reader = tokio::io::BufReader::new(client);
     let mut line = String::new();
     reader.read_line(&mut line).await.unwrap();
-    serde_json::from_str(&line.trim()).unwrap()
+    serde_json::from_str(line.trim()).unwrap()
 }

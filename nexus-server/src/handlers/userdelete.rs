@@ -220,7 +220,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -269,7 +269,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -311,7 +311,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -383,7 +383,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -545,7 +545,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(success, "Response should indicate success");

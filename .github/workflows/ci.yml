@@ -94,7 +94,7 @@ jobs:
           components: clippy
       
       - name: Run clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --all-targets --workspace -- -D warnings
 
   fmt:
     name: Format

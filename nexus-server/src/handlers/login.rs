@@ -258,7 +258,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify successful login response with admin flag and empty permissions
         match response_msg {
@@ -340,7 +340,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify successful login response with is_admin and permissions
         match response_msg {
@@ -498,7 +498,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify response includes correct permissions
         match response_msg {
@@ -635,7 +635,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify LoginResponse includes server_info with chat_topic
         match response_msg {
@@ -693,7 +693,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify LoginResponse excludes server_info
         match response_msg {
@@ -754,7 +754,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify admin receives server_info
         match response_msg {

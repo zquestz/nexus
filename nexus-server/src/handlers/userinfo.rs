@@ -274,7 +274,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserInfoResponse { user, error } => {
                 assert!(user.is_none(), "User should be None");
@@ -361,7 +361,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserInfoResponse { user, error } => {
                 assert!(error.is_none(), "Should have no error");
@@ -453,7 +453,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserInfoResponse { user, error } => {
                 assert!(error.is_none(), "Should have no error");
@@ -472,11 +472,7 @@ mod tests {
                     user_info.is_admin.is_some(),
                     "Admin should see is_admin field"
                 );
-                assert_eq!(
-                    user_info.is_admin.unwrap(),
-                    false,
-                    "Target user is not admin"
-                );
+                assert!(!user_info.is_admin.unwrap(), "Target user is not admin");
 
                 assert!(
                     user_info.addresses.is_some(),
@@ -558,7 +554,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
             ServerMessage::UserInfoResponse { user, error } => {
                 assert!(error.is_none(), "Should have no error");
@@ -575,7 +571,7 @@ mod tests {
                     user_info.is_admin.is_some(),
                     "Admin should see is_admin field"
                 );
-                assert_eq!(user_info.is_admin.unwrap(), true, "Target user is admin");
+                assert!(user_info.is_admin.unwrap(), "Target user is admin");
 
                 assert!(
                     user_info.addresses.is_some(),

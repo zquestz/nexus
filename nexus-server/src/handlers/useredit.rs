@@ -229,7 +229,7 @@ mod tests {
                 permissions,
             } => {
                 assert_eq!(username, "bob");
-                assert_eq!(is_admin, false);
+                assert!(!is_admin);
                 assert!(permissions.contains(&"user_list".to_string()));
                 assert!(permissions.contains(&"chat_send".to_string()));
                 assert_eq!(permissions.len(), 2);
@@ -269,7 +269,7 @@ mod tests {
                 permissions,
             } => {
                 assert_eq!(username, "admin2");
-                assert_eq!(is_admin, true);
+                assert!(is_admin);
                 // Admins have no stored permissions (they get all automatically)
                 assert_eq!(permissions.len(), 0);
             }

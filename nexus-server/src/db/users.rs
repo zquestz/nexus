@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(retrieved.id, created.id);
         assert_eq!(retrieved.username, "alice");
         assert_eq!(retrieved.hashed_password, "hash123");
-        assert_eq!(retrieved.is_admin, false);
+        assert!(!retrieved.is_admin);
     }
 
     #[tokio::test]

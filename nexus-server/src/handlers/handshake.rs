@@ -87,7 +87,7 @@ mod tests {
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse JSON response
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify response
         match response_msg {
@@ -136,7 +136,7 @@ mod tests {
         let mut response = String::new();
         test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(&response.trim()).unwrap();
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
         // Verify error message format
         match response_msg {

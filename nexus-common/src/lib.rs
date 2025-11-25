@@ -15,6 +15,7 @@ mod tests {
 
     #[test]
     fn test_protocol_version() {
-        assert!(!PROTOCOL_VERSION.is_empty());
+        // Verify protocol version exists and has expected format
+        assert!(PROTOCOL_VERSION.starts_with("0."));
     }
 }

@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(config.bookmarks[0].name, "Updated");
         assert_eq!(config.bookmarks[0].address, "200::2");
         assert_eq!(config.bookmarks[0].port, "8000");
-        assert_eq!(config.bookmarks[0].auto_connect, true);
+        assert!(config.bookmarks[0].auto_connect);
     }
 
     #[test]
