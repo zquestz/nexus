@@ -222,13 +222,24 @@ impl NexusApp {
                 self.add_chat_message(connection_id, message)
             }
             ServerMessage::UserConnected { user } => {
-                conn.online_users.push(UserInfo {
-                    username: user.username.clone(),
-                    is_admin: user.is_admin,
-                    session_ids: user.session_ids.clone(),
-                });
-                // Sort to maintain alphabetical order
-                conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                // Check if user already exists (multi-device connection)
+                if let Some(existing_user) = conn.online_users.iter_mut().find(|u| u.username == user.username) {
+                    // User already exists - merge session_ids
+                    for session_id in &user.session_ids {
+                        if !existing_user.session_ids.contains(session_id) {
+                            existing_user.session_ids.push(*session_id);
+                        }
+                    }
+                } else {
+                    // New user - add to list
+                    conn.online_users.push(UserInfo {
+                        username: user.username.clone(),
+                        is_admin: user.is_admin,
+                        session_ids: user.session_ids.clone(),
+                    });
+                    // Sort to maintain alphabetical order
+                    conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                }
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
@@ -242,9 +253,15 @@ impl NexusApp {
                 session_id,
                 username,
             } => {
-                conn.online_users.retain(|u| !u.session_ids.contains(&session_id));
-                // Sort to maintain alphabetical order (in case multiple sessions were removed)
-                conn.online_users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                // Remove the specific session_id from the user's sessions
+                if let Some(user) = conn.online_users.iter_mut().find(|u| u.username == username) {
+                    user.session_ids.retain(|&sid| sid != session_id);
+                    
+                    // If user has no more sessions, remove them entirely
+                    if user.session_ids.is_empty() {
+                        conn.online_users.retain(|u| u.username != username);
+                    }
+                }
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
