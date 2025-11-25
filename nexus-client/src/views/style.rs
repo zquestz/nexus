@@ -47,8 +47,7 @@ pub const CHAT_INPUT_SIZE: u16 = 13;
 /// Toolbar title text size
 pub const TOOLBAR_TITLE_SIZE: u16 = 16;
 
-/// Toolbar button text size
-pub const TOOLBAR_BUTTON_SIZE: u16 = 12;
+
 
 /// Toolbar icon size (for collapse/expand icons)
 pub const TOOLBAR_ICON_SIZE: u16 = 20;
@@ -111,8 +110,7 @@ pub const BUTTON_PADDING: u16 = 10;
 /// Form container padding
 pub const FORM_PADDING: u16 = 20;
 
-/// Toolbar button padding
-pub const TOOLBAR_BUTTON_PADDING: u16 = 8;
+
 
 /// Toolbar horizontal padding (matches FORM_PADDING for alignment)
 pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
