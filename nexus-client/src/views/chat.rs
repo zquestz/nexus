@@ -64,6 +64,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
 
         scrollable(chat_column)
             .id(ScrollableId::ChatMessages.into())
+            .width(Fill)
             .height(Fill)
     } else {
         // No permission to receive chat
@@ -81,6 +82,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
 
         scrollable(no_permission_column)
             .id(ScrollableId::ChatMessages.into())
+            .width(Fill)
             .height(Fill)
     };
 
@@ -94,12 +96,14 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
                 .style(primary_text_input_style())
+                .width(Fill)
         } else {
             text_input("No permission to send messages", message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
                 .style(primary_text_input_style())
+                .width(Fill)
         },
         if can_send {
             button(text("Send").size(CHAT_MESSAGE_SIZE))
@@ -112,7 +116,8 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .style(primary_button_style())
         },
     ]
-    .spacing(SMALL_SPACING);
+    .spacing(SMALL_SPACING)
+    .width(Fill);
 
     container(
         column![chat_scrollable, input_row,]
