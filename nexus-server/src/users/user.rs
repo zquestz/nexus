@@ -15,8 +15,6 @@ pub struct User {
     pub username: String,
     /// Remote address of the user's connection
     pub address: SocketAddr,
-    /// When the user account was created (Unix timestamp from database)
-    pub created_at: i64,
     /// When the user logged in (Unix timestamp)
     pub login_time: u64,
     /// Channel sender for sending messages to this user
