@@ -8,7 +8,7 @@ description = "BBS client for Yggdrasil network"
 [package.metadata.bundle]
 name = "Nexus BBS"
 identifier = "at.greyh.nexus"
-icon = ["assets/macos/nexus.icns", "assets/windows/nexus.ico"]
+icon = ["assets/macos/nexus.png", "assets/windows/nexus.ico"]
 category = "public.app-category.social-networking"
 short_description = "BBS client for Yggdrasil network"
 copyright = "Copyright (c) Josh Ellithorpe 2025. All rights reserved."

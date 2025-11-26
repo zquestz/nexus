@@ -116,6 +116,8 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: ubuntu-latest
+            bundle_command: cargo bundle --release
           - os: macos-latest
             bundle_command: cargo bundle --release
           - os: windows-latest
