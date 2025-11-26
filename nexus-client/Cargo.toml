@@ -3,7 +3,6 @@ name = "nexus-client"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-license-file = "../LICENSE"
 description = "BBS client for Yggdrasil network"
 
 [package.metadata.bundle]
