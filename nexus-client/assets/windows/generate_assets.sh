@@ -20,7 +20,9 @@ if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; 
     echo "Error: ImageMagick not found (need 'magick' or 'convert' command)" >&2
     echo "Install with: winget install ImageMagick.ImageMagick (Windows)" >&2
     echo "            or brew install imagemagick (macOS)" >&2
-    echo "            or apt install imagemagick (Linux)" >&2
+    echo "            or pacman -S imagemagick (Arch)" >&2
+    echo "            or apt install imagemagick (Debian/Ubuntu)" >&2
+    echo "            or dnf install imagemagick (Fedora)" >&2
     exit 1
 fi
 

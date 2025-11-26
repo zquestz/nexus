@@ -64,4 +64,6 @@ winget install ImageMagick.ImageMagick
 
 **Install on other platforms:**
 - macOS: `brew install imagemagick`
-- Linux: `apt install imagemagick` or `dnf install imagemagick`
+- Arch: `pacman -S imagemagick`
+- Debian/Ubuntu: `apt install imagemagick`
+- Fedora: `dnf install imagemagick`

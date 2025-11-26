@@ -1,6 +1,7 @@
 #!/bin/sh
 # Generate macOS application assets from SVG source
 # Requires: ImageMagick (magick/convert)
+# Optional: libicns (png2icns) for ICNS generation
 
 set -e
 
@@ -19,8 +20,20 @@ fi
 if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
     echo "Error: ImageMagick not found (need 'magick' or 'convert' command)" >&2
     echo "Install with: brew install imagemagick (macOS)" >&2
-    echo "            or apt install imagemagick (Linux)" >&2
+    echo "            or pacman -S imagemagick (Arch)" >&2
+    echo "            or apt install imagemagick (Debian/Ubuntu)" >&2
+    echo "            or dnf install imagemagick (Fedora)" >&2
     exit 1
+fi
+
+SKIP_ICNS=""
+if ! command -v png2icns >/dev/null 2>&1; then
+    echo "Warning: png2icns not found - skipping ICNS generation" >&2
+    echo "Install with: brew install libicns (macOS)" >&2
+    echo "            or pacman -S libicns (Arch)" >&2
+    echo "            or apt install icnsutils (Debian/Ubuntu)" >&2
+    echo "            or dnf install libicns (Fedora)" >&2
+    SKIP_ICNS="1"
 fi
 
 # Determine which ImageMagick command to use
@@ -38,7 +51,13 @@ echo "Generating PNG (1024x1024)..."
 "$CONVERT_CMD" -background none "$SVG_SOURCE" -resize 1024x1024 "${MACOS_DIR}/nexus.png"
 echo "✓ nexus.png"
 
+# Generate macOS ICNS
+if [ -z "$SKIP_ICNS" ]; then
+    echo "Generating macOS ICNS..."
+    # Suppress JasPer library deprecation warnings from png2icns
+    png2icns "${MACOS_DIR}/nexus.icns" "${MACOS_DIR}/nexus.png" 2>/dev/null
+    echo "✓ nexus.icns"
+fi
+
 echo ""
 echo "✓ macOS asset generation complete!"
-echo ""
-echo "Note: cargo-bundle will automatically convert the PNG to ICNS format"
