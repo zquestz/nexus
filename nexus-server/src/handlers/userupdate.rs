@@ -9,20 +9,24 @@ use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 
+/// User update request parameters
+pub struct UserUpdateRequest {
+    pub username: String,
+    pub requested_username: Option<String>,
+    pub requested_password: Option<String>,
+    pub requested_is_admin: Option<bool>,
+    pub requested_enabled: Option<bool>,
+    pub requested_permissions: Option<Vec<String>>,
+    pub session_id: Option<u32>,
+}
+
 /// Handle a user update request from the client
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_userupdate(
-    username: String,
-    requested_username: Option<String>,
-    requested_password: Option<String>,
-    requested_is_admin: Option<bool>,
-    requested_enabled: Option<bool>,
-    requested_permissions: Option<Vec<String>>,
-    session_id: Option<u32>,
+    request: UserUpdateRequest,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
     // Verify authentication
-    let requesting_session_id = match session_id {
+    let requesting_session_id = match request.session_id {
         Some(id) => id,
         None => {
             eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
@@ -74,7 +78,7 @@ pub async fn handle_userupdate(
     }
 
     // Prevent self-editing
-    if username == requesting_user.username {
+    if request.username == requesting_user.username {
         eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
@@ -102,7 +106,7 @@ pub async fn handle_userupdate(
     };
 
     // Verify admin flag modification privilege
-    if requested_is_admin.is_some() && !requesting_account.is_admin {
+    if request.requested_is_admin.is_some() && !requesting_account.is_admin {
         eprintln!(
             "UserUpdate from {} (non-admin) trying to change admin status",
             ctx.peer_addr
@@ -113,7 +117,7 @@ pub async fn handle_userupdate(
     }
 
     // Parse and validate requested permissions
-    let parsed_permissions = if let Some(ref perm_strings) = requested_permissions {
+    let parsed_permissions = if let Some(ref perm_strings) = request.requested_permissions {
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
             if let Some(perm) = Permission::from_str(perm_str) {
@@ -154,7 +158,9 @@ pub async fn handle_userupdate(
         // Apply permission merge logic for non-admins
         if !requesting_account.is_admin {
             // Get target user's account
-            if let Ok(Some(target_account)) = ctx.db.users.get_user_by_username(&username).await {
+            if let Ok(Some(target_account)) =
+                ctx.db.users.get_user_by_username(&request.username).await
+            {
                 // Get target user's current permissions
                 if let Ok(target_perms) = ctx.db.users.get_user_permissions(target_account.id).await
                 {
@@ -203,7 +209,7 @@ pub async fn handle_userupdate(
     };
 
     // Process password change request
-    let requested_password_hash = if let Some(ref password) = requested_password {
+    let requested_password_hash = if let Some(ref password) = request.requested_password {
         if password.trim().is_empty() {
             // Empty password = no change
             None
@@ -223,7 +229,7 @@ pub async fn handle_userupdate(
     };
 
     // Validate new username if provided
-    if let Some(ref new_name) = requested_username
+    if let Some(ref new_name) = request.requested_username
         && new_name.trim().is_empty()
     {
         eprintln!("UserUpdate from {} with empty username", ctx.peer_addr);
@@ -235,7 +241,7 @@ pub async fn handle_userupdate(
     }
 
     // Get old username and admin status before update (to detect changes)
-    let old_account = match ctx.db.users.get_user_by_username(&username).await {
+    let old_account = match ctx.db.users.get_user_by_username(&request.username).await {
         Ok(Some(acc)) => Some((acc.username.clone(), acc.is_admin)),
         _ => None,
     };
@@ -245,11 +251,11 @@ pub async fn handle_userupdate(
         .db
         .users
         .update_user(
-            &username,
-            requested_username.as_deref(),
+            &request.username,
+            request.requested_username.as_deref(),
             requested_password_hash.as_deref(),
-            requested_is_admin,
-            requested_enabled,
+            request.requested_is_admin,
+            request.requested_enabled,
             parsed_permissions.as_ref(),
         )
         .await
@@ -265,7 +271,10 @@ pub async fn handle_userupdate(
             // Notify all sessions of the updated user about their new permissions
             // Get the updated user's account to read final permissions
             // Use the final username (in case it changed)
-            let final_username = requested_username.as_ref().unwrap_or(&username);
+            let final_username = request
+                .requested_username
+                .as_ref()
+                .unwrap_or(&request.username);
             if let Ok(Some(updated_account)) =
                 ctx.db.users.get_user_by_username(final_username).await
             {
@@ -307,7 +316,7 @@ pub async fn handle_userupdate(
                 //
                 // Note: UserDisconnected is only broadcast once here (connection.rs cleanup
                 // doesn't re-broadcast because the user is already removed from manager)
-                if let Some(false) = requested_enabled {
+                if let Some(false) = request.requested_enabled {
                     // Get all session IDs for this user
                     let session_ids = ctx
                         .user_manager
@@ -400,18 +409,18 @@ pub async fn handle_userupdate(
             let error_message = if ctx
                 .db
                 .users
-                .get_user_by_username(&username)
+                .get_user_by_username(&request.username)
                 .await
                 .ok()
                 .flatten()
                 .is_none()
             {
                 ERR_USER_NOT_FOUND
-            } else if requested_is_admin == Some(false) {
+            } else if request.requested_is_admin == Some(false) {
                 ERR_CANNOT_DEMOTE_LAST_ADMIN
-            } else if requested_enabled == Some(false) {
+            } else if request.requested_enabled == Some(false) {
                 ERR_CANNOT_DISABLE_LAST_ADMIN
-            } else if requested_username.is_some() {
+            } else if request.requested_username.is_some() {
                 ERR_USERNAME_EXISTS
             } else {
                 "Update failed"
@@ -441,17 +450,16 @@ mod tests {
     async fn test_userupdate_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_userupdate(
-            "alice".to_string(),
-            Some("alice2".to_string()),
-            None,
-            None,
-            None,
-            None,
-            None, // Not logged in
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "alice".to_string(),
+            requested_username: Some("alice2".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: None, // Not logged in
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_err());
     }
@@ -471,17 +479,16 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_userupdate(
-            "bob".to_string(),
-            Some("bob2".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: Some("bob2".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -500,17 +507,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_userupdate(
-            "admin".to_string(),
-            Some("admin2".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin".to_string(),
+            requested_username: Some("admin2".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -538,17 +544,16 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_userupdate(
-            "bob".to_string(),
-            Some("bobby".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: Some("bobby".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -579,17 +584,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_userupdate(
-            "nonexistent".to_string(),
-            Some("newname".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "nonexistent".to_string(),
+            requested_username: Some("newname".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -611,17 +615,16 @@ mod tests {
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         // Admin1 demotes Admin2 (should succeed, admin1 still exists)
-        let result = handle_userupdate(
-            "admin2".to_string(),
-            None,
-            None,
-            Some(false), // Demote to non-admin
-            None,
-            None,
-            Some(admin1_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin2".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false), // Demote to non-admin
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -633,17 +636,16 @@ mod tests {
         }
 
         // Now admin2 tries to demote admin1 (should fail - no permission)
-        let result = handle_userupdate(
-            "admin1".to_string(),
-            None,
-            None,
-            Some(false), // Try to demote last admin
-            None,
-            None,
-            Some(admin2_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin1".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false), // Try to demote last admin
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin2_session),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -677,17 +679,16 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_userupdate(
-            "bob".to_string(),
-            Some("robert".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: Some("robert".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -722,17 +723,16 @@ mod tests {
             .unwrap();
 
         // Try to make bob an admin
-        let result = handle_userupdate(
-            "bob".to_string(),
-            None,
-            None,
-            Some(true),
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(true), // Try to make admin
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -766,17 +766,16 @@ mod tests {
             .unwrap();
 
         // Try to rename bob to alice (should fail)
-        let result = handle_userupdate(
-            "bob".to_string(),
-            Some("alice".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: Some("alice".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -805,17 +804,16 @@ mod tests {
             .unwrap();
 
         // Change alice's password
-        let result = handle_userupdate(
-            "alice".to_string(),
-            None,
-            Some("newpassword".to_string()),
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -853,17 +851,16 @@ mod tests {
             .unwrap();
 
         // Give bob some permissions
-        let result = handle_userupdate(
-            "bob".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some(vec!["user_list".to_string(), "chat_send".to_string()]),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -910,17 +907,16 @@ mod tests {
             .unwrap();
 
         // Try to edit alice with empty password (should not change password)
-        let result = handle_userupdate(
-            "alice".to_string(),
-            None,
-            Some("".to_string()), // Empty password
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: Some("".to_string()), // Empty password
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -984,17 +980,16 @@ mod tests {
 
         // Bob tries to update Alice, removing user_info and chat_send (permissions Bob doesn't have)
         // Bob tries to set Alice's permissions to just user_list (which Bob has)
-        let result = handle_userupdate(
-            "alice".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some(vec!["user_list".to_string()]), // Bob only grants user_list
-            Some(bob_session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["user_list".to_string()]), // Bob only grants user_list
+            session_id: Some(bob_session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1046,17 +1041,16 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to disable self (will be caught by self-edit check)
-        let result = handle_userupdate(
-            "admin".to_string(),
-            None,
-            None,
-            None,
-            Some(false), // Try to disable
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false), // Try to disable
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1100,17 +1094,16 @@ mod tests {
             .await;
 
         // Editor tries to disable admin (the last admin) - should fail
-        let result = handle_userupdate(
-            "admin".to_string(),
-            None,
-            None,
-            None,
-            Some(false), // Try to disable last admin
-            None,
-            Some(editor_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false), // Try to disable last admin
+            requested_permissions: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1142,17 +1135,16 @@ mod tests {
         assert!(bob.enabled, "Bob should be enabled initially");
 
         // Disable bob
-        let result = handle_userupdate(
-            "bob".to_string(),
-            None,
-            None,
-            None,
-            Some(false), // Disable
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false), // Disable
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1174,17 +1166,16 @@ mod tests {
         assert!(!bob_after.enabled, "Bob should be disabled");
 
         // Re-enable bob
-        let result = handle_userupdate(
-            "bob".to_string(),
-            None,
-            None,
-            None,
-            Some(true), // Enable
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(true), // Enable
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1227,17 +1218,16 @@ mod tests {
         );
 
         // Admin disables bob
-        let result = handle_userupdate(
-            "bob".to_string(),
-            None,
-            None,
-            None,
-            Some(false), // Disable
-            None,
-            Some(admin_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false), // Disable
+            requested_permissions: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -1296,17 +1286,16 @@ mod tests {
             .await;
 
         // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
-        let result = handle_userupdate(
-            "admin2".to_string(),
-            None,
-            None,
-            Some(false), // Demote to non-admin
-            None,
-            None,
-            Some(admin1_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = UserUpdateRequest {
+            username: "admin2".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false), // Demote to non-admin
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;

@@ -29,7 +29,7 @@ pub use userdelete::handle_userdelete;
 pub use useredit::handle_useredit;
 pub use userinfo::handle_userinfo;
 pub use userlist::handle_userlist;
-pub use userupdate::handle_userupdate;
+pub use userupdate::{UserUpdateRequest, handle_userupdate};
 
 use crate::db::Database;
 use crate::users::UserManager;

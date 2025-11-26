@@ -9,7 +9,9 @@ use super::style::{
     tooltip_text_color,
 };
 use crate::icon;
-use crate::types::{Message, ServerConnection, UserManagementState, ViewConfig};
+use crate::types::{
+    BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState, ViewConfig,
+};
 use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Background, Border, Center, Element, Fill};
 
@@ -52,17 +54,17 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     let can_view_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
     // Top toolbar
-    let toolbar = build_toolbar(
-        config.show_bookmarks,
-        config.show_user_list,
-        config.show_broadcast,
-        config.show_add_user,
-        config.show_edit_user,
-        config.active_connection.is_some(),
+    let toolbar = build_toolbar(ToolbarState {
+        show_bookmarks: config.show_bookmarks,
+        show_user_list: config.show_user_list,
+        show_broadcast: config.show_broadcast,
+        show_add_user: config.show_add_user,
+        show_edit_user: config.show_edit_user,
+        is_connected: config.active_connection.is_some(),
         is_admin,
         permissions,
         can_view_user_list,
-    );
+    });
 
     // Left panel: Server list
     let server_list = server_list_panel(
@@ -72,17 +74,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     );
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)
-    let main_content = if *config.bookmark_edit_mode != crate::types::BookmarkEditMode::None {
-        bookmark_edit_view(
-            config.bookmark_edit_mode,
-            config.bookmark_name,
-            config.bookmark_address,
-            config.bookmark_port,
-            config.bookmark_username,
-            config.bookmark_password,
-            config.bookmark_auto_connect,
-            config.bookmark_error,
-        )
+    let main_content = if *config.bookmark_edit_mode != BookmarkEditMode::None {
+        bookmark_edit_view(config.bookmark_form_data())
     } else if let Some(conn_id) = config.active_connection {
         if let Some(conn) = config.connections.get(&conn_id) {
             server_content_view(
@@ -138,27 +131,25 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
 /// Shows application title, action buttons (Broadcast, User Create, User Edit),
 /// and panel toggle buttons. Buttons are enabled/disabled based on connection
 /// state and user permissions.
-#[allow(clippy::too_many_arguments)]
-fn build_toolbar(
-    show_bookmarks: bool,
-    show_user_list: bool,
-    show_broadcast: bool,
-    show_add_user: bool,
-    show_edit_user: bool,
-    is_connected: bool,
-    is_admin: bool,
-    permissions: &[String],
-    can_view_user_list: bool,
-) -> Element<'static, Message> {
+fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
     // Need to capture this for the closures
-    let show_broadcast_copy = show_broadcast;
-    let show_add_user_copy = show_add_user;
-    let show_edit_user_copy = show_edit_user;
+    let show_broadcast_copy = state.show_broadcast;
+    let show_add_user_copy = state.show_add_user;
+    let show_edit_user_copy = state.show_edit_user;
 
     // Check permissions (avoid string allocations)
-    let has_broadcast = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_BROADCAST);
-    let has_user_create = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
-    let has_user_edit = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+    let has_broadcast = state.is_admin
+        || state
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_USER_BROADCAST);
+    let has_user_create = state.is_admin
+        || state
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_USER_CREATE);
+    let has_user_edit =
+        state.is_admin || state.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
 
     let toolbar = container(
         row![
@@ -167,7 +158,7 @@ fn build_toolbar(
             // Main icon group (Chat, Broadcast, User Create, User Edit)
             row![
                 // Chat button - always visible when connected
-                if is_connected {
+                if state.is_connected {
                     tooltip(
                         button(icon::chat().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ShowChatView)
@@ -234,7 +225,7 @@ fn build_toolbar(
                     .padding(TOOLTIP_PADDING)
                 },
                 // Broadcast button
-                if is_connected && has_broadcast {
+                if state.is_connected && has_broadcast {
                     tooltip(
                         button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleBroadcast)
@@ -298,7 +289,7 @@ fn build_toolbar(
                     .padding(TOOLTIP_PADDING)
                 },
                 // User Create button
-                if is_connected && has_user_create {
+                if state.is_connected && has_user_create {
                     tooltip(
                         button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleAddUser)
@@ -362,7 +353,7 @@ fn build_toolbar(
                     .padding(TOOLTIP_PADDING)
                 },
                 // User Edit button
-                if is_connected && has_user_edit {
+                if state.is_connected && has_user_edit {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleEditUser)
@@ -459,7 +450,7 @@ fn build_toolbar(
                 // Left collapse button (bookmarks)
                 tooltip(
                     button(
-                        if show_bookmarks {
+                        if state.show_bookmarks {
                             icon::collapse_left()
                         } else {
                             icon::expand_right()
@@ -477,7 +468,7 @@ fn build_toolbar(
                         shadow: iced::Shadow::default(),
                     }),
                     container(
-                        text(if show_bookmarks {
+                        text(if state.show_bookmarks {
                             "Hide Bookmarks"
                         } else {
                             "Show Bookmarks"
@@ -496,10 +487,10 @@ fn build_toolbar(
                 .gap(TOOLTIP_GAP)
                 .padding(TOOLTIP_PADDING),
                 // Right collapse button (user list)
-                if can_view_user_list {
+                if state.can_view_user_list {
                     tooltip(
                         button(
-                            if show_user_list {
+                            if state.show_user_list {
                                 icon::expand_right()
                             } else {
                                 icon::collapse_left()
@@ -517,7 +508,7 @@ fn build_toolbar(
                             shadow: iced::Shadow::default(),
                         }),
                         container(
-                            text(if show_user_list {
+                            text(if state.show_user_list {
                                 "Hide User List"
                             } else {
                                 "Show User List"
@@ -538,7 +529,7 @@ fn build_toolbar(
                 } else {
                     tooltip(
                         button(
-                            if show_user_list {
+                            if state.show_user_list {
                                 icon::expand_right()
                             } else {
                                 icon::collapse_left()
