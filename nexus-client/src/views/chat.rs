@@ -3,7 +3,7 @@
 use super::style::{
     CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING, SMALL_SPACING,
     broadcast_message_color, chat_text_color, error_message_color, info_text_color,
-    primary_button_style, primary_text_input_style, system_text_color,
+    primary_button_style, primary_scrollbar_style, primary_text_input_style, system_text_color,
 };
 use crate::types::{InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
@@ -71,7 +71,8 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages.into())
         .width(Fill)
-        .height(Fill);
+        .height(Fill)
+        .style(primary_scrollbar_style());
 
     // Message input
     let input_row = row![

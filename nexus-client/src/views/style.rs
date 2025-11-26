@@ -645,3 +645,73 @@ pub fn primary_text_input_style()
         }
     }
 }
+
+/// Create styled scrollbar (gray with theme-aware hover/active colors)
+///
+/// Uses consistent theme-aware colors for scrollbar states to match the application theme.
+pub fn primary_scrollbar_style()
+-> fn(&Theme, iced::widget::scrollable::Status) -> iced::widget::scrollable::Style {
+    |theme, status| {
+        use iced::widget::scrollable::Status;
+
+        let scroller_color = match status {
+            Status::Active => match theme {
+                Theme::Light => colors::SIDEBAR_BORDER_LIGHT,
+                _ => colors::SIDEBAR_BORDER_DARK,
+            },
+            Status::Hovered {
+                is_horizontal_scrollbar_hovered,
+                is_vertical_scrollbar_hovered,
+            } => {
+                if is_horizontal_scrollbar_hovered || is_vertical_scrollbar_hovered {
+                    interactive_hover_color()
+                } else {
+                    match theme {
+                        Theme::Light => colors::SIDEBAR_BORDER_LIGHT,
+                        _ => colors::SIDEBAR_BORDER_DARK,
+                    }
+                }
+            }
+            Status::Dragged {
+                is_horizontal_scrollbar_dragged,
+                is_vertical_scrollbar_dragged,
+            } => {
+                if is_horizontal_scrollbar_dragged || is_vertical_scrollbar_dragged {
+                    interactive_hover_color()
+                } else {
+                    match theme {
+                        Theme::Light => colors::SIDEBAR_BORDER_LIGHT,
+                        _ => colors::SIDEBAR_BORDER_DARK,
+                    }
+                }
+            }
+        };
+
+        iced::widget::scrollable::Style {
+            container: iced::widget::container::Style::default(),
+            vertical_rail: iced::widget::scrollable::Rail {
+                background: None,
+                border: Border::default(),
+                scroller: iced::widget::scrollable::Scroller {
+                    color: scroller_color,
+                    border: Border {
+                        radius: 2.0.into(),
+                        ..Default::default()
+                    },
+                },
+            },
+            horizontal_rail: iced::widget::scrollable::Rail {
+                background: None,
+                border: Border::default(),
+                scroller: iced::widget::scrollable::Scroller {
+                    color: scroller_color,
+                    border: Border {
+                        radius: 2.0.into(),
+                        ..Default::default()
+                    },
+                },
+            },
+            gap: None,
+        }
+    }
+}

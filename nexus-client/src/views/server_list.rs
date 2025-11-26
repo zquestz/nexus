@@ -8,8 +8,8 @@ use super::style::{
     TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
     TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
     disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color, empty_state_color,
-    interactive_hover_color, primary_button_style, section_title_color, separator_color,
-    sidebar_background, sidebar_border, tooltip_border, tooltip_text_color,
+    interactive_hover_color, primary_button_style, primary_scrollbar_style, section_title_color,
+    separator_color, sidebar_background, sidebar_border, tooltip_border, tooltip_text_color,
 };
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
@@ -225,7 +225,9 @@ pub fn server_list_panel<'a>(
 
     let bookmarks_section = column![
         bookmarks_title,
-        scrollable(bookmarks_column).height(Fill),
+        scrollable(bookmarks_column)
+            .height(Fill)
+            .style(primary_scrollbar_style()),
         add_btn,
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)

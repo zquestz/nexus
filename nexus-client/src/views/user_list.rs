@@ -4,7 +4,8 @@ use super::style::{
     BORDER_WIDTH, FORM_PADDING, INPUT_PADDING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
     USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
     admin_user_text_color, alt_row_color, button_text_color, empty_state_color,
-    interactive_hover_color, section_title_color, sidebar_background, sidebar_border,
+    interactive_hover_color, primary_scrollbar_style, section_title_color, sidebar_background,
+    sidebar_border,
 };
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, button, column, container, scrollable, text};
@@ -79,10 +80,15 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
         }
     }
 
-    let panel = column![title, scrollable(users_column).height(Fill),]
-        .spacing(USER_LIST_SPACING)
-        .padding(FORM_PADDING)
-        .width(USER_LIST_PANEL_WIDTH);
+    let panel = column![
+        title,
+        scrollable(users_column)
+            .height(Fill)
+            .style(primary_scrollbar_style()),
+    ]
+    .spacing(USER_LIST_SPACING)
+    .padding(FORM_PADDING)
+    .width(USER_LIST_PANEL_WIDTH);
 
     container(panel)
         .height(Fill)
