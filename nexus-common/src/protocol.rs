@@ -34,6 +34,7 @@ pub enum ClientMessage {
         username: String,
         password: String,
         is_admin: bool,
+        enabled: bool,
         permissions: Vec<String>,
     },
     /// Delete a user account
@@ -50,6 +51,7 @@ pub enum ClientMessage {
         requested_username: Option<String>,
         requested_password: Option<String>,
         requested_is_admin: Option<bool>,
+        requested_enabled: Option<bool>,
         requested_permissions: Option<Vec<String>>,
     },
 }
@@ -122,6 +124,7 @@ pub enum ServerMessage {
     UserEditResponse {
         username: String,
         is_admin: bool,
+        enabled: bool,
         permissions: Vec<String>,
     },
     /// User disconnected event
@@ -250,6 +253,7 @@ impl std::fmt::Debug for ClientMessage {
                 requested_username,
                 requested_password: _,
                 requested_is_admin,
+                requested_enabled,
                 requested_permissions,
             } => f
                 .debug_struct("UserUpdate")
@@ -257,6 +261,7 @@ impl std::fmt::Debug for ClientMessage {
                 .field("requested_username", requested_username)
                 .field("requested_password", &"<REDACTED>")
                 .field("requested_is_admin", requested_is_admin)
+                .field("requested_enabled", requested_enabled)
                 .field("requested_permissions", requested_permissions)
                 .finish(),
         }

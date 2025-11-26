@@ -17,8 +17,8 @@ pub enum Permission {
     ChatReceive,
     /// Permission to see/receive chat topic
     ChatTopic,
-    /// Permission to update chat topic
-    ChatTopicUpdate,
+    /// Permission to edit chat topic
+    ChatTopicEdit,
     /// Permission to send broadcast messages
     UserBroadcast,
     /// Permission to create users
@@ -52,7 +52,7 @@ impl Permission {
             "chat_send" => Some(Permission::ChatSend),
             "chat_receive" => Some(Permission::ChatReceive),
             "chat_topic" => Some(Permission::ChatTopic),
-            "chat_topic_update" => Some(Permission::ChatTopicUpdate),
+            "chat_topic_edit" => Some(Permission::ChatTopicEdit),
             "user_broadcast" => Some(Permission::UserBroadcast),
             "user_create" => Some(Permission::UserCreate),
             "user_delete" => Some(Permission::UserDelete),

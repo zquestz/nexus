@@ -19,6 +19,9 @@ pub const ERR_ALREADY_LOGGED_IN: &str = "Already logged in";
 /// Error message when account has been deleted
 pub const ERR_ACCOUNT_DELETED: &str = "Your account has been deleted";
 
+/// Error message when account is disabled
+pub const ERR_ACCOUNT_DISABLED: &str = "Account disabled";
+
 // Permission & Access Errors
 /// Error message for permission denied
 pub const ERR_PERMISSION_DENIED: &str = "Permission denied";
@@ -51,6 +54,9 @@ pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
 
 /// Error message when user to edit is not found
 pub const ERR_USER_NOT_FOUND: &str = "User not found";
+
+/// Error message when trying to disable the last admin
+pub const ERR_CANNOT_DISABLE_LAST_ADMIN: &str = "Cannot disable the last admin";
 
 // Chat Topic Errors
 /// Error message when topic is too long

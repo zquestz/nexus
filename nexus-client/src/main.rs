@@ -164,6 +164,7 @@ impl NexusApp {
             Message::AdminUsernameChanged(username) => self.handle_admin_username_changed(username),
             Message::AdminPasswordChanged(password) => self.handle_admin_password_changed(password),
             Message::AdminIsAdminToggled(is_admin) => self.handle_admin_is_admin_toggled(is_admin),
+            Message::AdminEnabledToggled(enabled) => self.handle_admin_enabled_toggled(enabled),
             Message::AdminPermissionToggled(permission, enabled) => {
                 self.handle_admin_permission_toggled(permission, enabled)
             }
@@ -180,6 +181,7 @@ impl NexusApp {
                 self.handle_edit_new_password_changed(new_password)
             }
             Message::EditIsAdminToggled(is_admin) => self.handle_edit_is_admin_toggled(is_admin),
+            Message::EditEnabledToggled(enabled) => self.handle_edit_enabled_toggled(enabled),
             Message::EditPermissionToggled(permission, enabled) => {
                 self.handle_edit_permission_toggled(permission, enabled)
             }

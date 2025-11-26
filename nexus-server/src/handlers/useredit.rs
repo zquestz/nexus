@@ -112,6 +112,7 @@ pub async fn handle_useredit(
     let response = ServerMessage::UserEditResponse {
         username: target_user.username,
         is_admin: target_user.is_admin,
+        enabled: target_user.enabled,
         permissions,
     };
 
@@ -149,7 +150,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &db::Permissions::new())
+            .create_user("bob", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -209,7 +210,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &perms)
+            .create_user("bob", "hash", false, true, &perms)
             .await
             .unwrap();
 
@@ -226,6 +227,7 @@ mod tests {
             ServerMessage::UserEditResponse {
                 username,
                 is_admin,
+                enabled: _,
                 permissions,
             } => {
                 assert_eq!(username, "bob");
@@ -249,7 +251,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin2", "hash", true, &db::Permissions::new())
+            .create_user("admin2", "hash", true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -266,10 +268,12 @@ mod tests {
             ServerMessage::UserEditResponse {
                 username,
                 is_admin,
+                enabled,
                 permissions,
             } => {
                 assert_eq!(username, "admin2");
                 assert!(is_admin);
+                assert!(enabled);
                 // Admins have no stored permissions (they get all automatically)
                 assert_eq!(permissions.len(), 0);
             }
@@ -295,7 +299,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &db::Permissions::new())
+            .create_user("bob", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 

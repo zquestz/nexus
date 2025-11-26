@@ -51,11 +51,11 @@ pub async fn handle_chattopicupdate(
         }
     };
 
-    // 5. Check if user has ChatTopicUpdate permission
+    // 5. Check if user has ChatTopicEdit permission
     let has_permission = match ctx
         .db
         .users
-        .has_permission(user.db_user_id, Permission::ChatTopicUpdate)
+        .has_permission(user.db_user_id, Permission::ChatTopicEdit)
         .await
     {
         Ok(has_perm) => has_perm,
@@ -67,7 +67,7 @@ pub async fn handle_chattopicupdate(
 
     if !has_permission {
         eprintln!(
-            "Permission denied: User '{}' (IP: {}) attempted ChatTopicUpdate without permission",
+            "Permission denied: User '{}' (IP: {}) attempted ChatTopicEdit without permission",
             user.username, ctx.peer_addr
         );
         return ctx
@@ -163,12 +163,12 @@ mod tests {
     async fn test_chattopic_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatTopicUpdate permission
+        // Login user with ChatTopicEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "testuser",
             "password",
-            &[Permission::ChatTopicUpdate],
+            &[Permission::ChatTopicEdit],
             false,
         )
         .await;
@@ -199,12 +199,12 @@ mod tests {
     async fn test_chattopic_at_limit() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatTopicUpdate permission
+        // Login user with ChatTopicEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "testuser",
             "password",
-            &[Permission::ChatTopicUpdate],
+            &[Permission::ChatTopicEdit],
             false,
         )
         .await;
@@ -239,12 +239,12 @@ mod tests {
     async fn test_chattopic_empty_allowed() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatTopicUpdate permission
+        // Login user with ChatTopicEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "testuser",
             "password",
-            &[Permission::ChatTopicUpdate],
+            &[Permission::ChatTopicEdit],
             false,
         )
         .await;
@@ -276,12 +276,12 @@ mod tests {
     async fn test_chattopic_newlines_rejected() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatTopicUpdate permission
+        // Login user with ChatTopicEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "testuser",
             "password",
-            &[Permission::ChatTopicUpdate],
+            &[Permission::ChatTopicEdit],
             false,
         )
         .await;

@@ -19,6 +19,7 @@ pub async fn handle_usercreate(
     username: String,
     password: String,
     is_admin: bool,
+    enabled: bool,
     permissions: Vec<String>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
@@ -213,7 +214,7 @@ pub async fn handle_usercreate(
     match ctx
         .db
         .users
-        .create_user(&username, &password_hash, is_admin, &perms)
+        .create_user(&username, &password_hash, is_admin, enabled, &perms)
         .await
     {
         Ok(_user) => {
@@ -249,6 +250,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec![],
             None,
             &mut test_ctx.handler_context(),
@@ -271,6 +273,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec![],
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -297,6 +300,7 @@ mod tests {
             "newuser".to_string(),
             "newpassword".to_string(),
             false,
+            true,
             vec![],
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -344,7 +348,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -352,7 +356,7 @@ mod tests {
         let _existing = test_ctx
             .db
             .users
-            .create_user("existing", &hashed, false, &db::Permissions::new())
+            .create_user("existing", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -374,6 +378,7 @@ mod tests {
             "existing".to_string(),
             "newpassword".to_string(),
             false,
+            true,
             vec![],
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -420,6 +425,7 @@ mod tests {
             "newadmin".to_string(),
             "newpassword".to_string(),
             true, // is_admin = true
+            true,
             vec![],
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -476,6 +482,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec!["user_list".to_string()],
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -535,6 +542,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec![
                 "user_list".to_string(),
                 "user_info".to_string(),
@@ -634,7 +642,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -649,7 +657,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, &perms)
+            .create_user("creator", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -671,6 +679,7 @@ mod tests {
             "newadmin".to_string(),
             "password".to_string(),
             true, // is_admin = true
+            true,
             vec![],
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -694,7 +703,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -710,7 +719,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, &perms)
+            .create_user("creator", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -732,6 +741,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec![
                 "chat_send".to_string(),   // creator has this - OK
                 "user_delete".to_string(), // creator doesn't have this - FAIL
@@ -761,6 +771,7 @@ mod tests {
             "".to_string(),
             "password123".to_string(),
             false,
+            true,
             vec![],
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -782,6 +793,7 @@ mod tests {
             "newuser".to_string(),
             "".to_string(),
             false,
+            true,
             vec![],
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -803,6 +815,7 @@ mod tests {
             "newuser".to_string(),
             "password".to_string(),
             false,
+            true,
             vec![
                 "user_list".to_string(),
                 "user_info".to_string(),
@@ -866,5 +879,39 @@ mod tests {
                 .unwrap();
             assert!(has_perm, "User should have {:?} permission", perm);
         }
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_with_enabled_false() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a disabled user
+        let result = handle_usercreate(
+            "disableduser".to_string(),
+            "password".to_string(),
+            false,
+            false, // enabled = false
+            vec!["chat_send".to_string()],
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should successfully create disabled user");
+
+        // Verify user exists in database and is disabled
+        let created_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("disableduser")
+            .await
+            .unwrap();
+
+        assert!(created_user.is_some(), "User should exist in database");
+        let user = created_user.unwrap();
+        assert!(!user.enabled, "User should be disabled");
     }
 }

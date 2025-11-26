@@ -2,7 +2,9 @@
 
 use crate::types::ServerBookmark;
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// File permissions for config file on Unix (owner read/write only)
 #[cfg(unix)]

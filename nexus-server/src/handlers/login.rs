@@ -1,8 +1,8 @@
 //! Login message handler
 
 use super::{
-    ERR_ALREADY_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_FAILED_TO_CREATE_USER,
-    ERR_HANDSHAKE_REQUIRED, ERR_INVALID_CREDENTIALS,
+    ERR_ACCOUNT_DISABLED, ERR_ALREADY_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE,
+    ERR_FAILED_TO_CREATE_USER, ERR_HANDSHAKE_REQUIRED, ERR_INVALID_CREDENTIALS,
 };
 use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
@@ -49,7 +49,19 @@ pub async fn handle_login(
     let authenticated_account = if let Some(account) = account {
         // User exists - verify password
         match db::verify_password(&password, &account.hashed_password) {
-            Ok(true) => account,
+            Ok(true) => {
+                // Password is correct - check if account is enabled
+                if !account.enabled {
+                    eprintln!(
+                        "Login attempt for disabled account {} from {}",
+                        username, ctx.peer_addr
+                    );
+                    return ctx
+                        .send_error_and_disconnect(ERR_ACCOUNT_DISABLED, Some("Login"))
+                        .await;
+                }
+                account
+            }
             Ok(false) => {
                 eprintln!(
                     "Invalid password for user {} from {}",
@@ -313,7 +325,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", &hashed, false, &perms)
+            .create_user("bob", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -385,7 +397,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", &hashed, false, &db::Permissions::new())
+            .create_user("bob", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -418,7 +430,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("existing", &hashed, true, &db::Permissions::new())
+            .create_user("existing", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -454,7 +466,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &admin_hashed, true, &db::Permissions::new())
+            .create_user("admin", &admin_hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -473,7 +485,7 @@ mod tests {
         let _user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &perms)
+            .create_user("alice", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -553,7 +565,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -603,7 +615,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &perms)
+            .create_user("alice", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -666,7 +678,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -722,7 +734,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -772,5 +784,57 @@ mod tests {
             }
             _ => panic!("Expected LoginResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_login_disabled_account() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create a user first (so we're not the first user)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Create a disabled user
+        let bob_account = test_ctx
+            .db
+            .users
+            .create_user("bob", &hashed, false, false, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        assert!(!bob_account.enabled, "Bob should be disabled");
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Try to login with disabled account
+        let result = handle_login(
+            "bob".to_string(),
+            password.to_string(),
+            vec![],
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail with disconnect
+        assert!(result.is_err(), "Login with disabled account should fail");
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        // Verify error message was sent
+        let mut buf = vec![0u8; 1024];
+        let n = test_ctx.client.read(&mut buf).await.unwrap();
+        let response = String::from_utf8_lossy(&buf[..n]);
+        assert!(
+            response.contains("Account disabled"),
+            "Should receive account disabled error"
+        );
     }
 }

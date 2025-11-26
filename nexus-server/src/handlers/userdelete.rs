@@ -199,7 +199,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &db::Permissions::new())
+            .create_user("bob", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -349,7 +349,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("only_admin", &hashed, true, &db::Permissions::new())
+            .create_user("only_admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -418,7 +418,7 @@ mod tests {
         let offline_user = test_ctx
             .db
             .users
-            .create_user("offline_user", "hash", false, &db::Permissions::new())
+            .create_user("offline_user", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -426,7 +426,7 @@ mod tests {
         let online_user = test_ctx
             .db
             .users
-            .create_user("online_user", "hash", false, &db::Permissions::new())
+            .create_user("online_user", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -521,7 +521,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", "hash", false, &db::Permissions::new())
+            .create_user("target", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
 

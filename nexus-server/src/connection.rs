@@ -74,8 +74,16 @@ pub async fn handle_connection(
             }
 
             // Handle outgoing server messages/events
-            Some(msg) = rx.recv() => {
-                send_server_message(&mut writer, &msg).await?;
+            msg = rx.recv() => {
+                match msg {
+                    Some(msg) => {
+                        send_server_message(&mut writer, &msg).await?;
+                    }
+                    None => {
+                        // Channel closed (user was removed from manager) - disconnect
+                        break;
+                    }
+                }
             }
         }
     }
@@ -163,12 +171,14 @@ async fn handle_client_message(
                 username,
                 password,
                 is_admin,
+                enabled,
                 permissions,
             } => {
                 handlers::handle_usercreate(
                     username,
                     password,
                     is_admin,
+                    enabled,
                     permissions,
                     *session_id,
                     &mut ctx,
@@ -192,6 +202,7 @@ async fn handle_client_message(
                 requested_username,
                 requested_password,
                 requested_is_admin,
+                requested_enabled,
                 requested_permissions,
             } => {
                 handlers::handle_userupdate(
@@ -199,6 +210,7 @@ async fn handle_client_message(
                     requested_username,
                     requested_password,
                     requested_is_admin,
+                    requested_enabled,
                     requested_permissions,
                     *session_id,
                     &mut ctx,

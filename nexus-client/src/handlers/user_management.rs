@@ -44,6 +44,16 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle admin panel Enabled checkbox toggle
+    pub fn handle_admin_enabled_toggled(&mut self, enabled: bool) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.enabled = enabled;
+        }
+        Task::none()
+    }
+
     /// Handle admin panel permission checkbox toggle
     pub fn handle_admin_permission_toggled(
         &mut self,
@@ -90,6 +100,7 @@ impl NexusApp {
                 username: conn.user_management.username.clone(),
                 password: conn.user_management.password.clone(),
                 is_admin,
+                enabled: conn.user_management.enabled,
                 permissions,
             };
 
@@ -182,6 +193,19 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle edit user Enabled checkbox toggle (stage 2)
+    pub fn handle_edit_enabled_toggled(&mut self, enabled: bool) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let UserEditState::EditingUser {
+                enabled: ref mut e, ..
+            } = conn.user_management.edit_state
+        {
+            *e = enabled;
+        }
+        Task::none()
+    }
+
     /// Handle edit user permission checkbox toggle (stage 2)
     pub fn handle_edit_permission_toggled(
         &mut self,
@@ -230,6 +254,7 @@ impl NexusApp {
                 new_username,
                 new_password,
                 is_admin,
+                enabled,
                 permissions,
             } = &conn.user_management.edit_state
         {
@@ -248,6 +273,9 @@ impl NexusApp {
             // Only send admin flag if current user is admin
             let requested_is_admin = if conn.is_admin { Some(*is_admin) } else { None };
 
+            // Only send enabled flag if current user is admin
+            let requested_enabled = if conn.is_admin { Some(*enabled) } else { None };
+
             // Only send permissions that the current user has (or all if admin)
             let requested_permissions: Vec<String> = permissions
                 .iter()
@@ -262,6 +290,7 @@ impl NexusApp {
                 requested_username,
                 requested_password,
                 requested_is_admin,
+                requested_enabled,
                 requested_permissions: Some(requested_permissions),
             };
 

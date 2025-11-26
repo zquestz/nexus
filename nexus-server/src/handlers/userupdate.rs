@@ -1,19 +1,22 @@
 //! UserUpdate message handler
 
 use super::{
-    ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN,
-    ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND, ERR_USERNAME_EXISTS, HandlerContext,
+    ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_DISABLE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF,
+    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND,
+    ERR_USERNAME_EXISTS, HandlerContext,
 };
 use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 
 /// Handle a user update request from the client
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_userupdate(
     username: String,
     requested_username: Option<String>,
     requested_password: Option<String>,
     requested_is_admin: Option<bool>,
+    requested_enabled: Option<bool>,
     requested_permissions: Option<Vec<String>>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
@@ -79,6 +82,9 @@ pub async fn handle_userupdate(
         };
         return ctx.send_message(&response).await;
     }
+
+    // Note: Last admin protection is now handled atomically at the database level
+    // in update_user() SQL query to prevent race conditions
 
     // Fetch requesting user account to check admin status
     let requesting_account = match ctx
@@ -234,7 +240,7 @@ pub async fn handle_userupdate(
         _ => None,
     };
 
-    // Attempt to update the user
+    // Attempt to update the user (with atomic last-admin protection in SQL)
     match ctx
         .db
         .users
@@ -243,6 +249,7 @@ pub async fn handle_userupdate(
             requested_username.as_deref(),
             requested_password_hash.as_deref(),
             requested_is_admin,
+            requested_enabled,
             parsed_permissions.as_ref(),
         )
         .await
@@ -281,6 +288,58 @@ pub async fn handle_userupdate(
                     ctx.user_manager
                         .broadcast_to_username(&updated_account.username, &permissions_update)
                         .await;
+                }
+
+                // If user was disabled, disconnect all their active sessions
+                //
+                // Clean Disconnect Flow:
+                // 1. Send Error message to user ("Account disabled by admin")
+                // 2. Remove user from UserManager (drops the tx sender)
+                // 3. Connection handler's rx.recv() returns None (channel closed)
+                // 4. Connection loop breaks cleanly
+                // 5. TCP connection closes
+                //
+                // This approach avoids manual shutdown signals and relies on channel semantics:
+                // - User struct contains a tx (clone of the channel sender)
+                // - UserManager.remove_user() drops the User, which drops tx
+                // - When all senders are dropped, rx.recv() returns None
+                // - Connection handler detects None and breaks the loop
+                //
+                // Note: UserDisconnected is only broadcast once here (connection.rs cleanup
+                // doesn't re-broadcast because the user is already removed from manager)
+                if let Some(false) = requested_enabled {
+                    // Get all session IDs for this user
+                    let session_ids = ctx
+                        .user_manager
+                        .get_session_ids_for_user(&updated_account.username)
+                        .await;
+
+                    // Disconnect each session
+                    for session_id in session_ids {
+                        // Send disconnect message to inform the user why they're being disconnected
+                        let disconnect_msg = ServerMessage::Error {
+                            message: "Account disabled by admin".to_string(),
+                            command: None,
+                        };
+
+                        if let Some(user) =
+                            ctx.user_manager.get_user_by_session_id(session_id).await
+                        {
+                            let _ = user.tx.send(disconnect_msg);
+                        }
+
+                        // Remove user from manager - this drops tx, causing rx.recv() to return None,
+                        // which breaks the connection loop and triggers cleanup
+                        if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
+                            // Broadcast disconnect to all other users
+                            ctx.user_manager
+                                .broadcast(ServerMessage::UserDisconnected {
+                                    session_id,
+                                    username: removed_user.username.clone(),
+                                })
+                                .await;
+                        }
+                    }
                 }
 
                 // Check if username or admin status changed
@@ -350,6 +409,8 @@ pub async fn handle_userupdate(
                 ERR_USER_NOT_FOUND
             } else if requested_is_admin == Some(false) {
                 ERR_CANNOT_DEMOTE_LAST_ADMIN
+            } else if requested_enabled == Some(false) {
+                ERR_CANNOT_DISABLE_LAST_ADMIN
             } else if requested_username.is_some() {
                 ERR_USERNAME_EXISTS
             } else {
@@ -386,6 +447,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             None, // Not logged in
             &mut test_ctx.handler_context(),
         )
@@ -405,13 +467,14 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
         let result = handle_userupdate(
             "bob".to_string(),
             Some("bob2".to_string()),
+            None,
             None,
             None,
             None,
@@ -443,6 +506,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -470,13 +534,14 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
         let result = handle_userupdate(
             "bob".to_string(),
             Some("bobby".to_string()),
+            None,
             None,
             None,
             None,
@@ -520,6 +585,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -549,7 +615,8 @@ mod tests {
             "admin2".to_string(),
             None,
             None,
-            Some(false),
+            Some(false), // Demote to non-admin
+            None,
             None,
             Some(admin1_session),
             &mut test_ctx.handler_context(),
@@ -570,7 +637,8 @@ mod tests {
             "admin1".to_string(),
             None,
             None,
-            Some(false),
+            Some(false), // Try to demote last admin
+            None,
             None,
             Some(admin2_session),
             &mut test_ctx.handler_context(),
@@ -605,13 +673,14 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
         let result = handle_userupdate(
             "bob".to_string(),
             Some("robert".to_string()),
+            None,
             None,
             None,
             None,
@@ -648,7 +717,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -658,6 +727,7 @@ mod tests {
             None,
             None,
             Some(true),
+            None,
             None,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -685,13 +755,13 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "hash", false, &Permissions::new())
+            .create_user("alice", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -699,6 +769,7 @@ mod tests {
         let result = handle_userupdate(
             "bob".to_string(),
             Some("alice".to_string()),
+            None,
             None,
             None,
             None,
@@ -729,7 +800,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "oldhash", false, &Permissions::new())
+            .create_user("alice", "oldhash", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -738,6 +809,7 @@ mod tests {
             "alice".to_string(),
             None,
             Some("newpassword".to_string()),
+            None,
             None,
             None,
             Some(session_id),
@@ -776,13 +848,14 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
         // Give bob some permissions
         let result = handle_userupdate(
             "bob".to_string(),
+            None,
             None,
             None,
             None,
@@ -832,7 +905,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", original_hash, false, &Permissions::new())
+            .create_user("alice", original_hash, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -841,6 +914,7 @@ mod tests {
             "alice".to_string(),
             None,
             Some("".to_string()), // Empty password
+            None,
             None,
             None,
             Some(session_id),
@@ -915,7 +989,8 @@ mod tests {
             None,
             None,
             None,
-            Some(vec!["user_list".to_string()]), // Removing user_info and chat_send
+            None,
+            Some(vec!["user_list".to_string()]), // Bob only grants user_list
             Some(bob_session_id),
             &mut test_ctx.handler_context(),
         )
@@ -960,6 +1035,349 @@ mod tests {
                 .await
                 .unwrap(),
             "Alice should keep chat_send (Bob can't modify it)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_disable_self() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to disable self (will be caught by self-edit check)
+        let result = handle_userupdate(
+            "admin".to_string(),
+            None,
+            None,
+            None,
+            Some(false), // Try to disable
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response, not disconnect");
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success, "Should not allow self-edit");
+                assert_eq!(error, Some(ERR_CANNOT_EDIT_SELF.to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_disable_last_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as the only admin
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a non-admin user with user_edit permission
+        let mut perms = Permissions::new();
+        perms.permissions.insert(Permission::UserEdit);
+        let editor = test_ctx
+            .db
+            .users
+            .create_user("editor", "hash", false, true, &perms)
+            .await
+            .unwrap();
+
+        // Add editor to UserManager
+        let editor_session = test_ctx
+            .user_manager
+            .add_user(
+                editor.id,
+                "editor".to_string(),
+                test_ctx.peer_addr,
+                editor.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Editor tries to disable admin (the last admin) - should fail
+        let result = handle_userupdate(
+            "admin".to_string(),
+            None,
+            None,
+            None,
+            Some(false), // Try to disable last admin
+            None,
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response, not disconnect");
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success, "Should not allow disabling last admin");
+                assert_eq!(error, Some(ERR_CANNOT_DISABLE_LAST_ADMIN.to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_change_enabled_status() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a regular user
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Verify bob is enabled
+        assert!(bob.enabled, "Bob should be enabled initially");
+
+        // Disable bob
+        let result = handle_userupdate(
+            "bob".to_string(),
+            None,
+            None,
+            None,
+            Some(false), // Disable
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success, "Should successfully disable user");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Verify bob is now disabled in database
+        let bob_after = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!bob_after.enabled, "Bob should be disabled");
+
+        // Re-enable bob
+        let result = handle_userupdate(
+            "bob".to_string(),
+            None,
+            None,
+            None,
+            Some(true), // Enable
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success, "Should successfully re-enable user");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Verify bob is enabled again
+        let bob_final = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(bob_final.enabled, "Bob should be enabled again");
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_disconnects_when_disabling() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Login as bob (the user we'll disable)
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        // Verify bob is in the user manager
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_some(),
+            "Bob should be in user manager"
+        );
+
+        // Admin disables bob
+        let result = handle_userupdate(
+            "bob".to_string(),
+            None,
+            None,
+            None,
+            Some(false), // Disable
+            None,
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Bob should be removed from user manager
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_none(),
+            "Bob should be removed from user manager after being disabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_atomic_admin_demotion_protection() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create two admin users
+        let admin1 = test_ctx
+            .db
+            .users
+            .create_user("admin1", "hash1", true, true, &Permissions::new())
+            .await
+            .unwrap();
+        let admin2 = test_ctx
+            .db
+            .users
+            .create_user("admin2", "hash2", true, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Login both admins
+        let admin1_session = test_ctx
+            .user_manager
+            .add_user(
+                admin1.id,
+                "admin1".to_string(),
+                test_ctx.peer_addr,
+                admin1.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        let _admin2_session = test_ctx
+            .user_manager
+            .add_user(
+                admin2.id,
+                "admin2".to_string(),
+                test_ctx.peer_addr,
+                admin2.created_at,
+                test_ctx.tx.clone(),
+                vec![],
+            )
+            .await;
+
+        // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
+        let result = handle_userupdate(
+            "admin2".to_string(),
+            None,
+            None,
+            Some(false), // Demote to non-admin
+            None,
+            None,
+            Some(admin1_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(
+                    success,
+                    "Should successfully demote admin2 (2 admins exist)"
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Verify admin2 is now non-admin in database
+        let admin2_account = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            !admin2_account.is_admin,
+            "Admin2 should be demoted to non-admin"
+        );
+
+        // Now admin2 (now a non-admin with user_edit permission) tries to demote admin1
+        // First, give admin2 the user_edit permission
+        let mut perms = Permissions::new();
+        perms.permissions.insert(Permission::UserEdit);
+        test_ctx
+            .db
+            .users
+            .set_permissions(admin2.id, &perms)
+            .await
+            .unwrap();
+
+        // Admin2 tries to demote admin1 (last admin) - should fail at DB level atomically
+        // Note: This bypasses the "non-admin cannot change admin status" check by using
+        // the database directly to test the atomic SQL protection
+        let result = test_ctx
+            .db
+            .users
+            .update_user(
+                "admin1",
+                None,
+                None,
+                Some(false), // Try to demote last admin
+                None,
+                None,
+            )
+            .await;
+
+        // Should return Ok(false) - update blocked by atomic SQL protection
+        assert!(result.is_ok());
+        assert!(
+            !result.unwrap(),
+            "Database should block demoting last admin atomically"
+        );
+
+        // Verify admin1 is still admin
+        let admin1_account = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            admin1_account.is_admin,
+            "Admin1 should still be admin (protected by atomic SQL)"
         );
     }
 }

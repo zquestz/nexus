@@ -188,7 +188,7 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &db::Permissions::new())
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -237,7 +237,7 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, &perms)
+            .create_user("alice", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -307,7 +307,7 @@ mod tests {
         let requester = test_ctx
             .db
             .users
-            .create_user("requester", &hashed, false, &perms)
+            .create_user("requester", &hashed, false, true, &perms)
             .await
             .unwrap();
 
@@ -315,7 +315,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", &hashed, false, &db::Permissions::new())
+            .create_user("target", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -399,7 +399,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -407,7 +407,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", &hashed, false, &db::Permissions::new())
+            .create_user("target", &hashed, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -501,14 +501,14 @@ mod tests {
         let admin1 = test_ctx
             .db
             .users
-            .create_user("admin1", &hashed, true, &db::Permissions::new())
+            .create_user("admin1", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 
         let admin2 = test_ctx
             .db
             .users
-            .create_user("admin2", &hashed, true, &db::Permissions::new())
+            .create_user("admin2", &hashed, true, true, &db::Permissions::new())
             .await
             .unwrap();
 

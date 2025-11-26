@@ -64,23 +64,39 @@ pub fn users_view<'a>(
             .style(primary_text_input_style());
 
         let admin_checkbox = if conn.is_admin {
-            checkbox("Make Admin", user_management.is_admin)
+            checkbox("admin", user_management.is_admin)
                 .on_toggle(Message::AdminIsAdminToggled)
                 .size(TEXT_SIZE)
                 .style(primary_checkbox_style())
         } else {
-            checkbox("Make Admin", user_management.is_admin)
+            checkbox("admin", user_management.is_admin)
+                .size(TEXT_SIZE)
+                .style(primary_checkbox_style())
+        };
+
+        let enabled_checkbox = if conn.is_admin {
+            checkbox("enabled", user_management.enabled)
+                .on_toggle(Message::AdminEnabledToggled)
+                .size(TEXT_SIZE)
+                .style(primary_checkbox_style())
+        } else {
+            checkbox("enabled", user_management.enabled)
                 .size(TEXT_SIZE)
                 .style(primary_checkbox_style())
         };
 
         let permissions_title = text("Permissions:").size(TEXT_SIZE);
-        let mut permissions_column = Column::new().spacing(SPACER_SIZE_SMALL);
-        for (permission, enabled) in &user_management.permissions {
+
+        // Split permissions into two columns
+        let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
+        let mut right_column = Column::new().spacing(SPACER_SIZE_SMALL);
+
+        for (index, (permission, enabled)) in user_management.permissions.iter().enumerate() {
             let perm_name = permission.clone();
+            let display_name = permission.replace('_', " ");
             let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission) {
                 // Can toggle permissions they have
-                checkbox(permission.as_str(), *enabled)
+                checkbox(&display_name, *enabled)
                     .on_toggle(move |checked| {
                         Message::AdminPermissionToggled(perm_name.clone(), checked)
                     })
@@ -88,12 +104,22 @@ pub fn users_view<'a>(
                     .style(primary_checkbox_style())
             } else {
                 // Cannot toggle permissions they don't have
-                checkbox(permission.as_str(), *enabled)
+                checkbox(&display_name, *enabled)
                     .size(TEXT_SIZE)
                     .style(primary_checkbox_style())
             };
-            permissions_column = permissions_column.push(checkbox_widget);
+
+            // Alternate between left and right columns
+            if index % 2 == 0 {
+                left_column = left_column.push(checkbox_widget);
+            } else {
+                right_column = right_column.push(checkbox_widget);
+            }
         }
+
+        let permissions_row = row![left_column.width(Fill), right_column.width(Fill)]
+            .spacing(ELEMENT_SPACING)
+            .width(Fill);
 
         let create_button = if can_create {
             button(text("Create").size(TEXT_SIZE))
@@ -117,9 +143,10 @@ pub fn users_view<'a>(
             username_input,
             password_input,
             admin_checkbox,
+            enabled_checkbox,
             text("").size(SPACER_SIZE_SMALL),
             permissions_title,
-            permissions_column,
+            permissions_row,
             text("").size(SPACER_SIZE_MEDIUM),
             row![create_button, cancel_button,].spacing(ELEMENT_SPACING),
         ]
@@ -217,6 +244,7 @@ pub fn users_view<'a>(
                 new_username,
                 new_password,
                 is_admin,
+                enabled,
                 permissions,
             } => {
                 // Stage 2: Full edit form with current values
@@ -253,24 +281,40 @@ pub fn users_view<'a>(
                         .style(primary_text_input_style());
 
                 let admin_checkbox = if conn.is_admin {
-                    checkbox("Make Admin", *is_admin)
+                    checkbox("admin", *is_admin)
                         .on_toggle(Message::EditIsAdminToggled)
                         .size(TEXT_SIZE)
                         .style(primary_checkbox_style())
                 } else {
-                    checkbox("Make Admin", *is_admin)
+                    checkbox("admin", *is_admin)
+                        .size(TEXT_SIZE)
+                        .style(primary_checkbox_style())
+                };
+
+                let enabled_checkbox = if conn.is_admin {
+                    checkbox("enabled", *enabled)
+                        .on_toggle(Message::EditEnabledToggled)
+                        .size(TEXT_SIZE)
+                        .style(primary_checkbox_style())
+                } else {
+                    checkbox("enabled", *enabled)
                         .size(TEXT_SIZE)
                         .style(primary_checkbox_style())
                 };
 
                 let permissions_title = text("Permissions:").size(TEXT_SIZE);
-                let mut permissions_column = Column::new().spacing(SPACER_SIZE_SMALL);
-                for (permission, enabled) in permissions {
+
+                // Split permissions into two columns
+                let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
+                let mut right_column = Column::new().spacing(SPACER_SIZE_SMALL);
+
+                for (index, (permission, enabled)) in permissions.iter().enumerate() {
                     let perm_name = permission.clone();
+                    let display_name = permission.replace('_', " ");
                     let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission)
                     {
                         // Can toggle permissions they have
-                        checkbox(permission.as_str(), *enabled)
+                        checkbox(&display_name, *enabled)
                             .on_toggle(move |checked| {
                                 Message::EditPermissionToggled(perm_name.clone(), checked)
                             })
@@ -278,12 +322,22 @@ pub fn users_view<'a>(
                             .style(primary_checkbox_style())
                     } else {
                         // Cannot toggle permissions they don't have
-                        checkbox(permission.as_str(), *enabled)
+                        checkbox(&display_name, *enabled)
                             .size(TEXT_SIZE)
                             .style(primary_checkbox_style())
                     };
-                    permissions_column = permissions_column.push(checkbox_widget);
+
+                    // Alternate between left and right columns
+                    if index % 2 == 0 {
+                        left_column = left_column.push(checkbox_widget);
+                    } else {
+                        right_column = right_column.push(checkbox_widget);
+                    }
                 }
+
+                let permissions_row = row![left_column.width(Fill), right_column.width(Fill)]
+                    .spacing(ELEMENT_SPACING)
+                    .width(Fill);
 
                 let update_button = if can_update {
                     button(text("Update").size(TEXT_SIZE))
@@ -307,9 +361,10 @@ pub fn users_view<'a>(
                     username_input,
                     password_input,
                     admin_checkbox,
+                    enabled_checkbox,
                     text("").size(SPACER_SIZE_SMALL),
                     permissions_title,
-                    permissions_column,
+                    permissions_row,
                     text("").size(SPACER_SIZE_MEDIUM),
                     row![update_button, cancel_button,].spacing(ELEMENT_SPACING),
                 ]

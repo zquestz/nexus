@@ -4,16 +4,16 @@ use super::DEFAULT_PORT;
 
 /// Complete list of all available permissions
 const ALL_PERMISSIONS: &[&str] = &[
-    "user_list",
-    "user_info",
-    "chat_send",
     "chat_receive",
+    "chat_send",
     "chat_topic",
-    "chat_topic_update",
+    "chat_topic_edit",
     "user_broadcast",
     "user_create",
     "user_delete",
     "user_edit",
+    "user_info",
+    "user_list",
 ];
 
 /// User edit flow state (two-stage process)
@@ -33,6 +33,8 @@ pub enum UserEditState {
         new_password: String,
         /// Is admin flag (editable)
         is_admin: bool,
+        /// Enabled flag (editable)
+        enabled: bool,
         /// Permissions (editable)
         permissions: Vec<(String, bool)>,
     },
@@ -77,6 +79,8 @@ pub struct UserManagementState {
     pub password: String,
     /// Admin flag for add user form
     pub is_admin: bool,
+    /// Enabled flag for add user form
+    pub enabled: bool,
     /// Permissions for add user form
     pub permissions: Vec<(String, bool)>,
     /// Current edit user state
@@ -89,6 +93,7 @@ impl Default for UserManagementState {
             username: String::new(),
             password: String::new(),
             is_admin: false,
+            enabled: true, // Default to enabled
             permissions: ALL_PERMISSIONS
                 .iter()
                 .map(|s| (s.to_string(), false))
@@ -104,6 +109,7 @@ impl UserManagementState {
         self.username.clear();
         self.password.clear();
         self.is_admin = false;
+        self.enabled = true; // Reset to default enabled
         for (_, enabled) in &mut self.permissions {
             *enabled = false;
         }
@@ -122,10 +128,12 @@ impl UserManagementState {
     }
 
     /// Move to stage 2 of editing with user details from server
+    /// Load a user for editing (stage 2)
     pub fn load_user_for_editing(
         &mut self,
         username: String,
         is_admin: bool,
+        enabled: bool,
         permissions: Vec<String>,
     ) {
         // Convert permissions Vec<String> to Vec<(String, bool)>
@@ -144,6 +152,7 @@ impl UserManagementState {
             new_username: username,
             new_password: String::new(),
             is_admin,
+            enabled,
             permissions: perm_map,
         };
     }

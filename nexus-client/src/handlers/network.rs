@@ -503,6 +503,14 @@ impl NexusApp {
                 self.add_chat_message(connection_id, message)
             }
             ServerMessage::UserCreateResponse { success, error } => {
+                // Close add user panel on any response (success or error)
+                if self.ui_state.show_add_user && self.active_connection == Some(connection_id) {
+                    self.ui_state.show_add_user = false;
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.clear_add_user();
+                    }
+                }
+
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
@@ -519,6 +527,14 @@ impl NexusApp {
                 self.add_chat_message(connection_id, message)
             }
             ServerMessage::UserDeleteResponse { success, error } => {
+                // Close edit panel on any response (success or error)
+                if self.ui_state.show_edit_user && self.active_connection == Some(connection_id) {
+                    self.ui_state.show_edit_user = false;
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.clear_edit_user();
+                    }
+                }
+
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
@@ -537,16 +553,29 @@ impl NexusApp {
             ServerMessage::UserEditResponse {
                 username,
                 is_admin,
+                enabled,
                 permissions,
             } => {
                 // Load the user details into edit form (stage 2)
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management
-                        .load_user_for_editing(username, is_admin, permissions);
+                    conn.user_management.load_user_for_editing(
+                        username,
+                        is_admin,
+                        enabled,
+                        permissions,
+                    );
                 }
                 Task::none()
             }
             ServerMessage::UserUpdateResponse { success, error } => {
+                // Close edit panel on any response (success or error)
+                if self.ui_state.show_edit_user && self.active_connection == Some(connection_id) {
+                    self.ui_state.show_edit_user = false;
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.clear_edit_user();
+                    }
+                }
+
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
@@ -619,15 +648,15 @@ impl NexusApp {
                 self.add_chat_message(connection_id, message)
             }
             ServerMessage::Error { message, command } => {
-                // Close edit user panel if the error is for UserEdit command
+                // Close edit user panel if the error is for user management commands
+                // and it's for the active connection
                 if let Some(cmd) = command
-                    && cmd == "UserEdit"
+                    && (cmd == "UserEdit" || cmd == "UserUpdate" || cmd == "UserDelete")
                     && self.ui_state.show_edit_user
+                    && self.active_connection == Some(connection_id)
                 {
                     self.ui_state.show_edit_user = false;
-                    if let Some(conn_id) = self.active_connection
-                        && let Some(conn) = self.connections.get_mut(&conn_id)
-                    {
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
                         conn.user_management.clear_edit_user();
                     }
                 }

@@ -4,9 +4,9 @@ use super::permissions::{Permission, Permissions};
 use sqlx::SqlitePool;
 
 // SQL query constants
-const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE LOWER(username) = LOWER(?)";
+const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
 const SQL_SELECT_USER_BY_ID: &str =
-    "SELECT id, username, password_hash, is_admin, created_at FROM users WHERE id = ?";
+    "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
 const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 const SQL_COUNT_PERMISSION: &str =
     "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
@@ -14,11 +14,23 @@ const SQL_SELECT_PERMISSIONS: &str = "SELECT permission FROM user_permissions WH
 const SQL_DELETE_PERMISSIONS: &str = "DELETE FROM user_permissions WHERE user_id = ?";
 const SQL_INSERT_PERMISSION: &str =
     "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)";
-const SQL_INSERT_USER: &str =
-    "INSERT INTO users (username, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?)";
-const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
-const SQL_UPDATE_USER: &str =
-    "UPDATE users SET username = ?, password_hash = ?, is_admin = ? WHERE id = ?";
+const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, enabled, created_at) VALUES (?, ?, ?, ?, ?)";
+const SQL_UPDATE_USER: &str = "UPDATE users 
+    SET username = ?, password_hash = ?, is_admin = ?, enabled = ? 
+    WHERE id = ?
+    AND (
+        -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
+        ? = 1
+        OR is_admin = 0
+        OR (SELECT COUNT(*) FROM users WHERE is_admin = 1 AND enabled = 1) > 1
+    )
+    AND (
+        -- is_admin protection: allow promoting, allow if currently non-admin, allow if multiple admins
+        ? = 1
+        OR is_admin = 0
+        OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
+    )";
+
 const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
      WHERE id = ?
      AND (
@@ -33,6 +45,7 @@ pub struct UserAccount {
     pub username: String,
     pub hashed_password: String,
     pub is_admin: bool,
+    pub enabled: bool,
     pub created_at: i64,
 }
 
@@ -58,17 +71,19 @@ impl UserDb {
 
     /// Get a user by ID
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, i64)> = sqlx::query_as(SQL_SELECT_USER_BY_ID)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let user: Option<(i64, String, String, bool, bool, i64)> =
+            sqlx::query_as(SQL_SELECT_USER_BY_ID)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, created_at)| UserAccount {
+            |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
                 id,
                 username,
                 hashed_password,
                 is_admin,
+                enabled,
                 created_at,
             },
         ))
@@ -79,18 +94,19 @@ impl UserDb {
         &self,
         username: &str,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, i64)> =
+        let user: Option<(i64, String, String, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
                 .bind(username)
                 .fetch_optional(&self.pool)
                 .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, created_at)| UserAccount {
+            |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
                 id,
                 username,
                 hashed_password,
                 is_admin,
+                enabled,
                 created_at,
             },
         ))
@@ -190,6 +206,7 @@ impl UserDb {
         username: &str,
         hashed_password: &str,
         is_admin: bool,
+        enabled: bool,
         permissions: &Permissions,
     ) -> Result<UserAccount, sqlx::Error> {
         let created_at = chrono::Utc::now().timestamp();
@@ -198,6 +215,7 @@ impl UserDb {
             .bind(username)
             .bind(hashed_password)
             .bind(is_admin)
+            .bind(enabled)
             .bind(created_at)
             .execute(&self.pool)
             .await?;
@@ -215,6 +233,7 @@ impl UserDb {
             username: username.to_string(),
             hashed_password: hashed_password.to_string(),
             is_admin,
+            enabled,
             created_at,
         })
     }
@@ -255,6 +274,7 @@ impl UserDb {
             .bind(username)
             .bind(hashed_password)
             .bind(true) // is_admin = true
+            .bind(true) // enabled = true
             .bind(created_at)
             .execute(&mut *tx)
             .await?;
@@ -269,6 +289,7 @@ impl UserDb {
             username: username.to_string(),
             hashed_password: hashed_password.to_string(),
             is_admin: true,
+            enabled: true,
             created_at,
         }))
     }
@@ -292,14 +313,50 @@ impl UserDb {
     /// Update a user account
     /// Returns Ok(true) if user was updated, Ok(false) if user didn't exist or update was blocked
     ///
-    /// This operation is atomic and prevents demoting the last admin via a SQL constraint.
-    /// If the target user is the last admin and requested_is_admin is Some(false), the update will not occur.
+    /// # Atomic Protection
+    ///
+    /// This method uses atomic SQL to prevent race conditions in two scenarios:
+    ///
+    /// 1. **Last Admin Demotion**: Prevents demoting the last admin (atomic SQL)
+    /// 2. **Last Enabled Admin Disable**: Prevents disabling the last enabled admin (atomic SQL)
+    ///
+    /// The SQL UPDATE includes WHERE clauses with compound conditions:
+    /// ```sql
+    /// WHERE id = ?
+    /// AND (
+    ///     ? = 1                                -- Allow if enabling (final_enabled = true)
+    ///     OR is_admin = 0                      -- Allow if target is not admin
+    ///     OR (COUNT enabled admins) > 1        -- Allow if multiple enabled admins exist
+    /// )
+    /// AND (
+    ///     ? = 1                                -- Allow if promoting (final_is_admin = true)
+    ///     OR is_admin = 0                      -- Allow if target is currently not admin
+    ///     OR (COUNT admins) > 1                -- Allow if multiple admins exist
+    /// )
+    /// ```
+    ///
+    /// This prevents TOCTOU (Time-Of-Check-To-Time-Of-Use) vulnerabilities where two admins
+    /// could simultaneously disable or demote each other, leaving zero enabled/any admins.
+    ///
+    /// # Return Value
+    ///
+    /// - `Ok(true)`: Update succeeded
+    /// - `Ok(false)`: Update blocked by protection or user not found
+    ///
+    /// # Note
+    ///
+    /// When `Ok(false)` is returned, the caller must distinguish between:
+    /// - User not found
+    /// - Last admin demotion attempt
+    /// - Last enabled admin disable attempt
+    /// - Duplicate username conflict
     pub async fn update_user(
         &self,
         username: &str,
         requested_username: Option<&str>,
         requested_password_hash: Option<&str>,
         requested_is_admin: Option<bool>,
+        requested_enabled: Option<bool>,
         requested_permissions: Option<&Permissions>,
     ) -> Result<bool, sqlx::Error> {
         // First, get the user to update
@@ -307,21 +364,6 @@ impl UserDb {
             Some(u) => u,
             None => return Ok(false),
         };
-
-        // Check if we're trying to demote the last admin
-        if let Some(false) = requested_is_admin
-            && user.is_admin
-        {
-            // Check if this is the last admin
-            let admin_count: (i64,) = sqlx::query_as(SQL_COUNT_ADMINS)
-                .fetch_one(&self.pool)
-                .await?;
-
-            if admin_count.0 <= 1 {
-                // Cannot demote the last admin
-                return Ok(false);
-            }
-        }
 
         // Check if new username already exists (and it's not the same user)
         if let Some(new_name) = requested_username
@@ -336,15 +378,34 @@ impl UserDb {
         let final_username = requested_username.unwrap_or(username);
         let final_password = requested_password_hash.unwrap_or(&user.hashed_password);
         let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
+        let final_enabled = requested_enabled.unwrap_or(user.enabled);
 
-        // Always update all fields to simplify the query
-        sqlx::query(SQL_UPDATE_USER)
+        // Execute update with atomic last-admin protection
+        // The SQL includes conditions to prevent:
+        // 1. Disabling the last enabled admin
+        // 2. Demoting the last admin
+        let result = sqlx::query(SQL_UPDATE_USER)
             .bind(final_username)
             .bind(final_password)
             .bind(final_is_admin)
+            .bind(final_enabled)
             .bind(user.id)
+            .bind(final_enabled) // Final enabled status for the "enabling" check
+            .bind(final_is_admin) // Final admin status for the "promoting" check
             .execute(&self.pool)
             .await?;
+
+        // Check if the update was blocked (0 rows affected means constraints prevented update)
+        if result.rows_affected() == 0 {
+            // Update was blocked - could be last admin protection or user not found
+            // Check if user still exists to distinguish between the cases
+            if self.get_user_by_username(username).await?.is_some() {
+                // User exists but update was blocked - must be last admin protection
+                return Ok(false);
+            }
+            // User doesn't exist
+            return Ok(false);
+        }
 
         // Update permissions if provided
         if let Some(perms) = requested_permissions {
@@ -380,7 +441,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, &Permissions::new())
+            .create_user("alice", "hash123", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -408,7 +469,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific casing
-        db.create_user("Alice", "hash123", false, &Permissions::new())
+        db.create_user("Alice", "hash123", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -428,7 +489,7 @@ mod tests {
 
         // Cannot create another user with different casing
         let result = db
-            .create_user("alice", "hash456", false, &Permissions::new())
+            .create_user("alice", "hash456", false, true, &Permissions::new())
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
     }
@@ -440,7 +501,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, &Permissions::new())
+            .create_user("alice", "hash123", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -476,7 +537,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash123", false, &perms)
+            .create_user("alice", "hash123", false, true, &perms)
             .await
             .unwrap();
 
@@ -506,7 +567,7 @@ mod tests {
         };
 
         let admin = db
-            .create_user("admin", "hash123", true, &perms)
+            .create_user("admin", "hash123", true, true, &perms)
             .await
             .unwrap();
 
@@ -532,7 +593,7 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, &Permissions::new())
+            .create_user("admin", "hash", true, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -580,7 +641,10 @@ mod tests {
             set
         };
 
-        let user = db.create_user("bob", "hash", false, &perms).await.unwrap();
+        let user = db
+            .create_user("bob", "hash", false, true, &perms)
+            .await
+            .unwrap();
 
         // Should have granted permissions
         assert!(
@@ -636,7 +700,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, &initial_perms)
+            .create_user("alice", "hash", false, true, &initial_perms)
             .await
             .unwrap();
 
@@ -692,7 +756,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first
-        db.create_user("admin", "hash0", true, &Permissions::new())
+        db.create_user("admin", "hash0", true, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -706,7 +770,10 @@ mod tests {
             set
         };
 
-        let user = db.create_user("bob", "hash", false, &perms).await.unwrap();
+        let user = db
+            .create_user("bob", "hash", false, true, &perms)
+            .await
+            .unwrap();
 
         // Verify permissions exist
         let (perm_count,): (i64,) =
@@ -751,7 +818,7 @@ mod tests {
 
         // Create single admin
         let admin = db
-            .create_user("admin", "hash", true, &Permissions::new())
+            .create_user("admin", "hash", true, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -774,11 +841,11 @@ mod tests {
 
         // Create two admins
         let admin1 = db
-            .create_user("admin1", "hash1", true, &Permissions::new())
+            .create_user("admin1", "hash1", true, true, &Permissions::new())
             .await
             .unwrap();
         let admin2 = db
-            .create_user("admin2", "hash2", true, &Permissions::new())
+            .create_user("admin2", "hash2", true, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -801,13 +868,13 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin (so system has an admin)
-        db.create_user("admin", "hash0", true, &Permissions::new())
+        db.create_user("admin", "hash0", true, true, &Permissions::new())
             .await
             .unwrap();
 
         // Create regular user
         let user = db
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -831,11 +898,11 @@ mod tests {
 
         // Create exactly 2 admins
         let admin1 = db1
-            .create_user("admin1", "hash1", true, &Permissions::new())
+            .create_user("admin1", "hash1", true, true, &Permissions::new())
             .await
             .unwrap();
         let admin2 = db1
-            .create_user("admin2", "hash2", true, &Permissions::new())
+            .create_user("admin2", "hash2", true, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -870,13 +937,13 @@ mod tests {
         let db2 = UserDb::new(pool.clone());
 
         // Create admin first
-        db1.create_user("admin", "hash0", true, &Permissions::new())
+        db1.create_user("admin", "hash0", true, true, &Permissions::new())
             .await
             .unwrap();
 
         // Create user
         let user = db1
-            .create_user("bob", "hash", false, &Permissions::new())
+            .create_user("bob", "hash", false, true, &Permissions::new())
             .await
             .unwrap();
 

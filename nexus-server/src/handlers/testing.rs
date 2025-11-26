@@ -111,7 +111,7 @@ pub async fn login_user_with_features(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, &perms)
+        .create_user(username, &hashed, is_admin, true, &perms)
         .await
         .unwrap();
 

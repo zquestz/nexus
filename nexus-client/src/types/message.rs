@@ -5,6 +5,8 @@ use crate::types::{NetworkConnection, ServerMessage};
 /// Messages that drive the application state machine
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Admin panel: Enabled checkbox toggled
+    AdminEnabledToggled(bool),
     /// Admin panel: Is Admin checkbox toggled
     AdminIsAdminToggled(bool),
     /// Admin panel: Password field changed
@@ -51,6 +53,8 @@ pub enum Message {
     DeleteUserPressed(String),
     /// Disconnect from server by connection_id
     DisconnectFromServer(usize),
+    /// User edit panel: Enabled checkbox toggled
+    EditEnabledToggled(bool),
     /// User edit panel: Is Admin checkbox toggled
     EditIsAdminToggled(bool),
     /// User edit panel: New password field changed
