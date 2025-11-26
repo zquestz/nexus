@@ -2,6 +2,9 @@
 name = "nexus-client"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+license-file = "../LICENSE"
+description = "BBS client for Yggdrasil network"
 
 [package.metadata.bundle]
 name = "Nexus BBS"
@@ -9,6 +12,7 @@ identifier = "at.greyh.nexus"
 icon = ["assets/macos/nexus.icns"]
 category = "public.app-category.social-networking"
 short_description = "BBS client for Yggdrasil network"
+copyright = "Copyright (c) Josh Ellithorpe 2025. All rights reserved."
 
 [dependencies]
 nexus-common = { path = "../nexus-common" }
