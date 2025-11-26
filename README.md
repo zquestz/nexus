@@ -86,6 +86,29 @@ cargo bundle --release
 
 See `nexus-client/assets/macos/README.md` for detailed instructions and manual bundling.
 
+### Windows
+
+For Windows, build the executable directly:
+
+```bash
+cargo build --release
+```
+
+The `.ico` icon is automatically embedded in the executable. The binary will be at `target/release/nexus.exe`.
+
+**MSI Installer (Optional):**
+
+You can generate an MSI installer, though the installer may fail to launch:
+
+```bash
+cargo install cargo-bundle
+cargo bundle --target x86_64-pc-windows-msvc --format msi --release
+```
+
+**Note:** The MSI generation works, but the resulting installer often fails to launch the application. For distribution, use the standalone executable or create a custom installer with WiX/InnoSetup.
+
+See `nexus-client/assets/windows/README.md` for icon generation instructions.
+
 ## Testing
 
 ```bash

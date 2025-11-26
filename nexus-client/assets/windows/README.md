@@ -7,6 +7,27 @@ This directory contains Windows-specific application assets for Nexus BBS.
 - `nexus.ico` - Windows application icon (multi-resolution)
 - `generate_assets.sh` - Script to generate Windows assets from SVG source
 
+## Building for Windows
+
+Simply build the executable - the icon is automatically embedded:
+
+```bash
+cargo build --release
+```
+
+The executable will be at `target/release/nexus.exe` with the icon embedded.
+
+### MSI Installer (Optional)
+
+You can generate an MSI installer, though the installer may fail to launch:
+
+```bash
+cargo install cargo-bundle
+cargo bundle --target x86_64-pc-windows-msvc --format msi --release
+```
+
+**Note:** The MSI installer generation works, but the resulting installer often fails to launch the application. For distribution, use the standalone executable or create a custom installer with WiX/InnoSetup.
+
 ## Generating Assets
 
 ```bash
@@ -14,15 +35,15 @@ This directory contains Windows-specific application assets for Nexus BBS.
 ```
 
 Or on Windows PowerShell/CMD:
-
 ```powershell
 sh generate_assets.sh
 ```
 
+This will generate the `.ico` file from the SVG source.
+
 ## Icon Format
 
 The `.ico` file contains multiple embedded sizes for Windows:
-
 - 16×16px
 - 32×32px
 - 48×48px
@@ -37,12 +58,10 @@ This ensures the icon looks good at all sizes in Windows Explorer, taskbar, and 
 - ImageMagick (`magick` or `convert` command)
 
 **Install on Windows:**
-
 ```powershell
 winget install ImageMagick.ImageMagick
 ```
 
 **Install on other platforms:**
-
 - macOS: `brew install imagemagick`
 - Linux: `apt install imagemagick` or `dnf install imagemagick`
