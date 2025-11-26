@@ -15,7 +15,7 @@ use config::ThemePreference;
 use std::collections::{HashMap, HashSet};
 use types::{
     BookmarkEditState, ConnectionFormState, DEFAULT_PORT, InputId, Message, ServerConnection,
-    UiState, UserManagementState,
+    UiState, UserManagementState, ViewConfig,
 };
 
 /// Default window width
@@ -246,33 +246,36 @@ impl NexusApp {
             .map(|c| (c.message_input.as_str(), &c.user_management))
             .unwrap_or(("", &self.default_user_mgmt));
 
-        views::main_layout(
-            &self.connections,
-            self.active_connection,
-            &self.config.bookmarks,
-            &self.bookmark_edit.mode,
-            &self.connection_form.server_name,
-            &self.connection_form.server_address,
-            &self.connection_form.port,
-            &self.connection_form.username,
-            &self.connection_form.password,
-            &self.connection_form.error,
-            self.connection_form.is_connecting,
-            &self.bookmark_edit.bookmark.name,
-            &self.bookmark_edit.bookmark.address,
-            &self.bookmark_edit.bookmark.port,
-            &self.bookmark_edit.bookmark.username,
-            &self.bookmark_edit.bookmark.password,
-            self.bookmark_edit.bookmark.auto_connect,
-            &self.bookmark_edit.error,
+        // Build view configuration
+        let config = ViewConfig {
+            connections: &self.connections,
+            active_connection: self.active_connection,
+            bookmarks: &self.config.bookmarks,
+            bookmark_edit_mode: &self.bookmark_edit.mode,
+            server_name: &self.connection_form.server_name,
+            server_address: &self.connection_form.server_address,
+            port: &self.connection_form.port,
+            username: &self.connection_form.username,
+            password: &self.connection_form.password,
+            connection_error: &self.connection_form.error,
+            is_connecting: self.connection_form.is_connecting,
+            bookmark_name: &self.bookmark_edit.bookmark.name,
+            bookmark_address: &self.bookmark_edit.bookmark.address,
+            bookmark_port: &self.bookmark_edit.bookmark.port,
+            bookmark_username: &self.bookmark_edit.bookmark.username,
+            bookmark_password: &self.bookmark_edit.bookmark.password,
+            bookmark_auto_connect: self.bookmark_edit.bookmark.auto_connect,
+            bookmark_error: &self.bookmark_edit.error,
             message_input,
             user_management,
-            self.ui_state.show_bookmarks,
-            self.ui_state.show_user_list,
-            self.ui_state.show_add_user,
-            self.ui_state.show_edit_user,
-            self.ui_state.show_broadcast,
-        )
+            show_bookmarks: self.ui_state.show_bookmarks,
+            show_user_list: self.ui_state.show_user_list,
+            show_add_user: self.ui_state.show_add_user,
+            show_edit_user: self.ui_state.show_edit_user,
+            show_broadcast: self.ui_state.show_broadcast,
+        };
+
+        views::main_layout(config)
     }
 
     /// Get the current theme based on configuration

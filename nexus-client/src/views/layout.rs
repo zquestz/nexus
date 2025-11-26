@@ -9,12 +9,9 @@ use super::style::{
     tooltip_text_color,
 };
 use crate::icon;
-use crate::types::{
-    BookmarkEditMode, Message, ServerBookmark, ServerConnection, UserManagementState,
-};
+use crate::types::{Message, ServerConnection, UserManagementState, ViewConfig};
 use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Background, Border, Center, Element, Fill};
-use std::collections::HashMap;
 
 use super::{
     bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
@@ -43,37 +40,11 @@ const PERMISSION_USER_LIST: &str = "user_list";
 /// - Bookmark editor when editing/adding bookmarks
 /// - Connection form when no server is connected
 /// - Server content (chat/user management/broadcast) when connected
-#[allow(clippy::too_many_arguments)]
-pub fn main_layout<'a>(
-    connections: &'a HashMap<usize, ServerConnection>,
-    active_connection: Option<usize>,
-    bookmarks: &'a [ServerBookmark],
-    bookmark_edit_mode: &'a BookmarkEditMode,
-    server_name: &'a str,
-    server_address: &'a str,
-    port: &'a str,
-    username: &'a str,
-    password: &'a str,
-    connection_error: &'a Option<String>,
-    is_connecting: bool,
-    bookmark_name: &'a str,
-    bookmark_address: &'a str,
-    bookmark_port: &'a str,
-    bookmark_username: &'a str,
-    bookmark_password: &'a str,
-    bookmark_auto_connect: bool,
-    bookmark_error: &'a Option<String>,
-    message_input: &'a str,
-    user_management: &'a UserManagementState,
-    show_bookmarks: bool,
-    show_user_list: bool,
-    show_add_user: bool,
-    show_edit_user: bool,
-    show_broadcast: bool,
-) -> Element<'a, Message> {
+pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     // Get permissions and admin status from active connection
-    let (is_admin, permissions) = active_connection
-        .and_then(|id| connections.get(&id))
+    let (is_admin, permissions) = config
+        .active_connection
+        .and_then(|id| config.connections.get(&id))
         .map(|conn| (conn.is_admin, conn.permissions.as_slice()))
         .unwrap_or((false, &[]));
 
@@ -82,61 +53,66 @@ pub fn main_layout<'a>(
 
     // Top toolbar
     let toolbar = build_toolbar(
-        show_bookmarks,
-        show_user_list,
-        show_broadcast,
-        show_add_user,
-        show_edit_user,
-        active_connection.is_some(),
+        config.show_bookmarks,
+        config.show_user_list,
+        config.show_broadcast,
+        config.show_add_user,
+        config.show_edit_user,
+        config.active_connection.is_some(),
         is_admin,
         permissions,
         can_view_user_list,
     );
 
     // Left panel: Server list
-    let server_list = server_list_panel(bookmarks, connections, active_connection);
+    let server_list = server_list_panel(
+        config.bookmarks,
+        config.connections,
+        config.active_connection,
+    );
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)
-    let main_content = if *bookmark_edit_mode != BookmarkEditMode::None {
+    let main_content = if *config.bookmark_edit_mode != crate::types::BookmarkEditMode::None {
         bookmark_edit_view(
-            bookmark_edit_mode,
-            bookmark_name,
-            bookmark_address,
-            bookmark_port,
-            bookmark_username,
-            bookmark_password,
-            bookmark_auto_connect,
-            bookmark_error,
+            config.bookmark_edit_mode,
+            config.bookmark_name,
+            config.bookmark_address,
+            config.bookmark_port,
+            config.bookmark_username,
+            config.bookmark_password,
+            config.bookmark_auto_connect,
+            config.bookmark_error,
         )
-    } else if let Some(conn_id) = active_connection {
-        if let Some(conn) = connections.get(&conn_id) {
+    } else if let Some(conn_id) = config.active_connection {
+        if let Some(conn) = config.connections.get(&conn_id) {
             server_content_view(
                 conn,
-                message_input,
-                user_management,
-                show_add_user,
-                show_edit_user,
-                show_broadcast,
+                config.message_input,
+                config.user_management,
+                config.show_add_user,
+                config.show_edit_user,
+                config.show_broadcast,
             )
         } else {
             empty_content_view()
         }
     } else {
         connection_form_view(
-            server_name,
-            server_address,
-            port,
-            username,
-            password,
-            connection_error,
-            is_connecting,
+            config.server_name,
+            config.server_address,
+            config.port,
+            config.username,
+            config.password,
+            config.connection_error,
+            config.is_connecting,
         )
     };
 
     // Right panel: User list (only when connected, visible, and user has permission)
-    let user_list = if show_user_list && can_view_user_list {
-        active_connection
-            .and_then(|conn_id| connections.get(&conn_id))
+    let user_list = if config.show_user_list && can_view_user_list {
+        config
+            .active_connection
+            .and_then(|conn_id| config.connections.get(&conn_id))
             .map(|conn| user_list_panel(conn))
             .unwrap_or_else(hidden_panel)
     } else {
@@ -144,7 +120,7 @@ pub fn main_layout<'a>(
     };
 
     // Three-panel layout with conditional panels
-    let content = if show_bookmarks {
+    let content = if config.show_bookmarks {
         row![server_list, main_content, user_list]
             .spacing(PANEL_SPACING)
             .height(Fill)
