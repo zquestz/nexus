@@ -1,6 +1,7 @@
 #!/bin/sh
-# Generate application assets for all platforms from SVG source
-# Requires: ImageMagick (magick/convert) and libicns (png2icns)
+# Generate macOS application assets from SVG source
+# Requires: ImageMagick (magick/convert)
+# Optional: libicns (png2icns) for ICNS generation
 
 set -e
 
@@ -36,7 +37,7 @@ else
     CONVERT_CMD="convert"
 fi
 
-echo "Generating assets from $SVG_SOURCE"
+echo "Generating macOS assets from $SVG_SOURCE"
 echo ""
 
 # Generate macOS PNG (1024x1024) with transparency
@@ -53,4 +54,4 @@ if [ -z "$SKIP_ICNS" ]; then
 fi
 
 echo ""
-echo "✓ Asset generation complete!"
+echo "✓ macOS asset generation complete!"
