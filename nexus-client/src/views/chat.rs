@@ -1,13 +1,14 @@
 //! Chat interface for active server connections
 
 use super::style::{
-    CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING, SMALL_SPACING,
-    broadcast_message_color, chat_text_color, error_message_color, info_text_color,
-    primary_button_style, primary_scrollbar_style, primary_text_input_style, system_text_color,
+    BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING,
+    SMALL_SPACING, broadcast_message_color, chat_text_color, error_message_color, info_text_color,
+    primary_button_style, primary_scrollbar_style, primary_text_input_style, sidebar_border,
+    system_text_color,
 };
 use crate::types::{InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
-use iced::{Element, Fill};
+use iced::{Background, Element, Fill};
 
 // Permission constants
 const PERMISSION_CHAT_SEND: &str = "chat_send";
@@ -107,11 +108,25 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     .spacing(SMALL_SPACING)
     .width(Fill);
 
-    container(
-        column![chat_scrollable, input_row,]
-            .spacing(SMALL_SPACING)
-            .padding(SMALL_PADDING),
-    )
+    // Top border separator to match sidebars
+    let top_separator = container(text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
+    column![
+        top_separator,
+        container(
+            column![chat_scrollable, input_row,]
+                .spacing(SMALL_SPACING)
+                .padding(SMALL_PADDING),
+        )
+        .width(Fill)
+        .height(Fill),
+    ]
     .width(Fill)
     .height(Fill)
     .into()
