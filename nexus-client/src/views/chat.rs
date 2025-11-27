@@ -117,6 +117,15 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
             ..Default::default()
         });
 
+    // Bottom border separator to match sidebars
+    let bottom_separator = container(text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
     column![
         top_separator,
         container(
@@ -126,6 +135,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         )
         .width(Fill)
         .height(Fill),
+        bottom_separator,
     ]
     .width(Fill)
     .height(Fill)
