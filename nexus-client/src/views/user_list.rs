@@ -360,11 +360,11 @@ fn create_user_toolbar<'a>(
     // Build toolbar based on permissions and whether viewing self
     let mut toolbar_row = row![].spacing(TOOLBAR_SPACING).width(Fill);
 
+    // Info button (always show, disabled if no permission)
+    toolbar_row = toolbar_row.push(info_button);
+
     // Message button (always show, disabled if no permission)
     toolbar_row = toolbar_row.push(message_button);
-
-    // Info button (always show)
-    toolbar_row = toolbar_row.push(info_button);
 
     // Kick button (if not self, has permission, and target is not admin)
     if !is_self && has_kick_permission && !target_is_admin {
