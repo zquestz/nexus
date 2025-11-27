@@ -489,6 +489,40 @@ pub fn primary_button_style()
     }
 }
 
+/// Create styled button for active chat tab (blue background)
+pub fn chat_tab_active_style()
+-> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
+    |_theme, _status| iced::widget::button::Style {
+        background: Some(Background::from(primary_action_background())),
+        text_color: action_button_text(),
+        border: Border::default(),
+        shadow: iced::Shadow::default(),
+    }
+}
+
+/// Create styled button for inactive chat tab (transparent with hover)
+pub fn chat_tab_inactive_style()
+-> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
+    |_theme, status| {
+        use iced::widget::button::Status;
+
+        match status {
+            Status::Hovered => iced::widget::button::Style {
+                background: Some(Background::from(interactive_hover_color())),
+                text_color: action_button_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+            _ => iced::widget::button::Style {
+                background: None,
+                text_color: action_button_text(),
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            },
+        }
+    }
+}
+
 /// Create styled checkbox (blue accent color when checked)
 ///
 /// This creates a checkbox with the same blue used for primary buttons and active toolbar buttons,

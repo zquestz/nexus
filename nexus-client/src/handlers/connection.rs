@@ -1,6 +1,6 @@
 //! Connection and chat message handlers
 
-use crate::types::{ChatMessage, InputId, Message, ScrollableId};
+use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::{NexusApp, network};
 use chrono::Local;
 use iced::Task;
@@ -126,8 +126,15 @@ impl NexusApp {
                 return self.add_chat_error(conn_id, error_msg);
             }
 
-            let msg = ClientMessage::ChatSend {
-                message: message.to_string(),
+            // Route message based on active chat tab
+            let msg = match &conn.active_chat_tab {
+                ChatTab::Server => ClientMessage::ChatSend {
+                    message: message.to_string(),
+                },
+                ChatTab::UserMessage(username) => ClientMessage::UserMessage {
+                    to_username: username.clone(),
+                    message: message.to_string(),
+                },
             };
 
             // Send message and handle errors
@@ -184,20 +191,34 @@ impl NexusApp {
 
     /// Add an error message to the chat and auto-scroll
     fn add_chat_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            conn.chat_messages.push(ChatMessage {
+        self.add_chat_message(
+            connection_id,
+            ChatMessage {
                 username: "Error".to_string(),
                 message,
                 timestamp: Local::now(),
-            });
+            },
+        )
+    }
 
-            // Auto-scroll if this is the active connection
-            if self.active_connection == Some(connection_id) {
-                return scrollable::snap_to(
+    /// Switch to a different chat tab (Server or UserMessage)
+    pub fn handle_switch_chat_tab(&mut self, tab: ChatTab) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // Clear unread indicator for this tab (works for Server and PM tabs)
+            conn.unread_tabs.remove(&tab);
+
+            conn.active_chat_tab = tab;
+
+            // Auto-scroll to show messages in the new tab and focus chat input
+            return Task::batch([
+                scrollable::snap_to(
                     ScrollableId::ChatMessages.into(),
                     scrollable::RelativeOffset::END,
-                );
-            }
+                ),
+                text_input::focus(text_input::Id::from(InputId::ChatInput)),
+            ]);
         }
         Task::none()
     }

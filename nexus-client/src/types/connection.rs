@@ -2,9 +2,10 @@
 
 use crate::types::UserManagementState;
 use nexus_common::protocol::ClientMessage;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-use super::{ChatMessage, UserInfo};
+use super::{ChatMessage, ChatTab, UserInfo};
 
 /// Type alias for shutdown handle
 type ShutdownHandle = std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
@@ -30,8 +31,14 @@ pub struct ServerConnection {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
-    /// Chat message history
+    /// Active chat tab
+    pub active_chat_tab: ChatTab,
+    /// Chat message history for server chat
     pub chat_messages: Vec<ChatMessage>,
+    /// User message history per user
+    pub user_messages: HashMap<String, Vec<ChatMessage>>,
+    /// Tabs with unread messages (for bold indicator)
+    pub unread_tabs: HashSet<ChatTab>,
     /// Currently online users
     pub online_users: Vec<UserInfo>,
     /// Username of expanded user in user list (None if no user expanded)

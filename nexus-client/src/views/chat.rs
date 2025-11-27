@@ -2,16 +2,49 @@
 
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING,
-    SMALL_SPACING, broadcast_message_color, chat_text_color, error_message_color, info_text_color,
-    primary_button_style, primary_scrollbar_style, primary_text_input_style, sidebar_border,
-    system_text_color,
+    SMALL_SPACING, broadcast_message_color, chat_tab_active_style, chat_tab_inactive_style,
+    chat_text_color, error_message_color, info_text_color, primary_button_style,
+    primary_scrollbar_style, primary_text_input_style, sidebar_border, system_text_color,
 };
-use crate::types::{InputId, Message, ScrollableId, ServerConnection};
-use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
+use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
+use iced::widget::{Button, Column, button, column, container, row, scrollable, text, text_input};
 use iced::{Background, Element, Fill};
 
 // Permission constants
 const PERMISSION_CHAT_SEND: &str = "chat_send";
+
+// Input placeholder text
+const PLACEHOLDER_MESSAGE: &str = "Type a message...";
+const PLACEHOLDER_NO_PERMISSION: &str = "No permission";
+
+/// Create a tab button with appropriate styling and unread indicator
+fn create_tab_button<'a>(
+    tab: ChatTab,
+    label: String,
+    is_active: bool,
+    has_unread: bool,
+) -> Button<'a, Message> {
+    if is_active {
+        button(text(label).size(CHAT_MESSAGE_SIZE))
+            .style(chat_tab_active_style())
+            .padding(INPUT_PADDING)
+    } else {
+        let tab_text = if has_unread {
+            // Bold if there are unread messages
+            text(label).size(CHAT_MESSAGE_SIZE).font(iced::Font {
+                weight: iced::font::Weight::Bold,
+                ..iced::Font::DEFAULT
+            })
+        } else {
+            text(label).size(CHAT_MESSAGE_SIZE)
+        };
+
+        button(tab_text)
+            .on_press(Message::SwitchChatTab(tab))
+            .style(chat_tab_inactive_style())
+            .padding(INPUT_PADDING)
+    }
+}
 
 /// Displays chat messages and input field
 ///
@@ -24,13 +57,52 @@ const PERMISSION_CHAT_SEND: &str = "chat_send";
 ///
 /// The send input is only enabled with chat_send permission.
 pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Element<'a, Message> {
-    // Check send permission
+    // Build tab bar
+    let mut tab_row = row![].spacing(SMALL_SPACING);
+
+    // Server tab (always present)
+    let is_server_active = conn.active_chat_tab == ChatTab::Server;
+    let server_has_unread = conn.unread_tabs.contains(&ChatTab::Server);
+    let server_tab_button = create_tab_button(
+        ChatTab::Server,
+        "#server".to_string(),
+        is_server_active,
+        server_has_unread,
+    );
+    tab_row = tab_row.push(server_tab_button);
+
+    // PM tabs
+    let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
+    pm_usernames.sort();
+
+    // Check if we have any PM tabs
+    let has_pm_tabs = !pm_usernames.is_empty();
+
+    for username in &pm_usernames {
+        let pm_tab = ChatTab::UserMessage(username.clone());
+        let is_active = conn.active_chat_tab == pm_tab;
+        let has_unread = conn.unread_tabs.contains(&pm_tab);
+        let pm_tab_button = create_tab_button(pm_tab, username.clone(), is_active, has_unread);
+        tab_row = tab_row.push(pm_tab_button);
+    }
+
+    // Check send permission (for server chat)
     let can_send = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND);
 
-    // Build message list - server already filtered based on permissions
+    // Get messages for active tab
+    let messages = match &conn.active_chat_tab {
+        ChatTab::Server => &conn.chat_messages,
+        ChatTab::UserMessage(username) => conn
+            .user_messages
+            .get(username)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]),
+    };
+
+    // Build message list
     let mut chat_column = Column::new().spacing(CHAT_SPACING).padding(INPUT_PADDING);
 
-    for msg in &conn.chat_messages {
+    for msg in messages {
         let time_str = msg.timestamp.format("%H:%M:%S").to_string();
         let display = if msg.username == "System" {
             text(format!("[{}] [SYS] {}", time_str, msg.message))
@@ -75,10 +147,21 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         .height(Fill)
         .style(primary_scrollbar_style());
 
+    // Message input placeholder based on active tab
+    let placeholder = PLACEHOLDER_MESSAGE;
+
+    // Can send if: (Server tab + chat_send) OR (PM tab + user_message)
+    let can_send_message = match &conn.active_chat_tab {
+        ChatTab::Server => can_send,
+        ChatTab::UserMessage(_) => {
+            conn.is_admin || conn.permissions.iter().any(|p| p == "user_message")
+        }
+    };
+
     // Message input
     let input_row = row![
-        if can_send {
-            text_input("Type a message...", message_input)
+        if can_send_message {
+            text_input(placeholder, message_input)
                 .on_input(Message::ChatInputChanged)
                 .on_submit(Message::SendMessagePressed)
                 .id(text_input::Id::from(InputId::ChatInput))
@@ -87,14 +170,14 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .style(primary_text_input_style())
                 .width(Fill)
         } else {
-            text_input("No permission to send messages", message_input)
+            text_input(PLACEHOLDER_NO_PERMISSION, message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
                 .style(primary_text_input_style())
                 .width(Fill)
         },
-        if can_send {
+        if can_send_message {
             button(text("Send").size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
                 .padding(INPUT_PADDING)
@@ -126,18 +209,37 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
             ..Default::default()
         });
 
-    column![
-        top_separator,
-        container(
-            column![chat_scrollable, input_row,]
-                .spacing(SMALL_SPACING)
-                .padding(SMALL_PADDING),
-        )
+    // Only show tab bar if there are PM tabs (more than just #server)
+    if !has_pm_tabs {
+        column![
+            top_separator,
+            container(
+                column![chat_scrollable, input_row,]
+                    .spacing(SMALL_SPACING)
+                    .padding(SMALL_PADDING),
+            )
+            .width(Fill)
+            .height(Fill),
+            bottom_separator,
+        ]
         .width(Fill)
-        .height(Fill),
-        bottom_separator,
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
+        .height(Fill)
+        .into()
+    } else {
+        column![
+            top_separator,
+            container(tab_row).padding(SMALL_PADDING).width(Fill),
+            container(
+                column![chat_scrollable, input_row,]
+                    .spacing(SMALL_SPACING)
+                    .padding(SMALL_PADDING),
+            )
+            .width(Fill)
+            .height(Fill),
+            bottom_separator,
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into()
+    }
 }

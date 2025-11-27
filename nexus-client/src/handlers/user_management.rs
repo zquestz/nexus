@@ -1,7 +1,7 @@
 //! User management
 
 use crate::NexusApp;
-use crate::types::{ChatMessage, InputId, Message, ScrollableId, UserEditState};
+use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState};
 use chrono::Local;
 use iced::Task;
 use iced::widget::scrollable;
@@ -9,7 +9,6 @@ use nexus_common::protocol::ClientMessage;
 
 // Constants
 const MSG_USERNAME_ERROR: &str = "Error";
-const MSG_USERNAME_INFO: &str = "Info";
 const ERR_SEND_FAILED: &str = "Failed to send command";
 
 impl NexusApp {
@@ -325,25 +324,17 @@ impl NexusApp {
         connection_id: usize,
         message: String,
     ) -> Task<Message> {
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            conn.chat_messages.push(ChatMessage {
+        self.add_chat_message(
+            connection_id,
+            ChatMessage {
                 username: MSG_USERNAME_ERROR.to_string(),
                 message,
                 timestamp: Local::now(),
-            });
-
-            // Auto-scroll if this is the active connection
-            if self.active_connection == Some(connection_id) {
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
-            }
-        }
-        Task::none()
+            },
+        )
     }
 
-    /// Handle user message icon click (send private message)
+    /// Handle user message icon click (create/switch to PM tab)
     pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
         // Close all panels to show chat
         self.close_all_panels();
@@ -351,24 +342,14 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            // For now, just show a prompt to implement a message compose UI
-            // In a full implementation, this would open a compose dialog
-            let message = format!(
-                "Private message feature ready! Send a message to {} (UI coming soon)",
-                username
-            );
-            let chat_msg = ChatMessage {
-                username: MSG_USERNAME_INFO.to_string(),
-                message,
-                timestamp: Local::now(),
-            };
-            conn.chat_messages.push(chat_msg);
+            // Create PM tab entry if it doesn't exist
+            if !conn.user_messages.contains_key(&username) {
+                conn.user_messages.insert(username.clone(), Vec::new());
+            }
 
-            // Auto-scroll
-            return scrollable::snap_to(
-                ScrollableId::ChatMessages.into(),
-                scrollable::RelativeOffset::END,
-            );
+            // Switch to the PM tab
+            let tab = ChatTab::UserMessage(username);
+            return Task::done(Message::SwitchChatTab(tab));
         }
         Task::none()
     }
@@ -403,17 +384,13 @@ impl NexusApp {
             // Send UserKick request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserKick { username }) {
                 let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
-                let chat_msg = ChatMessage {
-                    username: MSG_USERNAME_ERROR.to_string(),
-                    message: error_msg,
-                    timestamp: Local::now(),
-                };
-                conn.chat_messages.push(chat_msg);
-
-                // Auto-scroll
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
+                return self.add_chat_message(
+                    conn_id,
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message: error_msg,
+                        timestamp: Local::now(),
+                    },
                 );
             }
 
@@ -452,17 +429,13 @@ impl NexusApp {
             // Send UserInfo request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
                 let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
-                let chat_msg = ChatMessage {
-                    username: MSG_USERNAME_ERROR.to_string(),
-                    message: error_msg,
-                    timestamp: Local::now(),
-                };
-                conn.chat_messages.push(chat_msg);
-
-                // Auto-scroll
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
+                return self.add_chat_message(
+                    conn_id,
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message: error_msg,
+                        timestamp: Local::now(),
+                    },
                 );
             }
 

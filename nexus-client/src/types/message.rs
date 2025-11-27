@@ -85,6 +85,8 @@ pub enum Message {
     UserMessageIconClicked(String),
     /// User list: Kick icon clicked on expanded user (disconnect - future)
     UserKickIconClicked(String),
+    /// Switch to a different chat tab
+    SwitchChatTab(super::ChatTab),
     /// Bookmark editor: Save button pressed
     SaveBookmark,
     /// Broadcast panel: Send button pressed

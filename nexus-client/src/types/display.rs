@@ -1,5 +1,14 @@
 //! Chat and user display types
 
+/// Chat tab type - represents different chat windows
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChatTab {
+    /// Server chat (main channel)
+    Server,
+    /// User message conversation (1-on-1)
+    UserMessage(String),
+}
+
 /// Chat message for display
 #[derive(Debug, Clone)]
 pub struct ChatMessage {

@@ -158,6 +158,7 @@ impl NexusApp {
                 self.handle_user_message_icon_clicked(username)
             }
             Message::UserKickIconClicked(username) => self.handle_user_kick_icon_clicked(username),
+            Message::SwitchChatTab(tab) => self.handle_switch_chat_tab(tab),
             Message::DisconnectFromServer(connection_id) => {
                 self.handle_disconnect_from_server(connection_id)
             }

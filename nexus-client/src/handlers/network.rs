@@ -1,11 +1,14 @@
 //! Network events
 
 use crate::NexusApp;
-use crate::types::{ChatMessage, InputId, Message, ScrollableId, ServerConnection, UserInfo};
+use crate::types::{
+    ChatMessage, ChatTab, InputId, Message, ScrollableId, ServerConnection, UserInfo,
+};
 use chrono::Local;
 use iced::Task;
 use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use std::collections::{HashMap, HashSet};
 
 // Message username constants
 const MSG_USERNAME_SYSTEM: &str = "System";
@@ -13,15 +16,9 @@ const MSG_USERNAME_ERROR: &str = "Error";
 const MSG_USERNAME_INFO: &str = "Info";
 const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
 
-// Private message display constants
-const MSG_PM_FROM_PREFIX: &str = "[PM from ";
-const MSG_PM_TO_PREFIX: &str = "[PM to ";
-const MSG_PM_SUFFIX: &str = "]";
-
 // Success message constants
 const MSG_USER_KICKED_SUCCESS: &str = "User kicked successfully";
-const MSG_PRIVATE_MESSAGE_SENT: &str = "Private message sent successfully";
-const MSG_PRIVATE_MESSAGE_FAILED: &str = "Failed to send private message";
+const MSG_USER_MESSAGE_FAILED: &str = "Failed to send message";
 const MSG_BROADCAST_SENT: &str = "Broadcast sent successfully";
 const MSG_USER_CREATED: &str = "User created successfully";
 const MSG_USER_DELETED: &str = "User deleted successfully";
@@ -87,7 +84,13 @@ impl NexusApp {
                     session_id,
                     username,
                     display_name,
+                    connection_id,
+                    is_admin: conn.is_admin,
+                    permissions: conn.permissions,
+                    active_chat_tab: ChatTab::Server,
                     chat_messages: Vec::new(),
+                    user_messages: HashMap::new(),
+                    unread_tabs: HashSet::new(),
                     online_users: Vec::new(),
                     expanded_user: None,
                     tx: conn.tx,
@@ -98,12 +101,9 @@ impl NexusApp {
                             return Task::none();
                         }
                     },
-                    connection_id,
                     message_input: String::new(),
                     broadcast_message: String::new(),
                     user_management: crate::types::UserManagementState::default(),
-                    is_admin: conn.is_admin,
-                    permissions: conn.permissions,
                 };
 
                 // Add to connections and make it active
@@ -178,7 +178,13 @@ impl NexusApp {
                     session_id,
                     username,
                     display_name, // Use the display_name passed from the bookmark
+                    connection_id: conn_id,
+                    is_admin: conn.is_admin,
+                    permissions: conn.permissions,
+                    active_chat_tab: ChatTab::Server,
                     chat_messages: Vec::new(),
+                    user_messages: HashMap::new(),
+                    unread_tabs: HashSet::new(),
                     online_users: Vec::new(),
                     expanded_user: None,
                     tx: conn.tx,
@@ -191,12 +197,9 @@ impl NexusApp {
                             return Task::none();
                         }
                     },
-                    connection_id: conn_id,
                     message_input: String::new(),
                     broadcast_message: String::new(),
                     user_management: crate::types::UserManagementState::default(),
-                    is_admin: conn.is_admin,
-                    permissions: conn.permissions,
                 };
 
                 // Add to connections and make it active
@@ -284,6 +287,12 @@ impl NexusApp {
     ) -> Task<Message> {
         if let Some(conn) = self.connections.get_mut(&connection_id) {
             conn.chat_messages.push(message);
+
+            // Mark Server tab as unread if not currently viewing it
+            if conn.active_chat_tab != ChatTab::Server {
+                conn.unread_tabs.insert(ChatTab::Server);
+            }
+
             if self.active_connection == Some(connection_id) {
                 return scrollable::snap_to(
                     crate::types::ScrollableId::ChatMessages.into(),
@@ -298,13 +307,15 @@ impl NexusApp {
     fn add_topic_message_if_present(&mut self, connection_id: usize, chat_topic: Option<String>) {
         if let Some(topic) = chat_topic
             && !topic.is_empty()
-            && let Some(conn) = self.connections.get_mut(&connection_id)
         {
-            conn.chat_messages.push(ChatMessage {
-                username: MSG_USERNAME_INFO.to_string(),
-                message: format!("Topic: {}", topic),
-                timestamp: Local::now(),
-            });
+            let _ = self.add_chat_message(
+                connection_id,
+                ChatMessage {
+                    username: MSG_USERNAME_INFO.to_string(),
+                    message: format!("Topic: {}", topic),
+                    timestamp: Local::now(),
+                },
+            );
         }
     }
 
@@ -535,22 +546,19 @@ impl NexusApp {
 
                     // Add each line as a separate chat message
                     let timestamp = Local::now();
+                    let mut task = Task::none();
                     for line in lines {
-                        let message = ChatMessage {
-                            username: MSG_USERNAME_INFO.to_string(),
-                            message: line,
-                            timestamp,
-                        };
-                        if let Some(conn) = self.connections.get_mut(&connection_id) {
-                            conn.chat_messages.push(message);
-                        }
+                        task = self.add_chat_message(
+                            connection_id,
+                            ChatMessage {
+                                username: MSG_USERNAME_INFO.to_string(),
+                                message: line,
+                                timestamp,
+                            },
+                        );
                     }
-
-                    // Auto-scroll to show all lines
-                    scrollable::snap_to(
-                        ScrollableId::ChatMessages.into(),
-                        scrollable::RelativeOffset::END,
-                    )
+                    // Last add_chat_message will handle auto-scroll
+                    task
                 } else {
                     Task::none()
                 }
@@ -576,57 +584,65 @@ impl NexusApp {
                 to_username,
                 message,
             } => {
-                // Display private message in chat area
-                // Determine if this is an incoming or outgoing message
-                let (display_username, display_message) =
-                    if let Some(conn) = self.connections.get(&connection_id) {
-                        if from_username == conn.username {
-                            // Outgoing message (we sent it)
-                            (
-                                format!("{}{}{}", MSG_PM_TO_PREFIX, to_username, MSG_PM_SUFFIX),
-                                message.clone(),
-                            )
-                        } else {
-                            // Incoming message (we received it)
-                            (
-                                format!("{}{}{}", MSG_PM_FROM_PREFIX, from_username, MSG_PM_SUFFIX),
-                                message.clone(),
-                            )
-                        }
+                // Route PM to the appropriate tab
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    // Determine which user we're chatting with (the other person)
+                    let other_user = if from_username == conn.username {
+                        // We sent this message, so we're chatting with to_username
+                        to_username.clone()
                     } else {
-                        // Fallback if connection not found
-                        (
-                            format!("{}{}{}", MSG_PM_FROM_PREFIX, from_username, MSG_PM_SUFFIX),
-                            message.clone(),
-                        )
+                        // We received this message, so we're chatting with from_username
+                        from_username.clone()
                     };
 
-                let chat_msg = ChatMessage {
-                    username: display_username,
-                    message: display_message,
-                    timestamp: Local::now(),
-                };
-                self.add_chat_message(connection_id, chat_msg)
+                    // Create PM tab entry if it doesn't exist
+                    if !conn.user_messages.contains_key(&other_user) {
+                        conn.user_messages.insert(other_user.clone(), Vec::new());
+                    }
+
+                    // Add message to PM tab history
+                    let chat_msg = ChatMessage {
+                        username: from_username.clone(),
+                        message: message.clone(),
+                        timestamp: Local::now(),
+                    };
+
+                    if let Some(messages) = conn.user_messages.get_mut(&other_user) {
+                        messages.push(chat_msg);
+                    }
+
+                    // Mark as unread if not currently viewing this tab
+                    let pm_tab = ChatTab::UserMessage(other_user.clone());
+                    if conn.active_chat_tab != pm_tab {
+                        conn.unread_tabs.insert(pm_tab);
+                    }
+
+                    // Auto-scroll if viewing this tab
+                    if conn.active_chat_tab == ChatTab::UserMessage(other_user.clone()) {
+                        return scrollable::snap_to(
+                            ScrollableId::ChatMessages.into(),
+                            scrollable::RelativeOffset::END,
+                        );
+                    }
+                }
+                Task::none()
             }
             ServerMessage::UserMessageReply { success, error } => {
-                let message = if success {
-                    ChatMessage {
-                        username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: MSG_PRIVATE_MESSAGE_SENT.to_string(),
-                        timestamp: Local::now(),
-                    }
-                } else {
-                    ChatMessage {
+                // Only show error messages - success is obvious from the PM tab
+                if !success {
+                    let message = ChatMessage {
                         username: MSG_USERNAME_ERROR.to_string(),
                         message: format!(
                             "{}: {}",
-                            MSG_PRIVATE_MESSAGE_FAILED,
+                            MSG_USER_MESSAGE_FAILED,
                             error.unwrap_or_default()
                         ),
                         timestamp: Local::now(),
-                    }
-                };
-                self.add_chat_message(connection_id, message)
+                    };
+                    self.add_chat_message(connection_id, message)
+                } else {
+                    Task::none()
+                }
             }
             ServerMessage::UserCreateResponse { success, error } => {
                 // Close add user panel on any response (success or error)
@@ -739,15 +755,17 @@ impl NexusApp {
                     {
                         // Channel send failed - add error to chat
                         let error_msg = format!("{}: {}", ERR_USERLIST_FAILED, e);
-                        let chat_msg = ChatMessage {
-                            username: MSG_USERNAME_ERROR.to_string(),
-                            message: error_msg,
-                            timestamp: Local::now(),
-                        };
-                        conn.chat_messages.push(chat_msg);
+                        return self.add_chat_message(
+                            connection_id,
+                            ChatMessage {
+                                username: MSG_USERNAME_ERROR.to_string(),
+                                message: error_msg,
+                                timestamp: Local::now(),
+                            },
+                        );
                     }
 
-                    // Notify user in chat
+                    // Show notification message
                     let message = ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
                         message: MSG_PERMISSIONS_UPDATED.to_string(),

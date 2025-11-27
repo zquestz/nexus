@@ -1,7 +1,7 @@
 //! Broadcast message handlers
 
 use crate::NexusApp;
-use crate::types::{ChatMessage, InputId, Message, ScrollableId};
+use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use chrono::Local;
 use iced::Task;
 use iced::widget::{scrollable, text_input};
@@ -88,13 +88,14 @@ impl NexusApp {
         }
     }
 
-    /// Handle showing chat view - closes all panels and focuses chat input
+    /// Handle showing chat view - closes all panels, switches to Server tab, and focuses chat input
     pub fn handle_show_chat_view(&mut self) -> Task<Message> {
         // Close all panels
         self.close_all_panels();
 
-        // Auto-scroll to bottom and focus chat input
+        // Switch to Server tab, auto-scroll to bottom, and focus chat input
         Task::batch([
+            Task::done(Message::SwitchChatTab(ChatTab::Server)),
             scrollable::snap_to(
                 ScrollableId::ChatMessages.into(),
                 scrollable::RelativeOffset::END,
@@ -105,21 +106,13 @@ impl NexusApp {
 
     /// Add an error message to the chat for broadcast errors and auto-scroll
     fn add_broadcast_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            conn.chat_messages.push(ChatMessage {
+        self.add_chat_message(
+            connection_id,
+            ChatMessage {
                 username: "Error".to_string(),
                 message,
                 timestamp: Local::now(),
-            });
-
-            // Auto-scroll if this is the active connection
-            if self.active_connection == Some(connection_id) {
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
-            }
-        }
-        Task::none()
+            },
+        )
     }
 }

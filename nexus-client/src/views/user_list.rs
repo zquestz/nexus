@@ -183,6 +183,9 @@ fn create_user_toolbar<'a>(
     // Square button size
     let button_size = ICON_SIZE;
 
+    // Build toolbar row
+    let mut toolbar_row = row![].spacing(TOOLBAR_SPACING).width(Fill);
+
     // Info icon button (square)
     let info_icon = container(icon::info().size(ICON_SIZE))
         .width(button_size)
@@ -251,73 +254,81 @@ fn create_user_toolbar<'a>(
         .padding(TOOLTIP_PADDING)
     };
 
-    // Message icon button (square) - TODO: Implement private messaging
-    let message_icon = container(icon::message().size(ICON_SIZE))
-        .width(button_size)
-        .height(button_size)
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Center);
-    let message_button = if has_message_permission {
-        // Enabled button
-        tooltip(
-            button(message_icon)
-                .on_press(Message::UserMessageIconClicked(username_clone.clone()))
-                .padding(iced::Padding {
-                    top: ICON_BUTTON_PADDING_VERTICAL as f32,
-                    right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                    bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
-                    left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                })
-                .style(|theme, status| button::Style {
-                    background: None,
-                    text_color: match status {
-                        button::Status::Hovered => sidebar_icon_hover_color(theme),
-                        _ => sidebar_icon_color(theme),
-                    },
-                    border: Border::default(),
-                    shadow: iced::Shadow::default(),
-                }),
-            container(text("Message").size(TOOLTIP_TEXT_SIZE))
-                .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
-            tooltip::Position::Bottom,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING)
-    } else {
-        // Disabled button (no permission)
-        tooltip(
-            button(message_icon)
-                .padding(iced::Padding {
-                    top: ICON_BUTTON_PADDING_VERTICAL as f32,
-                    right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                    bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
-                    left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                })
-                .style(|_theme, _status| button::Style {
-                    background: None,
-                    text_color: SIDEBAR_ICON_DISABLED,
-                    border: Border::default(),
-                    shadow: iced::Shadow::default(),
-                }),
-            container(text("Message").size(TOOLTIP_TEXT_SIZE))
-                .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
-            tooltip::Position::Bottom,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING)
-    };
+    // Info button (always show, disabled if no permission)
+    toolbar_row = toolbar_row.push(info_button);
+
+    // Message button (only show if not self)
+    if !is_self {
+        let message_icon = container(icon::message().size(ICON_SIZE))
+            .width(button_size)
+            .height(button_size)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center);
+        let message_button = if has_message_permission {
+            // Enabled button
+            tooltip(
+                button(message_icon)
+                    .on_press(Message::UserMessageIconClicked(username_clone.clone()))
+                    .padding(iced::Padding {
+                        top: ICON_BUTTON_PADDING_VERTICAL as f32,
+                        right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                        bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
+                        left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                    })
+                    .style(|theme, status| button::Style {
+                        background: None,
+                        text_color: match status {
+                            button::Status::Hovered => sidebar_icon_hover_color(theme),
+                            _ => sidebar_icon_color(theme),
+                        },
+                        border: Border::default(),
+                        shadow: iced::Shadow::default(),
+                    }),
+                container(text("Message").size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(|theme| container::Style {
+                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        text_color: Some(tooltip_text_color(theme)),
+                        border: tooltip_border(),
+                        ..Default::default()
+                    }),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+        } else {
+            // Disabled button (no permission)
+            tooltip(
+                button(message_icon)
+                    .padding(iced::Padding {
+                        top: ICON_BUTTON_PADDING_VERTICAL as f32,
+                        right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                        bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
+                        left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                    })
+                    .style(|_theme, _status| button::Style {
+                        background: None,
+                        text_color: SIDEBAR_ICON_DISABLED,
+                        border: Border::default(),
+                        shadow: iced::Shadow::default(),
+                    }),
+                container(text("Message").size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(|theme| container::Style {
+                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                        text_color: Some(tooltip_text_color(theme)),
+                        border: tooltip_border(),
+                        ..Default::default()
+                    }),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+        };
+        toolbar_row = toolbar_row.push(message_button);
+    }
+
+    // Kick button (if not self, has permission, and target is not admin)
 
     // Kick icon button (square) - TODO: Implement kick/disconnect
     let kick_icon = container(icon::kick().size(ICON_SIZE))
@@ -356,16 +367,7 @@ fn create_user_toolbar<'a>(
     .gap(TOOLTIP_GAP)
     .padding(TOOLTIP_PADDING);
 
-    // Build toolbar based on permissions and whether viewing self
-    let mut toolbar_row = row![].spacing(TOOLBAR_SPACING).width(Fill);
-
-    // Info button (always show, disabled if no permission)
-    toolbar_row = toolbar_row.push(info_button);
-
-    // Message button (always show, disabled if no permission)
-    toolbar_row = toolbar_row.push(message_button);
-
-    // Kick button (if not self, has permission, and target is not admin)
+    // Add kick button (if not self, has permission, and target is not admin)
     if !is_self && has_kick_permission && !target_is_admin {
         toolbar_row = toolbar_row.push(container(text("")).width(Fill)); // Spacer
         toolbar_row = toolbar_row.push(kick_button);
