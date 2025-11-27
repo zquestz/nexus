@@ -11,8 +11,8 @@ A modern BBS (Bulletin Board System) for the [Yggdrasil](https://yggdrasil-netwo
 
 ⚠️ **Under Heavy Development** - Expect breaking changes
 
-**Server**: Functional with test coverage  
-**Client**: GUI with multi-server support
+**Server**: Functional with comprehensive test coverage  
+**Client**: Fully functional GUI with multi-server support
 
 ## Features
 
@@ -112,8 +112,22 @@ See `nexus-client/assets/windows/README.md` for icon generation instructions.
 ## Testing
 
 ```bash
+# Run all tests
 cargo test --workspace
+
+# Run with coverage
+cargo test --workspace -- --nocapture
+
+# Lint with strict warnings
+cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+**Test Coverage:**
+
+- Autostart tests
+- Protocol tests
+- Server unit tests
+- Integration tests (multi-session scenarios)
 
 ## Database & Configuration
 
