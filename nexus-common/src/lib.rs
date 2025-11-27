@@ -7,7 +7,7 @@ pub mod protocol;
 pub mod yggdrasil;
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.1.0";
+pub const PROTOCOL_VERSION: &str = "0.2.0";
 
 #[cfg(test)]
 mod tests {

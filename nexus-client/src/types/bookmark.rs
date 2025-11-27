@@ -10,7 +10,7 @@ use super::DEFAULT_PORT;
 pub struct ServerBookmark {
     /// Display name for the bookmark
     pub name: String,
-    /// Server IPv6 address
+    /// Server address (IPv4 or IPv6)
     pub address: String,
     /// Server port number
     pub port: String,

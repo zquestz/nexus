@@ -11,6 +11,9 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
+use tokio_rustls::TlsConnector;
+use tokio_rustls::rustls::ClientConfig;
+use tokio_rustls::rustls::pki_types::ServerName;
 
 /// Connection timeout duration (30 seconds)
 const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -21,11 +24,11 @@ const STREAM_CHANNEL_SIZE: usize = 100;
 /// Default features to request during login
 const DEFAULT_FEATURES: &[&str] = &["chat"];
 
-/// Type alias for TCP read half with buffering
-type Reader = BufReader<tokio::net::tcp::OwnedReadHalf>;
+/// Type alias for TLS stream read half with buffering
+type Reader = BufReader<tokio::io::ReadHalf<tokio_rustls::client::TlsStream<TcpStream>>>;
 
-/// Type alias for TCP write half
-type Writer = tokio::net::tcp::OwnedWriteHalf;
+/// Type alias for TLS stream write half
+type Writer = tokio::io::WriteHalf<tokio_rustls::client::TlsStream<TcpStream>>;
 
 /// Login information returned from the server
 struct LoginInfo {
@@ -42,6 +45,81 @@ type ConnectionRegistry =
 /// Global registry for network receivers
 pub static NETWORK_RECEIVERS: once_cell::sync::Lazy<ConnectionRegistry> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
+
+/// Global TLS connector (accepts any certificate, no hostname verification)
+static TLS_CONNECTOR: once_cell::sync::Lazy<TlsConnector> = once_cell::sync::Lazy::new(|| {
+    // Create a custom certificate verifier that accepts any certificate
+    let mut config = ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoVerifier))
+        .with_no_client_auth();
+
+    // Disable SNI (Server Name Indication) since we're not verifying hostnames
+    config.enable_sni = false;
+
+    TlsConnector::from(Arc::new(config))
+});
+
+/// Custom certificate verifier that accepts any certificate (no verification)
+#[derive(Debug)]
+struct NoVerifier;
+
+impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[tokio_rustls::rustls::pki_types::CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: tokio_rustls::rustls::pki_types::UnixTime,
+    ) -> Result<tokio_rustls::rustls::client::danger::ServerCertVerified, tokio_rustls::rustls::Error>
+    {
+        // Accept any certificate without verification
+        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        // Accept any signature without verification
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        // Accept any signature without verification
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+        // Support all signature schemes
+        vec![
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA256,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA384,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA512,
+            tokio_rustls::rustls::SignatureScheme::ED25519,
+        ]
+    }
+}
 
 /// Handle for shutting down a network connection
 #[derive(Debug)]
@@ -70,7 +148,7 @@ pub async fn connect_to_server(
 ) -> Result<NetworkConnection, String> {
     // Establish TCP connection
     let stream = establish_connection(&server_address, port).await?;
-    let (reader, mut writer) = stream.into_split();
+    let (reader, mut writer) = tokio::io::split(stream);
     let mut reader = BufReader::new(reader);
 
     // Perform handshake and login
@@ -81,8 +159,11 @@ pub async fn connect_to_server(
     setup_communication_channels(reader, writer, login_info, connection_id).await
 }
 
-/// Establish TCP connection to the server
-async fn establish_connection(address: &str, port: u16) -> Result<TcpStream, String> {
+/// Establish TLS connection to the server
+async fn establish_connection(
+    address: &str,
+    port: u16,
+) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
     // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
     let mut addrs = (address, port)
         .to_socket_addrs()
@@ -92,8 +173,8 @@ async fn establish_connection(address: &str, port: u16) -> Result<TcpStream, Str
         .next()
         .ok_or_else(|| format!("Could not resolve address '{}'", address))?;
 
-    // Add timeout for connection
-    tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
+    // Establish TCP connection
+    let tcp_stream = tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
         .await
         .map_err(|_| {
             format!(
@@ -101,7 +182,18 @@ async fn establish_connection(address: &str, port: u16) -> Result<TcpStream, Str
                 CONNECTION_TIMEOUT.as_secs()
             )
         })?
-        .map_err(|e| format!("Connection failed: {}", e))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    // Perform TLS handshake (hostname doesn't matter, we accept any cert)
+    let server_name = ServerName::try_from("localhost")
+        .map_err(|e| format!("Failed to create server name: {}", e))?;
+
+    let tls_stream = TLS_CONNECTOR
+        .connect(server_name, tcp_stream)
+        .await
+        .map_err(|e| format!("TLS handshake failed: {}", e))?;
+
+    Ok(tls_stream)
 }
 
 /// Perform protocol handshake with the server

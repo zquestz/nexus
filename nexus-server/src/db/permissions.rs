@@ -29,7 +29,7 @@ pub enum Permission {
     UserEdit,
     /// Permission to kick/disconnect users
     UserKick,
-    /// Permission to send private messages to users
+    /// Permission to send messages to users
     UserMessage,
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "nexus-server"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
@@ -14,6 +14,9 @@ chrono = "0.4"
 dirs = "6.0"
 argon2 = { version = "0.5", features = ["std"] }
 strum = { version = "0.27", features = ["derive"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2.2"
+rcgen = "0.13"
 
 [lib]
 name = "nexus_server"

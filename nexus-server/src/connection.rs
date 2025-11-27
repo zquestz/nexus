@@ -22,30 +22,45 @@ use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use std::io;
 use std::net::SocketAddr;
-use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
+
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
 use tokio::net::TcpStream;
+use tokio_rustls::TlsAcceptor;
 
 use tokio::sync::mpsc;
 
-/// Handle a client connection
+/// Handle a client connection (always with TLS)
 pub async fn handle_connection(
     socket: TcpStream,
     peer_addr: SocketAddr,
     user_manager: UserManager,
     db: Database,
     debug: bool,
+    tls_acceptor: TlsAcceptor,
 ) -> io::Result<()> {
-    // Enable TCP keepalive to detect dead connections
-    // Keepalive will probe the connection every 60 seconds
-    let socket_ref = socket2::SockRef::from(&socket);
-    let keepalive = socket2::TcpKeepalive::new()
-        .with_time(Duration::from_secs(60))
-        .with_interval(Duration::from_secs(10));
-    socket_ref.set_tcp_keepalive(&keepalive)?;
+    // Perform TLS handshake (mandatory)
+    let tls_stream = tls_acceptor
+        .accept(socket)
+        .await
+        .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
 
-    let (reader, mut writer) = socket.into_split();
+    handle_connection_inner(tls_stream, peer_addr, user_manager, db, debug).await
+}
+
+/// Inner connection handler that works with any AsyncRead + AsyncWrite stream
+async fn handle_connection_inner<S>(
+    socket: S,
+    peer_addr: SocketAddr,
+    user_manager: UserManager,
+    db: Database,
+    debug: bool,
+) -> io::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (reader, writer) = tokio::io::split(socket);
     let mut reader = BufReader::new(reader);
+    let mut writer: handlers::Writer = Box::pin(writer);
 
     // Create channel for receiving server messages to send to this client
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();

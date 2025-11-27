@@ -1,6 +1,6 @@
 //! Shared test utilities for handler tests
 
-use super::HandlerContext;
+use super::{HandlerContext, Writer};
 use crate::db::Database;
 use crate::users::UserManager;
 use nexus_common::protocol::ServerMessage;
@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
     pub client: TcpStream,
-    pub write_half: tokio::net::tcp::OwnedWriteHalf,
+    pub write_half: Writer,
     pub user_manager: UserManager,
     pub db: Database,
     pub tx: mpsc::UnboundedSender<ServerMessage>,
@@ -59,6 +59,7 @@ pub async fn create_test_context() -> TestContext {
     // Accept connection
     let (server_stream, peer_addr) = listener.accept().await.unwrap();
     let (_read_half, write_half) = server_stream.into_split();
+    let write_half = Box::pin(write_half);
 
     let client = client_handle.await.unwrap();
 

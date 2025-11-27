@@ -41,12 +41,16 @@ use nexus_common::io::send_server_message;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 use std::net::SocketAddr;
-use tokio::net::tcp::OwnedWriteHalf;
+use std::pin::Pin;
+use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
+
+/// Type alias for a pinned boxed writer (supports any AsyncWrite stream)
+pub type Writer = Pin<Box<dyn AsyncWrite + Send>>;
 
 /// Context passed to all handlers with shared resources
 pub struct HandlerContext<'a> {
-    pub writer: &'a mut OwnedWriteHalf,
+    pub writer: &'a mut Writer,
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
@@ -54,7 +58,7 @@ pub struct HandlerContext<'a> {
     pub debug: bool,
 }
 
-impl HandlerContext<'_> {
+impl<'a> HandlerContext<'a> {
     /// Send a message to the client
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
         send_server_message(self.writer, message).await

@@ -1,16 +1,16 @@
 //! Command-line argument parsing
 
 use clap::Parser;
-use std::net::Ipv6Addr;
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 /// Nexus BBS Server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// IPv6 address to bind to (must be in Yggdrasil range: 0200::/7)
-    #[arg(short, long)]
-    pub bind: Ipv6Addr,
+    /// IP address to bind to (IPv4 or IPv6)
+    #[arg(short, long, default_value = "0.0.0.0")]
+    pub bind: IpAddr,
 
     /// Port to listen on
     #[arg(short, long, default_value = "7500")]
