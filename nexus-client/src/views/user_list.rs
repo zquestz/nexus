@@ -1,5 +1,6 @@
 //! User list panel (right sidebar)
 
+use super::colors::SIDEBAR_ICON_DISABLED;
 use super::style::{
     BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
     INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_COLOR,
@@ -11,7 +12,6 @@ use super::style::{
     sidebar_border, sidebar_icon_color, sidebar_icon_hover_color, tooltip_border,
     tooltip_text_color,
 };
-use super::colors::SIDEBAR_ICON_DISABLED;
 use crate::icon;
 use crate::types::{Message, ServerConnection};
 use iced::widget::{
@@ -58,28 +58,15 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             let is_expanded = conn.expanded_user.as_ref() == Some(&user.username);
             let is_even = index % 2 == 0;
 
-            // Username button with optional underline when expanded
-            let username_text = if is_expanded {
-                rich_text![span(&user.username).underline(true)]
-            } else {
-                rich_text![span(&user.username)]
-            };
+            // Username button
+            let username_text = rich_text![span(&user.username)];
             let user_is_admin = user.is_admin;
             let username_clone = user.username.clone();
 
             let user_button = button(username_text.size(USER_LIST_TEXT_SIZE))
                 .on_press(Message::UserListItemClicked(username_clone))
                 .width(Fill)
-                .padding(if is_expanded {
-                    iced::Padding {
-                        top: INPUT_PADDING as f32,
-                        right: INPUT_PADDING as f32,
-                        bottom: 0.0, // No bottom padding when expanded (toolbar appears below)
-                        left: INPUT_PADDING as f32,
-                    }
-                } else {
-                    INPUT_PADDING.into()
-                })
+                .padding(INPUT_PADDING)
                 .style(move |theme, status| button::Style {
                     background: None,
                     text_color: match status {
@@ -104,6 +91,17 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
             // Add toolbar if expanded
             if is_expanded {
+                // Soft blue separator line
+                let separator =
+                    container(text(""))
+                        .width(Fill)
+                        .height(1)
+                        .style(|_theme| container::Style {
+                            background: Some(Background::Color(interactive_hover_color())),
+                            ..Default::default()
+                        });
+                item_column = item_column.push(separator);
+
                 // Toolbar
                 let toolbar = create_user_toolbar(
                     &user.username,
@@ -113,7 +111,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
                     permissions,
                 );
                 let toolbar_row = container(toolbar).width(Fill).padding(iced::Padding {
-                    top: 0.0, // Flush with username button above
+                    top: 0.0, // Flush with separator above
                     right: TOOLBAR_CONTAINER_PADDING_HORIZONTAL as f32,
                     bottom: 0.0, // Flush with bottom of item
                     left: TOOLBAR_CONTAINER_PADDING_HORIZONTAL as f32,
