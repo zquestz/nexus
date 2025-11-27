@@ -17,7 +17,8 @@ A modern BBS (Bulletin Board System) for the [Yggdrasil](https://yggdrasil-netwo
 ## Features
 
 - Real-time chat, broadcast messaging, and chat topics
-- Granular permission system (10 permissions)
+- Tabbed user messaging (1-on-1 conversations)
+- Granular permission system (12 permissions)
 - Multi-server bookmarks with auto-connect
 - Admin panel for user management (create/edit/delete)
 - SQLite database with Argon2id password hashing
