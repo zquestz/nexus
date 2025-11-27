@@ -174,6 +174,8 @@ fn create_user_toolbar<'a>(
     let is_self = username == current_username;
 
     // Check permissions (admins have all permissions)
+    let has_info_permission =
+        current_user_is_admin || permissions.contains(&"user_info".to_string());
     let has_message_permission =
         current_user_is_admin || permissions.contains(&"user_message".to_string());
     let has_kick_permission =
@@ -188,36 +190,67 @@ fn create_user_toolbar<'a>(
         .height(button_size)
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center);
-    let info_button = tooltip(
-        button(info_icon)
-            .on_press(Message::UserInfoIconClicked(username_clone.clone()))
-            .padding(iced::Padding {
-                top: ICON_BUTTON_PADDING_VERTICAL as f32,
-                right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
-                left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-            })
-            .style(|theme, status| button::Style {
-                background: None,
-                text_color: match status {
-                    button::Status::Hovered => sidebar_icon_hover_color(theme),
-                    _ => sidebar_icon_color(theme),
-                },
-                border: Border::default(),
-                shadow: iced::Shadow::default(),
-            }),
-        container(text("Info").size(TOOLTIP_TEXT_SIZE))
-            .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                text_color: Some(tooltip_text_color(theme)),
-                border: tooltip_border(),
-                ..Default::default()
-            }),
-        tooltip::Position::Bottom,
-    )
-    .gap(TOOLTIP_GAP)
-    .padding(TOOLTIP_PADDING);
+    let info_button = if has_info_permission {
+        // Enabled button
+        tooltip(
+            button(info_icon)
+                .on_press(Message::UserInfoIconClicked(username_clone.clone()))
+                .padding(iced::Padding {
+                    top: ICON_BUTTON_PADDING_VERTICAL as f32,
+                    right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                    bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
+                    left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                })
+                .style(|theme, status| button::Style {
+                    background: None,
+                    text_color: match status {
+                        button::Status::Hovered => sidebar_icon_hover_color(theme),
+                        _ => sidebar_icon_color(theme),
+                    },
+                    border: Border::default(),
+                    shadow: iced::Shadow::default(),
+                }),
+            container(text("Info").size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(|theme| container::Style {
+                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                    text_color: Some(tooltip_text_color(theme)),
+                    border: tooltip_border(),
+                    ..Default::default()
+                }),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+    } else {
+        // Disabled button (no permission)
+        tooltip(
+            button(info_icon)
+                .padding(iced::Padding {
+                    top: ICON_BUTTON_PADDING_VERTICAL as f32,
+                    right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                    bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
+                    left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                })
+                .style(|_theme, _status| button::Style {
+                    background: None,
+                    text_color: SIDEBAR_ICON_DISABLED,
+                    border: Border::default(),
+                    shadow: iced::Shadow::default(),
+                }),
+            container(text("Info").size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(|theme| container::Style {
+                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                    text_color: Some(tooltip_text_color(theme)),
+                    border: tooltip_border(),
+                    ..Default::default()
+                }),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+    };
 
     // Message icon button (square) - TODO: Implement private messaging
     let message_icon = container(icon::message().size(ICON_SIZE))
