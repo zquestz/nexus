@@ -295,7 +295,11 @@ pub async fn handle_userupdate(
 
                     // Send to all sessions belonging to the updated user
                     ctx.user_manager
-                        .broadcast_to_username(&updated_account.username, &permissions_update)
+                        .broadcast_to_username(
+                            &updated_account.username,
+                            &permissions_update,
+                            &ctx.db.users,
+                        )
                         .await;
                 }
 
@@ -340,12 +344,16 @@ pub async fn handle_userupdate(
                         // Remove user from manager - this drops tx, causing rx.recv() to return None,
                         // which breaks the connection loop and triggers cleanup
                         if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
-                            // Broadcast disconnect to all other users
+                            // Broadcast disconnect to users with user_list permission
                             ctx.user_manager
-                                .broadcast(ServerMessage::UserDisconnected {
-                                    session_id,
-                                    username: removed_user.username.clone(),
-                                })
+                                .broadcast_user_event(
+                                    ServerMessage::UserDisconnected {
+                                        session_id,
+                                        username: removed_user.username.clone(),
+                                    },
+                                    &ctx.db.users,
+                                    Some(session_id), // Exclude the disabled user
+                                )
                                 .await;
                         }
                     }

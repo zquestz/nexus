@@ -131,12 +131,16 @@ pub async fn handle_userdelete(
         // Remove them from UserManager
         let session_id = online_user.session_id;
         if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
-            // Broadcast disconnection to all other users
+            // Broadcast disconnection to users with user_list permission
             ctx.user_manager
-                .broadcast(ServerMessage::UserDisconnected {
-                    session_id,
-                    username: removed_user.username.clone(),
-                })
+                .broadcast_user_event(
+                    ServerMessage::UserDisconnected {
+                        session_id,
+                        username: removed_user.username.clone(),
+                    },
+                    &ctx.db.users,
+                    Some(session_id), // Exclude the deleted user
+                )
                 .await;
         }
     }

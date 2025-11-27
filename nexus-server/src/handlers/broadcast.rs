@@ -91,11 +91,14 @@ pub async fn handle_user_broadcast(
 
     // Send broadcast to all users
     ctx.user_manager
-        .broadcast(ServerMessage::ServerBroadcast {
-            session_id: id,
-            username: user.username.clone(),
-            message: message.clone(),
-        })
+        .broadcast(
+            ServerMessage::ServerBroadcast {
+                session_id: id,
+                username: user.username.clone(),
+                message: message.clone(),
+            },
+            &ctx.db.users,
+        )
         .await;
 
     // Send success reply to the sender

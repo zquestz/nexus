@@ -5,10 +5,11 @@ use crate::db::{Permission, UserDb};
 use nexus_common::protocol::ServerMessage;
 
 impl UserManager {
-    /// Broadcast a message to all connected users
+    /// Broadcast a message to all connected users with proper disconnect notification
     ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast(&self, message: ServerMessage) {
+    /// Automatically removes users whose channels have closed and notifies other clients
+    /// with user_list permission about the disconnection.
+    pub async fn broadcast(&self, message: ServerMessage, user_db: &UserDb) {
         let mut disconnected = Vec::new();
 
         {
@@ -20,25 +21,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
-    }
-
-    /// Broadcast a message to all users except one
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_except(&self, exclude_session_id: u32, message: ServerMessage) {
-        let mut disconnected = Vec::new();
-
-        {
-            let users = self.users.read().await;
-            for user in users.values() {
-                if user.session_id != exclude_session_id && user.tx.send(message.clone()).is_err() {
-                    disconnected.push(user.session_id);
-                }
-            }
-        }
-
-        self.remove_disconnected(disconnected).await;
+        self.remove_disconnected(disconnected, user_db).await;
     }
 
     /// Broadcast a message to all users with a specific feature and permission
@@ -87,7 +70,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.remove_disconnected(disconnected, user_db).await;
     }
 
     /// Broadcast a message to all sessions of a specific user (by username)
@@ -96,7 +79,12 @@ impl UserManager {
     /// from multiple devices/connections and all sessions need to be notified.
     ///
     /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_to_username(&self, username: &str, message: &ServerMessage) {
+    pub async fn broadcast_to_username(
+        &self,
+        username: &str,
+        message: &ServerMessage,
+        user_db: &UserDb,
+    ) {
         let mut disconnected = Vec::new();
 
         {
@@ -108,7 +96,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.remove_disconnected(disconnected, user_db).await;
     }
 
     /// Broadcast a message to all users with a specific permission
@@ -151,6 +139,61 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.remove_disconnected(disconnected, user_db).await;
+    }
+
+    /// Broadcast a user event (UserConnected/UserDisconnected) to users with user_list permission
+    ///
+    /// This method should be used for broadcasting UserConnected and UserDisconnected messages
+    /// to ensure only users with the user_list permission receive these updates.
+    ///
+    /// Optionally excludes a specific session_id (e.g., to not send UserConnected to the connecting user).
+    ///
+    /// Automatically removes users whose channels have closed (disconnected connections).
+    pub async fn broadcast_user_event(
+        &self,
+        message: ServerMessage,
+        user_db: &UserDb,
+        exclude_session_id: Option<u32>,
+    ) {
+        let mut disconnected = Vec::new();
+
+        {
+            let users = self.users.read().await;
+            for user in users.values() {
+                // Skip excluded session
+                if let Some(excluded) = exclude_session_id
+                    && user.session_id == excluded
+                {
+                    continue;
+                }
+
+                // Check if user has user_list permission
+                let has_permission = match user_db
+                    .has_permission(user.db_user_id, Permission::UserList)
+                    .await
+                {
+                    Ok(has) => has,
+                    Err(e) => {
+                        eprintln!(
+                            "Error checking user_list permission for {}: {}",
+                            user.username, e
+                        );
+                        continue;
+                    }
+                };
+
+                if !has_permission {
+                    continue;
+                }
+
+                // Send message to this user
+                if user.tx.send(message.clone()).is_err() {
+                    disconnected.push(user.session_id);
+                }
+            }
+        }
+
+        self.remove_disconnected(disconnected, user_db).await;
     }
 }

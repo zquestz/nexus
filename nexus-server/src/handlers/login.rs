@@ -210,7 +210,11 @@ pub async fn handle_login(
         session_ids: vec![id],
     };
     ctx.user_manager
-        .broadcast_except(id, ServerMessage::UserConnected { user: user_info })
+        .broadcast_user_event(
+            ServerMessage::UserConnected { user: user_info },
+            &ctx.db.users,
+            Some(id), // Don't send to the connecting user
+        )
         .await;
 
     Ok(())

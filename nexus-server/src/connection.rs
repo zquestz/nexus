@@ -112,12 +112,16 @@ pub async fn handle_connection(
         if debug {
             println!("User '{}' disconnected", user.username);
         }
-        // Broadcast disconnection to all users
+        // Broadcast disconnection to users with user_list permission
         user_manager
-            .broadcast(ServerMessage::UserDisconnected {
-                session_id: id,
-                username: user.username.clone(),
-            })
+            .broadcast_user_event(
+                ServerMessage::UserDisconnected {
+                    session_id: id,
+                    username: user.username.clone(),
+                },
+                &db.users,
+                Some(id), // Exclude the disconnecting user
+            )
             .await;
     }
 
