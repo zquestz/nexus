@@ -14,9 +14,7 @@ use super::style::{
 };
 use crate::icon;
 use crate::types::{Message, ServerConnection};
-use iced::widget::{
-    Column, Row, button, column, container, rich_text, row, scrollable, span, text, tooltip,
-};
+use iced::widget::{Column, Row, button, column, container, row, scrollable, text, tooltip};
 use iced::{Background, Border, Element, Fill};
 
 /// Icon size for user action toolbar
@@ -59,29 +57,32 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             let is_even = index % 2 == 0;
 
             // Username button
-            let username_text = rich_text![span(&user.username)];
             let user_is_admin = user.is_admin;
             let username_clone = user.username.clone();
 
-            let user_button = button(username_text.size(USER_LIST_TEXT_SIZE))
-                .on_press(Message::UserListItemClicked(username_clone))
-                .width(Fill)
-                .padding(INPUT_PADDING)
-                .style(move |theme, status| button::Style {
-                    background: None,
-                    text_color: match status {
-                        button::Status::Hovered => interactive_hover_color(),
-                        _ => {
-                            if user_is_admin {
-                                admin_user_text_color(theme)
-                            } else {
-                                button_text_color(theme)
-                            }
+            let user_button = button(
+                container(text(&user.username).size(USER_LIST_TEXT_SIZE))
+                    .width(Fill)
+                    .align_x(iced::alignment::Horizontal::Left),
+            )
+            .on_press(Message::UserListItemClicked(username_clone))
+            .width(Fill)
+            .padding(INPUT_PADDING)
+            .style(move |theme, status| button::Style {
+                background: None,
+                text_color: match status {
+                    button::Status::Hovered => interactive_hover_color(),
+                    _ => {
+                        if user_is_admin {
+                            admin_user_text_color(theme)
+                        } else {
+                            button_text_color(theme)
                         }
-                    },
-                    border: Border::default(),
-                    shadow: iced::Shadow::default(),
-                });
+                    }
+                },
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            });
 
             // Create item column (username + optional toolbar)
             let mut item_column = Column::new().spacing(0);
