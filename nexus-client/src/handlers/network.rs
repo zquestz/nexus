@@ -10,11 +10,11 @@ use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use std::collections::{HashMap, HashSet};
 
-// Message username constants
-const MSG_USERNAME_SYSTEM: &str = "System";
-const MSG_USERNAME_ERROR: &str = "Error";
-const MSG_USERNAME_INFO: &str = "Info";
-const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
+// Message username constants (pub for use in views)
+pub(crate) const MSG_USERNAME_SYSTEM: &str = "System";
+pub(crate) const MSG_USERNAME_ERROR: &str = "Error";
+pub(crate) const MSG_USERNAME_INFO: &str = "Info";
+pub(crate) const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
 
 // Success message constants
 const MSG_USER_KICKED_SUCCESS: &str = "User kicked successfully";
@@ -56,6 +56,24 @@ impl NexusApp {
                         && b.port == self.connection_form.port
                         && b.username == self.connection_form.username
                 });
+
+                // Verify and save certificate fingerprint
+                if let Err(boxed_mismatch) = self
+                    .verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                {
+                    // Extract display name for manual connection
+                    let display_name = if !self.connection_form.server_name.trim().is_empty() {
+                        self.connection_form.server_name.clone()
+                    } else if let Some(idx) = bookmark_index {
+                        self.config.bookmarks[idx].name.clone()
+                    } else {
+                        format!(
+                            "{}:{}",
+                            self.connection_form.server_address, self.connection_form.port
+                        )
+                    };
+                    return self.handle_fingerprint_mismatch(boxed_mismatch, conn, display_name);
+                }
 
                 let session_id = conn.session_id.parse().unwrap_or(0);
                 let username = self.connection_form.username.clone();
@@ -154,6 +172,13 @@ impl NexusApp {
                 // Clear the connecting lock for this bookmark
                 if let Some(idx) = bookmark_index {
                     self.connecting_bookmarks.remove(&idx);
+                }
+
+                // Verify and save certificate fingerprint
+                if let Err(boxed_mismatch) = self
+                    .verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                {
+                    return self.handle_fingerprint_mismatch(boxed_mismatch, conn, display_name);
                 }
 
                 // Extract username from bookmark if we have one
@@ -853,5 +878,82 @@ impl NexusApp {
         } else {
             format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
         }
+    }
+
+    /// Verify certificate fingerprint matches stored value, or save on first connection (TOFU)
+    fn verify_and_save_fingerprint(
+        &mut self,
+        bookmark_index: Option<usize>,
+        fingerprint: &str,
+    ) -> Result<(), Box<crate::types::FingerprintMismatch>> {
+        if let Some(idx) = bookmark_index {
+            match &self.config.bookmarks[idx].certificate_fingerprint {
+                None => {
+                    // First connection - save fingerprint (Trust On First Use)
+                    self.config.bookmarks[idx].certificate_fingerprint =
+                        Some(fingerprint.to_string());
+                    let _ = self.config.save();
+                    Ok(())
+                }
+                Some(stored) => {
+                    // Verify fingerprint matches
+                    if stored == fingerprint {
+                        Ok(())
+                    } else {
+                        // Note: connection and display_name will be filled in by caller
+                        Err(Box::new(crate::types::FingerprintMismatch {
+                            bookmark_index: idx,
+                            expected: stored.clone(),
+                            received: fingerprint.to_string(),
+                            bookmark_name: self.config.bookmarks[idx].name.clone(),
+                            connection: crate::types::NetworkConnection {
+                                tx: tokio::sync::mpsc::unbounded_channel().0,
+                                session_id: String::new(),
+                                connection_id: 0,
+                                shutdown: None,
+                                is_admin: false,
+                                permissions: Vec::new(),
+                                chat_topic: None,
+                                certificate_fingerprint: String::new(),
+                            },
+                            display_name: String::new(),
+                        }))
+                    }
+                }
+            }
+        } else {
+            // No bookmark - nothing to verify
+            Ok(())
+        }
+    }
+
+    /// Handle fingerprint mismatch by queuing it for user verification
+    fn handle_fingerprint_mismatch(
+        &mut self,
+        boxed_mismatch: Box<crate::types::FingerprintMismatch>,
+        conn: crate::types::NetworkConnection,
+        display_name: String,
+    ) -> Task<Message> {
+        let crate::types::FingerprintMismatch {
+            bookmark_index,
+            expected,
+            received,
+            bookmark_name,
+            ..
+        } = *boxed_mismatch;
+
+        self.fingerprint_mismatch_queue
+            .push_back(crate::types::FingerprintMismatch {
+                bookmark_index,
+                expected,
+                received,
+                bookmark_name,
+                connection: conn,
+                display_name,
+            });
+
+        self.ui_state.show_fingerprint_mismatch = true;
+        self.connection_form.is_connecting = false;
+        Task::none()
     }
 }

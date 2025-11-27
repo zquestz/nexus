@@ -1,6 +1,9 @@
 //! User list panel (right sidebar)
 
 use super::colors::SIDEBAR_ICON_DISABLED;
+use super::constants::{
+    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
+};
 use super::style::{
     BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
     INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_COLOR,
@@ -16,6 +19,13 @@ use crate::icon;
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, button, column, container, row, scrollable, text, tooltip};
 use iced::{Background, Border, Element, Fill};
+
+// UI text constants
+const TITLE_USERS: &str = "Users";
+const EMPTY_NO_USERS: &str = "No users online";
+const TOOLTIP_INFO: &str = "Info";
+const TOOLTIP_MESSAGE: &str = "Message";
+const TOOLTIP_KICK: &str = "Kick";
 
 /// Icon size for user action toolbar
 const ICON_SIZE: f32 = 18.0;
@@ -35,7 +45,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
     let current_username = &conn.username;
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
-    let title = text("Users")
+    let title = text(TITLE_USERS)
         .size(USER_LIST_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -45,7 +55,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
     if conn.online_users.is_empty() {
         users_column = users_column.push(
-            text("No users online")
+            text(EMPTY_NO_USERS)
                 .size(USER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -173,12 +183,12 @@ fn create_user_toolbar<'a>(
     let is_self = username == current_username;
 
     // Check permissions (admins have all permissions)
-    let has_info_permission =
-        current_user_is_admin || permissions.contains(&"user_info".to_string());
-    let has_message_permission =
-        current_user_is_admin || permissions.contains(&"user_message".to_string());
-    let has_kick_permission =
-        current_user_is_admin || permissions.contains(&"user_kick".to_string());
+    let has_user_info_permission =
+        current_user_is_admin || permissions.contains(&PERMISSION_USER_INFO.to_string());
+    let has_user_message_permission =
+        current_user_is_admin || permissions.contains(&PERMISSION_USER_MESSAGE.to_string());
+    let has_user_kick_permission =
+        current_user_is_admin || permissions.contains(&PERMISSION_USER_KICK.to_string());
 
     // Square button size
     let button_size = ICON_SIZE;
@@ -192,7 +202,7 @@ fn create_user_toolbar<'a>(
         .height(button_size)
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center);
-    let info_button = if has_info_permission {
+    let info_button = if has_user_info_permission {
         // Enabled button
         tooltip(
             button(info_icon)
@@ -212,7 +222,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text("Info").size(TOOLTIP_TEXT_SIZE))
+            container(text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -240,7 +250,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text("Info").size(TOOLTIP_TEXT_SIZE))
+            container(text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -264,7 +274,7 @@ fn create_user_toolbar<'a>(
             .height(button_size)
             .align_x(iced::alignment::Horizontal::Center)
             .align_y(iced::alignment::Vertical::Center);
-        let message_button = if has_message_permission {
+        let message_button = if has_user_message_permission {
             // Enabled button
             tooltip(
                 button(message_icon)
@@ -284,7 +294,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(text("Message").size(TOOLTIP_TEXT_SIZE))
+                container(text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -312,7 +322,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(text("Message").size(TOOLTIP_TEXT_SIZE))
+                container(text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -354,7 +364,7 @@ fn create_user_toolbar<'a>(
                 border: Border::default(),
                 shadow: iced::Shadow::default(),
             }),
-        container(text("Kick").size(TOOLTIP_TEXT_SIZE))
+        container(text(TOOLTIP_KICK).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
             .style(|theme| container::Style {
                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -368,7 +378,7 @@ fn create_user_toolbar<'a>(
     .padding(TOOLTIP_PADDING);
 
     // Add kick button (if not self, has permission, and target is not admin)
-    if !is_self && has_kick_permission && !target_is_admin {
+    if !is_self && has_user_kick_permission && !target_is_admin {
         toolbar_row = toolbar_row.push(container(text("")).width(Fill)); // Spacer
         toolbar_row = toolbar_row.push(kick_button);
     }

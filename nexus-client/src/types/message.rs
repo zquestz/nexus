@@ -31,8 +31,12 @@ pub enum Message {
     BroadcastMessageChanged(String),
     /// Bookmark editor: Cancel button pressed
     CancelBookmarkEdit,
+    /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
+    CancelFingerprintMismatch,
     /// User edit panel: Cancel button pressed
     CancelEditUser,
+    /// Fingerprint mismatch: Accept button pressed (update stored fingerprint)
+    AcceptNewFingerprint,
     /// Connect to a bookmark by index
     ConnectToBookmark(usize),
     /// Connection form: Connect button pressed

@@ -15,6 +15,25 @@ pub struct UiState {
     pub show_edit_user: bool,
     /// Show Broadcast panel
     pub show_broadcast: bool,
+    /// Show fingerprint mismatch dialog
+    pub show_fingerprint_mismatch: bool,
+}
+
+/// Certificate fingerprint mismatch information
+#[derive(Debug, Clone)]
+pub struct FingerprintMismatch {
+    /// Bookmark index with mismatched fingerprint
+    pub bookmark_index: usize,
+    /// Expected fingerprint (stored)
+    pub expected: String,
+    /// Received fingerprint (new)
+    pub received: String,
+    /// Bookmark name for display
+    pub bookmark_name: String,
+    /// The network connection to complete if user accepts
+    pub connection: crate::types::NetworkConnection,
+    /// Display name for the connection
+    pub display_name: String,
 }
 
 /// Text input IDs for focus management

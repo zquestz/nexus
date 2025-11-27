@@ -17,6 +17,7 @@
 //! ```
 
 use super::colors;
+use iced::widget::container;
 use iced::{Background, Border, Color, Theme};
 
 // ============================================================================
@@ -790,5 +791,15 @@ pub fn primary_scrollbar_style()
             },
             gap: None,
         }
+    }
+}
+
+/// Modal overlay container style (semi-transparent dark background)
+pub fn modal_overlay_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgba(
+            0.0, 0.0, 0.0, 0.7,
+        ))),
+        ..Default::default()
     }
 }

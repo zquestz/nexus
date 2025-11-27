@@ -12,7 +12,7 @@ use iced::widget::text_input;
 use iced::{Element, Subscription, Task, Theme};
 
 use config::ThemePreference;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use types::{
     BookmarkEditState, ConnectionFormState, DEFAULT_PORT, InputId, Message, ServerConnection,
     UiState, UserManagementState, ViewConfig,
@@ -65,6 +65,8 @@ struct NexusApp {
     default_user_mgmt: UserManagementState,
     /// Set of bookmark indices currently connecting (prevents duplicate attempts)
     connecting_bookmarks: HashSet<usize>,
+    /// Certificate fingerprint mismatch queue (for handling multiple mismatches)
+    fingerprint_mismatch_queue: VecDeque<types::FingerprintMismatch>,
 }
 
 impl Default for NexusApp {
@@ -87,9 +89,11 @@ impl Default for NexusApp {
                 show_add_user: false,
                 show_edit_user: false,
                 show_broadcast: false,
+                show_fingerprint_mismatch: false,
             },
             default_user_mgmt: UserManagementState::default(),
             connecting_bookmarks: HashSet::new(),
+            fingerprint_mismatch_queue: VecDeque::new(),
         }
     }
 }
@@ -126,6 +130,8 @@ impl NexusApp {
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(index) => self.handle_show_edit_bookmark(index),
             Message::CancelBookmarkEdit => self.handle_cancel_bookmark_edit(),
+            Message::AcceptNewFingerprint => self.handle_accept_new_fingerprint(),
+            Message::CancelFingerprintMismatch => self.handle_cancel_fingerprint_mismatch(),
             Message::BookmarkNameChanged(name) => self.handle_bookmark_name_changed(name),
             Message::BookmarkAddressChanged(addr) => self.handle_bookmark_address_changed(addr),
             Message::BookmarkPortChanged(port) => self.handle_bookmark_port_changed(port),
@@ -282,7 +288,16 @@ impl NexusApp {
             show_broadcast: self.ui_state.show_broadcast,
         };
 
-        views::main_layout(config)
+        let main_view = views::main_layout(config);
+
+        // Overlay fingerprint mismatch dialog if present (show first in queue)
+        if self.ui_state.show_fingerprint_mismatch
+            && let Some(mismatch) = self.fingerprint_mismatch_queue.front()
+        {
+            return views::fingerprint_mismatch_dialog(mismatch);
+        }
+
+        main_view
     }
 
     /// Get the current theme based on configuration

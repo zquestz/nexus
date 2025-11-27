@@ -153,6 +153,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         assert_eq!(config.bookmarks.len(), 1);
@@ -170,6 +171,7 @@ mod tests {
             username: "user1".to_string(),
             password: "pass1".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         config.add_bookmark(ServerBookmark {
@@ -179,6 +181,7 @@ mod tests {
             username: "user2".to_string(),
             password: "pass2".to_string(),
             auto_connect: true,
+            certificate_fingerprint: None,
         });
 
         assert_eq!(config.bookmarks.len(), 2);
@@ -197,6 +200,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         config.update_bookmark(
@@ -208,6 +212,7 @@ mod tests {
                 username: "newuser".to_string(),
                 password: "newpass".to_string(),
                 auto_connect: true,
+                certificate_fingerprint: None,
             },
         );
 
@@ -229,6 +234,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         // Try to update non-existent index
@@ -241,6 +247,7 @@ mod tests {
                 username: "baduser".to_string(),
                 password: "badpass".to_string(),
                 auto_connect: false,
+                certificate_fingerprint: None,
             },
         );
 
@@ -260,6 +267,7 @@ mod tests {
             username: "user1".to_string(),
             password: "pass1".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         config.add_bookmark(ServerBookmark {
@@ -269,6 +277,7 @@ mod tests {
             username: "user2".to_string(),
             password: "pass2".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         config.delete_bookmark(0);
@@ -288,6 +297,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         // Try to delete non-existent index
@@ -309,6 +319,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         let bookmark = config.get_bookmark(0);
@@ -327,6 +338,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         let bookmark = config.get_bookmark(5);

@@ -1,5 +1,6 @@
 //! Chat interface for active server connections
 
+use super::constants::{BUTTON_SEND, PERMISSION_CHAT_SEND};
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING,
     SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
@@ -8,18 +9,19 @@ use super::style::{
     primary_button_style, primary_scrollbar_style, primary_text_input_style, sidebar_border,
     system_text_color, tooltip_border, tooltip_text_color,
 };
+use crate::handlers::network::{
+    MSG_USERNAME_BROADCAST_PREFIX, MSG_USERNAME_ERROR, MSG_USERNAME_INFO, MSG_USERNAME_SYSTEM,
+};
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{
     Button, Column, button, column, container, row, scrollable, text, text_input, tooltip,
 };
 use iced::{Background, Element, Fill};
 
-// Permission constants
-const PERMISSION_CHAT_SEND: &str = "chat_send";
-
-// Input placeholder text
+// UI text constants
 const PLACEHOLDER_MESSAGE: &str = "Type a message...";
 const PLACEHOLDER_NO_PERMISSION: &str = "No permission";
+const TOOLTIP_CLOSE_TAB: &str = "Close";
 
 /// Create a tab button with appropriate styling and unread indicator
 fn create_tab_button<'a>(
@@ -114,7 +116,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                     border: iced::Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text(format!("Close {}", username)).size(TOOLTIP_TEXT_SIZE))
+            container(text(format!("{} {}", TOOLTIP_CLOSE_TAB, username)).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -150,26 +152,26 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
 
     for msg in messages {
         let time_str = msg.timestamp.format("%H:%M:%S").to_string();
-        let display = if msg.username == "System" {
+        let display = if msg.username == MSG_USERNAME_SYSTEM {
             text(format!("[{}] [SYS] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(system_text_color(theme)),
                 })
                 .font(iced::Font::MONOSPACE)
-        } else if msg.username == "Error" {
+        } else if msg.username == MSG_USERNAME_ERROR {
             text(format!("[{}] [ERR] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .color(error_message_color())
                 .font(iced::Font::MONOSPACE)
-        } else if msg.username == "Info" {
+        } else if msg.username == MSG_USERNAME_INFO {
             text(format!("[{}] [INFO] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(info_text_color(theme)),
                 })
                 .font(iced::Font::MONOSPACE)
-        } else if msg.username.starts_with("[BROADCAST]") {
+        } else if msg.username.starts_with(MSG_USERNAME_BROADCAST_PREFIX) {
             text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
@@ -224,12 +226,12 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .width(Fill)
         },
         if can_send_message {
-            button(text("Send").size(CHAT_MESSAGE_SIZE))
+            button(text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         } else {
-            button(text("Send").size(CHAT_MESSAGE_SIZE))
+            button(text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         },

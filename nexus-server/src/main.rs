@@ -10,6 +10,7 @@ mod users;
 use args::Args;
 use clap::Parser;
 use constants::*;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -54,7 +55,13 @@ async fn main() {
                     )
                     .await
                     {
-                        eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                        // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
+                        let error_msg = e.to_string();
+                        if !error_msg
+                            .contains("peer closed connection without sending TLS close_notify")
+                        {
+                            eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                        }
                     }
                 });
             }
@@ -73,12 +80,16 @@ fn load_or_generate_tls_config(cert_dir: &std::path::Path) -> Result<TlsAcceptor
     // Check if certificate and key already exist
     if cert_path.exists() && key_path.exists() {
         // Load existing certificate
-        load_tls_config(&cert_path, &key_path)
+        let acceptor = load_tls_config(&cert_path, &key_path)?;
+        display_certificate_fingerprint(&cert_path)?;
+        Ok(acceptor)
     } else {
         // Generate new self-signed certificate
         println!("{}", MSG_GENERATING_CERT);
         generate_self_signed_cert(&cert_path, &key_path)?;
-        load_tls_config(&cert_path, &key_path)
+        let acceptor = load_tls_config(&cert_path, &key_path)?;
+        display_certificate_fingerprint(&cert_path)?;
+        Ok(acceptor)
     }
 }
 
@@ -242,4 +253,29 @@ async fn setup_network(
     println!("{}{}{}", MSG_LISTENING, addr, MSG_TLS_ENABLED);
 
     (listener, tls_acceptor)
+}
+
+/// Calculate and display certificate fingerprint (SHA-256)
+fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), String> {
+    // Read certificate file
+    let cert_pem =
+        fs::read_to_string(cert_path).map_err(|e| format!("{}{}", ERR_OPEN_CERT_FILE, e))?;
+
+    // Parse PEM to get DER-encoded certificate
+    let cert_der = pem::parse(&cert_pem).map_err(|e| format!("{}{}", ERR_PARSE_CERT, e))?;
+
+    // Calculate SHA-256 fingerprint
+    let mut hasher = Sha256::new();
+    hasher.update(cert_der.contents());
+    let fingerprint = hasher.finalize();
+
+    // Format as colon-separated hex string
+    let fingerprint_str = fingerprint
+        .iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    println!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
+    Ok(())
 }

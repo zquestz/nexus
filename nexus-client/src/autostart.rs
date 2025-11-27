@@ -33,6 +33,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: false,
+            certificate_fingerprint: None,
         });
 
         let tasks = generate_auto_connect_tasks(&config);
@@ -49,6 +50,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             auto_connect: true,
+            certificate_fingerprint: None,
         });
 
         let tasks = generate_auto_connect_tasks(&config);
@@ -65,6 +67,7 @@ mod tests {
             username: "user1".to_string(),
             password: "pass1".to_string(),
             auto_connect: true,
+            certificate_fingerprint: None,
         });
         config.add_bookmark(ServerBookmark {
             name: "Server 2".to_string(),
@@ -73,6 +76,7 @@ mod tests {
             username: "user2".to_string(),
             password: "pass2".to_string(),
             auto_connect: false, // Should be skipped
+            certificate_fingerprint: None,
         });
         config.add_bookmark(ServerBookmark {
             name: "Server 3".to_string(),
@@ -81,6 +85,7 @@ mod tests {
             username: "user3".to_string(),
             password: "pass3".to_string(),
             auto_connect: true,
+            certificate_fingerprint: None,
         });
 
         let tasks = generate_auto_connect_tasks(&config);

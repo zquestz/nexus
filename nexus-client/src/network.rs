@@ -6,9 +6,10 @@ use iced::stream;
 use nexus_common::PROTOCOL_VERSION;
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use sha2::{Digest, Sha256};
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
 use tokio_rustls::TlsConnector;
@@ -146,8 +147,9 @@ pub async fn connect_to_server(
     password: String,
     connection_id: usize,
 ) -> Result<NetworkConnection, String> {
-    // Establish TCP connection
-    let stream = establish_connection(&server_address, port).await?;
+    // Establish TCP connection and get certificate fingerprint
+    let (stream, fingerprint) = establish_connection(&server_address, port).await?;
+
     let (reader, mut writer) = tokio::io::split(stream);
     let mut reader = BufReader::new(reader);
 
@@ -156,14 +158,14 @@ pub async fn connect_to_server(
     let login_info = perform_login(&mut reader, &mut writer, username, password).await?;
 
     // Set up bidirectional communication
-    setup_communication_channels(reader, writer, login_info, connection_id).await
+    setup_communication_channels(reader, writer, login_info, connection_id, fingerprint).await
 }
 
-/// Establish TLS connection to the server
+/// Establish TLS connection to the server and return certificate fingerprint
 async fn establish_connection(
     address: &str,
     port: u16,
-) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
+) -> Result<(tokio_rustls::client::TlsStream<TcpStream>, String), String> {
     // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
     let mut addrs = (address, port)
         .to_socket_addrs()
@@ -193,7 +195,39 @@ async fn establish_connection(
         .await
         .map_err(|e| format!("TLS handshake failed: {}", e))?;
 
-    Ok(tls_stream)
+    // Calculate certificate fingerprint for TOFU verification
+    let fingerprint = calculate_certificate_fingerprint(&tls_stream)?;
+
+    Ok((tls_stream, fingerprint))
+}
+
+/// Calculate SHA-256 fingerprint of the server's certificate
+fn calculate_certificate_fingerprint(
+    tls_stream: &tokio_rustls::client::TlsStream<TcpStream>,
+) -> Result<String, String> {
+    // Get the peer certificates from the TLS session
+    let (_io, session) = tls_stream.get_ref();
+    let certs = session
+        .peer_certificates()
+        .ok_or("No peer certificates found")?;
+
+    if certs.is_empty() {
+        return Err("No certificates in chain".to_string());
+    }
+
+    // Calculate SHA-256 fingerprint of the first certificate (end entity)
+    let mut hasher = Sha256::new();
+    hasher.update(certs[0].as_ref());
+    let fingerprint = hasher.finalize();
+
+    // Format as colon-separated hex string
+    let fingerprint_str = fingerprint
+        .iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    Ok(fingerprint_str)
 }
 
 /// Perform protocol handshake with the server
@@ -290,6 +324,7 @@ async fn setup_communication_channels(
     writer: Writer,
     login_info: LoginInfo,
     connection_id: usize,
+    fingerprint: String,
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
@@ -312,6 +347,7 @@ async fn setup_communication_channels(
         is_admin: login_info.is_admin,
         permissions: login_info.permissions,
         chat_topic: login_info.chat_topic,
+        certificate_fingerprint: fingerprint,
     })
 }
 
@@ -350,8 +386,8 @@ fn spawn_network_task(
                 }
                 // Shutdown signal
                 _ = &mut shutdown_rx => {
-                    // Explicitly drop writer to close TCP connection
-                    drop(writer);
+                    // Properly close TLS connection with shutdown
+                    let _ = writer.shutdown().await;
                     break;
                 }
             }

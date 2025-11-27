@@ -1,5 +1,6 @@
 //! Broadcast message panel view
 
+use super::constants::{BUTTON_CANCEL, BUTTON_SEND};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
@@ -9,11 +10,15 @@ use crate::types::{InputId, Message, ServerConnection};
 use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
+// UI text constants
+const TITLE_BROADCAST_MESSAGE: &str = "Broadcast Message";
+const PLACEHOLDER_BROADCAST_MESSAGE: &str = "Enter broadcast message...";
+
 /// Render the broadcast panel
 ///
 /// Shows a form for composing and sending broadcast messages to all connected users.
 pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
-    let title = text("Broadcast Message")
+    let title = text(TITLE_BROADCAST_MESSAGE)
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
@@ -27,7 +32,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         Message::BroadcastMessageChanged(String::new())
     };
 
-    let message_input = text_input("Enter broadcast message...", &conn.broadcast_message)
+    let message_input = text_input(PLACEHOLDER_BROADCAST_MESSAGE, &conn.broadcast_message)
         .id(text_input::Id::from(InputId::BroadcastMessage))
         .on_input(Message::BroadcastMessageChanged)
         .on_submit(submit_action)
@@ -37,16 +42,16 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let button_row = row![
         if can_send {
-            button(text("Send").size(TEXT_SIZE))
+            button(text(BUTTON_SEND).size(TEXT_SIZE))
                 .on_press(Message::SendBroadcastPressed)
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         } else {
-            button(text("Send").size(TEXT_SIZE))
+            button(text(BUTTON_SEND).size(TEXT_SIZE))
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         },
-        button(text("Cancel").size(TEXT_SIZE))
+        button(text(BUTTON_CANCEL).size(TEXT_SIZE))
             .on_press(Message::ToggleBroadcast)
             .padding(BUTTON_PADDING)
             .style(primary_button_style()),

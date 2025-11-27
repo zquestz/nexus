@@ -90,6 +90,45 @@ impl NexusApp {
         if let Err(e) = self.config.save() {
             eprintln!("Failed to save theme preference: {}", e);
         }
+        Task::none()
+    }
+
+    /// Accept new certificate fingerprint (update stored fingerprint and complete connection)
+    pub fn handle_accept_new_fingerprint(&mut self) -> Task<Message> {
+        if let Some(mismatch) = self.fingerprint_mismatch_queue.pop_front() {
+            // Update the stored fingerprint
+            self.config.bookmarks[mismatch.bookmark_index].certificate_fingerprint =
+                Some(mismatch.received);
+            let _ = self.config.save();
+
+            // If no more mismatches in queue, close the dialog
+            if self.fingerprint_mismatch_queue.is_empty() {
+                self.ui_state.show_fingerprint_mismatch = false;
+            }
+            // Otherwise, dialog stays open showing next mismatch
+
+            // Complete the connection that was pending
+            return self.handle_bookmark_connection_result(
+                Ok(mismatch.connection),
+                Some(mismatch.bookmark_index),
+                mismatch.display_name,
+            );
+        }
+        Task::none()
+    }
+
+    /// Reject new certificate fingerprint (cancel connection)
+    pub fn handle_cancel_fingerprint_mismatch(&mut self) -> Task<Message> {
+        // Remove the current mismatch from queue
+        self.fingerprint_mismatch_queue.pop_front();
+
+        // If no more mismatches in queue, close the dialog
+        if self.fingerprint_mismatch_queue.is_empty() {
+            self.ui_state.show_fingerprint_mismatch = false;
+            self.connection_form.error =
+                Some("Connection cancelled due to certificate mismatch".to_string());
+        }
+        // Otherwise, dialog stays open showing next mismatch
 
         Task::none()
     }

@@ -4,6 +4,6 @@ mod bookmarks;
 mod broadcast;
 mod connection;
 mod keyboard;
-mod network;
+pub(crate) mod network;
 mod ui;
 mod user_management;

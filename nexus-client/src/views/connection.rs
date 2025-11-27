@@ -1,5 +1,6 @@
 //! Connection form for new server connections
 
+use super::constants::{PLACEHOLDER_PASSWORD, PLACEHOLDER_PORT, PLACEHOLDER_USERNAME};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, error_message_color,
@@ -8,6 +9,12 @@ use super::style::{
 use crate::types::{InputId, Message};
 use iced::widget::{button, column, container, text, text_input};
 use iced::{Center, Element, Fill};
+
+// UI text constants
+const TITLE_CONNECT_TO_SERVER: &str = "Connect to Server";
+const PLACEHOLDER_SERVER_NAME_OPTIONAL: &str = "Server Name (optional)";
+const PLACEHOLDER_SERVER_IPV6_ADDRESS: &str = "Server IPv6 Address";
+const BUTTON_CONNECT: &str = "Connect";
 
 /// Displays connection form with server details and credentials
 ///
@@ -34,12 +41,12 @@ pub fn connection_form_view<'a>(
         Message::ServerNameChanged(String::new())
     };
 
-    let title = text("Connect to Server")
+    let title = text(TITLE_CONNECT_TO_SERVER)
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
 
-    let name_input = text_input("Server Name (optional)", server_name)
+    let name_input = text_input(PLACEHOLDER_SERVER_NAME_OPTIONAL, server_name)
         .on_input(Message::ServerNameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerName))
@@ -47,7 +54,7 @@ pub fn connection_form_view<'a>(
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let server_input = text_input("Server IPv6 Address", server_address)
+    let server_input = text_input(PLACEHOLDER_SERVER_IPV6_ADDRESS, server_address)
         .on_input(Message::ServerAddressChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerAddress))
@@ -55,7 +62,7 @@ pub fn connection_form_view<'a>(
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let port_input = text_input("Port", port)
+    let port_input = text_input(PLACEHOLDER_PORT, port)
         .on_input(Message::PortChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Port))
@@ -63,7 +70,7 @@ pub fn connection_form_view<'a>(
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let username_input = text_input("Username", username)
+    let username_input = text_input(PLACEHOLDER_USERNAME, username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Username))
@@ -71,7 +78,7 @@ pub fn connection_form_view<'a>(
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let password_input = text_input("Password", password)
+    let password_input = text_input(PLACEHOLDER_PASSWORD, password)
         .on_input(Message::PasswordChanged)
         .on_submit(submit_action)
         .id(text_input::Id::from(InputId::Password))
@@ -81,12 +88,12 @@ pub fn connection_form_view<'a>(
         .style(primary_text_input_style());
 
     let connect_button = if can_connect && !is_connecting {
-        button(text("Connect").size(TEXT_SIZE))
+        button(text(BUTTON_CONNECT).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     } else {
-        button(text("Connect").size(TEXT_SIZE))
+        button(text(BUTTON_CONNECT).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     };

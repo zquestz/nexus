@@ -13,6 +13,7 @@ pub const MSG_TLS_ENABLED: &str = " (TLS enabled)";
 pub const MSG_GENERATING_CERT: &str = "Generating self-signed TLS certificate...";
 pub const MSG_CERT_GENERATED: &str = "Certificate generated: ";
 pub const MSG_KEY_GENERATED: &str = "Private key generated: ";
+pub const MSG_CERT_FINGERPRINT: &str = "Certificate fingerprint (SHA-256): ";
 
 /// General error messages
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";

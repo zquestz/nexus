@@ -21,6 +21,9 @@ pub struct ServerBookmark {
     /// Whether to auto-connect on startup
     #[serde(default)]
     pub auto_connect: bool,
+    /// Certificate fingerprint (SHA-256) for Trust On First Use
+    #[serde(default)]
+    pub certificate_fingerprint: Option<String>,
 }
 
 impl Default for ServerBookmark {
@@ -32,6 +35,7 @@ impl Default for ServerBookmark {
             username: String::new(),
             password: String::new(),
             auto_connect: false,
+            certificate_fingerprint: None,
         }
     }
 }

@@ -72,4 +72,6 @@ pub struct NetworkConnection {
     pub permissions: Vec<String>,
     /// Chat topic received on login (if user has ChatTopic permission)
     pub chat_topic: Option<String>,
+    /// Certificate fingerprint (SHA-256) for TOFU verification
+    pub certificate_fingerprint: String,
 }
