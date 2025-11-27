@@ -65,6 +65,13 @@ impl UserDb {
         Self { pool }
     }
 
+    /// Get a reference to the connection pool (for testing)
+    #[cfg(test)]
+    #[allow(dead_code)] // Used in bin tests
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     // ========================================================================
     // Query Methods - User Lookup
     // ========================================================================
@@ -125,7 +132,7 @@ impl UserDb {
 
         let mut permissions = Permissions::new();
         for (perm_str,) in perm_rows {
-            if let Some(perm) = Permission::from_str(&perm_str) {
+            if let Some(perm) = Permission::parse(&perm_str) {
                 permissions.permissions.insert(perm);
             }
         }

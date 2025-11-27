@@ -142,7 +142,7 @@ pub async fn handle_usercreate(
     // Parse and validate requested permissions
     let mut perms = Permissions::new();
     for perm_str in permissions {
-        if let Some(perm) = Permission::from_str(&perm_str) {
+        if let Some(perm) = Permission::parse(&perm_str) {
             // Non-admins can only grant permissions they have
             if !requesting_account.is_admin {
                 let has_perm = match ctx

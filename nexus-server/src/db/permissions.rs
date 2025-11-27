@@ -45,7 +45,7 @@ impl Permission {
     /// Accepts snake_case strings like "user_list", "chat_send", etc.
     ///
     /// Returns Some(Permission) if the string is valid, None otherwise.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "user_list" => Some(Permission::UserList),
             "user_info" => Some(Permission::UserInfo),
@@ -62,7 +62,7 @@ impl Permission {
     }
 }
 
-/// Set of permissions for a user
+/// A set of permissions for a user
 #[derive(Debug, Clone)]
 pub struct Permissions {
     pub(crate) permissions: HashSet<Permission>,
@@ -77,8 +77,15 @@ impl Permissions {
     }
 
     /// Get all permissions as a vec
+    /// Convert to vector of permissions
     pub fn to_vec(&self) -> Vec<Permission> {
         self.permissions.iter().copied().collect()
+    }
+
+    /// Add a permission to the set
+    #[allow(dead_code)] // Used in integration tests
+    pub fn add(&mut self, permission: Permission) {
+        self.permissions.insert(permission);
     }
 }
 

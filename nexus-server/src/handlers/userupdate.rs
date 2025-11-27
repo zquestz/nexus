@@ -120,7 +120,7 @@ pub async fn handle_userupdate(
     let parsed_permissions = if let Some(ref perm_strings) = request.requested_permissions {
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
-            if let Some(perm) = Permission::from_str(perm_str) {
+            if let Some(perm) = Permission::parse(perm_str) {
                 // Check permission delegation authority
                 if !requesting_account.is_admin {
                     let has_perm = match ctx
