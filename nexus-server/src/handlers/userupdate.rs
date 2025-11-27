@@ -369,6 +369,13 @@ pub async fn handle_userupdate(
                     .map(|(_, old_admin)| *old_admin != updated_account.is_admin)
                     .unwrap_or(false);
 
+                // If username changed, update UserManager
+                if username_changed {
+                    ctx.user_manager
+                        .update_username(updated_account.id, updated_account.username.clone())
+                        .await;
+                }
+
                 // Only broadcast UserUpdated if username or admin status changed
                 if username_changed || admin_status_changed {
                     let session_ids = ctx

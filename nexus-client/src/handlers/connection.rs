@@ -222,4 +222,34 @@ impl NexusApp {
         }
         Task::none()
     }
+
+    /// Close a user message tab
+    pub fn handle_close_user_message_tab(&mut self, username: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            let tab = ChatTab::UserMessage(username.clone());
+
+            // Remove message history
+            conn.user_messages.remove(&username);
+
+            // Remove from unread set
+            conn.unread_tabs.remove(&tab);
+
+            // If this was the active tab, switch to #server
+            if conn.active_chat_tab == tab {
+                conn.active_chat_tab = ChatTab::Server;
+
+                // Auto-scroll and focus after switching
+                return Task::batch([
+                    scrollable::snap_to(
+                        ScrollableId::ChatMessages.into(),
+                        scrollable::RelativeOffset::END,
+                    ),
+                    text_input::focus(text_input::Id::from(InputId::ChatInput)),
+                ]);
+            }
+        }
+        Task::none()
+    }
 }

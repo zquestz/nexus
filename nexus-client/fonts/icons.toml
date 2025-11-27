@@ -3,6 +3,7 @@ module = "icon"
 
 [glyphs]
 chat = "fontawesome-chat"
+close = "fontawesome-cancel"
 cog = "fontawesome-cog"
 collapse_left = "fontawesome-collapse-left"
 expand_right = "fontawesome-expand-right"

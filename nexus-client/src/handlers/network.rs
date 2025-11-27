@@ -475,6 +475,32 @@ impl NexusApp {
                     // Re-sort the list since username may have changed
                     sort_user_list(&mut conn.online_users);
                 }
+
+                // If username changed, update user_messages HashMap and active tab
+                if previous_username != user.username {
+                    // If this is our own username changing, update conn.username
+                    if conn.username == previous_username {
+                        conn.username = user.username.clone();
+                    }
+
+                    // Rename the user_messages entry
+                    if let Some(messages) = conn.user_messages.remove(&previous_username) {
+                        conn.user_messages.insert(user.username.clone(), messages);
+                    }
+
+                    // Update unread_tabs if present
+                    let old_tab = ChatTab::UserMessage(previous_username.clone());
+                    if conn.unread_tabs.remove(&old_tab) {
+                        conn.unread_tabs
+                            .insert(ChatTab::UserMessage(user.username.clone()));
+                    }
+
+                    // Update active_chat_tab if it's for this user
+                    if conn.active_chat_tab == old_tab {
+                        conn.active_chat_tab = ChatTab::UserMessage(user.username.clone());
+                    }
+                }
+
                 Task::none()
             }
             ServerMessage::UserInfoResponse { user, error } => {

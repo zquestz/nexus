@@ -2,12 +2,16 @@
 
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, SMALL_PADDING,
-    SMALL_SPACING, broadcast_message_color, chat_tab_active_style, chat_tab_inactive_style,
-    chat_text_color, error_message_color, info_text_color, primary_button_style,
-    primary_scrollbar_style, primary_text_input_style, sidebar_border, system_text_color,
+    SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, broadcast_message_color, chat_tab_active_style,
+    chat_tab_inactive_style, chat_text_color, error_message_color, info_text_color,
+    primary_button_style, primary_scrollbar_style, primary_text_input_style, sidebar_border,
+    system_text_color, tooltip_border, tooltip_text_color,
 };
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
-use iced::widget::{Button, Column, button, column, container, row, scrollable, text, text_input};
+use iced::widget::{
+    Button, Column, button, column, container, row, scrollable, text, text_input, tooltip,
+};
 use iced::{Background, Element, Fill};
 
 // Permission constants
@@ -57,7 +61,7 @@ fn create_tab_button<'a>(
 ///
 /// The send input is only enabled with chat_send permission.
 pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Element<'a, Message> {
-    // Build tab bar
+    // Build tab bar row
     let mut tab_row = row![].spacing(SMALL_SPACING);
 
     // Server tab (always present)
@@ -85,6 +89,48 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         let pm_tab_button = create_tab_button(pm_tab, username.clone(), is_active, has_unread);
         tab_row = tab_row.push(pm_tab_button);
     }
+
+    // Wrap tab bar in scrollable (tabs only, not close button)
+    let scrollable_tabs = scrollable(tab_row)
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Scrollbar::default(),
+        ))
+        .width(Fill)
+        .style(primary_scrollbar_style());
+
+    // Build final tab bar with close button outside scrollable
+    let tab_bar = if let ChatTab::UserMessage(ref username) = conn.active_chat_tab {
+        let username_clone = username.clone();
+        let close_button = tooltip(
+            button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
+                .on_press(Message::CloseUserMessageTab(username_clone))
+                .padding(INPUT_PADDING)
+                .style(|theme, status| button::Style {
+                    background: None,
+                    text_color: match status {
+                        button::Status::Hovered => error_message_color(),
+                        _ => chat_text_color(theme),
+                    },
+                    border: iced::Border::default(),
+                    shadow: iced::Shadow::default(),
+                }),
+            container(text(format!("Close {}", username)).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(|theme| container::Style {
+                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                    text_color: Some(tooltip_text_color(theme)),
+                    border: tooltip_border(),
+                    ..Default::default()
+                }),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING);
+
+        row![scrollable_tabs, close_button].spacing(SMALL_SPACING)
+    } else {
+        row![scrollable_tabs]
+    };
 
     // Check send permission (for server chat)
     let can_send = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND);
@@ -228,7 +274,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     } else {
         column![
             top_separator,
-            container(tab_row).padding(SMALL_PADDING).width(Fill),
+            container(tab_bar).padding(SMALL_PADDING).width(Fill),
             container(
                 column![chat_scrollable, input_row,]
                     .spacing(SMALL_SPACING)

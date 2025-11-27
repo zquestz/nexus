@@ -87,6 +87,8 @@ pub enum Message {
     UserKickIconClicked(String),
     /// Switch to a different chat tab
     SwitchChatTab(super::ChatTab),
+    /// Close a user message tab
+    CloseUserMessageTab(String),
     /// Bookmark editor: Save button pressed
     SaveBookmark,
     /// Broadcast panel: Send button pressed

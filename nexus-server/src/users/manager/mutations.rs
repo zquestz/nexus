@@ -36,4 +36,20 @@ impl UserManager {
         let mut users = self.users.write().await;
         users.remove(&session_id)
     }
+
+    /// Update username for a user by database user ID
+    /// Returns the number of sessions updated
+    pub async fn update_username(&self, db_user_id: i64, new_username: String) -> usize {
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for user in users.values_mut() {
+            if user.db_user_id == db_user_id {
+                user.username = new_username.clone();
+                count += 1;
+            }
+        }
+
+        count
+    }
 }
