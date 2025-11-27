@@ -40,6 +40,15 @@ pub async fn handle_useredit(
         }
     };
 
+    // Prevent self-editing (cheap check before DB query)
+    if requesting_user.username.eq_ignore_ascii_case(&username) {
+        eprintln!(
+            "UserEdit from {} (user: {}) attempting to edit themselves",
+            ctx.peer_addr, requesting_user.username
+        );
+        return ctx.send_error(ERR_CANNOT_EDIT_SELF, Some("UserEdit")).await;
+    }
+
     // Check UserEdit permission
     let has_permission = match ctx
         .db
@@ -64,15 +73,6 @@ pub async fn handle_useredit(
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserEdit"))
             .await;
-    }
-
-    // Prevent self-editing
-    if requesting_user.username.eq_ignore_ascii_case(&username) {
-        eprintln!(
-            "UserEdit from {} (user: {}) attempting to edit themselves",
-            ctx.peer_addr, requesting_user.username
-        );
-        return ctx.send_error(ERR_CANNOT_EDIT_SELF, Some("UserEdit")).await;
     }
 
     // Look up target user in database

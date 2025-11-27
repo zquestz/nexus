@@ -1,7 +1,7 @@
 //! Network events
 
 use crate::NexusApp;
-use crate::types::{ChatMessage, InputId, Message, ServerConnection, UserInfo};
+use crate::types::{ChatMessage, InputId, Message, ScrollableId, ServerConnection, UserInfo};
 use chrono::Local;
 use iced::Task;
 use iced::widget::{scrollable, text_input};
@@ -13,8 +13,21 @@ const MSG_USERNAME_ERROR: &str = "Error";
 const MSG_USERNAME_INFO: &str = "Info";
 const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
 
+// Private message display constants
+const MSG_PM_FROM_PREFIX: &str = "[PM from ";
+const MSG_PM_TO_PREFIX: &str = "[PM to ";
+const MSG_PM_SUFFIX: &str = "]";
+
 // Success message constants
 const MSG_USER_KICKED_SUCCESS: &str = "User kicked successfully";
+const MSG_PRIVATE_MESSAGE_SENT: &str = "Private message sent successfully";
+const MSG_PRIVATE_MESSAGE_FAILED: &str = "Failed to send private message";
+const MSG_BROADCAST_SENT: &str = "Broadcast sent successfully";
+const MSG_USER_CREATED: &str = "User created successfully";
+const MSG_USER_DELETED: &str = "User deleted successfully";
+const MSG_USER_UPDATED: &str = "User updated successfully";
+const MSG_PERMISSIONS_UPDATED: &str = "Your permissions have been updated";
+const MSG_TOPIC_UPDATED: &str = "Topic updated successfully";
 
 // Error message constants
 const ERR_CONNECTION_BROKEN: &str = "Connection error";
@@ -350,7 +363,7 @@ impl NexusApp {
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "Broadcast sent successfully".to_string(),
+                        message: MSG_BROADCAST_SENT.to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
@@ -454,12 +467,13 @@ impl NexusApp {
                 Task::none()
             }
             ServerMessage::UserInfoResponse { user, error } => {
-                let message = if let Some(err) = error {
-                    ChatMessage {
+                if let Some(err) = error {
+                    let message = ChatMessage {
                         username: MSG_USERNAME_INFO.to_string(),
                         message: format!("Error: {}", err),
                         timestamp: Local::now(),
-                    }
+                    };
+                    self.add_chat_message(connection_id, message)
                 } else if let Some(user) = user {
                     // Calculate session duration
                     let now = std::time::SystemTime::now()
@@ -469,49 +483,77 @@ impl NexusApp {
                     let session_duration_secs = now.saturating_sub(user.login_time);
                     let duration_str = Self::format_duration(session_duration_secs);
 
-                    // Build info message
-                    let mut info = String::new();
+                    // Format account creation time
+                    let created = chrono::DateTime::from_timestamp(user.created_at, 0)
+                        .map(|dt| dt.format("%b %d %Y %H:%M:%S UTC").to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
 
-                    // Start with username
-                    info.push_str(&user.username);
+                    // Build multi-line IRC WHOIS-style output
+                    let mut lines = Vec::new();
 
-                    // Add admin status if present (only visible to admins)
+                    // Header
+                    lines.push(format!("[{}]", user.username));
+
+                    // Admin status (only visible to admins)
                     if let Some(is_admin) = user.is_admin
                         && is_admin
                     {
-                        info.push_str(" • Admin");
+                        lines.push("  is an Administrator".to_string());
                     }
 
-                    // Add session count
+                    // Sessions
                     let session_count = user.session_ids.len();
-                    if session_count > 1 {
-                        info.push_str(&format!(" • Sessions: {}", session_count));
+                    if session_count == 1 {
+                        lines.push(format!("  connected: {} ago", duration_str));
+                    } else {
+                        lines.push(format!(
+                            "  connected: {} ago ({} sessions)",
+                            duration_str, session_count
+                        ));
                     }
 
-                    // Add online duration
-                    info.push_str(&format!(" • Online: {}", duration_str));
-
-                    // Add features if any
+                    // Features
                     if !user.features.is_empty() {
-                        info.push_str(&format!(" • Features: {}", user.features.join(", ")));
+                        lines.push(format!("  features: {}", user.features.join(", ")));
                     }
 
-                    // Add addresses if present (only visible to admins)
+                    // IP Addresses (only visible to admins)
                     if let Some(addresses) = user.addresses
                         && !addresses.is_empty()
                     {
-                        info.push_str(&format!(" • IPs: {}", addresses.join(", ")));
+                        if addresses.len() == 1 {
+                            lines.push(format!("  address: {}", addresses[0]));
+                        } else {
+                            lines.push(format!("  addresses: {}", addresses.join(", ")));
+                        }
                     }
 
-                    ChatMessage {
-                        username: MSG_USERNAME_INFO.to_string(),
-                        message: info,
-                        timestamp: Local::now(),
+                    // Account created (last field)
+                    lines.push(format!("  created: {}", created));
+
+                    lines.push("  End of user info".to_string());
+
+                    // Add each line as a separate chat message
+                    let timestamp = Local::now();
+                    for line in lines {
+                        let message = ChatMessage {
+                            username: MSG_USERNAME_INFO.to_string(),
+                            message: line,
+                            timestamp,
+                        };
+                        if let Some(conn) = self.connections.get_mut(&connection_id) {
+                            conn.chat_messages.push(message);
+                        }
                     }
+
+                    // Auto-scroll to show all lines
+                    scrollable::snap_to(
+                        ScrollableId::ChatMessages.into(),
+                        scrollable::RelativeOffset::END,
+                    )
                 } else {
-                    return Task::none();
-                };
-                self.add_chat_message(connection_id, message)
+                    Task::none()
+                }
             }
             ServerMessage::UserKickResponse { success, error } => {
                 let message = if success {
@@ -529,6 +571,63 @@ impl NexusApp {
                 };
                 self.add_chat_message(connection_id, message)
             }
+            ServerMessage::UserMessage {
+                from_username,
+                to_username,
+                message,
+            } => {
+                // Display private message in chat area
+                // Determine if this is an incoming or outgoing message
+                let (display_username, display_message) =
+                    if let Some(conn) = self.connections.get(&connection_id) {
+                        if from_username == conn.username {
+                            // Outgoing message (we sent it)
+                            (
+                                format!("{}{}{}", MSG_PM_TO_PREFIX, to_username, MSG_PM_SUFFIX),
+                                message.clone(),
+                            )
+                        } else {
+                            // Incoming message (we received it)
+                            (
+                                format!("{}{}{}", MSG_PM_FROM_PREFIX, from_username, MSG_PM_SUFFIX),
+                                message.clone(),
+                            )
+                        }
+                    } else {
+                        // Fallback if connection not found
+                        (
+                            format!("{}{}{}", MSG_PM_FROM_PREFIX, from_username, MSG_PM_SUFFIX),
+                            message.clone(),
+                        )
+                    };
+
+                let chat_msg = ChatMessage {
+                    username: display_username,
+                    message: display_message,
+                    timestamp: Local::now(),
+                };
+                self.add_chat_message(connection_id, chat_msg)
+            }
+            ServerMessage::UserMessageReply { success, error } => {
+                let message = if success {
+                    ChatMessage {
+                        username: MSG_USERNAME_SYSTEM.to_string(),
+                        message: MSG_PRIVATE_MESSAGE_SENT.to_string(),
+                        timestamp: Local::now(),
+                    }
+                } else {
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message: format!(
+                            "{}: {}",
+                            MSG_PRIVATE_MESSAGE_FAILED,
+                            error.unwrap_or_default()
+                        ),
+                        timestamp: Local::now(),
+                    }
+                };
+                self.add_chat_message(connection_id, message)
+            }
             ServerMessage::UserCreateResponse { success, error } => {
                 // Close add user panel on any response (success or error)
                 if self.ui_state.show_add_user && self.active_connection == Some(connection_id) {
@@ -541,7 +640,7 @@ impl NexusApp {
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "User created successfully".to_string(),
+                        message: MSG_USER_CREATED.to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
@@ -565,7 +664,7 @@ impl NexusApp {
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "User deleted successfully".to_string(),
+                        message: MSG_USER_DELETED.to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
@@ -606,7 +705,7 @@ impl NexusApp {
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "User updated successfully".to_string(),
+                        message: MSG_USER_UPDATED.to_string(),
                         timestamp: Local::now(),
                     }
                 } else {
@@ -651,7 +750,7 @@ impl NexusApp {
                     // Notify user in chat
                     let message = ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "Your permissions have been updated".to_string(),
+                        message: MSG_PERMISSIONS_UPDATED.to_string(),
                         timestamp: Local::now(),
                     };
                     return self.add_chat_message(connection_id, message);
@@ -662,7 +761,7 @@ impl NexusApp {
                 let message = if success {
                     ChatMessage {
                         username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: "Topic updated successfully".to_string(),
+                        message: MSG_TOPIC_UPDATED.to_string(),
                         timestamp: Local::now(),
                     }
                 } else {

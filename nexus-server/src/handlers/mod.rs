@@ -13,6 +13,7 @@ mod useredit;
 mod userinfo;
 mod userkick;
 mod userlist;
+mod usermessage;
 mod userupdate;
 
 #[cfg(test)]
@@ -31,6 +32,7 @@ pub use useredit::handle_useredit;
 pub use userinfo::handle_userinfo;
 pub use userkick::handle_userkick;
 pub use userlist::handle_userlist;
+pub use usermessage::handle_usermessage;
 pub use userupdate::{UserUpdateRequest, handle_userupdate};
 
 use crate::db::Database;

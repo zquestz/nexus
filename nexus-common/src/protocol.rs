@@ -47,6 +47,11 @@ pub enum ClientMessage {
     UserKick { username: String },
     /// Request list of connected users
     UserList,
+    /// Send a private message to a user
+    UserMessage {
+        to_username: String,
+        message: String,
+    },
     /// Update a user account
     UserUpdate {
         username: String,
@@ -155,6 +160,18 @@ pub enum ServerMessage {
     },
     /// User list response
     UserListResponse { users: Vec<UserInfo> },
+    /// Private message (broadcast to all sessions of sender and receiver)
+    UserMessage {
+        from_username: String,
+        to_username: String,
+        message: String,
+    },
+    /// User message response
+    UserMessageReply {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// User updated event (broadcast when user's admin status or username changes)
     UserUpdated {
         previous_username: String,
@@ -260,6 +277,14 @@ impl std::fmt::Debug for ClientMessage {
                 .field("username", username)
                 .finish(),
             ClientMessage::UserList => f.debug_struct("UserList").finish(),
+            ClientMessage::UserMessage {
+                to_username,
+                message,
+            } => f
+                .debug_struct("UserMessage")
+                .field("to_username", to_username)
+                .field("message", message)
+                .finish(),
             ClientMessage::UserUpdate {
                 username,
                 requested_username,

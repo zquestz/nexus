@@ -40,7 +40,16 @@ pub async fn handle_userkick(
         }
     };
 
-    // Step 3: Fetch requesting user account for permission check
+    // Step 3: Prevent self-kick (cheap check before DB queries)
+    if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+        let response = ServerMessage::UserKickResponse {
+            success: false,
+            error: Some(ERR_CANNOT_KICK_SELF.to_string()),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Step 4: Fetch requesting user account for permission check
     let requesting_user = match ctx
         .db
         .users
@@ -61,7 +70,7 @@ pub async fn handle_userkick(
         }
     };
 
-    // Step 4: Check UserKick permission
+    // Step 5: Check UserKick permission
     let has_permission = requesting_user.is_admin
         || match ctx
             .db
@@ -82,15 +91,6 @@ pub async fn handle_userkick(
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(ERR_NO_KICK_PERMISSION.to_string()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Step 5: Prevent self-kick (safety check)
-    if target_username.to_lowercase() == requesting_user.username.to_lowercase() {
-        let response = ServerMessage::UserKickResponse {
-            success: false,
-            error: Some(ERR_CANNOT_KICK_SELF.to_string()),
         };
         return ctx.send_message(&response).await;
     }

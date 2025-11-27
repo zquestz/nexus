@@ -343,11 +343,18 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle user message icon click (private messaging - not yet implemented)
+    /// Handle user message icon click (send private message)
     pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection {
+        // Close all panels to show chat
+        self.close_all_panels();
+
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // For now, just show a prompt to implement a message compose UI
+            // In a full implementation, this would open a compose dialog
             let message = format!(
-                "Private messaging not yet implemented (target: {})",
+                "Private message feature ready! Send a message to {} (UI coming soon)",
                 username
             );
             let chat_msg = ChatMessage {
@@ -355,15 +362,31 @@ impl NexusApp {
                 message,
                 timestamp: Local::now(),
             };
+            conn.chat_messages.push(chat_msg);
 
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.chat_messages.push(chat_msg);
+            // Auto-scroll
+            return scrollable::snap_to(
+                ScrollableId::ChatMessages.into(),
+                scrollable::RelativeOffset::END,
+            );
+        }
+        Task::none()
+    }
 
-                // Auto-scroll if this is the active connection
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
+    /// Send a private message to a user
+    #[allow(dead_code)]
+    pub fn send_private_message(&mut self, to_username: String, message: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            let msg = ClientMessage::UserMessage {
+                to_username: to_username.clone(),
+                message: message.clone(),
+            };
+
+            if let Err(e) = conn.tx.send(msg) {
+                return self
+                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
             }
         }
         Task::none()
@@ -371,6 +394,9 @@ impl NexusApp {
 
     /// Handle user kick icon click (kick/disconnect user)
     pub fn handle_user_kick_icon_clicked(&mut self, username: String) -> Task<Message> {
+        // Close all panels to show chat
+        self.close_all_panels();
+
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -384,14 +410,18 @@ impl NexusApp {
                 };
                 conn.chat_messages.push(chat_msg);
 
-                // Auto-scroll if this is the active connection
-                if self.active_connection == Some(conn_id) {
-                    return scrollable::snap_to(
-                        ScrollableId::ChatMessages.into(),
-                        scrollable::RelativeOffset::END,
-                    );
-                }
+                // Auto-scroll
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
             }
+
+            // Auto-scroll to show kick response
+            return scrollable::snap_to(
+                ScrollableId::ChatMessages.into(),
+                scrollable::RelativeOffset::END,
+            );
         }
         Task::none()
     }
@@ -413,6 +443,9 @@ impl NexusApp {
 
     /// Handle info icon click on expanded user
     pub fn handle_user_info_icon_clicked(&mut self, username: String) -> Task<Message> {
+        // Close all panels to show chat
+        self.close_all_panels();
+
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -426,14 +459,18 @@ impl NexusApp {
                 };
                 conn.chat_messages.push(chat_msg);
 
-                // Auto-scroll if this is the active connection
-                if self.active_connection == Some(conn_id) {
-                    return scrollable::snap_to(
-                        ScrollableId::ChatMessages.into(),
-                        scrollable::RelativeOffset::END,
-                    );
-                }
+                // Auto-scroll
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
             }
+
+            // Auto-scroll to show info response
+            return scrollable::snap_to(
+                ScrollableId::ChatMessages.into(),
+                scrollable::RelativeOffset::END,
+            );
         }
         Task::none()
     }

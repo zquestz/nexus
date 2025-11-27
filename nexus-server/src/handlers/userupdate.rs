@@ -51,6 +51,16 @@ pub async fn handle_userupdate(
         }
     };
 
+    // Prevent self-editing (cheap check before DB query)
+    if request.username == requesting_user.username {
+        eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(ERR_CANNOT_EDIT_SELF.to_string()),
+        };
+        return ctx.send_message(&response).await;
+    }
+
     // Check UserEdit permission
     let has_permission = match ctx
         .db
@@ -75,16 +85,6 @@ pub async fn handle_userupdate(
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserUpdate"))
             .await;
-    }
-
-    // Prevent self-editing
-    if request.username == requesting_user.username {
-        eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(ERR_CANNOT_EDIT_SELF.to_string()),
-        };
-        return ctx.send_message(&response).await;
     }
 
     // Note: Last admin protection is now handled atomically at the database level

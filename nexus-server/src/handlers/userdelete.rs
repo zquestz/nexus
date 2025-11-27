@@ -43,6 +43,15 @@ pub async fn handle_userdelete(
         }
     };
 
+    // Prevent self-deletion (cheap check before DB queries)
+    if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(ERR_CANNOT_DELETE_SELF.to_string()),
+        };
+        return ctx.send_message(&response).await;
+    }
+
     // Fetch requesting user account for permission check
     let requesting_user = match ctx
         .db
@@ -106,15 +115,6 @@ pub async fn handle_userdelete(
                 .await;
         }
     };
-
-    // Prevent self-deletion
-    if target_user.id == requesting_user.id {
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(ERR_CANNOT_DELETE_SELF.to_string()),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Handle online user disconnection
     let all_users = ctx.user_manager.get_all_users().await;

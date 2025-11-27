@@ -205,6 +205,13 @@ async fn handle_client_message(
             ClientMessage::UserList => {
                 handlers::handle_userlist(conn_state.session_id, ctx).await?;
             }
+            ClientMessage::UserMessage {
+                to_username,
+                message,
+            } => {
+                handlers::handle_usermessage(to_username, message, conn_state.session_id, ctx)
+                    .await?;
+            }
             ClientMessage::UserUpdate {
                 username,
                 requested_username,

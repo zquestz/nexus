@@ -6,6 +6,13 @@ use iced::Task;
 use iced::widget::text_input;
 
 impl NexusApp {
+    /// Close all panels (broadcast, add user, edit user)
+    pub fn close_all_panels(&mut self) {
+        self.ui_state.show_broadcast = false;
+        self.ui_state.show_add_user = false;
+        self.ui_state.show_edit_user = false;
+    }
+
     /// Toggle bookmarks sidebar visibility
     pub fn handle_toggle_bookmarks(&mut self) -> Task<Message> {
         self.ui_state.show_bookmarks = !self.ui_state.show_bookmarks;

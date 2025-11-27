@@ -91,12 +91,16 @@ impl NexusApp {
     /// Handle showing chat view - closes all panels and focuses chat input
     pub fn handle_show_chat_view(&mut self) -> Task<Message> {
         // Close all panels
-        self.ui_state.show_broadcast = false;
-        self.ui_state.show_add_user = false;
-        self.ui_state.show_edit_user = false;
+        self.close_all_panels();
 
-        // Focus chat input
-        text_input::focus(text_input::Id::from(InputId::ChatInput))
+        // Auto-scroll to bottom and focus chat input
+        Task::batch([
+            scrollable::snap_to(
+                ScrollableId::ChatMessages.into(),
+                scrollable::RelativeOffset::END,
+            ),
+            text_input::focus(text_input::Id::from(InputId::ChatInput)),
+        ])
     }
 
     /// Add an error message to the chat for broadcast errors and auto-scroll
