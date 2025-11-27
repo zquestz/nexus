@@ -43,6 +43,8 @@ pub enum ClientMessage {
     UserEdit { username: String },
     /// Request information about a specific user
     UserInfo { username: String },
+    /// Kick/disconnect a user
+    UserKick { username: String },
     /// Request list of connected users
     UserList,
     /// Update a user account
@@ -145,6 +147,12 @@ pub enum ServerMessage {
         user: Option<UserInfoDetailed>,
         error: Option<String>,
     },
+    /// User kick response
+    UserKickResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     /// User list response
     UserListResponse { users: Vec<UserInfo> },
     /// User updated event (broadcast when user's admin status or username changes)
@@ -245,6 +253,10 @@ impl std::fmt::Debug for ClientMessage {
                 .finish(),
             ClientMessage::UserInfo { username } => f
                 .debug_struct("UserInfo")
+                .field("username", username)
+                .finish(),
+            ClientMessage::UserKick { username } => f
+                .debug_struct("UserKick")
                 .field("username", username)
                 .finish(),
             ClientMessage::UserList => f.debug_struct("UserList").finish(),

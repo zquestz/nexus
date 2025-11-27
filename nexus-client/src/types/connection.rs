@@ -34,6 +34,8 @@ pub struct ServerConnection {
     pub chat_messages: Vec<ChatMessage>,
     /// Currently online users
     pub online_users: Vec<UserInfo>,
+    /// Username of expanded user in user list (None if no user expanded)
+    pub expanded_user: Option<String>,
     /// Channel for sending commands to server
     pub tx: mpsc::UnboundedSender<ClientMessage>,
     /// Handle for graceful shutdown

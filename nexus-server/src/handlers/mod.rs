@@ -11,6 +11,7 @@ mod usercreate;
 mod userdelete;
 mod useredit;
 mod userinfo;
+mod userkick;
 mod userlist;
 mod userupdate;
 
@@ -28,6 +29,7 @@ pub use usercreate::handle_usercreate;
 pub use userdelete::handle_userdelete;
 pub use useredit::handle_useredit;
 pub use userinfo::handle_userinfo;
+pub use userkick::handle_userkick;
 pub use userlist::handle_userlist;
 pub use userupdate::{UserUpdateRequest, handle_userupdate};
 

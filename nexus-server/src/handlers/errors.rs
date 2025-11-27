@@ -55,6 +55,15 @@ pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
 /// Error message when user to edit is not found
 pub const ERR_USER_NOT_FOUND: &str = "User not found";
 
+/// Error message when trying to kick yourself
+pub const ERR_CANNOT_KICK_SELF: &str = "You cannot kick yourself";
+
+/// Error message when trying to kick a user who is not online
+pub const ERR_USER_NOT_ONLINE: &str = "User is not online";
+
+/// Error message when trying to kick an admin
+pub const ERR_CANNOT_KICK_ADMIN: &str = "Cannot kick admin users";
+
 /// Error message when trying to disable the last admin
 pub const ERR_CANNOT_DISABLE_LAST_ADMIN: &str = "Cannot disable the last admin";
 

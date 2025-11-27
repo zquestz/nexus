@@ -116,21 +116,30 @@ pub const DISCONNECT_ICON_HOVER_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
 /// Darker red for better contrast on light background
 pub const DISCONNECT_ICON_HOVER_LIGHT: Color = Color::from_rgb(0.8, 0.2, 0.2);
 
-/// Edit/cog icon default color - Dark theme
+/// Sidebar icon default color - Dark theme
 /// Light gray for visibility on dark background
-pub const EDIT_ICON_DARK: Color = Color::from_rgb(0.6, 0.6, 0.6);
+/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
+pub const SIDEBAR_ICON_DARK: Color = Color::from_rgb(0.6, 0.6, 0.6);
 
-/// Edit/cog icon default color - Light theme
+/// Sidebar icon default color - Light theme
 /// Medium gray for visibility on light background
-pub const EDIT_ICON_LIGHT: Color = Color::from_rgb(0.4, 0.4, 0.4);
+/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
+pub const SIDEBAR_ICON_LIGHT: Color = Color::from_rgb(0.4, 0.4, 0.4);
 
-/// Edit/cog icon hover color - Dark theme
+/// Sidebar icon hover color - Dark theme
 /// Light blue to indicate interactive element
-pub const EDIT_ICON_HOVER_DARK: Color = Color::from_rgb(0.5, 0.7, 1.0);
+/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
+pub const SIDEBAR_ICON_HOVER_DARK: Color = Color::from_rgb(0.5, 0.7, 1.0);
 
-/// Edit/cog icon hover color - Light theme
+/// Sidebar icon hover color - Light theme
 /// Darker blue for better contrast on light background
-pub const EDIT_ICON_HOVER_LIGHT: Color = Color::from_rgb(0.2, 0.4, 0.8);
+/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
+pub const SIDEBAR_ICON_HOVER_LIGHT: Color = Color::from_rgb(0.2, 0.4, 0.8);
+
+/// Sidebar icon disabled color (both themes)
+/// Dimmed gray for disabled state
+/// Used for: disabled icons in user list toolbar
+pub const SIDEBAR_ICON_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
 
 // ============================================================================
 // Chat Message Colors

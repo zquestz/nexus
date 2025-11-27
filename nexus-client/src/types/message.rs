@@ -77,8 +77,14 @@ pub enum Message {
     PasswordChanged(String),
     /// Connection form: Port field changed
     PortChanged(String),
-    /// User list: User clicked to request info
-    RequestUserInfo(String),
+    /// User list: User item clicked (expand/collapse)
+    UserListItemClicked(String),
+    /// User list: Info icon clicked on expanded user
+    UserInfoIconClicked(String),
+    /// User list: Message icon clicked on expanded user (private message - future)
+    UserMessageIconClicked(String),
+    /// User list: Kick icon clicked on expanded user (disconnect - future)
+    UserKickIconClicked(String),
     /// Bookmark editor: Save button pressed
     SaveBookmark,
     /// Broadcast panel: Send button pressed

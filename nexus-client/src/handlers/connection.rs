@@ -144,18 +144,6 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Request detailed user information from server
-    pub fn handle_request_user_info(&mut self, username: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get(&conn_id)
-            && let Err(e) = conn.tx.send(ClientMessage::UserInfo { username })
-        {
-            let error_msg = format!("Failed to request user info: {}", e);
-            return self.add_chat_error(conn_id, error_msg);
-        }
-        Task::none()
-    }
-
     /// Disconnect from a server and clean up resources
     pub fn handle_disconnect_from_server(&mut self, connection_id: usize) -> Task<Message> {
         if let Some(conn) = self.connections.remove(&connection_id) {

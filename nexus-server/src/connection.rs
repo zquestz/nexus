@@ -199,6 +199,9 @@ async fn handle_client_message(
             ClientMessage::UserInfo { username } => {
                 handlers::handle_userinfo(username, conn_state.session_id, ctx).await?;
             }
+            ClientMessage::UserKick { username } => {
+                handlers::handle_userkick(username, conn_state.session_id, ctx).await?;
+            }
             ClientMessage::UserList => {
                 handlers::handle_userlist(conn_state.session_id, ctx).await?;
             }

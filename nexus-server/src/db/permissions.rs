@@ -27,6 +27,10 @@ pub enum Permission {
     UserDelete,
     /// Permission to edit users
     UserEdit,
+    /// Permission to kick/disconnect users
+    UserKick,
+    /// Permission to send private messages to users
+    UserMessage,
 }
 
 impl Permission {
@@ -57,6 +61,8 @@ impl Permission {
             "user_create" => Some(Permission::UserCreate),
             "user_delete" => Some(Permission::UserDelete),
             "user_edit" => Some(Permission::UserEdit),
+            "user_kick" => Some(Permission::UserKick),
+            "user_message" => Some(Permission::UserMessage),
             _ => None,
         }
     }

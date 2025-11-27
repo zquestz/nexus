@@ -114,6 +114,15 @@ pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
 /// Toolbar vertical padding
 pub const TOOLBAR_PADDING_VERTICAL: u16 = 8;
 
+/// Icon button padding (vertical)
+pub const ICON_BUTTON_PADDING_VERTICAL: u16 = 8;
+
+/// Icon button padding (horizontal)
+pub const ICON_BUTTON_PADDING_HORIZONTAL: u16 = 4;
+
+/// Toolbar container padding (horizontal)
+pub const TOOLBAR_CONTAINER_PADDING_HORIZONTAL: u16 = 4;
+
 // ============================================================================
 // Spacing
 // ============================================================================
@@ -248,22 +257,6 @@ pub fn button_text_color(theme: &Theme) -> Color {
     }
 }
 
-/// Get toolbar icon default color for the current theme
-pub fn toolbar_icon_color(theme: &Theme) -> Color {
-    match theme {
-        Theme::Light => colors::TOOLBAR_ICON_LIGHT,
-        _ => colors::TOOLBAR_ICON_DARK,
-    }
-}
-
-/// Get toolbar icon disabled color for the current theme
-pub fn toolbar_icon_disabled_color(theme: &Theme) -> Color {
-    match theme {
-        Theme::Light => colors::TOOLBAR_ICON_DISABLED_LIGHT,
-        _ => colors::TOOLBAR_ICON_DISABLED_DARK,
-    }
-}
-
 /// Get tooltip text color for the current theme
 pub fn tooltip_text_color(theme: &Theme) -> Color {
     match theme {
@@ -320,7 +313,37 @@ pub fn empty_view_text_color(theme: &Theme) -> Color {
     }
 }
 
-/// Get disconnect icon default color for the current theme
+// ============================================================================
+// Icon Color Functions - Organized by Icon Group
+// ============================================================================
+//
+// Four icon groups in the application:
+// 1. Top toolbar icons (megaphone, user_plus, users, sun, collapse/expand)
+// 2. Server list icons (logout/disconnect - red hover for destructive action)
+// 3. Bookmark list icons (cog/edit - blue hover for neutral action)
+// 4. User list toolbar icons (info, message, kick - mixed behaviors)
+
+/// Base icon color for top toolbar
+///
+/// Used by: chat, megaphone, user_plus, users, sun, collapse, expand icons
+pub fn toolbar_icon_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLBAR_ICON_LIGHT,
+        _ => colors::TOOLBAR_ICON_DARK,
+    }
+}
+
+/// Disabled icon color for top toolbar
+pub fn toolbar_icon_disabled_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::TOOLBAR_ICON_DISABLED_LIGHT,
+        _ => colors::TOOLBAR_ICON_DISABLED_DARK,
+    }
+}
+
+/// Base icon color for server list (logout/disconnect icons)
+///
+/// Used by: logout icons in connected servers list
 pub fn disconnect_icon_color(theme: &Theme) -> Color {
     match theme {
         Theme::Light => colors::DISCONNECT_ICON_LIGHT,
@@ -328,7 +351,7 @@ pub fn disconnect_icon_color(theme: &Theme) -> Color {
     }
 }
 
-/// Get disconnect icon hover color for the current theme
+/// Hover color for disconnect icons (red for destructive action)
 pub fn disconnect_icon_hover_color(theme: &Theme) -> Color {
     match theme {
         Theme::Light => colors::DISCONNECT_ICON_HOVER_LIGHT,
@@ -336,19 +359,39 @@ pub fn disconnect_icon_hover_color(theme: &Theme) -> Color {
     }
 }
 
-/// Get edit/cog icon default color for the current theme
+/// Base icon color for bookmark list (cog/edit icons)
+///
+/// Returns gray by default, blue on hover
 pub fn edit_icon_color(theme: &Theme) -> Color {
     match theme {
-        Theme::Light => colors::EDIT_ICON_LIGHT,
-        _ => colors::EDIT_ICON_DARK,
+        Theme::Light => colors::SIDEBAR_ICON_LIGHT,
+        _ => colors::SIDEBAR_ICON_DARK,
     }
 }
 
-/// Get edit/cog icon hover color for the current theme
+/// Hover color for bookmark list icons
 pub fn edit_icon_hover_color(theme: &Theme) -> Color {
     match theme {
-        Theme::Light => colors::EDIT_ICON_HOVER_LIGHT,
-        _ => colors::EDIT_ICON_HOVER_DARK,
+        Theme::Light => colors::SIDEBAR_ICON_HOVER_LIGHT,
+        _ => colors::SIDEBAR_ICON_HOVER_DARK,
+    }
+}
+
+/// Base icon color for user list toolbar (info, message, kick icons)
+///
+/// Returns gray by default, blue on hover
+pub fn sidebar_icon_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SIDEBAR_ICON_LIGHT,
+        _ => colors::SIDEBAR_ICON_DARK,
+    }
+}
+
+/// Hover color for user list toolbar icons
+pub fn sidebar_icon_hover_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::SIDEBAR_ICON_HOVER_LIGHT,
+        _ => colors::SIDEBAR_ICON_HOVER_DARK,
     }
 }
 

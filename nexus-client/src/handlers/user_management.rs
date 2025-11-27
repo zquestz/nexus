@@ -9,6 +9,7 @@ use nexus_common::protocol::ClientMessage;
 
 // Constants
 const MSG_USERNAME_ERROR: &str = "Error";
+const MSG_USERNAME_INFO: &str = "Info";
 const ERR_SEND_FAILED: &str = "Failed to send command";
 
 impl NexusApp {
@@ -337,6 +338,101 @@ impl NexusApp {
                     ScrollableId::ChatMessages.into(),
                     scrollable::RelativeOffset::END,
                 );
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle user message icon click (private messaging - not yet implemented)
+    pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection {
+            let message = format!(
+                "Private messaging not yet implemented (target: {})",
+                username
+            );
+            let chat_msg = ChatMessage {
+                username: MSG_USERNAME_INFO.to_string(),
+                message,
+                timestamp: Local::now(),
+            };
+
+            if let Some(conn) = self.connections.get_mut(&conn_id) {
+                conn.chat_messages.push(chat_msg);
+
+                // Auto-scroll if this is the active connection
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle user kick icon click (kick/disconnect user)
+    pub fn handle_user_kick_icon_clicked(&mut self, username: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // Send UserKick request to server
+            if let Err(e) = conn.tx.send(ClientMessage::UserKick { username }) {
+                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let chat_msg = ChatMessage {
+                    username: MSG_USERNAME_ERROR.to_string(),
+                    message: error_msg,
+                    timestamp: Local::now(),
+                };
+                conn.chat_messages.push(chat_msg);
+
+                // Auto-scroll if this is the active connection
+                if self.active_connection == Some(conn_id) {
+                    return scrollable::snap_to(
+                        ScrollableId::ChatMessages.into(),
+                        scrollable::RelativeOffset::END,
+                    );
+                }
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle user list item click (expand/collapse accordion)
+    pub fn handle_user_list_item_clicked(&mut self, username: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // Toggle expansion: if clicking the same user, collapse it; otherwise expand new user
+            if conn.expanded_user.as_ref() == Some(&username) {
+                conn.expanded_user = None;
+            } else {
+                conn.expanded_user = Some(username);
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle info icon click on expanded user
+    pub fn handle_user_info_icon_clicked(&mut self, username: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // Send UserInfo request to server
+            if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
+                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let chat_msg = ChatMessage {
+                    username: MSG_USERNAME_ERROR.to_string(),
+                    message: error_msg,
+                    timestamp: Local::now(),
+                };
+                conn.chat_messages.push(chat_msg);
+
+                // Auto-scroll if this is the active connection
+                if self.active_connection == Some(conn_id) {
+                    return scrollable::snap_to(
+                        ScrollableId::ChatMessages.into(),
+                        scrollable::RelativeOffset::END,
+                    );
+                }
             }
         }
         Task::none()

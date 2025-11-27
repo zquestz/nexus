@@ -152,7 +152,12 @@ impl NexusApp {
             // Chat operations
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
-            Message::RequestUserInfo(session_id) => self.handle_request_user_info(session_id),
+            Message::UserListItemClicked(username) => self.handle_user_list_item_clicked(username),
+            Message::UserInfoIconClicked(username) => self.handle_user_info_icon_clicked(username),
+            Message::UserMessageIconClicked(username) => {
+                self.handle_user_message_icon_clicked(username)
+            }
+            Message::UserKickIconClicked(username) => self.handle_user_kick_icon_clicked(username),
             Message::DisconnectFromServer(connection_id) => {
                 self.handle_disconnect_from_server(connection_id)
             }

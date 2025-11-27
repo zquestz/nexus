@@ -13,7 +13,9 @@ const ALL_PERMISSIONS: &[&str] = &[
     "user_delete",
     "user_edit",
     "user_info",
+    "user_kick",
     "user_list",
+    "user_message",
 ];
 
 /// User edit flow state (two-stage process)

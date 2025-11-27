@@ -13,10 +13,19 @@ const MSG_USERNAME_ERROR: &str = "Error";
 const MSG_USERNAME_INFO: &str = "Info";
 const MSG_USERNAME_BROADCAST_PREFIX: &str = "[BROADCAST]";
 
+// Success message constants
+const MSG_USER_KICKED_SUCCESS: &str = "User kicked successfully";
+
 // Error message constants
 const ERR_CONNECTION_BROKEN: &str = "Connection error";
+const ERR_USER_KICK_FAILED: &str = "Failed to kick user";
 const ERR_NO_SHUTDOWN_HANDLE: &str = "Connection error: No shutdown handle";
 const ERR_USERLIST_FAILED: &str = "Failed to refresh user list";
+
+/// Helper function to sort user list alphabetically by username (case-insensitive)
+fn sort_user_list(users: &mut [UserInfo]) {
+    users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+}
 
 impl NexusApp {
     /// Handle connection attempt result (success or failure)
@@ -67,6 +76,7 @@ impl NexusApp {
                     display_name,
                     chat_messages: Vec::new(),
                     online_users: Vec::new(),
+                    expanded_user: None,
                     tx: conn.tx,
                     shutdown_handle: match conn.shutdown {
                         Some(handle) => handle,
@@ -157,6 +167,7 @@ impl NexusApp {
                     display_name, // Use the display_name passed from the bookmark
                     chat_messages: Vec::new(),
                     online_users: Vec::new(),
+                    expanded_user: None,
                     tx: conn.tx,
                     shutdown_handle: match conn.shutdown {
                         Some(handle) => handle,
@@ -372,8 +383,7 @@ impl NexusApp {
                         session_ids: user.session_ids.clone(),
                     });
                     // Sort to maintain alphabetical order
-                    conn.online_users
-                        .sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                    sort_user_list(&mut conn.online_users);
                 }
                 self.add_chat_message(
                     connection_id,
@@ -419,6 +429,8 @@ impl NexusApp {
                         session_ids: u.session_ids,
                     })
                     .collect();
+                // Sort to maintain alphabetical order
+                sort_user_list(&mut conn.online_users);
                 Task::none()
             }
             ServerMessage::UserUpdated {
@@ -437,8 +449,7 @@ impl NexusApp {
                     existing_user.session_ids = user.session_ids;
 
                     // Re-sort the list since username may have changed
-                    conn.online_users
-                        .sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+                    sort_user_list(&mut conn.online_users);
                 }
                 Task::none()
             }
@@ -499,6 +510,22 @@ impl NexusApp {
                     }
                 } else {
                     return Task::none();
+                };
+                self.add_chat_message(connection_id, message)
+            }
+            ServerMessage::UserKickResponse { success, error } => {
+                let message = if success {
+                    ChatMessage {
+                        username: MSG_USERNAME_SYSTEM.to_string(),
+                        message: MSG_USER_KICKED_SUCCESS.to_string(),
+                        timestamp: Local::now(),
+                    }
+                } else {
+                    ChatMessage {
+                        username: MSG_USERNAME_ERROR.to_string(),
+                        message: format!("{}: {}", ERR_USER_KICK_FAILED, error.unwrap_or_default()),
+                        timestamp: Local::now(),
+                    }
                 };
                 self.add_chat_message(connection_id, message)
             }
