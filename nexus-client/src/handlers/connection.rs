@@ -1,6 +1,7 @@
 //! Connection and chat message handlers
 
 use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId};
+use crate::views::constants::{PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT};
 use crate::{NexusApp, network};
 use chrono::Local;
 use iced::Task;
@@ -181,8 +182,26 @@ impl NexusApp {
 
     /// Switch active view to a different connection
     pub fn handle_switch_to_connection(&mut self, connection_id: usize) -> Task<Message> {
-        if self.connections.contains_key(&connection_id) {
+        if let Some(conn) = self.connections.get(&connection_id) {
             self.active_connection = Some(connection_id);
+            
+            // Hide panels that require permissions the user doesn't have
+            let has_broadcast = conn.is_admin || conn.permissions.contains(&PERMISSION_USER_BROADCAST.to_string());
+            let has_user_create = conn.is_admin || conn.permissions.contains(&PERMISSION_USER_CREATE.to_string());
+            let has_user_edit = conn.is_admin || conn.permissions.contains(&PERMISSION_USER_EDIT.to_string());
+            
+            if self.ui_state.show_broadcast && !has_broadcast {
+                self.ui_state.show_broadcast = false;
+            }
+            
+            if self.ui_state.show_add_user && !has_user_create {
+                self.ui_state.show_add_user = false;
+            }
+            
+            if self.ui_state.show_edit_user && !has_user_edit {
+                self.ui_state.show_edit_user = false;
+            }
+            
             // Focus chat input when switching to a connection
             return text_input::focus(text_input::Id::from(InputId::ChatInput));
         }
