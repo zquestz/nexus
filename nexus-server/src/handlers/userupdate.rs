@@ -7,8 +7,8 @@ use super::{
     ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND,
     ERR_USERNAME_EXISTS, HandlerContext,
 };
-use crate::db::{Permission, Permissions, hash_password};
 use crate::db::errors::validate_username;
+use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 

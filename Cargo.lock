@@ -2888,8 +2888,6 @@ dependencies = [
 name = "nexus-common"
 version = "0.2.0"
 dependencies = [
- "ipnet",
- "once_cell",
  "serde",
  "serde_json",
  "tokio",

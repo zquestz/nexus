@@ -1,8 +1,8 @@
 //! User account database operations
 
+use super::errors::validate_username;
 use super::permissions::{Permission, Permissions};
 use super::sql::*;
-use super::errors::validate_username;
 use sqlx::SqlitePool;
 
 /// User account stored in database
