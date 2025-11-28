@@ -14,6 +14,10 @@ pub const MSG_GENERATING_CERT: &str = "Generating self-signed TLS certificate...
 pub const MSG_CERT_GENERATED: &str = "Certificate generated: ";
 pub const MSG_KEY_GENERATED: &str = "Private key generated: ";
 pub const MSG_CERT_FINGERPRINT: &str = "Certificate fingerprint (SHA-256): ";
+pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
+pub const MSG_UPNP_WARNING: &str = "Warning: UPnP setup failed: ";
+pub const MSG_UPNP_CONTINUE: &str = "Server will continue without UPnP port forwarding.";
+pub const MSG_UPNP_MANUAL: &str = "You may need to manually configure port forwarding on your router.";
 
 /// General error messages
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";
@@ -22,6 +26,15 @@ pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 pub const ERR_CONNECTION: &str = "Error handling connection from ";
 pub const ERR_ACCEPT: &str = "Failed to accept connection: ";
+pub const ERR_GENERIC: &str = "Error: ";
+pub const ERR_DB_PATH_NO_PARENT: &str = "Database path should have a parent directory";
+pub const ERR_HANDLING_MESSAGE: &str = "Error handling message: ";
+pub const ERR_PARSE_MESSAGE: &str = "Failed to parse message from ";
+pub const ERR_INVALID_MESSAGE_FORMAT: &str = "Invalid message format: ";
+pub const ERR_SIGNAL_SIGTERM: &str = "Failed to setup SIGTERM handler";
+pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
+#[cfg(not(unix))]
+pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
 
 /// TLS certificate generation error messages
 pub const ERR_GENERATE_KEYPAIR: &str = "Failed to generate key pair: ";
@@ -71,6 +84,13 @@ pub const ERR_UPNP_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
 pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: ";
 pub const WARN_UPNP_PORT_EXPIRE: &str =
     "Port forwarding may expire. You may need to restart the server.";
+pub const WARN_UPNP_REMOVE_MAPPING_FAILED: &str = "Warning: Failed to remove UPnP port mapping: ";
+
+/// TLS error message patterns
+pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
+
+/// TLS certificate parameters
+pub const TLS_CERT_COMMON_NAME: &str = "Nexus BBS Server";
 
 /// Username validation constants
 pub const MAX_USERNAME_LENGTH: usize = 32;

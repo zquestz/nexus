@@ -2,9 +2,6 @@
 
 use crate::constants::*;
 
-/// Maximum username length
-const MAX_USERNAME_LENGTH: usize = 32;
-
 /// Validate a username
 ///
 /// Usernames must:

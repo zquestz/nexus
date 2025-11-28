@@ -46,7 +46,7 @@ async fn main() {
     let debug = args.debug;
     tokio::select! {
         _ = shutdown_signal => {
-            println!("\nShutdown signal received");
+            println!("{}", MSG_SHUTDOWN_RECEIVED);
 
             // Cleanup UPnP port forwarding if enabled
             if let Some((gateway, renewal_task)) = upnp_handle {
@@ -54,7 +54,7 @@ async fn main() {
 
                 // Remove port mapping
                 if let Err(e) = gateway.remove_port_mapping().await {
-                    eprintln!("Warning: Failed to remove UPnP port mapping: {}", e);
+                    eprintln!("{}{}", WARN_UPNP_REMOVE_MAPPING_FAILED, e);
                 }
             }
         }
@@ -81,7 +81,7 @@ async fn main() {
                                 // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
                                 let error_msg = e.to_string();
                                 if !error_msg
-                                    .contains("peer closed connection without sending TLS close_notify")
+                                    .contains(TLS_CLOSE_NOTIFY_MSG)
                                 {
                                     eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
                                 }
@@ -134,7 +134,7 @@ fn generate_self_signed_cert(
 
     params
         .distinguished_name
-        .push(rcgen::DnType::CommonName, "Nexus BBS Server");
+        .push(rcgen::DnType::CommonName, TLS_CERT_COMMON_NAME);
 
     // Generate certificate
     let cert = params
@@ -212,7 +212,7 @@ async fn setup_db(
     let db_path = database_path.unwrap_or_else(|| match db::default_database_path() {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("{}{}", ERR_GENERIC, e);
             std::process::exit(1);
         }
     });
@@ -260,9 +260,9 @@ async fn setup_upnp(
             Some((gateway_arc, renewal_task))
         }
         Err(e) => {
-            eprintln!("Warning: UPnP setup failed: {}", e);
-            eprintln!("Server will continue without UPnP port forwarding.");
-            eprintln!("You may need to manually configure port forwarding on your router.");
+            eprintln!("{}{}", MSG_UPNP_WARNING, e);
+            eprintln!("{}", MSG_UPNP_CONTINUE);
+            eprintln!("{}", MSG_UPNP_MANUAL);
             None
         }
     }
@@ -277,7 +277,7 @@ async fn setup_network(
     // Get certificate directory (same parent as database)
     let cert_dir = db_path
         .parent()
-        .expect("Database path should have a parent directory")
+        .expect(ERR_DB_PATH_NO_PARENT)
         .to_path_buf();
 
     // Load or generate TLS certificate
@@ -337,8 +337,8 @@ async fn setup_shutdown_signal() {
     {
         use tokio::signal::unix::{SignalKind, signal};
 
-        let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
-        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to setup SIGINT handler");
+        let mut sigterm = signal(SignalKind::terminate()).expect(ERR_SIGNAL_SIGTERM);
+        let mut sigint = signal(SignalKind::interrupt()).expect(ERR_SIGNAL_SIGINT);
 
         tokio::select! {
             _ = sigterm.recv() => {},
@@ -350,6 +350,6 @@ async fn setup_shutdown_signal() {
     {
         tokio::signal::ctrl_c()
             .await
-            .expect("Failed to setup Ctrl+C handler");
+            .expect(ERR_SIGNAL_CTRLC);
     }
 }

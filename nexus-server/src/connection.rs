@@ -15,6 +15,7 @@ impl ConnectionState {
     }
 }
 
+use crate::constants::*;
 use crate::db::Database;
 use crate::handlers::{self, HandlerContext};
 use crate::users::UserManager;
@@ -97,7 +98,7 @@ where
                     &mut conn_state,
                     &mut ctx,
                 ).await {
-                    eprintln!("Error handling message: {}", e);
+                    eprintln!("{}{}", ERR_HANDLING_MESSAGE, e);
                     break;
                 }
 
@@ -249,9 +250,9 @@ async fn handle_client_message(
         },
         Err(e) => {
             // NOTE: Don't log the raw message - it might contain passwords if malformed
-            eprintln!("Failed to parse message from {}: {}", ctx.peer_addr, e);
+            eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, ctx.peer_addr, e);
             return ctx
-                .send_error_and_disconnect(&format!("Invalid message format: {}", e), None)
+                .send_error_and_disconnect(&format!("{}{}", ERR_INVALID_MESSAGE_FORMAT, e), None)
                 .await;
         }
     }
