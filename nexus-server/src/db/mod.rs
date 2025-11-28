@@ -1,5 +1,7 @@
 //! Database module for persistent storage
 
+use crate::constants::*;
+
 pub mod config;
 pub mod password;
 pub mod permissions;
@@ -34,14 +36,20 @@ impl Database {
     }
 }
 
-/// Maximum number of concurrent database connections in the pool
-const MAX_DB_CONNECTIONS: u32 = 5;
-
 /// Get the default database path for the platform
+///
+/// Returns the platform-specific path where the database file should be stored:
+/// - **Linux**: `~/.local/share/nexusd/nexus.db`
+/// - **macOS**: `~/Library/Application Support/nexusd/nexus.db`
+/// - **Windows**: `%APPDATA%\nexusd\nexus.db`
+///
+/// # Errors
+///
+/// Returns an error if the platform's data directory cannot be determined.
+/// This is rare but can happen on unsupported or misconfigured systems.
 pub fn default_database_path() -> Result<PathBuf, String> {
-    let data_dir = dirs::data_dir()
-        .ok_or_else(|| "Unable to determine data directory for your platform".to_string())?;
-    Ok(data_dir.join("nexusd").join("nexus.db"))
+    let data_dir = dirs::data_dir().ok_or_else(|| ERR_NO_DATA_DIR.to_string())?;
+    Ok(data_dir.join(DATA_DIR_NAME).join(DATABASE_FILENAME))
 }
 
 /// Initialize the database connection pool and run migrations
@@ -49,7 +57,7 @@ pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Create parent directories if they don't exist
     if let Some(parent) = database_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            eprintln!("Failed to create directory: {}", e);
+            eprintln!("{}{}", ERR_CREATE_DB_DIR, e);
             sqlx::Error::Io(e)
         })?;
     }

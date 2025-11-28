@@ -6,6 +6,20 @@ use argon2::{
 };
 
 /// Hash a password using Argon2id with a random salt
+///
+/// Uses the Argon2id algorithm (recommended by OWASP) to securely hash passwords.
+/// Each hash includes a randomly generated salt, so the same password will produce
+/// different hashes each time this function is called.
+///
+/// # Arguments
+///
+/// * `password` - The plaintext password to hash
+///
+/// # Returns
+///
+/// * `Ok(String)` - The password hash in PHC string format (includes algorithm, salt, and hash)
+///   - Format looks like: `$argon2id$v=19$m=19456,t=2,p=1$...`
+/// * `Err` - If the hashing operation fails (rare, typically memory allocation issues)
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -14,6 +28,25 @@ pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Er
 }
 
 /// Verify a password against a stored hash
+///
+/// Compares a plaintext password against a previously hashed password using
+/// constant-time comparison to prevent timing attacks.
+///
+/// # Arguments
+///
+/// * `password` - The plaintext password to verify
+/// * `password_hash` - The stored hash (in PHC string format from `hash_password`)
+///
+/// # Returns
+///
+/// * `Ok(true)` - Password matches the hash
+/// * `Ok(false)` - Password does not match the hash
+/// * `Err` - If the hash is malformed or verification fails for technical reasons
+///
+/// # Security
+///
+/// This function uses constant-time comparison to prevent timing-based attacks
+/// that could reveal information about the password or hash.
 pub fn verify_password(
     password: &str,
     password_hash: &str,

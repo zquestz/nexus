@@ -72,8 +72,33 @@ pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: "
 pub const WARN_UPNP_PORT_EXPIRE: &str =
     "Port forwarding may expire. You may need to restart the server.";
 
+/// Username validation constants
+pub const MAX_USERNAME_LENGTH: usize = 32;
+
 /// Username validation error messages
-pub const ERR_USERNAME_INVALID: &str =
-    "Username contains invalid characters (only letters and symbols allowed, no whitespace)";
+pub const ERR_USERNAME_INVALID: &str = "Username contains invalid characters (letters, numbers, and symbols allowed - no whitespace or control characters)";
 pub const ERR_USERNAME_TOO_LONG: &str = "Username is too long (max 32 characters)";
 pub const ERR_USERNAME_EMPTY: &str = "Username cannot be empty";
+
+/// Database path error messages
+pub const ERR_NO_DATA_DIR: &str = "Unable to determine data directory for your platform";
+pub const ERR_CREATE_DB_DIR: &str = "Failed to create directory: ";
+
+/// Database directory and file names
+pub const DATA_DIR_NAME: &str = "nexusd";
+pub const DATABASE_FILENAME: &str = "nexus.db";
+
+/// Database configuration keys
+pub const CONFIG_KEY_TOPIC: &str = "topic";
+
+/// Maximum number of concurrent database connections in the pool
+///
+/// This value (5) is chosen to balance:
+/// - Concurrent request handling (multiple users can access DB simultaneously)
+/// - Resource usage (SQLite has limitations on concurrent writes)
+/// - Typical BBS workload (small to medium number of simultaneous users)
+///
+/// SQLite uses WAL mode which allows multiple readers + one writer concurrently,
+/// so 5 connections provides good throughput for read-heavy workloads while
+/// keeping resource usage reasonable.
+pub const MAX_DB_CONNECTIONS: u32 = 5;

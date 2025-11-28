@@ -1,36 +1,147 @@
-//! SQL query constants for user operations
+//! SQL query constants for database operations
+//!
+//! This module contains all SQL queries used by the database layer.
+//! Each query is documented with its parameters and special behaviors.
 
-/// Select user by username (case-insensitive)
+// ========================================================================
+// Configuration Query Operations
+// ========================================================================
+
+/// Get a configuration value by key
+///
+/// **Parameters:**
+/// 1. `key: &str` - Configuration key to look up
+///
+/// **Returns:** `(value: String)`
+pub const SQL_GET_CONFIG: &str = "SELECT value FROM server_config WHERE key = ?";
+
+/// Set a configuration value (insert or replace)
+///
+/// **Parameters:**
+/// 1. `key: &str` - Configuration key
+/// 2. `value: &str` - Configuration value
+///
+/// **Note:** Uses `INSERT OR REPLACE` to upsert the value.
+pub const SQL_SET_CONFIG: &str = "INSERT OR REPLACE INTO server_config (key, value) VALUES (?, ?)";
+
+// ========================================================================
+// User Query Operations
+// ========================================================================
+
+/// Count all users in the database
+///
+/// **Parameters:** None
+///
+/// **Returns:** `(count: i64)` - Total number of users
+///
+/// **Note:** Used in `create_first_user_if_none_exist()` to check if any users exist.
+pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+
+/// Select user by username (case-insensitive lookup)
+///
+/// **Parameters:**
+/// 1. `username: &str` - Username to search for
+///
+/// **Returns:** `(id, username, password_hash, is_admin, enabled, created_at)`
+///
+/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
+/// the original case in the returned username.
 pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
 
 /// Select user by ID
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID to look up
+///
+/// **Returns:** `(id, username, password_hash, is_admin, enabled, created_at)`
 pub const SQL_SELECT_USER_BY_ID: &str =
     "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
 
 /// Check if user is admin
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID to check
+///
+/// **Returns:** `(is_admin: bool)`
 pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 
+// ========================================================================
+// Permission Query Operations
+// ========================================================================
+
 /// Count permissions for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+///
+/// **Returns:** `(count: i64)` - Number of matching permissions (0 or 1)
 pub const SQL_COUNT_PERMISSION: &str =
     "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
 
 /// Select all permissions for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** Multiple rows of `(permission: String)`
 pub const SQL_SELECT_PERMISSIONS: &str =
     "SELECT permission FROM user_permissions WHERE user_id = ?";
 
 /// Delete all permissions for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Note:** Used when replacing permissions or promoting user to admin.
 pub const SQL_DELETE_PERMISSIONS: &str = "DELETE FROM user_permissions WHERE user_id = ?";
 
 /// Insert a permission for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
 pub const SQL_INSERT_PERMISSION: &str =
     "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)";
 
+// ========================================================================
+// User Mutation Operations
+// ========================================================================
+
 /// Insert a new user
+///
+/// **Parameters:**
+/// 1. `username: &str` - Username
+/// 2. `password_hash: &str` - Hashed password
+/// 3. `is_admin: bool` - Admin status
+/// 4. `enabled: bool` - Enabled status
+/// 5. `created_at: i64` - Unix timestamp
+///
+/// **Returns:** `last_insert_rowid()` - The new user's ID
 pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, enabled, created_at) VALUES (?, ?, ?, ?, ?)";
 
 /// Update user with atomic protection for last admin/enabled admin
-pub const SQL_UPDATE_USER: &str = "UPDATE users 
-    SET username = ?, password_hash = ?, is_admin = ?, enabled = ? 
+///
+/// **Parameters:**
+/// 1. `username: &str` - New username
+/// 2. `password_hash: &str` - New password hash
+/// 3. `is_admin: bool` - New admin status
+/// 4. `enabled: bool` - New enabled status
+/// 5. `user_id: i64` - User ID to update
+/// 6. `enabled: bool` - (Duplicate) Final enabled status for protection check
+/// 7. `is_admin: bool` - (Duplicate) Final admin status for protection check
+///
+/// **Atomic Protection:**
+/// - Prevents disabling the last enabled admin
+/// - Prevents demoting the last admin
+/// - Uses compound WHERE clauses with subqueries to check counts atomically
+/// - Returns 0 rows affected if blocked by protection
+///
+/// **TOCTOU Prevention:** All checks happen in a single SQL statement,
+/// preventing race conditions where multiple simultaneous updates could
+/// leave the system with zero enabled admins or zero admins.
+pub const SQL_UPDATE_USER: &str = "UPDATE users
+    SET username = ?, password_hash = ?, is_admin = ?, enabled = ?
     WHERE id = ?
     AND (
         -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
@@ -46,6 +157,21 @@ pub const SQL_UPDATE_USER: &str = "UPDATE users
     )";
 
 /// Delete user with atomic protection for last admin
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID to delete
+///
+/// **Atomic Protection:**
+/// - Prevents deleting the last admin user
+/// - Uses subquery to check admin count atomically
+/// - Returns 0 rows affected if blocked by protection
+///
+/// **TOCTOU Prevention:** The admin count check and deletion happen in a
+/// single SQL statement, preventing race conditions where two admins could
+/// simultaneously delete each other, leaving zero admins.
+///
+/// **Cascade:** Foreign key constraints automatically delete associated
+/// permissions when the user is deleted.
 pub const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
      WHERE id = ?
      AND (

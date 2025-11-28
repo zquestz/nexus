@@ -1,11 +1,9 @@
 //! Server configuration database operations
 
+use super::sql::*;
+use crate::constants::*;
 use sqlx::SqlitePool;
 use std::io;
-
-/// SQL query constants
-const SQL_GET_CONFIG: &str = "SELECT value FROM server_config WHERE key = ?";
-const SQL_SET_CONFIG: &str = "INSERT OR REPLACE INTO server_config (key, value) VALUES (?, ?)";
 
 /// Database interface for server configuration
 #[derive(Clone)]
@@ -22,7 +20,7 @@ impl ConfigDb {
     /// Get the current server topic
     pub async fn get_topic(&self) -> io::Result<String> {
         let result = sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
-            .bind("topic")
+            .bind(CONFIG_KEY_TOPIC)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -33,7 +31,7 @@ impl ConfigDb {
     /// Set the server topic
     pub async fn set_topic(&self, topic: &str) -> io::Result<()> {
         sqlx::query(SQL_SET_CONFIG)
-            .bind("topic")
+            .bind(CONFIG_KEY_TOPIC)
             .bind(topic)
             .execute(&self.pool)
             .await

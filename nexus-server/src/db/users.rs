@@ -5,13 +5,20 @@ use super::sql::*;
 use crate::constants::*;
 use sqlx::SqlitePool;
 
-/// Maximum username length
-const MAX_USERNAME_LENGTH: usize = 32;
-
 /// Validate a username (database-level failsafe)
 ///
 /// This is a failsafe validation that should be called by the database layer.
 /// Handlers should also validate and provide user-friendly errors.
+///
+/// **Allowed characters:**
+/// - Unicode letters (any language)
+/// - ASCII graphic characters (printable: `!` to `~`, includes numbers and symbols)
+///
+/// **Disallowed:**
+/// - Whitespace (spaces, tabs, newlines)
+/// - Control characters
+/// - Empty strings
+/// - More than 32 characters
 fn validate_username(username: &str) -> Result<(), &'static str> {
     if username.is_empty() {
         return Err(ERR_USERNAME_EMPTY);
@@ -31,6 +38,19 @@ fn validate_username(username: &str) -> Result<(), &'static str> {
 }
 
 /// User account stored in database
+///
+/// Represents a complete user record retrieved from the database.
+/// This struct contains all user fields including credentials, permissions,
+/// and metadata.
+///
+/// # Fields
+///
+/// * `id` - Unique database identifier
+/// * `username` - Username (case-preserved, but lookups are case-insensitive)
+/// * `hashed_password` - Argon2id password hash
+/// * `is_admin` - Whether user has admin privileges (admins get all permissions automatically)
+/// * `enabled` - Whether the account is active (disabled users cannot login)
+/// * `created_at` - Unix timestamp when account was created
 #[derive(Debug, Clone)]
 pub struct UserAccount {
     pub id: i64,
@@ -42,6 +62,22 @@ pub struct UserAccount {
 }
 
 /// Database operations for user accounts
+///
+/// Provides methods for creating, reading, updating, and deleting user accounts,
+/// as well as managing user permissions. All methods use the connection pool
+/// for efficient database access.
+///
+/// # Atomic Protection
+///
+/// Several methods use atomic SQL operations to prevent race conditions:
+/// - `delete_user()` - Prevents deleting the last admin
+/// - `update_user()` - Prevents disabling last enabled admin or demoting last admin
+/// - `create_first_user_if_none_exist()` - Prevents multiple first users
+///
+/// # Thread Safety
+///
+/// This struct is `Clone` and can be safely shared across threads/tasks.
+/// The underlying connection pool handles concurrent access.
 #[derive(Clone)]
 pub struct UserDb {
     pool: SqlitePool,
@@ -262,9 +298,7 @@ impl UserDb {
         let mut tx = self.pool.begin().await?;
 
         // Check if any users exist (within transaction)
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(&mut *tx)
-            .await?;
+        let count: (i64,) = sqlx::query_as(SQL_COUNT_USERS).fetch_one(&mut *tx).await?;
 
         if count.0 > 0 {
             // Users exist - rollback and return None
@@ -1000,6 +1034,131 @@ mod tests {
         assert!(
             has_userlist ^ has_chatsend,
             "User should have one permission set, not both or neither"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_first_user_if_none_exist_success() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // No users exist yet
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Create first user
+        let result = db
+            .create_first_user_if_none_exist("admin", "hash123")
+            .await
+            .unwrap();
+
+        assert!(result.is_some(), "Should create first user");
+        let user = result.unwrap();
+        assert_eq!(user.username, "admin");
+        assert!(user.is_admin, "First user should be admin");
+        assert!(user.enabled, "First user should be enabled");
+
+        // Verify user exists in database
+        let (count_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count_after, 1);
+    }
+
+    #[tokio::test]
+    async fn test_create_first_user_if_none_exist_users_already_exist() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create a user first
+        db.create_user("existing", "hash", false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Try to create first user when users already exist
+        let result = db
+            .create_first_user_if_none_exist("admin", "hash123")
+            .await
+            .unwrap();
+
+        assert!(result.is_none(), "Should return None when users exist");
+
+        // Verify no additional user was created
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "Should still have only one user");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create user with specific permissions
+        use std::collections::HashSet;
+        let mut perms = Permissions::new();
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(Permission::UserList);
+            set.insert(Permission::ChatSend);
+            set.insert(Permission::UserInfo);
+            set
+        };
+
+        let user = db
+            .create_user("alice", "hash", false, true, &perms)
+            .await
+            .unwrap();
+
+        // Get permissions back from database
+        let retrieved_perms = db.get_user_permissions(user.id).await.unwrap();
+        let retrieved_vec = retrieved_perms.to_vec();
+
+        assert_eq!(retrieved_vec.len(), 3);
+        assert!(retrieved_vec.contains(&Permission::UserList));
+        assert!(retrieved_vec.contains(&Permission::ChatSend));
+        assert!(retrieved_vec.contains(&Permission::UserInfo));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_empty() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create user with no permissions
+        let user = db
+            .create_user("bob", "hash", false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Get permissions (should be empty)
+        let perms = db.get_user_permissions(user.id).await.unwrap();
+        assert_eq!(perms.to_vec().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_admin() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create admin (no permissions stored in DB)
+        let admin = db
+            .create_user("admin", "hash", true, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Get permissions (should be empty in DB, admin gets all via has_permission)
+        let perms = db.get_user_permissions(admin.id).await.unwrap();
+        assert_eq!(
+            perms.to_vec().len(),
+            0,
+            "Admin permissions not stored in DB"
         );
     }
 }
