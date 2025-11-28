@@ -2,7 +2,7 @@
 
 use super::{
     ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_TOPIC_CONTAINS_NEWLINES,
-    ERR_TOPIC_TOO_LONG, HandlerContext,
+    HandlerContext, err_topic_too_long,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -30,7 +30,10 @@ pub async fn handle_chattopicupdate(
     // 2. Validate topic length (before expensive user lookup)
     if topic.len() > MAX_TOPIC_LENGTH {
         return ctx
-            .send_error(ERR_TOPIC_TOO_LONG, Some("ChatTopicUpdate"))
+            .send_error(
+                &err_topic_too_long(MAX_TOPIC_LENGTH),
+                Some("ChatTopicUpdate"),
+            )
             .await;
     }
 
@@ -188,7 +191,16 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert_eq!(message, ERR_TOPIC_TOO_LONG);
+                assert!(
+                    message.contains("256"),
+                    "Error should mention max length: {}",
+                    message
+                );
+                assert!(
+                    message.contains("Topic cannot exceed"),
+                    "Error should be about topic length: {}",
+                    message
+                );
                 assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),

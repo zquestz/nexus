@@ -71,8 +71,40 @@ pub const ERR_CANNOT_KICK_ADMIN: &str = "Cannot kick admin users";
 pub const ERR_CANNOT_DISABLE_LAST_ADMIN: &str = "Cannot disable the last admin";
 
 // Chat Topic Errors
-/// Error message when topic is too long
-pub const ERR_TOPIC_TOO_LONG: &str = "Topic cannot exceed 256 characters";
-
 /// Error message when topic contains newlines
 pub const ERR_TOPIC_CONTAINS_NEWLINES: &str = "Topic cannot contain newlines";
+
+// Message Validation Errors
+/// Error message when message is empty
+pub const ERR_MESSAGE_EMPTY: &str = "Message cannot be empty";
+
+// Helper functions to format dynamic error messages
+// All format strings are defined inline to keep them in one place
+
+/// Format broadcast message too long error
+pub fn err_broadcast_too_long(max_length: usize) -> String {
+    format!("Message too long (max {} characters)", max_length)
+}
+
+/// Format chat message too long error
+pub fn err_chat_too_long(max_length: usize) -> String {
+    format!("Message too long (max {} characters)", max_length)
+}
+
+/// Format topic too long error
+pub fn err_topic_too_long(max_length: usize) -> String {
+    format!("Topic cannot exceed {} characters", max_length)
+}
+
+/// Format version mismatch error
+pub fn err_version_mismatch(server_version: &str, client_version: &str) -> String {
+    format!(
+        "Version mismatch: server uses {}, client uses {}",
+        server_version, client_version
+    )
+}
+
+/// Format kicked by user message
+pub fn err_kicked_by(username: &str) -> String {
+    format!("You have been kicked by {}", username)
+}

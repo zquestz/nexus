@@ -1,6 +1,6 @@
 //! Handshake message handler
 
-use super::{ERR_HANDSHAKE_ALREADY_COMPLETED, HandlerContext};
+use super::{ERR_HANDSHAKE_ALREADY_COMPLETED, HandlerContext, err_version_mismatch};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
@@ -39,10 +39,7 @@ pub async fn handle_handshake(
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: server_version.to_string(),
-            error: Some(format!(
-                "Version mismatch: server uses {}, client uses {}",
-                server_version, version
-            )),
+            error: Some(err_version_mismatch(server_version, &version)),
         };
         ctx.send_message(&response).await?;
         eprintln!("Handshake failed with {}: version mismatch", ctx.peer_addr);

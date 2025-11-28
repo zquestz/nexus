@@ -2,7 +2,8 @@
 //! Handler for ChatSend command
 
 use super::{
-    ERR_AUTHENTICATION, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
+    ERR_AUTHENTICATION, ERR_DATABASE, ERR_MESSAGE_EMPTY, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
+    HandlerContext, err_chat_too_long,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -19,9 +20,8 @@ pub async fn handle_chat_send(
 ) -> io::Result<()> {
     // Validate message content
     if message.trim().is_empty() {
-        eprintln!("ChatSend from {} with empty message", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Message cannot be empty", Some("ChatSend"))
+            .send_error_and_disconnect(ERR_MESSAGE_EMPTY, Some("ChatSend"))
             .await;
     }
 
@@ -32,10 +32,7 @@ pub async fn handle_chat_send(
             message.len()
         );
         return ctx
-            .send_error_and_disconnect(
-                &format!("Message too long (max {} characters)", MAX_CHAT_LENGTH),
-                Some("ChatSend"),
-            )
+            .send_error_and_disconnect(&err_chat_too_long(MAX_CHAT_LENGTH), Some("ChatSend"))
             .await;
     }
 

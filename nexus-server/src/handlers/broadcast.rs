@@ -2,7 +2,8 @@
 //! Handler for UserBroadcast command
 
 use super::{
-    ERR_AUTHENTICATION, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
+    ERR_AUTHENTICATION, ERR_DATABASE, ERR_MESSAGE_EMPTY, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
+    HandlerContext, err_broadcast_too_long,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -24,7 +25,7 @@ pub async fn handle_user_broadcast(
     if message.trim().is_empty() {
         eprintln!("UserBroadcast from {} with empty message", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect("Message cannot be empty", Some("UserBroadcast"))
+            .send_error_and_disconnect(ERR_MESSAGE_EMPTY, Some("UserBroadcast"))
             .await;
     }
 
@@ -36,7 +37,7 @@ pub async fn handle_user_broadcast(
         );
         return ctx
             .send_error_and_disconnect(
-                &format!("Message too long (max {} characters)", MAX_BROADCAST_LENGTH),
+                &err_broadcast_too_long(MAX_BROADCAST_LENGTH),
                 Some("UserBroadcast"),
             )
             .await;

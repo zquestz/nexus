@@ -2,7 +2,7 @@
 
 use super::{
     ERR_CANNOT_KICK_ADMIN, ERR_CANNOT_KICK_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN,
-    ERR_USER_NOT_ONLINE, HandlerContext,
+    ERR_USER_NOT_ONLINE, HandlerContext, err_kicked_by,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -140,7 +140,7 @@ pub async fn handle_userkick(
     for user in target_users {
         // Send kick message to the user before disconnecting
         let kick_msg = ServerMessage::Error {
-            message: format!("You have been kicked by {}", requesting_user.username),
+            message: err_kicked_by(&requesting_user.username),
             command: None,
         };
         let _ = user.tx.send(kick_msg);
