@@ -1,8 +1,8 @@
 //! UserEdit message handler - Returns user details for editing
 
 use super::{
-    ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
-    ERR_USER_NOT_FOUND, HandlerContext,
+    ERR_CANNOT_EDIT_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
+    err_user_not_found,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -80,7 +80,9 @@ pub async fn handle_useredit(
         Ok(Some(user)) => user,
         Ok(None) => {
             eprintln!("UserEdit request for non-existent user: {}", username);
-            return ctx.send_error(ERR_USER_NOT_FOUND, Some("UserEdit")).await;
+            return ctx
+                .send_error(&err_user_not_found(&username), Some("UserEdit"))
+                .await;
         }
         Err(e) => {
             eprintln!("Database error getting user: {}", e);
@@ -189,7 +191,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, .. } => {
-                assert_eq!(message, ERR_USER_NOT_FOUND);
+                assert_eq!(message, err_user_not_found("nonexistent"));
             }
             _ => panic!("Expected Error message"),
         }

@@ -22,9 +22,6 @@ pub const ERR_HANDSHAKE_ALREADY_COMPLETED: &str = "Handshake already completed";
 /// Error message when account has been deleted
 pub const ERR_ACCOUNT_DELETED: &str = "Your account has been deleted";
 
-/// Error message when account is disabled
-pub const ERR_ACCOUNT_DISABLED: &str = "Account disabled";
-
 // Permission & Access Errors
 /// Error message for permission denied
 pub const ERR_PERMISSION_DENIED: &str = "Permission denied";
@@ -46,23 +43,11 @@ pub const ERR_CANNOT_DEMOTE_LAST_ADMIN: &str = "Cannot demote the last admin";
 /// Error message when trying to edit yourself
 pub const ERR_CANNOT_EDIT_SELF: &str = "You cannot edit yourself";
 
-/// Error message for failed user creation
-pub const ERR_FAILED_TO_CREATE_USER: &str = "Failed to create user";
-
-/// Error message when username already exists
-pub const ERR_USERNAME_EXISTS: &str = "Username already exists";
-
 /// Error message when non-admin tries to create admin
 pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
 
-/// Error message when user to edit is not found
-pub const ERR_USER_NOT_FOUND: &str = "User not found";
-
 /// Error message when trying to kick yourself
 pub const ERR_CANNOT_KICK_SELF: &str = "You cannot kick yourself";
-
-/// Error message when trying to kick a user who is not online
-pub const ERR_USER_NOT_ONLINE: &str = "User is not online";
 
 /// Error message when trying to kick an admin
 pub const ERR_CANNOT_KICK_ADMIN: &str = "Cannot kick admin users";
@@ -107,4 +92,34 @@ pub fn err_version_mismatch(server_version: &str, client_version: &str) -> Strin
 /// Format kicked by user message
 pub fn err_kicked_by(username: &str) -> String {
     format!("You have been kicked by {}", username)
+}
+
+/// Format username already exists error
+pub fn err_username_exists(username: &str) -> String {
+    format!("Username '{}' already exists", username)
+}
+
+/// Format user not found error
+pub fn err_user_not_found(username: &str) -> String {
+    format!("User '{}' not found", username)
+}
+
+/// Format user not online error
+pub fn err_user_not_online(username: &str) -> String {
+    format!("User '{}' is not online", username)
+}
+
+/// Format failed to create user error
+pub fn err_failed_to_create_user(username: &str) -> String {
+    format!("Failed to create user '{}'", username)
+}
+
+/// Format account disabled error
+pub fn err_account_disabled(username: &str) -> String {
+    format!("Account '{}' is disabled", username)
+}
+
+/// Format update failed error
+pub fn err_update_failed(username: &str) -> String {
+    format!("Failed to update user '{}'", username)
 }

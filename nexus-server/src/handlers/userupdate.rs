@@ -4,8 +4,8 @@
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_DISABLE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF,
-    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND,
-    ERR_USERNAME_EXISTS, HandlerContext,
+    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext, err_update_failed,
+    err_user_not_found, err_username_exists,
 };
 use crate::db::errors::validate_username;
 use crate::db::{Permission, Permissions, hash_password};
@@ -460,7 +460,7 @@ pub async fn handle_userupdate(
                 .flatten()
                 .is_none()
             {
-                ERR_USER_NOT_FOUND
+                err_user_not_found(&request.username)
             } else if let Some(ref new_username) = request.requested_username {
                 // Check if the new username already exists (and it's not the same user)
                 if new_username != &request.username
@@ -473,17 +473,17 @@ pub async fn handle_userupdate(
                         .flatten()
                         .is_some()
                 {
-                    ERR_USERNAME_EXISTS
+                    err_username_exists(new_username)
                 } else {
                     // Username change was blocked but not due to duplicate - must be admin protection
-                    ERR_CANNOT_DEMOTE_LAST_ADMIN
+                    ERR_CANNOT_DEMOTE_LAST_ADMIN.to_string()
                 }
             } else if request.requested_is_admin == Some(false) {
-                ERR_CANNOT_DEMOTE_LAST_ADMIN
+                ERR_CANNOT_DEMOTE_LAST_ADMIN.to_string()
             } else if request.requested_enabled == Some(false) {
-                ERR_CANNOT_DISABLE_LAST_ADMIN
+                ERR_CANNOT_DISABLE_LAST_ADMIN.to_string()
             } else {
-                "Update failed"
+                err_update_failed(&request.username)
             };
 
             let response = ServerMessage::UserUpdateResponse {
@@ -661,7 +661,7 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success);
-                assert_eq!(error.unwrap(), ERR_USER_NOT_FOUND);
+                assert_eq!(error.unwrap(), err_user_not_found("nonexistent"));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }

@@ -4,7 +4,7 @@
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_CANNOT_CREATE_ADMIN, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
-    ERR_USERNAME_EXISTS, HandlerContext,
+    HandlerContext, err_username_exists,
 };
 use crate::db::errors::validate_username;
 use crate::db::{Permission, Permissions, hash_password};
@@ -187,7 +187,7 @@ pub async fn handle_usercreate(
             // Username already exists
             let response = ServerMessage::UserCreateResponse {
                 success: false,
-                error: Some(ERR_USERNAME_EXISTS.to_string()),
+                error: Some(err_username_exists(&username)),
             };
             return ctx.send_message(&response).await;
         }

@@ -1,8 +1,8 @@
 //! Handler for UserKick command
 
 use super::{
-    ERR_CANNOT_KICK_ADMIN, ERR_CANNOT_KICK_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN,
-    ERR_USER_NOT_ONLINE, HandlerContext, err_kicked_by,
+    ERR_CANNOT_KICK_ADMIN, ERR_CANNOT_KICK_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, HandlerContext,
+    err_kicked_by, err_user_not_online,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -131,7 +131,7 @@ pub async fn handle_userkick(
     if target_users.is_empty() {
         let response = ServerMessage::UserKickResponse {
             success: false,
-            error: Some(ERR_USER_NOT_ONLINE.to_string()),
+            error: Some(err_user_not_online(&target_username)),
         };
         return ctx.send_message(&response).await;
     }

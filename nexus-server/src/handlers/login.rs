@@ -1,8 +1,8 @@
 //! Login message handler
 
 use super::{
-    ERR_ACCOUNT_DISABLED, ERR_ALREADY_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE,
-    ERR_FAILED_TO_CREATE_USER, ERR_HANDSHAKE_REQUIRED, ERR_INVALID_CREDENTIALS,
+    ERR_ALREADY_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_HANDSHAKE_REQUIRED,
+    ERR_INVALID_CREDENTIALS, err_account_disabled, err_failed_to_create_user,
 };
 use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
@@ -59,7 +59,7 @@ pub async fn handle_login(
                         username, ctx.peer_addr
                     );
                     return ctx
-                        .send_error_and_disconnect(ERR_ACCOUNT_DISABLED, Some("Login"))
+                        .send_error_and_disconnect(&err_account_disabled(&username), Some("Login"))
                         .await;
                 }
                 account
@@ -87,7 +87,7 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(ERR_FAILED_TO_CREATE_USER, Some("Login"))
+                    .send_error_and_disconnect(&err_failed_to_create_user(&username), Some("Login"))
                     .await;
             }
         };
@@ -116,7 +116,7 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to create first user {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(ERR_FAILED_TO_CREATE_USER, Some("Login"))
+                    .send_error_and_disconnect(&err_failed_to_create_user(&username), Some("Login"))
                     .await;
             }
         }
@@ -855,8 +855,8 @@ mod tests {
         let n = test_ctx.client.read(&mut buf).await.unwrap();
         let response = String::from_utf8_lossy(&buf[..n]);
         assert!(
-            response.contains("Account disabled"),
-            "Should receive account disabled error"
+            response.contains("Account 'bob' is disabled"),
+            "Should receive account disabled error with username"
         );
     }
 }
