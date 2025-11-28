@@ -8,25 +8,35 @@ use iced::{Element, Length};
 
 // UI text constants
 const TITLE_FINGERPRINT_MISMATCH: &str = "Certificate Fingerprint Mismatch!";
+const WARNING_TEXT: &str = "This could indicate a security issue (MITM attack) or the server's certificate was regenerated. Only accept if you trust the server administrator.";
 const LABEL_EXPECTED_FINGERPRINT: &str = "Expected fingerprint:";
 const LABEL_RECEIVED_FINGERPRINT: &str = "Received fingerprint:";
 const BUTTON_ACCEPT_NEW_CERTIFICATE: &str = "Accept New Certificate";
 
 // Size constants
 const TITLE_SIZE: u16 = 20;
-const WARNING_SIZE: u16 = 14;
-const LABEL_SIZE: u16 = 14;
-const BUTTON_SIZE: u16 = 14;
-const FINGERPRINT_SIZE: u16 = 12;
+const TEXT_SIZE: u16 = 14;
 const BUTTON_PADDING: u16 = 10;
 const DIALOG_SPACING: u16 = 10;
 const DIALOG_PADDING: u16 = 20;
 const DIALOG_MAX_WIDTH: f32 = 600.0;
-const SPACE_AFTER_TITLE: u16 = 15;
-const SPACE_AFTER_WARNING: u16 = 15;
-const SPACE_AFTER_LABEL: u16 = 5;
-const SPACE_BETWEEN_SECTIONS: u16 = 10;
-const SPACE_BEFORE_BUTTONS: u16 = 20;
+const SPACE_AFTER_TITLE: u16 = 10;
+const SPACE_AFTER_SERVER_INFO: u16 = 10;
+const SPACE_AFTER_WARNING: u16 = 10;
+const SPACE_AFTER_LABEL: u16 = 0;
+const SPACE_BETWEEN_SECTIONS: u16 = 8;
+const SPACE_BEFORE_BUTTONS: u16 = 10;
+
+/// Format a colon-separated fingerprint into two lines for readability
+fn format_fingerprint_multiline(fingerprint: &str) -> String {
+    let parts: Vec<&str> = fingerprint.split(':').collect();
+    let mid = parts.len() / 2;
+    format!(
+        "{}\n{}",
+        parts[..mid].join(":"),
+        parts[mid..].join(":")
+    )
+}
 
 /// Create the fingerprint mismatch warning dialog
 pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Element<'a, Message> {
@@ -35,27 +45,30 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
         .width(Length::Fill)
         .center();
 
-    let warning = text(format!(
-        "The certificate for '{}' has changed.\n\
-        This could indicate a security issue (MITM attack) or the server's certificate was regenerated.\n\n\
-        Only accept if you trust the server administrator.",
-        mismatch.bookmark_name
+    let server_line = text(format!(
+        "{} - [{}]:{}",
+        mismatch.bookmark_name,
+        mismatch.server_address,
+        mismatch.server_port
     ))
-    .size(WARNING_SIZE);
+    .size(TEXT_SIZE);
 
-    let expected_label = text(LABEL_EXPECTED_FINGERPRINT).size(LABEL_SIZE);
-    let expected_value = text(&mismatch.expected)
-        .size(FINGERPRINT_SIZE)
+    let warning = text(WARNING_TEXT)
+        .size(TEXT_SIZE);
+
+    let expected_label = text(LABEL_EXPECTED_FINGERPRINT).size(TEXT_SIZE);
+    let expected_value = text(format_fingerprint_multiline(&mismatch.expected))
+        .size(TEXT_SIZE)
         .font(iced::Font::MONOSPACE);
 
-    let received_label = text(LABEL_RECEIVED_FINGERPRINT).size(LABEL_SIZE);
-    let received_value = text(&mismatch.received)
-        .size(FINGERPRINT_SIZE)
+    let received_label = text(LABEL_RECEIVED_FINGERPRINT).size(TEXT_SIZE);
+    let received_value = text(format_fingerprint_multiline(&mismatch.received))
+        .size(TEXT_SIZE)
         .font(iced::Font::MONOSPACE);
 
     let accept_button = button(
         text(BUTTON_ACCEPT_NEW_CERTIFICATE)
-            .size(BUTTON_SIZE)
+            .size(TEXT_SIZE)
             .width(Length::Fill)
             .center(),
     )
@@ -63,7 +76,7 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     .padding(BUTTON_PADDING)
     .style(primary_button_style());
 
-    let cancel_button = button(text(BUTTON_CANCEL).size(BUTTON_SIZE).width(Length::Fill).center())
+    let cancel_button = button(text(BUTTON_CANCEL).size(TEXT_SIZE).width(Length::Fill).center())
         .on_press(Message::CancelFingerprintMismatch)
         .padding(BUTTON_PADDING)
         .style(primary_button_style());
@@ -73,6 +86,8 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     let dialog = column![
         title,
         Space::with_height(SPACE_AFTER_TITLE),
+        server_line,
+        Space::with_height(SPACE_AFTER_SERVER_INFO),
         warning,
         Space::with_height(SPACE_AFTER_WARNING),
         expected_label,

@@ -906,6 +906,8 @@ impl NexusApp {
                             expected: stored.clone(),
                             received: fingerprint.to_string(),
                             bookmark_name: self.config.bookmarks[idx].name.clone(),
+                            server_address: self.config.bookmarks[idx].address.clone(),
+                            server_port: self.config.bookmarks[idx].port.clone(),
                             connection: crate::types::NetworkConnection {
                                 tx: tokio::sync::mpsc::unbounded_channel().0,
                                 session_id: String::new(),
@@ -939,6 +941,8 @@ impl NexusApp {
             expected,
             received,
             bookmark_name,
+            server_address,
+            server_port,
             ..
         } = *boxed_mismatch;
 
@@ -948,6 +952,8 @@ impl NexusApp {
                 expected,
                 received,
                 bookmark_name,
+                server_address,
+                server_port,
                 connection: conn,
                 display_name,
             });

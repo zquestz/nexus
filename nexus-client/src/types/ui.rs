@@ -30,6 +30,10 @@ pub struct FingerprintMismatch {
     pub received: String,
     /// Bookmark name for display
     pub bookmark_name: String,
+    /// Server address (IP or hostname)
+    pub server_address: String,
+    /// Server port
+    pub server_port: String,
     /// The network connection to complete if user accepts
     pub connection: crate::types::NetworkConnection,
     /// Display name for the connection
