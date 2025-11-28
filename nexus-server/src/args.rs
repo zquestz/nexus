@@ -4,6 +4,22 @@ use clap::Parser;
 use std::net::IpAddr;
 use std::path::PathBuf;
 
+/// Get default database path help text for current platform
+fn default_database_help() -> String {
+    #[cfg(target_os = "linux")]
+    return "Database file path (default: ~/.local/share/nexusd/nexus.db)".to_string();
+
+    #[cfg(target_os = "macos")]
+    return "Database file path (default: ~/Library/Application Support/nexusd/nexus.db)"
+        .to_string();
+
+    #[cfg(target_os = "windows")]
+    return "Database file path (default: %APPDATA%\\nexusd\\nexus.db)".to_string();
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    return "Database file path (overrides platform default)".to_string();
+}
+
 /// Nexus BBS Server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -17,7 +33,7 @@ pub struct Args {
     pub port: u16,
 
     /// Database file path (overrides platform default)
-    #[arg(short, long)]
+    #[arg(short, long, help = default_database_help())]
     pub database: Option<PathBuf>,
 
     /// Enable debug logging (shows user connect/disconnect messages)
