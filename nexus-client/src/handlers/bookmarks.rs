@@ -1,7 +1,7 @@
 //! Bookmark management
 
 use crate::NexusApp;
-use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
+use crate::types::{BookmarkEditMode, BookmarkEditState, DEFAULT_LOCALE, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
 
@@ -52,6 +52,14 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle bookmark locale field change
+    pub fn handle_bookmark_locale_changed(&mut self, locale: String) -> Task<Message> {
+        self.bookmark_edit.bookmark.locale = locale;
+        self.bookmark_edit.error = None;
+        self.focused_field = InputId::BookmarkLocale;
+        Task::none()
+    }
+
     /// Handle bookmark auto-connect toggle
     pub fn handle_bookmark_auto_connect_toggled(&mut self, enabled: bool) -> Task<Message> {
         self.bookmark_edit.bookmark.auto_connect = enabled;
@@ -89,6 +97,12 @@ impl NexusApp {
             let server_address = bookmark.address.clone();
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
+            // Default to DEFAULT_LOCALE if locale is empty
+            let locale = if bookmark.locale.trim().is_empty() {
+                DEFAULT_LOCALE.to_string()
+            } else {
+                bookmark.locale.clone()
+            };
             let server_name = bookmark.name.clone();
 
             // Store bookmark index for this connection
@@ -105,6 +119,7 @@ impl NexusApp {
                         port,
                         username,
                         password,
+                        locale,
                         connection_id,
                     )
                     .await

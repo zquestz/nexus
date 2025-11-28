@@ -1,5 +1,7 @@
 //! UserUpdate message handler
 
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_DISABLE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF,
     ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_USER_NOT_FOUND,
@@ -399,17 +401,28 @@ pub async fn handle_userupdate(
                         .get_session_ids_for_user(&updated_account.username)
                         .await;
 
-                    // Get earliest login time from all sessions
-                    let login_time = if !session_ids.is_empty() {
+                    // Get earliest login time and locale from all sessions
+                    let (login_time, locale) = if !session_ids.is_empty() {
                         let users = ctx.user_manager.get_all_users().await;
-                        users
+                        let user_sessions: Vec<_> = users
                             .iter()
                             .filter(|u| u.username == updated_account.username)
+                            .collect();
+
+                        let login_time = user_sessions
+                            .iter()
                             .map(|u| u.login_time)
                             .min()
-                            .unwrap_or(0)
+                            .unwrap_or(0);
+
+                        let locale = user_sessions
+                            .first()
+                            .map(|u| u.locale.clone())
+                            .unwrap_or_else(|| "en".to_string());
+
+                        (login_time, locale)
                     } else {
-                        0 // User not currently online
+                        (0, "en".to_string()) // User not currently online
                     };
 
                     let user_info = UserInfo {
@@ -417,6 +430,7 @@ pub async fn handle_userupdate(
                         login_time,
                         is_admin: updated_account.is_admin,
                         session_ids,
+                        locale,
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
@@ -1136,6 +1150,7 @@ mod tests {
                 editor.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -1316,6 +1331,7 @@ mod tests {
                 admin1.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -1328,6 +1344,7 @@ mod tests {
                 admin2.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 

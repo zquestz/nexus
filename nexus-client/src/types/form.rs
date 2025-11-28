@@ -55,6 +55,8 @@ pub struct ConnectionFormState {
     pub username: String,
     /// Password for authentication
     pub password: String,
+    /// Locale preference (e.g., "en", "zh-CN")
+    pub locale: String,
     /// Connection error message
     pub error: Option<String>,
     /// Whether a connection attempt is currently in progress
@@ -62,6 +64,14 @@ pub struct ConnectionFormState {
 }
 
 impl ConnectionFormState {
+    /// Create new form with default values
+    pub fn new() -> Self {
+        Self {
+            port: DEFAULT_PORT.to_string(),
+            ..Default::default()
+        }
+    }
+
     /// Clear all form fields
     pub fn clear(&mut self) {
         self.server_name.clear();
@@ -69,6 +79,7 @@ impl ConnectionFormState {
         self.port = DEFAULT_PORT.to_string();
         self.username.clear();
         self.password.clear();
+        self.locale.clear();
     }
 }
 

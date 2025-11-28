@@ -65,7 +65,7 @@ pub async fn handle_userlist(
 
     // Deduplicate by username and aggregate sessions
     use std::collections::HashMap;
-    let mut user_map: HashMap<String, (u64, bool, Vec<u32>)> = HashMap::new(); // (earliest_login, is_admin, session_ids)
+    let mut user_map: HashMap<String, (u64, bool, Vec<u32>, String)> = HashMap::new(); // (earliest_login, is_admin, session_ids, locale)
 
     for user in all_users {
         // Get user account to check admin status
@@ -76,23 +76,32 @@ pub async fn handle_userlist(
 
         user_map
             .entry(user.username.clone())
-            .and_modify(|(login_time, _, session_ids)| {
+            .and_modify(|(login_time, _, session_ids, _)| {
                 // Keep earliest login time
                 *login_time = (*login_time).min(user.login_time);
                 session_ids.push(user.session_id);
+                // Note: locale stays from first session
             })
-            .or_insert((user.login_time, is_admin, vec![user.session_id]));
+            .or_insert((
+                user.login_time,
+                is_admin,
+                vec![user.session_id],
+                user.locale.clone(),
+            ));
     }
 
     // Build deduplicated user info list
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
-        .map(|(username, (login_time, is_admin, session_ids))| UserInfo {
-            username,
-            login_time,
-            is_admin,
-            session_ids,
-        })
+        .map(
+            |(username, (login_time, is_admin, session_ids, locale))| UserInfo {
+                username,
+                login_time,
+                is_admin,
+                session_ids,
+                locale,
+            },
+        )
         .collect();
 
     // Sort by username (case-insensitive) for consistent ordering

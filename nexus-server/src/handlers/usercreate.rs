@@ -1,5 +1,7 @@
 //! UserCreate message handler
 
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_CANNOT_CREATE_ADMIN, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
     ERR_USERNAME_EXISTS, HandlerContext,
@@ -371,6 +373,7 @@ mod tests {
                 admin.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -672,6 +675,7 @@ mod tests {
                 creator.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -734,6 +738,7 @@ mod tests {
                 creator.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 

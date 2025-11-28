@@ -22,6 +22,7 @@ pub struct ViewConfig<'a> {
     pub port: &'a str,
     pub username: &'a str,
     pub password: &'a str,
+    pub locale: &'a str,
     pub connection_error: &'a Option<String>,
     pub is_connecting: bool,
 
@@ -31,6 +32,7 @@ pub struct ViewConfig<'a> {
     pub bookmark_port: &'a str,
     pub bookmark_username: &'a str,
     pub bookmark_password: &'a str,
+    pub bookmark_locale: &'a str,
     pub bookmark_auto_connect: bool,
     pub bookmark_error: &'a Option<String>,
 
@@ -56,6 +58,7 @@ pub struct BookmarkFormData<'a> {
     pub port: &'a str,
     pub username: &'a str,
     pub password: &'a str,
+    pub locale: &'a str,
     pub auto_connect: bool,
     pub error: &'a Option<String>,
 }
@@ -70,6 +73,7 @@ impl<'a> ViewConfig<'a> {
             port: self.bookmark_port,
             username: self.bookmark_username,
             password: self.bookmark_password,
+            locale: self.bookmark_locale,
             auto_connect: self.bookmark_auto_connect,
             error: self.bookmark_error,
         }

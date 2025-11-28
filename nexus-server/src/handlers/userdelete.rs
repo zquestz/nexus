@@ -1,5 +1,7 @@
 //! Handler for UserDelete command
 
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_ACCOUNT_DELETED, ERR_CANNOT_DELETE_LAST_ADMIN, ERR_CANNOT_DELETE_SELF, ERR_DATABASE,
     ERR_NOT_LOGGED_IN, HandlerContext,
@@ -445,6 +447,7 @@ mod tests {
                 online_user.created_at,
                 online_tx,
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 

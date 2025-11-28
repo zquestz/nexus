@@ -174,11 +174,13 @@ async fn handle_client_message(
                 username,
                 password,
                 features,
+                locale,
             } => {
                 handlers::handle_login(
                     username,
                     password,
                     features,
+                    locale,
                     conn_state.handshake_complete,
                     &mut conn_state.session_id,
                     ctx,

@@ -14,6 +14,7 @@ use iced::{Center, Element, Fill};
 const TITLE_CONNECT_TO_SERVER: &str = "Connect to Server";
 const PLACEHOLDER_SERVER_NAME_OPTIONAL: &str = "Server Name (optional)";
 const PLACEHOLDER_SERVER_IPV6_ADDRESS: &str = "Server IPv6 Address";
+const PLACEHOLDER_LOCALE: &str = "Locale (e.g., en, zh-CN)";
 const BUTTON_CONNECT: &str = "Connect";
 
 /// Displays connection form with server details and credentials
@@ -27,6 +28,7 @@ pub fn connection_form_view<'a>(
     port: &'a str,
     username: &'a str,
     password: &'a str,
+    locale: &'a str,
     connection_error: &'a Option<String>,
     is_connecting: bool,
 ) -> Element<'a, Message> {
@@ -80,9 +82,17 @@ pub fn connection_form_view<'a>(
 
     let password_input = text_input(PLACEHOLDER_PASSWORD, password)
         .on_input(Message::PasswordChanged)
-        .on_submit(submit_action)
+        .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Password))
         .secure(true)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style());
+
+    let locale_input = text_input(PLACEHOLDER_LOCALE, locale)
+        .on_input(Message::LocaleChanged)
+        .on_submit(submit_action)
+        .id(text_input::Id::from(InputId::Locale))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
@@ -117,6 +127,7 @@ pub fn connection_form_view<'a>(
         port_input.into(),
         username_input.into(),
         password_input.into(),
+        locale_input.into(),
         text("").size(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),
     ]);

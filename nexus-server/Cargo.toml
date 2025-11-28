@@ -20,6 +20,9 @@ rcgen = "0.13"
 sha2 = "0.10"
 pem = "3.0"
 igd-next = "0.14"
+fluent = "0.16"
+fluent-bundle = "0.15"
+unic-langid = "0.9"
 
 [lib]
 name = "nexus_server"

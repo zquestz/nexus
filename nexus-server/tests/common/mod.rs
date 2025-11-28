@@ -6,6 +6,9 @@ use nexus_server::users::UserManager;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
+/// Default locale for integration tests
+pub const DEFAULT_TEST_LOCALE: &str = "en";
+
 /// Create an in-memory test database with migrations applied
 pub async fn create_test_db() -> Database {
     let pool = sqlx::SqlitePool::connect(":memory:")
@@ -43,6 +46,7 @@ pub async fn add_test_user(
             created_at,
             tx,
             vec!["chat".to_string()],
+            DEFAULT_TEST_LOCALE.to_string(),
         )
         .await;
 

@@ -14,6 +14,7 @@ pub async fn handle_login(
     username: String,
     password: String,
     features: Vec<String>,
+    locale: String,
     handshake_complete: bool,
     session_id: &mut Option<u32>,
     ctx: &mut HandlerContext<'_>,
@@ -132,6 +133,7 @@ pub async fn handle_login(
             authenticated_account.created_at,
             ctx.tx.clone(),
             features,
+            locale.clone(),
         )
         .await;
     *session_id = Some(id);
@@ -194,6 +196,7 @@ pub async fn handle_login(
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
         server_info,
+        locale: Some(locale.clone()),
         error: None,
     };
     ctx.send_message(&response).await?;
@@ -208,6 +211,7 @@ pub async fn handle_login(
         login_time: current_timestamp(),
         is_admin: authenticated_account.is_admin,
         session_ids: vec![id],
+        locale: locale.clone(),
     };
     ctx.user_manager
         .broadcast_user_event(
@@ -223,7 +227,7 @@ pub async fn handle_login(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{DEFAULT_TEST_LOCALE, create_test_context};
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -237,6 +241,7 @@ mod tests {
             "alice".to_string(),
             "password".to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -259,6 +264,7 @@ mod tests {
             "alice".to_string(),
             "password123".to_string(),
             vec!["chat".to_string()],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -341,6 +347,7 @@ mod tests {
             "bob".to_string(),
             password.to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -413,6 +420,7 @@ mod tests {
             "bob".to_string(),
             "wrongpassword".to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -446,6 +454,7 @@ mod tests {
             "nonexistent".to_string(),
             "password".to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -501,6 +510,7 @@ mod tests {
             "alice".to_string(),
             password.to_string(),
             vec!["chat".to_string()],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -579,8 +589,9 @@ mod tests {
         // First login
         let result1 = handle_login(
             "alice".to_string(),
-            password.to_string(),
+            "password".to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -593,8 +604,9 @@ mod tests {
         // Second login on same connection (should fail)
         let result2 = handle_login(
             "alice".to_string(),
-            password.to_string(),
+            "password".to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -638,6 +650,7 @@ mod tests {
             "alice".to_string(),
             password.to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -696,6 +709,7 @@ mod tests {
             "alice".to_string(),
             password.to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -757,6 +771,7 @@ mod tests {
             "admin".to_string(),
             password.to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),
@@ -817,11 +832,12 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Try to login with disabled account
+        // Attempt login with disabled account
         let result = handle_login(
             "bob".to_string(),
             password.to_string(),
             vec![],
+            DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
             &mut test_ctx.handler_context(),

@@ -1,5 +1,7 @@
 //! UserInfo message handler
 
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     ERR_AUTHENTICATION, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
 };
@@ -109,6 +111,10 @@ pub async fn handle_userinfo(
     // Aggregate session data
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
     let earliest_login = target_sessions.iter().map(|s| s.login_time).min().unwrap();
+    let locale = target_sessions
+        .first()
+        .map(|s| s.locale.clone())
+        .unwrap_or_else(|| "en".to_string());
 
     // Collect unique features from all sessions
     let mut all_features = std::collections::HashSet::new();
@@ -134,6 +140,7 @@ pub async fn handle_userinfo(
             session_ids: session_ids.clone(),
             features,
             created_at: target_account.created_at,
+            locale: locale.clone(),
             is_admin: Some(target_account.is_admin),
             addresses: Some(addresses),
         }
@@ -145,6 +152,7 @@ pub async fn handle_userinfo(
             session_ids,
             features,
             created_at: target_account.created_at,
+            locale,
             is_admin: None,
             addresses: None,
         }
@@ -202,6 +210,7 @@ mod tests {
                 user.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -251,6 +260,7 @@ mod tests {
                 user.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -329,6 +339,7 @@ mod tests {
                 requester.created_at,
                 test_ctx.tx.clone(),
                 vec!["chat".to_string()],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -341,6 +352,7 @@ mod tests {
                 target.created_at,
                 test_ctx.tx.clone(),
                 vec!["chat".to_string()],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -421,6 +433,7 @@ mod tests {
                 admin.created_at,
                 test_ctx.tx.clone(),
                 vec!["chat".to_string()],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -433,6 +446,7 @@ mod tests {
                 target.created_at,
                 test_ctx.tx.clone(),
                 vec!["chat".to_string()],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -522,6 +536,7 @@ mod tests {
                 admin1.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 
@@ -534,6 +549,7 @@ mod tests {
                 admin2.created_at,
                 test_ctx.tx.clone(),
                 vec![],
+                DEFAULT_TEST_LOCALE.to_string(),
             )
             .await;
 

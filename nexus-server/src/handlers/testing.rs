@@ -1,5 +1,8 @@
 //! Shared test utilities for handler tests
 
+/// Default locale for tests
+pub const DEFAULT_TEST_LOCALE: &str = "en";
+
 use super::{HandlerContext, Writer};
 use crate::db::Database;
 use crate::users::UserManager;
@@ -126,6 +129,7 @@ pub async fn login_user_with_features(
             user.created_at,
             test_ctx.tx.clone(),
             features,
+            DEFAULT_TEST_LOCALE.to_string(),
         )
         .await
 }

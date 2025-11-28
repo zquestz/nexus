@@ -105,6 +105,7 @@ impl NexusApp {
                     connection_id,
                     is_admin: conn.is_admin,
                     permissions: conn.permissions,
+                    locale: conn.locale,
                     active_chat_tab: ChatTab::Server,
                     chat_messages: Vec::new(),
                     user_messages: HashMap::new(),
@@ -206,6 +207,7 @@ impl NexusApp {
                     connection_id: conn_id,
                     is_admin: conn.is_admin,
                     permissions: conn.permissions,
+                    locale: conn.locale,
                     active_chat_tab: ChatTab::Server,
                     chat_messages: Vec::new(),
                     user_messages: HashMap::new(),
@@ -579,6 +581,9 @@ impl NexusApp {
                         lines.push(format!("  features: {}", user.features.join(", ")));
                     }
 
+                    // Locale
+                    lines.push(format!("  locale: {}", user.locale));
+
                     // IP Addresses (only visible to admins)
                     if let Some(addresses) = user.addresses
                         && !addresses.is_empty()
@@ -917,6 +922,7 @@ impl NexusApp {
                                 permissions: Vec::new(),
                                 chat_topic: None,
                                 certificate_fingerprint: String::new(),
+                                locale: String::new(),
                             },
                             display_name: String::new(),
                         }))

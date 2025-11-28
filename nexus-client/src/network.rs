@@ -37,6 +37,7 @@ struct LoginInfo {
     is_admin: bool,
     permissions: Vec<String>,
     chat_topic: Option<String>,
+    locale: String,
 }
 
 /// Type alias for the connection registry
@@ -145,6 +146,7 @@ pub async fn connect_to_server(
     port: u16,
     username: String,
     password: String,
+    locale: String,
     connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Establish TCP connection and get certificate fingerprint
@@ -155,7 +157,7 @@ pub async fn connect_to_server(
 
     // Perform handshake and login
     perform_handshake(&mut reader, &mut writer).await?;
-    let login_info = perform_login(&mut reader, &mut writer, username, password).await?;
+    let login_info = perform_login(&mut reader, &mut writer, username, password, locale).await?;
 
     // Set up bidirectional communication
     setup_communication_channels(reader, writer, login_info, connection_id, fingerprint).await
@@ -259,18 +261,20 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
     }
 }
 
-/// Perform login and return login info (session ID, admin status, permissions)
+/// Perform login and return login info (session ID, admin status, permissions, locale)
 async fn perform_login(
     reader: &mut Reader,
     writer: &mut Writer,
     username: String,
     password: String,
+    locale: String,
 ) -> Result<LoginInfo, String> {
-    // Send login with default features
+    // Send login with user-specified locale
     let login = ClientMessage::Login {
         username,
         password,
         features: DEFAULT_FEATURES.iter().map(|s| s.to_string()).collect(),
+        locale,
     };
     send_client_message(writer, &login)
         .await
@@ -290,12 +294,14 @@ async fn perform_login(
             is_admin,
             permissions,
             server_info,
+            locale,
             ..
         }) => Ok(LoginInfo {
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
             chat_topic: server_info.map(|info| info.chat_topic),
+            locale: locale.unwrap_or_else(|| "en".to_string()),
         }),
         Ok(ServerMessage::LoginResponse {
             success: true,
@@ -348,6 +354,7 @@ async fn setup_communication_channels(
         permissions: login_info.permissions,
         chat_topic: login_info.chat_topic,
         certificate_fingerprint: fingerprint,
+        locale: login_info.locale,
     })
 }
 

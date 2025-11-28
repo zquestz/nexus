@@ -1,5 +1,7 @@
 //! Server bookmark configuration
 
+#[cfg(test)]
+use crate::types::DEFAULT_LOCALE;
 use crate::types::ServerBookmark;
 use std::fs;
 #[cfg(unix)]
@@ -154,6 +156,7 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         assert_eq!(config.bookmarks.len(), 1);
@@ -172,6 +175,7 @@ mod tests {
             password: "pass1".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.add_bookmark(ServerBookmark {
@@ -180,8 +184,9 @@ mod tests {
             port: DEFAULT_PORT.to_string(),
             username: "user2".to_string(),
             password: "pass2".to_string(),
-            auto_connect: true,
+            auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         assert_eq!(config.bookmarks.len(), 2);
@@ -201,6 +206,7 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.update_bookmark(
@@ -213,6 +219,7 @@ mod tests {
                 password: "newpass".to_string(),
                 auto_connect: true,
                 certificate_fingerprint: None,
+                locale: DEFAULT_LOCALE.to_string(),
             },
         );
 
@@ -235,9 +242,9 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
-        // Try to update non-existent index
         config.update_bookmark(
             5,
             ServerBookmark {
@@ -248,6 +255,7 @@ mod tests {
                 password: "badpass".to_string(),
                 auto_connect: false,
                 certificate_fingerprint: None,
+                locale: DEFAULT_LOCALE.to_string(),
             },
         );
 
@@ -268,6 +276,7 @@ mod tests {
             password: "pass1".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.add_bookmark(ServerBookmark {
@@ -278,6 +287,7 @@ mod tests {
             password: "pass2".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.delete_bookmark(0);
@@ -298,6 +308,7 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         // Try to delete non-existent index
@@ -320,6 +331,7 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let bookmark = config.get_bookmark(0);
@@ -339,6 +351,7 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
+            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let bookmark = config.get_bookmark(5);

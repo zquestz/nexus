@@ -31,6 +31,12 @@ pub struct ServerConnection {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
+    /// Locale for this connection (what the server accepted)
+    ///
+    /// Not yet used - waiting for translation infrastructure.
+    /// Stored for future use when Fluent translations are implemented.
+    #[allow(dead_code)]
+    pub locale: String,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -74,4 +80,6 @@ pub struct NetworkConnection {
     pub chat_topic: Option<String>,
     /// Certificate fingerprint (SHA-256) for TOFU verification
     pub certificate_fingerprint: String,
+    /// Locale accepted by the server
+    pub locale: String,
 }

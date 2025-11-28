@@ -27,6 +27,8 @@ pub struct User {
     pub tx: mpsc::UnboundedSender<ServerMessage>,
     /// Features enabled for this user
     pub features: Vec<String>,
+    /// User's preferred locale (e.g., "en", "en-US", "zh-CN")
+    pub locale: String,
 }
 
 impl User {
@@ -39,6 +41,7 @@ impl User {
         created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
         features: Vec<String>,
+        locale: String,
     ) -> Self {
         Self {
             session_id,
@@ -49,6 +52,7 @@ impl User {
             login_time: current_timestamp(),
             tx,
             features,
+            locale,
         }
     }
 

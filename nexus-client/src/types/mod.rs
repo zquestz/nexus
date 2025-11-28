@@ -20,3 +20,6 @@ pub use view_config::{BookmarkFormData, ToolbarState, ViewConfig};
 
 /// Default Nexus BBS port
 pub const DEFAULT_PORT: &str = "7500";
+
+/// Default locale for connections
+pub const DEFAULT_LOCALE: &str = "en";

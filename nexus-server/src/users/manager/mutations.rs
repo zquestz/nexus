@@ -16,6 +16,7 @@ impl UserManager {
         created_at: i64,
         tx: mpsc::UnboundedSender<ServerMessage>,
         features: Vec<String>,
+        locale: String,
     ) -> u32 {
         let mut next_id = self.next_id.write().await;
         let session_id = *next_id;
@@ -23,7 +24,7 @@ impl UserManager {
         drop(next_id);
 
         let user = User::new(
-            session_id, db_user_id, username, address, created_at, tx, features,
+            session_id, db_user_id, username, address, created_at, tx, features, locale,
         );
         let mut users = self.users.write().await;
         users.insert(session_id, user);

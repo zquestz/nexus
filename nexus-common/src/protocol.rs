@@ -11,6 +11,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default locale for backwards compatibility with old clients
+fn default_locale() -> String {
+    "en".to_string()
+}
+
 /// Client request messages
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -26,6 +31,8 @@ pub enum ClientMessage {
         username: String,
         password: String,
         features: Vec<String>,
+        #[serde(default = "default_locale")]
+        locale: String,
     },
     /// Broadcast a message to all connected users
     UserBroadcast { message: String },
@@ -104,6 +111,8 @@ pub enum ServerMessage {
         permissions: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        locale: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -199,6 +208,7 @@ pub struct UserInfo {
     pub login_time: u64,
     pub is_admin: bool,
     pub session_ids: Vec<u32>,
+    pub locale: String,
 }
 
 /// Detailed information about a user (for UserInfo command)
@@ -210,6 +220,8 @@ pub struct UserInfoDetailed {
     pub features: Vec<String>,
     /// When the account was created (Unix timestamp)
     pub created_at: i64,
+    /// User's preferred locale
+    pub locale: String,
     /// Only included for admins viewing the info
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_admin: Option<bool>,
@@ -238,11 +250,13 @@ impl std::fmt::Debug for ClientMessage {
                 username,
                 password: _,
                 features,
+                locale,
             } => f
                 .debug_struct("Login")
                 .field("username", username)
                 .field("password", &"<REDACTED>")
                 .field("features", features)
+                .field("locale", locale)
                 .finish(),
             ClientMessage::UserBroadcast { message } => f
                 .debug_struct("UserBroadcast")
@@ -315,11 +329,13 @@ mod tests {
             username: "alice".to_string(),
             password: "secret".to_string(),
             features: vec!["chat".to_string()],
+            locale: "en".to_string(),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"Login\""));
         assert!(json.contains("\"username\":\"alice\""));
         assert!(json.contains("\"features\""));
+        assert!(json.contains("\"locale\":\"en\""));
     }
 
     #[test]
@@ -331,10 +347,12 @@ mod tests {
                 username,
                 password,
                 features,
+                locale,
             } => {
                 assert_eq!(username, "alice");
                 assert_eq!(password, "secret");
                 assert_eq!(features, vec!["chat".to_string()]);
+                assert_eq!(locale, "en"); // Default locale
             }
             _ => panic!("Expected Login message"),
         }
@@ -346,6 +364,7 @@ mod tests {
             username: "alice".to_string(),
             password: "super_secret_password".to_string(),
             features: vec!["chat".to_string()],
+            locale: "en".to_string(),
         };
         let debug_output = format!("{:?}", msg);
 
@@ -368,6 +387,7 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
             server_info: None,
+            locale: Some("en".to_string()),
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -383,6 +403,7 @@ mod tests {
             is_admin: None,
             permissions: None,
             server_info: None,
+            locale: None,
             error: Some("Invalid credentials".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -398,6 +419,7 @@ mod tests {
             is_admin: Some(true),
             permissions: Some(vec![]),
             server_info: None,
+            locale: Some("en".to_string()),
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -415,6 +437,7 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             server_info: None,
+            locale: Some("en".to_string()),
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();

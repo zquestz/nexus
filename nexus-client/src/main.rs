@@ -14,8 +14,8 @@ use iced::{Element, Subscription, Task, Theme};
 use config::ThemePreference;
 use std::collections::{HashMap, HashSet, VecDeque};
 use types::{
-    BookmarkEditState, ConnectionFormState, DEFAULT_PORT, InputId, Message, ServerConnection,
-    UiState, UserManagementState, ViewConfig,
+    BookmarkEditState, ConnectionFormState, InputId, Message, ServerConnection, UiState,
+    UserManagementState, ViewConfig,
 };
 
 /// Default window width
@@ -78,10 +78,7 @@ impl Default for NexusApp {
             connections: HashMap::new(),
             active_connection: None,
             next_connection_id: 0,
-            connection_form: ConnectionFormState {
-                port: DEFAULT_PORT.to_string(),
-                ..Default::default()
-            },
+            connection_form: ConnectionFormState::new(),
             focused_field: InputId::ServerName,
             ui_state: UiState {
                 show_bookmarks: true,
@@ -141,6 +138,7 @@ impl NexusApp {
             Message::BookmarkPasswordChanged(password) => {
                 self.handle_bookmark_password_changed(password)
             }
+            Message::BookmarkLocaleChanged(locale) => self.handle_bookmark_locale_changed(locale),
             Message::BookmarkAutoConnectToggled(enabled) => {
                 self.handle_bookmark_auto_connect_toggled(enabled)
             }
@@ -153,6 +151,7 @@ impl NexusApp {
             Message::PortChanged(port) => self.handle_port_changed(port),
             Message::UsernameChanged(username) => self.handle_username_changed(username),
             Message::PasswordChanged(password) => self.handle_password_changed(password),
+            Message::LocaleChanged(locale) => self.handle_locale_changed(locale),
             Message::ConnectPressed => self.handle_connect_pressed(),
 
             // Chat operations
@@ -270,6 +269,7 @@ impl NexusApp {
             port: &self.connection_form.port,
             username: &self.connection_form.username,
             password: &self.connection_form.password,
+            locale: &self.connection_form.locale,
             connection_error: &self.connection_form.error,
             is_connecting: self.connection_form.is_connecting,
             bookmark_name: &self.bookmark_edit.bookmark.name,
@@ -277,6 +277,7 @@ impl NexusApp {
             bookmark_port: &self.bookmark_edit.bookmark.port,
             bookmark_username: &self.bookmark_edit.bookmark.username,
             bookmark_password: &self.bookmark_edit.bookmark.password,
+            bookmark_locale: &self.bookmark_edit.bookmark.locale,
             bookmark_auto_connect: self.bookmark_edit.bookmark.auto_connect,
             bookmark_error: &self.bookmark_edit.error,
             message_input,
