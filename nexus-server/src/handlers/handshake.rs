@@ -1,6 +1,6 @@
 //! Handshake message handler
 
-use super::HandlerContext;
+use super::{ERR_HANDSHAKE_ALREADY_COMPLETED, HandlerContext};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
@@ -16,7 +16,7 @@ pub async fn handle_handshake(
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: nexus_common::PROTOCOL_VERSION.to_string(),
-            error: Some("Handshake already completed".to_string()),
+            error: Some(ERR_HANDSHAKE_ALREADY_COMPLETED.to_string()),
         };
         ctx.send_message(&response).await?;
         return Err(io::Error::other("Duplicate handshake"));

@@ -16,6 +16,9 @@ pub const ERR_HANDSHAKE_REQUIRED: &str = "Handshake required";
 /// Error message when already logged in
 pub const ERR_ALREADY_LOGGED_IN: &str = "Already logged in";
 
+/// Error message when handshake already completed
+pub const ERR_HANDSHAKE_ALREADY_COMPLETED: &str = "Handshake already completed";
+
 /// Error message when account has been deleted
 pub const ERR_ACCOUNT_DELETED: &str = "Your account has been deleted";
 
