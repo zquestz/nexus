@@ -5,11 +5,9 @@ use super::{
     ERR_USERNAME_EXISTS, HandlerContext,
 };
 use crate::db::{Permission, Permissions, hash_password};
+use crate::validation::validate_username;
 use nexus_common::protocol::ServerMessage;
 use std::io;
-
-/// Error message for empty username
-const ERR_EMPTY_USERNAME: &str = "Username cannot be empty";
 
 /// Error message for empty password
 const ERR_EMPTY_PASSWORD: &str = "Password cannot be empty";
@@ -24,12 +22,15 @@ pub async fn handle_usercreate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Validate input fields
-    if username.trim().is_empty() {
-        eprintln!("UserCreate from {} with empty username", ctx.peer_addr);
+    // Validate username format
+    if let Err(e) = validate_username(&username) {
+        eprintln!(
+            "UserCreate from {} with invalid username: {}",
+            ctx.peer_addr, e
+        );
         let error_msg = ServerMessage::UserCreateResponse {
             success: false,
-            error: Some(ERR_EMPTY_USERNAME.to_string()),
+            error: Some(e.to_string()),
         };
         ctx.send_message(&error_msg).await?;
         return Ok(());

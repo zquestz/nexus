@@ -6,6 +6,7 @@ use super::{
     ERR_USERNAME_EXISTS, HandlerContext,
 };
 use crate::db::{Permission, Permissions, hash_password};
+use crate::validation::validate_username;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 
@@ -85,6 +86,21 @@ pub async fn handle_userupdate(
         return ctx
             .send_error(ERR_PERMISSION_DENIED, Some("UserUpdate"))
             .await;
+    }
+
+    // Validate new username format if it's being changed
+    if let Some(ref new_username) = request.requested_username {
+        if let Err(e) = validate_username(new_username) {
+            eprintln!(
+                "UserUpdate from {} with invalid username: {}",
+                ctx.peer_addr, e
+            );
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(e.to_string()),
+            };
+            return ctx.send_message(&response).await;
+        }
     }
 
     // Note: Last admin protection is now handled atomically at the database level
@@ -431,12 +447,27 @@ pub async fn handle_userupdate(
                 .is_none()
             {
                 ERR_USER_NOT_FOUND
+            } else if let Some(ref new_username) = request.requested_username {
+                // Check if the new username already exists (and it's not the same user)
+                if new_username != &request.username
+                    && ctx
+                        .db
+                        .users
+                        .get_user_by_username(new_username)
+                        .await
+                        .ok()
+                        .flatten()
+                        .is_some()
+                {
+                    ERR_USERNAME_EXISTS
+                } else {
+                    // Username change was blocked but not due to duplicate - must be admin protection
+                    ERR_CANNOT_DEMOTE_LAST_ADMIN
+                }
             } else if request.requested_is_admin == Some(false) {
                 ERR_CANNOT_DEMOTE_LAST_ADMIN
             } else if request.requested_enabled == Some(false) {
                 ERR_CANNOT_DISABLE_LAST_ADMIN
-            } else if request.requested_username.is_some() {
-                ERR_USERNAME_EXISTS
             } else {
                 "Update failed"
             };

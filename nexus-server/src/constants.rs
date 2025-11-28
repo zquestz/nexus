@@ -71,3 +71,9 @@ pub const ERR_UPNP_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
 pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: ";
 pub const WARN_UPNP_PORT_EXPIRE: &str =
     "Port forwarding may expire. You may need to restart the server.";
+
+/// Username validation error messages
+pub const ERR_USERNAME_INVALID: &str =
+    "Username contains invalid characters (only letters and symbols allowed, no whitespace)";
+pub const ERR_USERNAME_TOO_LONG: &str = "Username is too long (max 32 characters)";
+pub const ERR_USERNAME_EMPTY: &str = "Username cannot be empty";

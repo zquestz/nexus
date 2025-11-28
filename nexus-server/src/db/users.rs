@@ -1,42 +1,34 @@
 //! User account database operations
 
 use super::permissions::{Permission, Permissions};
+use super::sql::*;
+use crate::constants::*;
 use sqlx::SqlitePool;
 
-// SQL query constants
-const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
-const SQL_SELECT_USER_BY_ID: &str =
-    "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
-const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
-const SQL_COUNT_PERMISSION: &str =
-    "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
-const SQL_SELECT_PERMISSIONS: &str = "SELECT permission FROM user_permissions WHERE user_id = ?";
-const SQL_DELETE_PERMISSIONS: &str = "DELETE FROM user_permissions WHERE user_id = ?";
-const SQL_INSERT_PERMISSION: &str =
-    "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)";
-const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, enabled, created_at) VALUES (?, ?, ?, ?, ?)";
-const SQL_UPDATE_USER: &str = "UPDATE users 
-    SET username = ?, password_hash = ?, is_admin = ?, enabled = ? 
-    WHERE id = ?
-    AND (
-        -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
-        ? = 1
-        OR is_admin = 0
-        OR (SELECT COUNT(*) FROM users WHERE is_admin = 1 AND enabled = 1) > 1
-    )
-    AND (
-        -- is_admin protection: allow promoting, allow if currently non-admin, allow if multiple admins
-        ? = 1
-        OR is_admin = 0
-        OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
-    )";
+/// Maximum username length
+const MAX_USERNAME_LENGTH: usize = 32;
 
-const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
-     WHERE id = ?
-     AND (
-         is_admin = 0
-         OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
-     )";
+/// Validate a username (database-level failsafe)
+///
+/// This is a failsafe validation that should be called by the database layer.
+/// Handlers should also validate and provide user-friendly errors.
+fn validate_username(username: &str) -> Result<(), &'static str> {
+    if username.is_empty() {
+        return Err(ERR_USERNAME_EMPTY);
+    }
+
+    if username.chars().count() > MAX_USERNAME_LENGTH {
+        return Err(ERR_USERNAME_TOO_LONG);
+    }
+
+    for ch in username.chars() {
+        if !ch.is_alphabetic() && !ch.is_ascii_graphic() {
+            return Err(ERR_USERNAME_INVALID);
+        }
+    }
+
+    Ok(())
+}
 
 /// User account stored in database
 #[derive(Debug, Clone)]
@@ -216,6 +208,12 @@ impl UserDb {
         enabled: bool,
         permissions: &Permissions,
     ) -> Result<UserAccount, sqlx::Error> {
+        // Validate username format (failsafe - handlers should also validate)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Err(e) = validate_username(username) {
+            return Err(sqlx::Error::Protocol(e.to_string()));
+        }
+
         let created_at = chrono::Utc::now().timestamp();
 
         let result = sqlx::query(SQL_INSERT_USER)
@@ -383,6 +381,15 @@ impl UserDb {
 
         // Build the final values for each field
         let final_username = requested_username.unwrap_or(username);
+
+        // Validate username format if it's being changed (failsafe)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Some(new_username) = requested_username {
+            if let Err(e) = validate_username(new_username) {
+                return Err(sqlx::Error::Protocol(e.to_string()));
+            }
+        }
+
         let final_password = requested_password_hash.unwrap_or(&user.hashed_password);
         let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
         let final_enabled = requested_enabled.unwrap_or(user.enabled);
