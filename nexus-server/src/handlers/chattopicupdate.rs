@@ -1,8 +1,8 @@
 //! Handler for ChatTopicUpdate command
 
 use super::{
-    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, ERR_TOPIC_CONTAINS_NEWLINES,
-    HandlerContext, err_topic_too_long,
+    err_database, err_not_logged_in, err_permission_denied, err_topic_contains_newlines,
+    err_topic_too_long, HandlerContext,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -22,7 +22,7 @@ pub async fn handle_chattopicupdate(
         Some(id) => id,
         None => {
             return ctx
-                .send_error(ERR_NOT_LOGGED_IN, Some("ChatTopicUpdate"))
+                .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
                 .await;
         }
     };
@@ -31,7 +31,7 @@ pub async fn handle_chattopicupdate(
     if topic.len() > MAX_TOPIC_LENGTH {
         return ctx
             .send_error(
-                &err_topic_too_long(MAX_TOPIC_LENGTH),
+                &err_topic_too_long(ctx.locale, MAX_TOPIC_LENGTH),
                 Some("ChatTopicUpdate"),
             )
             .await;
@@ -40,7 +40,7 @@ pub async fn handle_chattopicupdate(
     // 3. Validate topic does not contain newlines
     if topic.contains('\n') || topic.contains('\r') {
         return ctx
-            .send_error(ERR_TOPIC_CONTAINS_NEWLINES, Some("ChatTopicUpdate"))
+            .send_error(&err_topic_contains_newlines(ctx.locale), Some("ChatTopicUpdate"))
             .await;
     }
 
@@ -49,7 +49,7 @@ pub async fn handle_chattopicupdate(
         Some(u) => u,
         None => {
             return ctx
-                .send_error(ERR_NOT_LOGGED_IN, Some("ChatTopicUpdate"))
+                .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
                 .await;
         }
     };
@@ -64,7 +64,7 @@ pub async fn handle_chattopicupdate(
         Ok(has_perm) => has_perm,
         Err(e) => {
             eprintln!("Database error checking ChatTopicUpdate permission: {}", e);
-            return ctx.send_error(ERR_DATABASE, Some("ChatTopicUpdate")).await;
+            return ctx.send_error(&err_database(ctx.locale), Some("ChatTopicUpdate")).await;
         }
     };
 
@@ -74,14 +74,14 @@ pub async fn handle_chattopicupdate(
             user.username, ctx.peer_addr
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("ChatTopicUpdate"))
+            .send_error(&err_permission_denied(ctx.locale), Some("ChatTopicUpdate"))
             .await;
     }
 
     // 6. Save topic to database
     if let Err(e) = ctx.db.config.set_topic(&topic).await {
         eprintln!("Database error setting topic: {}", e);
-        return ctx.send_error(ERR_DATABASE, Some("ChatTopicUpdate")).await;
+        return ctx.send_error(&err_database(ctx.locale), Some("ChatTopicUpdate")).await;
     }
 
     // 7. Broadcast ChatTopic to all users with ChatTopic permission
@@ -110,7 +110,7 @@ pub async fn handle_chattopicupdate(
 mod tests {
     use super::*;
     use crate::db::Permission;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message, DEFAULT_TEST_LOCALE};
     use nexus_common::protocol::ServerMessage;
 
     #[tokio::test]
@@ -129,7 +129,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert_eq!(message, ERR_NOT_LOGGED_IN);
+                assert_eq!(message, err_not_logged_in(DEFAULT_TEST_LOCALE));
                 assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),
@@ -155,7 +155,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert_eq!(message, ERR_PERMISSION_DENIED);
+                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
                 assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),
@@ -311,7 +311,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert_eq!(message, ERR_TOPIC_CONTAINS_NEWLINES);
+                assert_eq!(message, err_topic_contains_newlines(DEFAULT_TEST_LOCALE));
                 assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),

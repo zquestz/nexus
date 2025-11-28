@@ -5,4 +5,5 @@
 pub mod constants;
 pub mod db;
 pub mod handlers;
+pub mod i18n;
 pub mod users;

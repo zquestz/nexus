@@ -4,6 +4,7 @@
 struct ConnectionState {
     session_id: Option<u32>,
     handshake_complete: bool,
+    locale: String,
 }
 
 impl ConnectionState {
@@ -11,13 +12,14 @@ impl ConnectionState {
         Self {
             session_id: None,
             handshake_complete: false,
+            locale: "en".to_string(),
         }
     }
 }
 
 use crate::constants::*;
 use crate::db::Database;
-use crate::handlers::{self, ERR_INVALID_MESSAGE_FORMAT, HandlerContext};
+use crate::handlers::{self, err_invalid_message_format, HandlerContext};
 use crate::users::UserManager;
 use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -84,6 +86,9 @@ where
                 }
 
                 // Handle the message
+                // Clone locale to avoid borrow checker conflict
+                let locale = conn_state.locale.clone();
+                
                 let mut ctx = HandlerContext {
                     writer: &mut writer,
                     peer_addr,
@@ -91,6 +96,7 @@ where
                     db: &db,
                     tx: &tx,
                     debug,
+                    locale: &locale,
                 };
 
                 if let Err(e) = handle_client_message(
@@ -180,12 +186,15 @@ async fn handle_client_message(
                     username,
                     password,
                     features,
-                    locale,
+                    locale.clone(),
                     conn_state.handshake_complete,
                     &mut conn_state.session_id,
                     ctx,
                 )
                 .await?;
+                
+                // Update connection locale after successful login
+                conn_state.locale = locale;
             }
             ClientMessage::UserBroadcast { message } => {
                 handlers::handle_user_broadcast(message, conn_state.session_id, ctx).await?;
@@ -254,7 +263,7 @@ async fn handle_client_message(
             // NOTE: Don't log the raw message - it might contain passwords if malformed
             eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, ctx.peer_addr, e);
             return ctx
-                .send_error_and_disconnect(ERR_INVALID_MESSAGE_FORMAT, None)
+                .send_error_and_disconnect(&err_invalid_message_format(&conn_state.locale), None)
                 .await;
         }
     }

@@ -5,6 +5,7 @@ mod connection;
 mod constants;
 mod db;
 mod handlers;
+mod i18n;
 mod upnp;
 mod users;
 

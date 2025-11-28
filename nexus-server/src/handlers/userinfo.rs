@@ -3,14 +3,14 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    ERR_AUTHENTICATION, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext,
+    err_authentication, err_database, err_not_logged_in, err_permission_denied,
+    err_user_not_found, HandlerContext,
 };
 use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use std::io;
 
-/// Error message when target user not found
-const ERR_TARGET_NOT_FOUND: &str = "User not found";
+
 
 /// Handle a userinfo request from the client
 pub async fn handle_userinfo(
@@ -24,7 +24,7 @@ pub async fn handle_userinfo(
         None => {
             eprintln!("UserInfo request from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserInfo"))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };
@@ -35,7 +35,7 @@ pub async fn handle_userinfo(
         None => {
             eprintln!("UserInfo request from unknown user {}", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_AUTHENTICATION, Some("UserInfo"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };
@@ -51,7 +51,7 @@ pub async fn handle_userinfo(
         Err(e) => {
             eprintln!("UserInfo permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserInfo"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };
@@ -62,7 +62,7 @@ pub async fn handle_userinfo(
             ctx.peer_addr, requesting_user.username
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("UserInfo"))
+            .send_error(&err_permission_denied(ctx.locale), Some("UserInfo"))
             .await;
     }
 
@@ -77,7 +77,7 @@ pub async fn handle_userinfo(
         // User not found - send response with None
         let response = ServerMessage::UserInfoResponse {
             user: None,
-            error: Some(ERR_TARGET_NOT_FOUND.to_string()),
+            error: Some(err_user_not_found(ctx.locale, &requested_username)),
         };
         ctx.send_message(&response).await?;
         return Ok(());
@@ -93,7 +93,7 @@ pub async fn handle_userinfo(
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserInfo"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };
@@ -103,7 +103,7 @@ pub async fn handle_userinfo(
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserInfo"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };

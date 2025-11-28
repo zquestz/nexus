@@ -33,6 +33,7 @@ impl TestContext {
             db: &self.db,
             tx: &self.tx,
             debug: false, // Tests don't need debug logging
+            locale: DEFAULT_TEST_LOCALE,
         }
     }
 }

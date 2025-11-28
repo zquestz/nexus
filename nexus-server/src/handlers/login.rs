@@ -1,8 +1,8 @@
 //! Login message handler
 
 use super::{
-    ERR_ALREADY_LOGGED_IN, ERR_AUTHENTICATION, ERR_DATABASE, ERR_HANDSHAKE_REQUIRED,
-    ERR_INVALID_CREDENTIALS, err_account_disabled, err_failed_to_create_user,
+    err_account_disabled, err_already_logged_in, err_authentication, err_database,
+    err_failed_to_create_user, err_handshake_required, err_invalid_credentials,
 };
 use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
@@ -24,7 +24,7 @@ pub async fn handle_login(
     if !handshake_complete {
         eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_HANDSHAKE_REQUIRED, Some("Login"))
+            .send_error_and_disconnect(&err_handshake_required(&locale), Some("Login"))
             .await;
     }
 
@@ -32,7 +32,7 @@ pub async fn handle_login(
     if session_id.is_some() {
         eprintln!("Duplicate login attempt from {}", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_ALREADY_LOGGED_IN, Some("Login"))
+            .send_error_and_disconnect(&err_already_logged_in(&locale), Some("Login"))
             .await;
     }
 
@@ -42,7 +42,7 @@ pub async fn handle_login(
         Err(e) => {
             eprintln!("Database error looking up user {}: {}", username, e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("Login"))
+                .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                 .await;
         }
     };
@@ -59,7 +59,7 @@ pub async fn handle_login(
                         username, ctx.peer_addr
                     );
                     return ctx
-                        .send_error_and_disconnect(&err_account_disabled(&username), Some("Login"))
+                        .send_error_and_disconnect(&err_account_disabled(&locale, &username), Some("Login"))
                         .await;
                 }
                 account
@@ -70,13 +70,13 @@ pub async fn handle_login(
                     username, ctx.peer_addr
                 );
                 return ctx
-                    .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
+                    .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
                     .await;
             }
             Err(e) => {
                 eprintln!("Password verification error for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(ERR_AUTHENTICATION, Some("Login"))
+                    .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
                     .await;
             }
         }
@@ -87,7 +87,7 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(&err_failed_to_create_user(&username), Some("Login"))
+                    .send_error_and_disconnect(&err_failed_to_create_user(&locale, &username), Some("Login"))
                     .await;
             }
         };
@@ -110,13 +110,13 @@ pub async fn handle_login(
                 // Another connection created the first user already
                 eprintln!("User {} does not exist and not first user", username);
                 return ctx
-                    .send_error_and_disconnect(ERR_INVALID_CREDENTIALS, Some("Login"))
+                    .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
                     .await;
             }
             Err(e) => {
                 eprintln!("Failed to create first user {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(&err_failed_to_create_user(&username), Some("Login"))
+                    .send_error_and_disconnect(&err_failed_to_create_user(&locale, &username), Some("Login"))
                     .await;
             }
         }
@@ -855,8 +855,100 @@ mod tests {
         let n = test_ctx.client.read(&mut buf).await.unwrap();
         let response = String::from_utf8_lossy(&buf[..n]);
         assert!(
-            response.contains("Account 'bob' is disabled"),
+            response.contains("Account") && response.contains("bob") && response.contains("disabled"),
             "Should receive account disabled error with username"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_error_uses_requested_locale() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create a user first (so we're not the first user)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Attempt login with wrong password using Spanish locale
+        let result = handle_login(
+            "alice".to_string(),
+            "wrong_password".to_string(),
+            vec![],
+            "es".to_string(), // Request Spanish locale
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail with disconnect
+        assert!(result.is_err(), "Login with wrong password should fail");
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        // Verify error message was sent in Spanish
+        let mut buf = vec![0u8; 1024];
+        let n = test_ctx.client.read(&mut buf).await.unwrap();
+        let response = String::from_utf8_lossy(&buf[..n]);
+        
+        // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
+        assert!(
+            response.contains("Usuario") || response.contains("contraseña"),
+            "Error message should be in Spanish, got: {}",
+            response
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_error_defaults_to_english() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create a user first (so we're not the first user)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Attempt login with wrong password using empty locale (should default to "en")
+        let result = handle_login(
+            "alice".to_string(),
+            "wrong_password".to_string(),
+            vec![],
+            "".to_string(), // Empty locale should default to English
+            handshake_complete,
+            &mut session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail with disconnect
+        assert!(result.is_err(), "Login with wrong password should fail");
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        // Verify error message was sent in English (default)
+        let mut buf = vec![0u8; 1024];
+        let n = test_ctx.client.read(&mut buf).await.unwrap();
+        let response = String::from_utf8_lossy(&buf[..n]);
+        
+        // English error message should contain "Invalid username or password"
+        assert!(
+            response.contains("Invalid") && response.contains("username"),
+            "Error message should be in English (default), got: {}",
+            response
         );
     }
 }

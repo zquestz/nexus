@@ -1,21 +1,14 @@
 //! Handler for UserKick command
 
 use super::{
-    ERR_CANNOT_KICK_ADMIN, ERR_CANNOT_KICK_SELF, ERR_DATABASE, ERR_NOT_LOGGED_IN, HandlerContext,
-    err_kicked_by, err_user_not_online,
+    err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
+    err_kicked_by, err_not_logged_in, err_permission_denied, err_user_not_online, HandlerContext,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Error message when session not found
-const ERR_SESSION_NOT_FOUND: &str = "Session not found";
 
-/// Error message when requesting user account not found
-const ERR_ACCOUNT_NOT_FOUND: &str = "Your user account was not found";
-
-/// Error message when user lacks kick permission
-const ERR_NO_KICK_PERMISSION: &str = "You don't have permission to kick users";
 
 /// Handle UserKick command
 pub async fn handle_userkick(
@@ -26,7 +19,7 @@ pub async fn handle_userkick(
     // Step 1: Verify authentication
     let Some(session_id) = session_id else {
         return ctx
-            .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserKick"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserKick"))
             .await;
     };
 
@@ -35,7 +28,7 @@ pub async fn handle_userkick(
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(ERR_SESSION_NOT_FOUND, Some("UserKick"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserKick"))
                 .await;
         }
     };
@@ -44,7 +37,7 @@ pub async fn handle_userkick(
     if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserKickResponse {
             success: false,
-            error: Some(ERR_CANNOT_KICK_SELF.to_string()),
+            error: Some(err_cannot_kick_self(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -59,13 +52,13 @@ pub async fn handle_userkick(
         Ok(Some(user)) => user,
         Ok(None) => {
             return ctx
-                .send_error_and_disconnect(ERR_ACCOUNT_NOT_FOUND, Some("UserKick"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserKick"))
                 .await;
         }
         Err(e) => {
             eprintln!("Database error getting requesting user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserKick"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
                 .await;
         }
     };
@@ -82,7 +75,7 @@ pub async fn handle_userkick(
             Err(e) => {
                 eprintln!("Database error checking permissions: {}", e);
                 return ctx
-                    .send_error_and_disconnect(ERR_DATABASE, Some("UserKick"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
                     .await;
             }
         };
@@ -90,7 +83,7 @@ pub async fn handle_userkick(
     if !has_permission {
         let response = ServerMessage::UserKickResponse {
             success: false,
-            error: Some(ERR_NO_KICK_PERMISSION.to_string()),
+            error: Some(err_permission_denied(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -105,7 +98,7 @@ pub async fn handle_userkick(
         Err(e) => {
             eprintln!("Database error getting target user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserKick"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
                 .await;
         }
     };
@@ -116,7 +109,7 @@ pub async fn handle_userkick(
     {
         let response = ServerMessage::UserKickResponse {
             success: false,
-            error: Some(ERR_CANNOT_KICK_ADMIN.to_string()),
+            error: Some(err_cannot_kick_admin(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -131,7 +124,7 @@ pub async fn handle_userkick(
     if target_users.is_empty() {
         let response = ServerMessage::UserKickResponse {
             success: false,
-            error: Some(err_user_not_online(&target_username)),
+            error: Some(err_user_not_online(ctx.locale, &target_username)),
         };
         return ctx.send_message(&response).await;
     }
@@ -140,7 +133,7 @@ pub async fn handle_userkick(
     for user in target_users {
         // Send kick message to the user before disconnecting
         let kick_msg = ServerMessage::Error {
-            message: err_kicked_by(&requesting_user.username),
+            message: err_kicked_by(ctx.locale, &requesting_user.username),
             command: None,
         };
         let _ = user.tx.send(kick_msg);
@@ -174,7 +167,9 @@ pub async fn handle_userkick(
 mod tests {
     use super::*;
     use crate::db::Permission;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, login_user, read_server_message,
+    };
 
     #[tokio::test]
     async fn test_userkick_requires_login() {
@@ -209,7 +204,7 @@ mod tests {
         if let ServerMessage::UserKickResponse { success, error } = response {
             assert!(!success, "Kick should fail without permission");
             assert!(
-                error.unwrap().contains("permission"),
+                error.unwrap().to_lowercase().contains("permission"),
                 "Error should mention permission"
             );
         } else {

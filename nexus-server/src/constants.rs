@@ -286,3 +286,70 @@ pub const ERR_CHECK_PERMISSION: &str = "Error checking permission for ";
 
 /// User list permission check error prefix
 pub const ERR_CHECK_USER_LIST_PERMISSION: &str = "Error checking user_list permission for ";
+
+// =============================================================================
+// Internationalization Configuration and Error Messages (operator-facing)
+// =============================================================================
+
+/// Default locale (English)
+pub const DEFAULT_LOCALE: &str = "en";
+
+/// Supported locale: Spanish
+pub const LOCALE_SPANISH: &str = "es";
+
+/// Supported locale: Japanese
+pub const LOCALE_JAPANESE: &str = "ja";
+
+/// Supported locale: French
+pub const LOCALE_FRENCH: &str = "fr";
+
+/// Supported locale: German
+pub const LOCALE_GERMAN: &str = "de";
+
+/// Supported locale: Portuguese (generic/Brazilian)
+pub const LOCALE_PORTUGUESE: &str = "pt";
+
+/// Supported locale: Portuguese (Portugal)
+pub const LOCALE_PORTUGUESE_PT: &str = "pt-PT";
+
+/// Supported locale: Portuguese (Brazil)
+pub const LOCALE_PORTUGUESE_BR: &str = "pt-BR";
+
+/// Supported locale: Russian
+pub const LOCALE_RUSSIAN: &str = "ru";
+
+/// Supported locale: Chinese (generic/Simplified)
+pub const LOCALE_CHINESE: &str = "zh";
+
+/// Supported locale: Chinese (Simplified)
+pub const LOCALE_CHINESE_CN: &str = "zh-CN";
+
+/// Supported locale: Chinese (Traditional)
+pub const LOCALE_CHINESE_TW: &str = "zh-TW";
+
+/// Supported locale: Korean
+pub const LOCALE_KOREAN: &str = "ko";
+
+/// Supported locale: Italian
+pub const LOCALE_ITALIAN: &str = "it";
+
+/// Supported locale: Dutch
+pub const LOCALE_DUTCH: &str = "nl";
+
+/// Error when translation key is missing (format: key, locale)
+pub const ERR_I18N_MISSING_KEY: &str = "Missing translation key";
+
+/// Error when translation key is missing in English (format: key)
+pub const ERR_I18N_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
+
+/// Error when translation has formatting errors (format: key, errors)
+pub const ERR_I18N_TRANSLATION_ERRORS: &str = "Translation errors for key";
+
+/// "for locale: " - used in i18n error messages
+pub const MSG_I18N_FOR_LOCALE: &str = "for locale";
+
+/// Error when FTL file parsing fails
+pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
+
+/// Error when adding resource to bundle fails
+pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";

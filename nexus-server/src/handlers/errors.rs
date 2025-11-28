@@ -1,129 +1,174 @@
 //! Error message constants for handlers
 
+use crate::i18n::{t, t_args};
+
 // Authentication & Session Errors
-/// Error message when user is not logged in
-pub const ERR_NOT_LOGGED_IN: &str = "Not logged in";
+/// Get translated "not logged in" error
+pub fn err_not_logged_in(locale: &str) -> String {
+    t(locale, "err-not-logged-in")
+}
 
-/// Error message for authentication errors
-pub const ERR_AUTHENTICATION: &str = "Authentication error";
+/// Get translated "authentication" error
+pub fn err_authentication(locale: &str) -> String {
+    t(locale, "err-authentication")
+}
 
-/// Error message for invalid credentials
-pub const ERR_INVALID_CREDENTIALS: &str = "Invalid username or password";
+/// Get translated "invalid credentials" error
+pub fn err_invalid_credentials(locale: &str) -> String {
+    t(locale, "err-invalid-credentials")
+}
 
-/// Error message when handshake is required
-pub const ERR_HANDSHAKE_REQUIRED: &str = "Handshake required";
+/// Get translated "handshake required" error
+pub fn err_handshake_required(locale: &str) -> String {
+    t(locale, "err-handshake-required")
+}
 
-/// Error message when already logged in
-pub const ERR_ALREADY_LOGGED_IN: &str = "Already logged in";
+/// Get translated "already logged in" error
+pub fn err_already_logged_in(locale: &str) -> String {
+    t(locale, "err-already-logged-in")
+}
 
-/// Error message when handshake already completed
-pub const ERR_HANDSHAKE_ALREADY_COMPLETED: &str = "Handshake already completed";
+/// Get translated "handshake already completed" error
+pub fn err_handshake_already_completed(locale: &str) -> String {
+    t(locale, "err-handshake-already-completed")
+}
 
-/// Error message when account has been deleted
-pub const ERR_ACCOUNT_DELETED: &str = "Your account has been deleted";
+/// Get translated "account deleted" error
+pub fn err_account_deleted(locale: &str) -> String {
+    t(locale, "err-account-deleted")
+}
+
+/// Get translated "account disabled by admin" error
+pub fn err_account_disabled_by_admin(locale: &str) -> String {
+    t(locale, "err-account-disabled-by-admin")
+}
 
 // Permission & Access Errors
-/// Error message for permission denied
-pub const ERR_PERMISSION_DENIED: &str = "Permission denied";
+/// Get translated "permission denied" error
+pub fn err_permission_denied(locale: &str) -> String {
+    t(locale, "err-permission-denied")
+}
 
 // Database Errors
-/// Error message for database errors
-pub const ERR_DATABASE: &str = "Database error";
+/// Get translated "database" error
+pub fn err_database(locale: &str) -> String {
+    t(locale, "err-database")
+}
 
 // Message Format Errors
-/// Error message for invalid message format
-pub const ERR_INVALID_MESSAGE_FORMAT: &str = "Invalid message format";
+/// Get translated "invalid message format" error
+pub fn err_invalid_message_format(locale: &str) -> String {
+    t(locale, "err-invalid-message-format")
+}
 
 // User Management Errors
-/// Error message when trying to delete last admin
-pub const ERR_CANNOT_DELETE_LAST_ADMIN: &str = "Cannot delete the last admin";
+/// Get translated "cannot delete last admin" error
+pub fn err_cannot_delete_last_admin(locale: &str) -> String {
+    t(locale, "err-cannot-delete-last-admin")
+}
 
-/// Error message when trying to delete yourself
-pub const ERR_CANNOT_DELETE_SELF: &str = "You cannot delete yourself";
+/// Get translated "cannot delete self" error
+pub fn err_cannot_delete_self(locale: &str) -> String {
+    t(locale, "err-cannot-delete-self")
+}
 
-/// Error message when trying to demote last admin
-pub const ERR_CANNOT_DEMOTE_LAST_ADMIN: &str = "Cannot demote the last admin";
+/// Get translated "cannot demote last admin" error
+pub fn err_cannot_demote_last_admin(locale: &str) -> String {
+    t(locale, "err-cannot-demote-last-admin")
+}
 
-/// Error message when trying to edit yourself
-pub const ERR_CANNOT_EDIT_SELF: &str = "You cannot edit yourself";
+/// Get translated "cannot edit self" error
+pub fn err_cannot_edit_self(locale: &str) -> String {
+    t(locale, "err-cannot-edit-self")
+}
 
-/// Error message when non-admin tries to create admin
-pub const ERR_CANNOT_CREATE_ADMIN: &str = "Only admins can create admin users";
+/// Get translated "cannot create admin" error
+pub fn err_cannot_create_admin(locale: &str) -> String {
+    t(locale, "err-cannot-create-admin")
+}
 
-/// Error message when trying to kick yourself
-pub const ERR_CANNOT_KICK_SELF: &str = "You cannot kick yourself";
+/// Get translated "cannot kick self" error
+pub fn err_cannot_kick_self(locale: &str) -> String {
+    t(locale, "err-cannot-kick-self")
+}
 
-/// Error message when trying to kick an admin
-pub const ERR_CANNOT_KICK_ADMIN: &str = "Cannot kick admin users";
+/// Get translated "cannot kick admin" error
+pub fn err_cannot_kick_admin(locale: &str) -> String {
+    t(locale, "err-cannot-kick-admin")
+}
 
-/// Error message when trying to disable the last admin
-pub const ERR_CANNOT_DISABLE_LAST_ADMIN: &str = "Cannot disable the last admin";
-
+/// Get translated "cannot disable last admin" error
+pub fn err_cannot_disable_last_admin(locale: &str) -> String {
+    t(locale, "err-cannot-disable-last-admin")
+}
 // Chat Topic Errors
-/// Error message when topic contains newlines
-pub const ERR_TOPIC_CONTAINS_NEWLINES: &str = "Topic cannot contain newlines";
+/// Get translated "topic contains newlines" error
+pub fn err_topic_contains_newlines(locale: &str) -> String {
+    t(locale, "err-topic-contains-newlines")
+}
 
 // Message Validation Errors
-/// Error message when message is empty
-pub const ERR_MESSAGE_EMPTY: &str = "Message cannot be empty";
-
-// Helper functions to format dynamic error messages
-// All format strings are defined inline to keep them in one place
-
-/// Format broadcast message too long error
-pub fn err_broadcast_too_long(max_length: usize) -> String {
-    format!("Message too long (max {} characters)", max_length)
+/// Get translated "message empty" error
+pub fn err_message_empty(locale: &str) -> String {
+    t(locale, "err-message-empty")
 }
 
-/// Format chat message too long error
-pub fn err_chat_too_long(max_length: usize) -> String {
-    format!("Message too long (max {} characters)", max_length)
+// Dynamic error messages with parameters
+
+/// Get translated "broadcast too long" error
+pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
+    t_args(locale, "err-broadcast-too-long", &[("max_length", &max_length.to_string())])
 }
 
-/// Format topic too long error
-pub fn err_topic_too_long(max_length: usize) -> String {
-    format!("Topic cannot exceed {} characters", max_length)
+/// Get translated "chat too long" error
+pub fn err_chat_too_long(locale: &str, max_length: usize) -> String {
+    t_args(locale, "err-chat-too-long", &[("max_length", &max_length.to_string())])
 }
 
-/// Format version mismatch error
-pub fn err_version_mismatch(server_version: &str, client_version: &str) -> String {
-    format!(
-        "Version mismatch: server uses {}, client uses {}",
-        server_version, client_version
-    )
+/// Get translated "topic too long" error
+pub fn err_topic_too_long(locale: &str, max_length: usize) -> String {
+    t_args(locale, "err-topic-too-long", &[("max_length", &max_length.to_string())])
 }
 
-/// Format kicked by user message
-pub fn err_kicked_by(username: &str) -> String {
-    format!("You have been kicked by {}", username)
+/// Get translated "version mismatch" error
+pub fn err_version_mismatch(locale: &str, server_version: &str, client_version: &str) -> String {
+    t_args(locale, "err-version-mismatch", &[
+        ("server_version", server_version),
+        ("client_version", client_version)
+    ])
 }
 
-/// Format username already exists error
-pub fn err_username_exists(username: &str) -> String {
-    format!("Username '{}' already exists", username)
+/// Get translated "kicked by" message
+pub fn err_kicked_by(locale: &str, username: &str) -> String {
+    t_args(locale, "err-kicked-by", &[("username", username)])
 }
 
-/// Format user not found error
-pub fn err_user_not_found(username: &str) -> String {
-    format!("User '{}' not found", username)
+/// Get translated "username exists" error
+pub fn err_username_exists(locale: &str, username: &str) -> String {
+    t_args(locale, "err-username-exists", &[("username", username)])
 }
 
-/// Format user not online error
-pub fn err_user_not_online(username: &str) -> String {
-    format!("User '{}' is not online", username)
+/// Get translated "user not found" error
+pub fn err_user_not_found(locale: &str, username: &str) -> String {
+    t_args(locale, "err-user-not-found", &[("username", username)])
 }
 
-/// Format failed to create user error
-pub fn err_failed_to_create_user(username: &str) -> String {
-    format!("Failed to create user '{}'", username)
+/// Get translated "user not online" error
+pub fn err_user_not_online(locale: &str, username: &str) -> String {
+    t_args(locale, "err-user-not-online", &[("username", username)])
 }
 
-/// Format account disabled error
-pub fn err_account_disabled(username: &str) -> String {
-    format!("Account '{}' is disabled", username)
+/// Get translated "failed to create user" error
+pub fn err_failed_to_create_user(locale: &str, username: &str) -> String {
+    t_args(locale, "err-failed-to-create-user", &[("username", username)])
 }
 
-/// Format update failed error
-pub fn err_update_failed(username: &str) -> String {
-    format!("Failed to update user '{}'", username)
+/// Get translated "account disabled" error
+pub fn err_account_disabled(locale: &str, username: &str) -> String {
+    t_args(locale, "err-account-disabled", &[("username", username)])
+}
+
+/// Get translated "update failed" error
+pub fn err_update_failed(locale: &str, username: &str) -> String {
+    t_args(locale, "err-update-failed", &[("username", username)])
 }

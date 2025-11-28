@@ -56,6 +56,7 @@ pub struct HandlerContext<'a> {
     pub db: &'a Database,
     pub tx: &'a mpsc::UnboundedSender<ServerMessage>,
     pub debug: bool,
+    pub locale: &'a str,
 }
 
 impl<'a> HandlerContext<'a> {

@@ -2,8 +2,8 @@
 //! Handler for UserBroadcast command
 
 use super::{
-    ERR_AUTHENTICATION, ERR_DATABASE, ERR_MESSAGE_EMPTY, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
-    HandlerContext, err_broadcast_too_long,
+    HandlerContext, err_authentication, err_broadcast_too_long, err_database, 
+    err_message_empty, err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -25,7 +25,7 @@ pub async fn handle_user_broadcast(
     if message.trim().is_empty() {
         eprintln!("UserBroadcast from {} with empty message", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(ERR_MESSAGE_EMPTY, Some("UserBroadcast"))
+            .send_error_and_disconnect(&err_message_empty(ctx.locale), Some("UserBroadcast"))
             .await;
     }
 
@@ -37,7 +37,7 @@ pub async fn handle_user_broadcast(
         );
         return ctx
             .send_error_and_disconnect(
-                &err_broadcast_too_long(MAX_BROADCAST_LENGTH),
+                &err_broadcast_too_long(ctx.locale, MAX_BROADCAST_LENGTH),
                 Some("UserBroadcast"),
             )
             .await;
@@ -49,7 +49,7 @@ pub async fn handle_user_broadcast(
         None => {
             eprintln!("UserBroadcast from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserBroadcast"))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserBroadcast"))
                 .await;
         }
     };
@@ -59,7 +59,7 @@ pub async fn handle_user_broadcast(
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(ERR_AUTHENTICATION, Some("UserBroadcast"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserBroadcast"))
                 .await;
         }
     };
@@ -75,7 +75,7 @@ pub async fn handle_user_broadcast(
         Err(e) => {
             eprintln!("UserBroadcast permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserBroadcast"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserBroadcast"))
                 .await;
         }
     };
@@ -86,7 +86,7 @@ pub async fn handle_user_broadcast(
             ctx.peer_addr, user.username
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("UserBroadcast"))
+            .send_error(&err_permission_denied(ctx.locale), Some("UserBroadcast"))
             .await;
     }
 

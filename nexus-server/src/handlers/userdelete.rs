@@ -3,24 +3,15 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    ERR_ACCOUNT_DELETED, ERR_CANNOT_DELETE_LAST_ADMIN, ERR_CANNOT_DELETE_SELF, ERR_DATABASE,
-    ERR_NOT_LOGGED_IN, HandlerContext,
+    err_account_deleted, err_authentication, err_cannot_delete_last_admin,
+    err_cannot_delete_self, err_database, err_not_logged_in, err_permission_denied,
+    err_user_not_found, HandlerContext,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Error message when session not found
-const ERR_SESSION_NOT_FOUND: &str = "Session not found";
 
-/// Error message when requesting user account not found
-const ERR_ACCOUNT_NOT_FOUND: &str = "Your user account was not found";
-
-/// Error message when user lacks delete permission
-const ERR_NO_DELETE_PERMISSION: &str = "You don't have permission to delete users";
-
-/// Error message when target user not found
-const ERR_TARGET_NOT_FOUND: &str = "User not found";
 
 /// Handle UserDelete command
 pub async fn handle_userdelete(
@@ -31,7 +22,7 @@ pub async fn handle_userdelete(
     // Verify authentication
     let Some(session_id) = session_id else {
         return ctx
-            .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserDelete"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserDelete"))
             .await;
     };
 
@@ -40,7 +31,7 @@ pub async fn handle_userdelete(
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(ERR_SESSION_NOT_FOUND, Some("UserDelete"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserDelete"))
                 .await;
         }
     };
@@ -49,7 +40,7 @@ pub async fn handle_userdelete(
     if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
-            error: Some(ERR_CANNOT_DELETE_SELF.to_string()),
+            error: Some(err_cannot_delete_self(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -64,13 +55,13 @@ pub async fn handle_userdelete(
         Ok(Some(user)) => user,
         Ok(None) => {
             return ctx
-                .send_error_and_disconnect(ERR_ACCOUNT_NOT_FOUND, Some("UserDelete"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserDelete"))
                 .await;
         }
         Err(e) => {
             eprintln!("Database error getting requesting user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserDelete"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                 .await;
         }
     };
@@ -87,7 +78,7 @@ pub async fn handle_userdelete(
             Err(e) => {
                 eprintln!("Database error checking permissions: {}", e);
                 return ctx
-                    .send_error_and_disconnect(ERR_DATABASE, Some("UserDelete"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                     .await;
             }
         };
@@ -95,7 +86,7 @@ pub async fn handle_userdelete(
     if !has_permission {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
-            error: Some(ERR_NO_DELETE_PERMISSION.to_string()),
+            error: Some(err_permission_denied(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -106,14 +97,14 @@ pub async fn handle_userdelete(
         Ok(None) => {
             let response = ServerMessage::UserDeleteResponse {
                 success: false,
-                error: Some(ERR_TARGET_NOT_FOUND.to_string()),
+                error: Some(err_user_not_found(ctx.locale, &target_username)),
             };
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             eprintln!("Database error getting target user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserDelete"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                 .await;
         }
     };
@@ -125,7 +116,7 @@ pub async fn handle_userdelete(
     if let Some(online_user) = online_user {
         // Send error message to the user being deleted
         let disconnect_msg = ServerMessage::Error {
-            message: ERR_ACCOUNT_DELETED.to_string(),
+            message: err_account_deleted(ctx.locale),
             command: None,
         };
         let _ = online_user.tx.send(disconnect_msg);
@@ -161,14 +152,14 @@ pub async fn handle_userdelete(
                 // Deletion was blocked (likely because they're the last admin)
                 let response = ServerMessage::UserDeleteResponse {
                     success: false,
-                    error: Some(ERR_CANNOT_DELETE_LAST_ADMIN.to_string()),
+                    error: Some(err_cannot_delete_last_admin(ctx.locale)),
                 };
                 ctx.send_message(&response).await
             }
         }
         Err(e) => {
             eprintln!("Database error deleting user: {}", e);
-            ctx.send_error_and_disconnect(ERR_DATABASE, Some("UserDelete"))
+            ctx.send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                 .await
         }
     }
@@ -234,7 +225,7 @@ mod tests {
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(
-                    error_msg.contains("permission"),
+                    error_msg.to_lowercase().contains("permission"),
                     "Error should mention permission"
                 );
             }

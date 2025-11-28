@@ -3,16 +3,15 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    ERR_CANNOT_CREATE_ADMIN, ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
-    HandlerContext, err_username_exists,
+    err_authentication, err_cannot_create_admin, err_database, err_message_empty,
+    err_not_logged_in, err_permission_denied, err_username_exists, HandlerContext,
 };
 use crate::db::errors::validate_username;
 use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Error message for empty password
-const ERR_EMPTY_PASSWORD: &str = "Password cannot be empty";
+
 
 /// Handle a user creation request from the client
 pub async fn handle_usercreate(
@@ -25,7 +24,7 @@ pub async fn handle_usercreate(
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
     // Validate username format
-    if let Err(e) = validate_username(&username) {
+    if let Err(e) = validate_username(&username, ctx.locale) {
         eprintln!(
             "UserCreate from {} with invalid username: {}",
             ctx.peer_addr, e
@@ -42,7 +41,7 @@ pub async fn handle_usercreate(
         eprintln!("UserCreate from {} with empty password", ctx.peer_addr);
         let error_msg = ServerMessage::UserCreateResponse {
             success: false,
-            error: Some(ERR_EMPTY_PASSWORD.to_string()),
+            error: Some(err_message_empty(ctx.locale)),
         };
         ctx.send_message(&error_msg).await?;
         return Ok(());
@@ -54,7 +53,7 @@ pub async fn handle_usercreate(
         None => {
             eprintln!("UserCreate request from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserCreate"))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
@@ -69,7 +68,7 @@ pub async fn handle_usercreate(
         None => {
             eprintln!("UserCreate request from unknown user {}", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
@@ -85,7 +84,7 @@ pub async fn handle_usercreate(
         Err(e) => {
             eprintln!("UserCreate permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
@@ -96,7 +95,7 @@ pub async fn handle_usercreate(
             ctx.peer_addr, requesting_user.username
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))
+            .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
             .await;
     }
 
@@ -111,7 +110,7 @@ pub async fn handle_usercreate(
             Ok(Some(acc)) => acc,
             _ => {
                 return ctx
-                    .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                     .await;
             }
         };
@@ -122,7 +121,7 @@ pub async fn handle_usercreate(
                 ctx.peer_addr
             );
             return ctx
-                .send_error_and_disconnect(ERR_CANNOT_CREATE_ADMIN, Some("UserCreate"))
+                .send_error_and_disconnect(&err_cannot_create_admin(ctx.locale), Some("UserCreate"))
                 .await;
         }
     }
@@ -137,7 +136,7 @@ pub async fn handle_usercreate(
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
@@ -158,7 +157,7 @@ pub async fn handle_usercreate(
                     Err(e) => {
                         eprintln!("Permission check error: {}", e);
                         return ctx
-                            .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                            .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                             .await;
                     }
                 };
@@ -169,7 +168,7 @@ pub async fn handle_usercreate(
                         ctx.peer_addr, requesting_user.username, perm_str
                     );
                     return ctx
-                        .send_error(ERR_PERMISSION_DENIED, Some("UserCreate"))
+                        .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
                         .await;
                 }
             }
@@ -187,7 +186,7 @@ pub async fn handle_usercreate(
             // Username already exists
             let response = ServerMessage::UserCreateResponse {
                 success: false,
-                error: Some(err_username_exists(&username)),
+                error: Some(err_username_exists(ctx.locale, &username)),
             };
             return ctx.send_message(&response).await;
         }
@@ -197,7 +196,7 @@ pub async fn handle_usercreate(
         Err(e) => {
             eprintln!("Database error checking username: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
         }
     }
@@ -208,7 +207,7 @@ pub async fn handle_usercreate(
         Err(e) => {
             eprintln!("Password hashing error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
@@ -231,7 +230,7 @@ pub async fn handle_usercreate(
         Err(e) => {
             eprintln!("Database error creating user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
         }
     }

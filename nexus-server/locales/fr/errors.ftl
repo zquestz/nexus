@@ -1,0 +1,52 @@
+# Erreurs d'authentification et de session
+err-not-logged-in = Non connecté
+err-authentication = Erreur d'authentification
+err-invalid-credentials = Nom d'utilisateur ou mot de passe invalide
+err-handshake-required = Handshake requis
+err-already-logged-in = Déjà connecté
+err-handshake-already-completed = Handshake déjà effectué
+err-account-deleted = Votre compte a été supprimé
+err-account-disabled-by-admin = Compte désactivé par l'administrateur
+
+# Erreurs de permission et d'accès
+err-permission-denied = Permission refusée
+
+# Erreurs de base de données
+err-database = Erreur de base de données
+
+# Erreurs de format de message
+err-invalid-message-format = Format de message invalide
+
+# Erreurs de gestion des utilisateurs
+err-cannot-delete-last-admin = Impossible de supprimer le dernier administrateur
+err-cannot-delete-self = Vous ne pouvez pas vous supprimer vous-même
+err-cannot-demote-last-admin = Impossible de rétrograder le dernier administrateur
+err-cannot-edit-self = Vous ne pouvez pas vous modifier vous-même
+err-cannot-create-admin = Seuls les administrateurs peuvent créer des utilisateurs administrateurs
+err-cannot-kick-self = Vous ne pouvez pas vous expulser vous-même
+err-cannot-kick-admin = Impossible d'expulser les utilisateurs administrateurs
+err-cannot-disable-last-admin = Impossible de désactiver le dernier administrateur
+
+# Erreurs de sujet de discussion
+err-topic-contains-newlines = Le sujet ne peut pas contenir de sauts de ligne
+
+# Erreurs de validation de message
+err-message-empty = Le message ne peut pas être vide
+
+# Erreurs de validation du nom d'utilisateur
+err-username-empty = Le nom d'utilisateur ne peut pas être vide
+err-username-invalid = Le nom d'utilisateur contient des caractères invalides (lettres, chiffres et symboles autorisés - pas d'espaces ni de caractères de contrôle)
+
+# Messages d'erreur dynamiques (avec paramètres)
+err-broadcast-too-long = Message trop long (maximum { $max_length } caractères)
+err-chat-too-long = Message trop long (maximum { $max_length } caractères)
+err-topic-too-long = Le sujet ne peut pas dépasser { $max_length } caractères
+err-version-mismatch = Incompatibilité de version : le serveur utilise { $server_version }, le client utilise { $client_version }
+err-kicked-by = Vous avez été expulsé par { $username }
+err-username-exists = Le nom d'utilisateur « { $username } » existe déjà
+err-user-not-found = Utilisateur « { $username } » introuvable
+err-user-not-online = L'utilisateur « { $username } » n'est pas en ligne
+err-failed-to-create-user = Échec de la création de l'utilisateur « { $username } »
+err-account-disabled = Le compte « { $username } » est désactivé
+err-update-failed = Échec de la mise à jour de l'utilisateur « { $username } »
+err-username-too-long = Le nom d'utilisateur est trop long (maximum { $max_length } caractères)

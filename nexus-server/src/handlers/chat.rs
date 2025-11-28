@@ -2,8 +2,8 @@
 //! Handler for ChatSend command
 
 use super::{
-    ERR_AUTHENTICATION, ERR_DATABASE, ERR_MESSAGE_EMPTY, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED,
-    HandlerContext, err_chat_too_long,
+    err_authentication, err_chat_too_long, err_database, err_message_empty, err_not_logged_in,
+    err_permission_denied, HandlerContext,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -21,7 +21,7 @@ pub async fn handle_chat_send(
     // Validate message content
     if message.trim().is_empty() {
         return ctx
-            .send_error_and_disconnect(ERR_MESSAGE_EMPTY, Some("ChatSend"))
+            .send_error_and_disconnect(&err_message_empty(ctx.locale), Some("ChatSend"))
             .await;
     }
 
@@ -32,7 +32,7 @@ pub async fn handle_chat_send(
             message.len()
         );
         return ctx
-            .send_error_and_disconnect(&err_chat_too_long(MAX_CHAT_LENGTH), Some("ChatSend"))
+            .send_error_and_disconnect(&err_chat_too_long(ctx.locale, MAX_CHAT_LENGTH), Some("ChatSend"))
             .await;
     }
 
@@ -42,7 +42,7 @@ pub async fn handle_chat_send(
         None => {
             eprintln!("ChatSend from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("ChatSend"))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
                 .await;
         }
     };
@@ -52,7 +52,7 @@ pub async fn handle_chat_send(
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(ERR_AUTHENTICATION, Some("ChatSend"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatSend"))
                 .await;
         }
     };
@@ -79,7 +79,7 @@ pub async fn handle_chat_send(
         Err(e) => {
             eprintln!("ChatSend permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("ChatSend"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("ChatSend"))
                 .await;
         }
     };
@@ -90,7 +90,7 @@ pub async fn handle_chat_send(
             ctx.peer_addr, user.username
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("ChatSend"))
+            .send_error(&err_permission_denied(ctx.locale), Some("ChatSend"))
             .await;
     }
 

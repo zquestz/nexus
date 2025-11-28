@@ -3,11 +3,12 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    ERR_CANNOT_DEMOTE_LAST_ADMIN, ERR_CANNOT_DISABLE_LAST_ADMIN, ERR_CANNOT_EDIT_SELF,
-    ERR_DATABASE, ERR_NOT_LOGGED_IN, ERR_PERMISSION_DENIED, HandlerContext, err_update_failed,
-    err_user_not_found, err_username_exists,
+    err_account_disabled_by_admin, err_authentication, err_cannot_demote_last_admin,
+    err_cannot_disable_last_admin, err_cannot_edit_self, err_database, err_not_logged_in,
+    err_permission_denied, err_update_failed, err_user_not_found, err_username_exists,
+    HandlerContext,
 };
-use crate::db::errors::validate_username;
+use crate::db::errors::{err_username_empty, validate_username};
 use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
@@ -34,7 +35,7 @@ pub async fn handle_userupdate(
         None => {
             eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserUpdate"))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
                 .await;
         }
     };
@@ -49,7 +50,7 @@ pub async fn handle_userupdate(
         None => {
             eprintln!("UserUpdate request from unknown user {}", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserUpdate"))
                 .await;
         }
     };
@@ -59,7 +60,7 @@ pub async fn handle_userupdate(
         eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
-            error: Some(ERR_CANNOT_EDIT_SELF.to_string()),
+            error: Some(err_cannot_edit_self(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -75,7 +76,7 @@ pub async fn handle_userupdate(
         Err(e) => {
             eprintln!("UserUpdate permission check error: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;
         }
     };
@@ -86,13 +87,13 @@ pub async fn handle_userupdate(
             ctx.peer_addr, requesting_user.username
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("UserUpdate"))
+            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
             .await;
     }
 
     // Validate new username format if it's being changed
     if let Some(ref new_username) = request.requested_username
-        && let Err(e) = validate_username(new_username)
+        && let Err(e) = validate_username(new_username, ctx.locale)
     {
         eprintln!(
             "UserUpdate from {} with invalid username: {}",
@@ -118,7 +119,7 @@ pub async fn handle_userupdate(
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;
         }
     };
@@ -130,7 +131,7 @@ pub async fn handle_userupdate(
             ctx.peer_addr
         );
         return ctx
-            .send_error(ERR_PERMISSION_DENIED, Some("UserUpdate"))
+            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
             .await;
     }
 
@@ -151,7 +152,7 @@ pub async fn handle_userupdate(
                         Err(e) => {
                             eprintln!("Permission check error: {}", e);
                             return ctx
-                                .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                                 .await;
                         }
                     };
@@ -162,7 +163,7 @@ pub async fn handle_userupdate(
                             ctx.peer_addr, requesting_user.username, perm_str
                         );
                         return ctx
-                            .send_error(ERR_PERMISSION_DENIED, Some("UserUpdate"))
+                            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
                             .await;
                     }
                 }
@@ -198,7 +199,7 @@ pub async fn handle_userupdate(
                             Err(e) => {
                                 eprintln!("Permission check error: {}", e);
                                 return ctx
-                                    .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                                     .await;
                             }
                         };
@@ -235,9 +236,9 @@ pub async fn handle_userupdate(
             match hash_password(password) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
-                    eprintln!("Password hashing error: {}", e);
+                    eprintln!("Database error updating user {}: {}", request.username, e);
                     return ctx
-                        .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                         .await;
                 }
             }
@@ -253,7 +254,7 @@ pub async fn handle_userupdate(
         eprintln!("UserUpdate from {} with empty username", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
-            error: Some("Username cannot be empty".to_string()),
+            error: Some(err_username_empty(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -349,7 +350,7 @@ pub async fn handle_userupdate(
                     for session_id in session_ids {
                         // Send disconnect message to inform the user why they're being disconnected
                         let disconnect_msg = ServerMessage::Error {
-                            message: "Account disabled by admin".to_string(),
+                            message: err_account_disabled_by_admin(ctx.locale),
                             command: None,
                         };
 
@@ -460,7 +461,7 @@ pub async fn handle_userupdate(
                 .flatten()
                 .is_none()
             {
-                err_user_not_found(&request.username)
+                err_user_not_found(ctx.locale, &request.username)
             } else if let Some(ref new_username) = request.requested_username {
                 // Check if the new username already exists (and it's not the same user)
                 if new_username != &request.username
@@ -473,17 +474,17 @@ pub async fn handle_userupdate(
                         .flatten()
                         .is_some()
                 {
-                    err_username_exists(new_username)
+                    err_username_exists(ctx.locale, new_username)
                 } else {
                     // Username change was blocked but not due to duplicate - must be admin protection
-                    ERR_CANNOT_DEMOTE_LAST_ADMIN.to_string()
+                    err_cannot_demote_last_admin(ctx.locale)
                 }
             } else if request.requested_is_admin == Some(false) {
-                ERR_CANNOT_DEMOTE_LAST_ADMIN.to_string()
+                err_cannot_demote_last_admin(ctx.locale)
             } else if request.requested_enabled == Some(false) {
-                ERR_CANNOT_DISABLE_LAST_ADMIN.to_string()
+                err_cannot_disable_last_admin(ctx.locale)
             } else {
-                err_update_failed(&request.username)
+                err_update_failed(ctx.locale, &request.username)
             };
 
             let response = ServerMessage::UserUpdateResponse {
@@ -495,7 +496,7 @@ pub async fn handle_userupdate(
         Err(e) => {
             eprintln!("Database error updating user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;
         }
     }
@@ -555,7 +556,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, .. } => {
-                assert_eq!(message, ERR_PERMISSION_DENIED);
+                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected Error message"),
         }
@@ -584,7 +585,7 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success);
-                assert_eq!(error.unwrap(), ERR_CANNOT_EDIT_SELF);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -661,7 +662,7 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success);
-                assert_eq!(error.unwrap(), err_user_not_found("nonexistent"));
+                assert_eq!(error.unwrap(), err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent"));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -712,7 +713,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, .. } => {
-                assert_eq!(message, ERR_PERMISSION_DENIED);
+                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected Error message"),
         }
@@ -799,7 +800,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, .. } => {
-                assert_eq!(message, ERR_PERMISSION_DENIED);
+                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected Error message"),
         }
@@ -1118,7 +1119,7 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success, "Should not allow self-edit");
-                assert_eq!(error, Some(ERR_CANNOT_EDIT_SELF.to_string()));
+                assert_eq!(error, Some(err_cannot_edit_self(DEFAULT_TEST_LOCALE)));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1173,7 +1174,7 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success, "Should not allow disabling last admin");
-                assert_eq!(error, Some(ERR_CANNOT_DISABLE_LAST_ADMIN.to_string()));
+                assert_eq!(error, Some(err_cannot_disable_last_admin(DEFAULT_TEST_LOCALE)));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }

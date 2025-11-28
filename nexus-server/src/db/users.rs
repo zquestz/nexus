@@ -214,7 +214,7 @@ impl UserDb {
     ) -> Result<UserAccount, sqlx::Error> {
         // Validate username format (failsafe - handlers should also validate)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Err(e) = validate_username(username) {
+        if let Err(e) = validate_username(username, "en") {
             return Err(sqlx::Error::Protocol(e.to_string()));
         }
 
@@ -387,7 +387,7 @@ impl UserDb {
         // Validate username format if it's being changed (failsafe)
         // If this fails, it indicates a bug or attack bypassing handler validation
         if let Some(new_username) = requested_username
-            && let Err(e) = validate_username(new_username)
+            && let Err(e) = validate_username(new_username, "en")
         {
             return Err(sqlx::Error::Protocol(e.to_string()));
         }

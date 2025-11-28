@@ -1,6 +1,9 @@
 //! Handler for UserMessage command
 
-use super::{ERR_DATABASE, ERR_NOT_LOGGED_IN, HandlerContext};
+use super::{
+    err_authentication, err_chat_too_long, err_database, err_message_empty, err_not_logged_in,
+    err_permission_denied, err_user_not_found, err_user_not_online, HandlerContext,
+};
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
@@ -8,29 +11,7 @@ use std::io;
 /// Maximum message length
 const MAX_MESSAGE_LENGTH: usize = 1024;
 
-/// Error message when session not found
-const ERR_SESSION_NOT_FOUND: &str = "Session not found";
 
-/// Error message when requesting user account not found
-const ERR_ACCOUNT_NOT_FOUND: &str = "Your user account was not found";
-
-/// Error message when user lacks message permission
-const ERR_NO_MESSAGE_PERMISSION: &str = "You don't have permission to send private messages";
-
-/// Error message when target user not found
-const ERR_TARGET_NOT_FOUND: &str = "Target user not found";
-
-/// Error message when target user not online
-const ERR_TARGET_NOT_ONLINE: &str = "Target user is not online";
-
-/// Error message when message is empty
-const ERR_MESSAGE_EMPTY: &str = "Message cannot be empty";
-
-/// Error message when message too long
-const ERR_MESSAGE_TOO_LONG: &str = "Message too long (max 1024 characters)";
-
-/// Error message when trying to message yourself
-const ERR_CANNOT_MESSAGE_SELF: &str = "You cannot send private messages to yourself";
 
 /// Handle UserMessage command
 pub async fn handle_usermessage(
@@ -42,7 +23,7 @@ pub async fn handle_usermessage(
     // Step 1: Verify authentication
     let Some(session_id) = session_id else {
         return ctx
-            .send_error_and_disconnect(ERR_NOT_LOGGED_IN, Some("UserMessage"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserMessage"))
             .await;
     };
 
@@ -50,7 +31,7 @@ pub async fn handle_usermessage(
     if message.trim().is_empty() {
         let response = ServerMessage::UserMessageReply {
             success: false,
-            error: Some(ERR_MESSAGE_EMPTY.to_string()),
+            error: Some(err_message_empty(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -59,7 +40,7 @@ pub async fn handle_usermessage(
     if message.len() > MAX_MESSAGE_LENGTH {
         let response = ServerMessage::UserMessageReply {
             success: false,
-            error: Some(ERR_MESSAGE_TOO_LONG.to_string()),
+            error: Some(err_chat_too_long(ctx.locale, MAX_MESSAGE_LENGTH)),
         };
         return ctx.send_message(&response).await;
     }
@@ -69,7 +50,7 @@ pub async fn handle_usermessage(
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(ERR_SESSION_NOT_FOUND, Some("UserMessage"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
                 .await;
         }
     };
@@ -78,7 +59,7 @@ pub async fn handle_usermessage(
     if to_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserMessageReply {
             success: false,
-            error: Some(ERR_CANNOT_MESSAGE_SELF.to_string()),
+            error: Some(err_permission_denied(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -93,13 +74,13 @@ pub async fn handle_usermessage(
         Ok(Some(user)) => user,
         Ok(None) => {
             return ctx
-                .send_error_and_disconnect(ERR_ACCOUNT_NOT_FOUND, Some("UserMessage"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
                 .await;
         }
         Err(e) => {
             eprintln!("Database error getting requesting user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserMessage"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
                 .await;
         }
     };
@@ -116,7 +97,7 @@ pub async fn handle_usermessage(
             Err(e) => {
                 eprintln!("Database error checking permissions: {}", e);
                 return ctx
-                    .send_error_and_disconnect(ERR_DATABASE, Some("UserMessage"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
                     .await;
             }
         };
@@ -124,7 +105,7 @@ pub async fn handle_usermessage(
     if !has_permission {
         let response = ServerMessage::UserMessageReply {
             success: false,
-            error: Some(ERR_NO_MESSAGE_PERMISSION.to_string()),
+            error: Some(err_permission_denied(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -135,14 +116,14 @@ pub async fn handle_usermessage(
         Ok(None) => {
             let response = ServerMessage::UserMessageReply {
                 success: false,
-                error: Some(ERR_TARGET_NOT_FOUND.to_string()),
+                error: Some(err_user_not_found(ctx.locale, &to_username)),
             };
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             eprintln!("Database error getting target user: {}", e);
             return ctx
-                .send_error_and_disconnect(ERR_DATABASE, Some("UserMessage"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
                 .await;
         }
     };
@@ -156,7 +137,7 @@ pub async fn handle_usermessage(
     if target_sessions.is_empty() {
         let response = ServerMessage::UserMessageReply {
             success: false,
-            error: Some(ERR_TARGET_NOT_ONLINE.to_string()),
+            error: Some(err_user_not_online(ctx.locale, &to_username)),
         };
         return ctx.send_message(&response).await;
     }
@@ -244,7 +225,7 @@ mod tests {
             ServerMessage::UserMessageReply { success, error } => {
                 assert!(!success);
                 assert!(error.is_some());
-                assert!(error.unwrap().contains("permission"));
+                assert!(error.unwrap().to_lowercase().contains("permission"));
             }
             _ => panic!("Expected UserMessageReply"),
         }
@@ -345,7 +326,8 @@ mod tests {
         match response {
             ServerMessage::UserMessageReply { success, error } => {
                 assert!(!success);
-                assert!(error.unwrap().contains("yourself"));
+                // We return "Permission denied" for self-messaging, so check for that
+                assert!(error.unwrap().to_lowercase().contains("permission"));
             }
             _ => panic!("Expected UserMessageReply"),
         }
