@@ -8,7 +8,7 @@ use super::{
     ERR_USERNAME_EXISTS, HandlerContext,
 };
 use crate::db::{Permission, Permissions, hash_password};
-use crate::validation::validate_username;
+use crate::db::errors::validate_username;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use std::io;
 

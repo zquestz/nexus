@@ -7,7 +7,6 @@ mod db;
 mod handlers;
 mod upnp;
 mod users;
-mod validation;
 
 use args::Args;
 use clap::Parser;

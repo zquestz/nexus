@@ -4,7 +4,7 @@
 mod broadcast;
 mod chat;
 mod chattopicupdate;
-mod errors;
+pub mod errors;
 mod handshake;
 mod login;
 mod usercreate;

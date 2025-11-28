@@ -4,8 +4,5 @@
 
 pub mod constants;
 pub mod db;
+pub mod handlers;
 pub mod users;
-
-// Re-export commonly used items for convenience
-pub use db::Database;
-pub use users::UserManager;

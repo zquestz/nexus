@@ -2,40 +2,8 @@
 
 use super::permissions::{Permission, Permissions};
 use super::sql::*;
-use crate::constants::*;
+use super::errors::validate_username;
 use sqlx::SqlitePool;
-
-/// Validate a username (database-level failsafe)
-///
-/// This is a failsafe validation that should be called by the database layer.
-/// Handlers should also validate and provide user-friendly errors.
-///
-/// **Allowed characters:**
-/// - Unicode letters (any language)
-/// - ASCII graphic characters (printable: `!` to `~`, includes numbers and symbols)
-///
-/// **Disallowed:**
-/// - Whitespace (spaces, tabs, newlines)
-/// - Control characters
-/// - Empty strings
-/// - More than 32 characters
-fn validate_username(username: &str) -> Result<(), &'static str> {
-    if username.is_empty() {
-        return Err(ERR_USERNAME_EMPTY);
-    }
-
-    if username.chars().count() > MAX_USERNAME_LENGTH {
-        return Err(ERR_USERNAME_TOO_LONG);
-    }
-
-    for ch in username.chars() {
-        if !ch.is_alphabetic() && !ch.is_ascii_graphic() {
-            return Err(ERR_USERNAME_INVALID);
-        }
-    }
-
-    Ok(())
-}
 
 /// User account stored in database
 ///

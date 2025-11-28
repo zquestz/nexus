@@ -108,3 +108,5 @@ pub fn err_version_mismatch(server_version: &str, client_version: &str) -> Strin
 pub fn err_kicked_by(username: &str) -> String {
     format!("You have been kicked by {}", username)
 }
+
+
