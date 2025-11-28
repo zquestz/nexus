@@ -17,7 +17,8 @@ pub const MSG_CERT_FINGERPRINT: &str = "Certificate fingerprint (SHA-256): ";
 pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
 pub const MSG_UPNP_WARNING: &str = "Warning: UPnP setup failed: ";
 pub const MSG_UPNP_CONTINUE: &str = "Server will continue without UPnP port forwarding.";
-pub const MSG_UPNP_MANUAL: &str = "You may need to manually configure port forwarding on your router.";
+pub const MSG_UPNP_MANUAL: &str =
+    "You may need to manually configure port forwarding on your router.";
 
 /// General error messages
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";

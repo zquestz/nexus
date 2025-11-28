@@ -275,10 +275,7 @@ async fn setup_network(
     db_path: &std::path::Path,
 ) -> (TcpListener, TlsAcceptor) {
     // Get certificate directory (same parent as database)
-    let cert_dir = db_path
-        .parent()
-        .expect(ERR_DB_PATH_NO_PARENT)
-        .to_path_buf();
+    let cert_dir = db_path.parent().expect(ERR_DB_PATH_NO_PARENT).to_path_buf();
 
     // Load or generate TLS certificate
     let tls_acceptor = match load_or_generate_tls_config(&cert_dir) {
@@ -348,8 +345,6 @@ async fn setup_shutdown_signal() {
 
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c()
-            .await
-            .expect(ERR_SIGNAL_CTRLC);
+        tokio::signal::ctrl_c().await.expect(ERR_SIGNAL_CTRLC);
     }
 }
