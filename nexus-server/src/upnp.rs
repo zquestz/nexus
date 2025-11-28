@@ -17,6 +17,8 @@ const PROTOCOL_DESCRIPTION: &str = "Nexus BBS Server";
 
 /// Network addresses for routing detection
 const UDP_BIND_ADDRESS: &str = "0.0.0.0:0";
+
+/// Remote address for local routing table lookup (no actual connection is made)
 const ROUTING_TEST_ADDRESS: &str = "8.8.8.8:80";
 
 /// UPnP gateway handle for managing port mappings
@@ -37,7 +39,7 @@ impl UpnpGateway {
     /// * `Ok(UpnpGateway)` - Successfully configured port forwarding
     /// * `Err(String)` - Failed to configure (gateway not found, port forwarding failed, etc.)
     pub async fn setup(bind_addr: IpAddr, port: u16) -> Result<Self, String> {
-        // UPnP only works with IPv4
+        // UPnP only works with IPv4, but :: (dual-stack) binds IPv4 too
         let local_addr = match bind_addr {
             IpAddr::V4(ipv4) => {
                 // If bound to 0.0.0.0, we need to detect the actual local IP
@@ -47,8 +49,14 @@ impl UpnpGateway {
                     ipv4
                 }
             }
-            IpAddr::V6(_) => {
-                return Err(ERR_IPV6_NOT_SUPPORTED.to_string());
+            IpAddr::V6(ipv6) => {
+                // :: (unspecified) enables dual-stack, so UPnP can work for IPv4
+                if ipv6.is_unspecified() {
+                    Self::get_local_ipv4()?
+                } else {
+                    // Specific IPv6 address (like Yggdrasil) - UPnP won't work
+                    return Err(ERR_IPV6_NOT_SUPPORTED.to_string());
+                }
             }
         };
 
@@ -146,28 +154,9 @@ impl UpnpGateway {
         Ok(())
     }
 
-    /// Get the local IPv4 address by connecting to a public IP
+    /// Get the local IPv4 address using UDP socket routing
     /// This helps determine the actual interface when bound to 0.0.0.0
     fn get_local_ipv4() -> Result<std::net::Ipv4Addr, String> {
-        use std::net::{TcpStream, ToSocketAddrs};
-
-        // Try to connect to a public DNS server to determine our local IP
-        // We don't actually send any data, just use this to determine routing
-        // Use a shorter timeout since this might fail on isolated networks
-        if let Ok(addrs) = ROUTING_TEST_ADDRESS.to_socket_addrs() {
-            if let Some(addr) = addrs.into_iter().next() {
-                if let Ok(socket) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) {
-                    if let Ok(local_addr) = socket.local_addr() {
-                        if let IpAddr::V4(ipv4) = local_addr.ip() {
-                            return Ok(ipv4);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: try to find a non-loopback IPv4 address from network interfaces
-        // This works even without internet connectivity
         use std::net::UdpSocket;
 
         // Bind UDP socket to 0.0.0.0:0 and connect to a remote address
