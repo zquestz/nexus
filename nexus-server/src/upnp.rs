@@ -1,4 +1,46 @@
 //! UPnP/IGD port forwarding for NAT traversal
+//!
+//! This module provides automatic port forwarding using the UPnP/IGD (Universal Plug and Play /
+//! Internet Gateway Device) protocol. When enabled with the `--upnp` flag, the server will:
+//!
+//! - Discover the local router via multicast
+//! - Request TCP port forwarding with a 1-hour lease
+//! - Display the external IP address
+//! - Automatically renew the lease every 30 minutes
+//! - Clean up port mapping on graceful shutdown
+//!
+//! ## Usage
+//!
+//! ```bash
+//! nexusd --upnp                    # Enable UPnP with default port
+//! nexusd --upnp --port 8080        # Enable UPnP with custom port
+//! ```
+//!
+//! ## How It Works
+//!
+//! 1. **Gateway Discovery**: Sends multicast packets to discover UPnP-capable routers
+//! 2. **Port Mapping**: Requests TCP port forwarding from router's WAN to server's LAN
+//! 3. **Lease Renewal**: Background task renews mapping every 30 minutes (50% of lease duration)
+//! 4. **Cleanup**: Removes port mapping when server shuts down cleanly (Ctrl+C)
+//!
+//! ## IPv4 Only
+//!
+//! UPnP/IGD is designed for IPv4 NAT traversal. The module:
+//! - Works with `--bind 0.0.0.0` (default)
+//! - Works with `--bind ::` (dual-stack mode, uses IPv4 routing)
+//! - Works with specific IPv4 addresses
+//! - Rejects specific IPv6 addresses (like Yggdrasil) with a helpful error
+//!
+//! ## Local IP Detection
+//!
+//! When bound to `0.0.0.0` or `::`, the module detects the actual local IP by creating a UDP
+//! socket and checking which interface the OS would use to reach a remote address. This is a
+//! pure routing table lookup - no packets are actually sent.
+//!
+//! ## Error Handling
+//!
+//! All UPnP failures are non-fatal. If UPnP setup fails, the server continues without port
+//! forwarding and prints a warning suggesting manual configuration.
 
 use crate::constants::*;
 use igd_next::SearchOptions;
@@ -31,6 +73,12 @@ pub struct UpnpGateway {
 impl UpnpGateway {
     /// Search for UPnP gateway and request port forwarding
     ///
+    /// This performs the complete UPnP setup sequence:
+    /// 1. Determines the local IPv4 address (detects if bound to 0.0.0.0 or ::)
+    /// 2. Discovers UPnP gateway on the network (15-second timeout)
+    /// 3. Retrieves the external IP address from the gateway
+    /// 4. Requests TCP port forwarding with a 1-hour lease
+    ///
     /// # Arguments
     /// * `bind_addr` - The IP address the server is bound to
     /// * `port` - The port to forward
@@ -38,6 +86,16 @@ impl UpnpGateway {
     /// # Returns
     /// * `Ok(UpnpGateway)` - Successfully configured port forwarding
     /// * `Err(String)` - Failed to configure (gateway not found, port forwarding failed, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::net::IpAddr;
+    /// # async fn example() -> Result<(), String> {
+    /// let gateway = UpnpGateway::setup("0.0.0.0".parse().unwrap(), 7500).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn setup(bind_addr: IpAddr, port: u16) -> Result<Self, String> {
         // UPnP only works with IPv4, but :: (dual-stack) binds IPv4 too
         let local_addr = match bind_addr {
@@ -116,7 +174,10 @@ impl UpnpGateway {
         })
     }
 
-    /// Remove port forwarding mapping
+    /// Remove port forwarding mapping from the router
+    ///
+    /// This is called during graceful shutdown to clean up the UPnP port mapping.
+    /// If removal fails, the mapping will expire after the lease duration (1 hour).
     pub async fn remove_port_mapping(&self) -> Result<(), String> {
         let gateway = self.gateway.clone();
         let external_port = self.external_port;
@@ -132,6 +193,9 @@ impl UpnpGateway {
     }
 
     /// Renew the port mapping lease
+    ///
+    /// Extends the port forwarding lease for another hour. This is called automatically
+    /// by the background renewal task every 30 minutes.
     pub async fn renew_lease(&self) -> Result<(), String> {
         let gateway = self.gateway.clone();
         let external_port = self.external_port;
@@ -155,7 +219,10 @@ impl UpnpGateway {
     }
 
     /// Get the local IPv4 address using UDP socket routing
-    /// This helps determine the actual interface when bound to 0.0.0.0
+    ///
+    /// This helps determine the actual interface when bound to 0.0.0.0 or ::.
+    /// Creates a UDP socket and "connects" to a remote address, which causes the OS
+    /// to determine which local interface would be used. No actual packets are sent.
     fn get_local_ipv4() -> Result<std::net::Ipv4Addr, String> {
         use std::net::UdpSocket;
 
@@ -183,9 +250,15 @@ impl UpnpGateway {
 
 /// Background task to periodically renew UPnP lease
 ///
+/// Spawns a tokio task that renews the port mapping every 30 minutes (50% of the
+/// 1-hour lease duration). This ensures the port mapping never expires while the
+/// server is running.
+///
+/// If renewal fails, a warning is printed to stderr but the task continues trying.
+/// The task should be aborted during server shutdown.
+///
 /// # Arguments
 /// * `gateway` - The UPnP gateway handle (Arc-wrapped for shared access)
-/// * `renewal_interval` - How often to renew the lease (should be less than LEASE_DURATION)
 ///
 /// # Returns
 /// A tokio task handle that can be aborted to stop renewal
