@@ -58,8 +58,8 @@ impl NexusApp {
                 });
 
                 // Verify and save certificate fingerprint
-                if let Err(boxed_mismatch) = self
-                    .verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                if let Err(boxed_mismatch) =
+                    self.verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
                 {
                     // Extract display name for manual connection
                     let display_name = if !self.connection_form.server_name.trim().is_empty() {
@@ -175,8 +175,8 @@ impl NexusApp {
                 }
 
                 // Verify and save certificate fingerprint
-                if let Err(boxed_mismatch) = self
-                    .verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                if let Err(boxed_mismatch) =
+                    self.verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
                 {
                     return self.handle_fingerprint_mismatch(boxed_mismatch, conn, display_name);
                 }

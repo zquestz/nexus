@@ -39,12 +39,11 @@ pub fn server_list_panel<'a>(
     let mut main_column = Column::new().spacing(PANEL_SPACING);
 
     // === CONNECTED SERVERS SECTION ===
-    let connected_title =
-        text(TITLE_CONNECTED)
-            .size(SECTION_TITLE_SIZE)
-            .style(|theme| iced::widget::text::Style {
-                color: Some(section_title_color(theme)),
-            });
+    let connected_title = text(TITLE_CONNECTED)
+        .size(SECTION_TITLE_SIZE)
+        .style(|theme| iced::widget::text::Style {
+            color: Some(section_title_color(theme)),
+        });
     let mut connected_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if connections.is_empty() {
@@ -135,12 +134,11 @@ pub fn server_list_panel<'a>(
     main_column = main_column.push(separator);
 
     // === BOOKMARKS SECTION ===
-    let bookmarks_title =
-        text(TITLE_BOOKMARKS)
-            .size(SECTION_TITLE_SIZE)
-            .style(|theme| iced::widget::text::Style {
-                color: Some(section_title_color(theme)),
-            });
+    let bookmarks_title = text(TITLE_BOOKMARKS)
+        .size(SECTION_TITLE_SIZE)
+        .style(|theme| iced::widget::text::Style {
+            color: Some(section_title_color(theme)),
+        });
     let mut bookmarks_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if bookmarks.is_empty() {

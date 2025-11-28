@@ -17,6 +17,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 ## Features
 
 - **Mandatory TLS encryption** with auto-generated self-signed certificates
+- **UPnP port forwarding** for automatic NAT traversal (optional)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (12 permissions)
@@ -52,15 +53,18 @@ cargo build --release
 # Simplest - binds to all IPv4 interfaces (0.0.0.0) on port 7500
 ./target/release/nexusd
 
-# For Yggdrasil - MUST use IPv6 binding
+# Enable automatic port forwarding (UPnP) for home servers behind NAT
+./target/release/nexusd --upnp
+
+# For Yggdrasil - MUST use IPv6 binding (don't use --upnp)
 ./target/release/nexusd --bind ::                    # All IPv6 interfaces
 ./target/release/nexusd --bind 0200:1234::5678       # Specific Yggdrasil address
 
 # For specific IPv4 address
 ./target/release/nexusd --bind 192.168.1.100
 
-# Custom port
-./target/release/nexusd --port 8080
+# Custom port with UPnP
+./target/release/nexusd --port 8080 --upnp
 
 # Other options: --database <path>, --debug
 ```
@@ -68,6 +72,10 @@ cargo build --release
 **Important Notes:**
 - TLS encryption is always enabled (auto-generated self-signed certificate on first run)
 - Default bind is `0.0.0.0` (IPv4) for maximum compatibility
+- **UPnP support**: Use `--upnp` flag for automatic port forwarding on home routers
+  - Only works with IPv4 (not needed for Yggdrasil)
+  - Server gracefully continues if UPnP setup fails
+  - Port mapping automatically removed on clean shutdown
 - **Yggdrasil users MUST specify `--bind ::` or `--bind <yggdrasil-address>`** for IPv6
 - First user to connect becomes admin automatically
 - Certificates stored alongside database in platform-specific data directory

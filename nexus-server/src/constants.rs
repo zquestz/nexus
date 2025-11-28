@@ -44,3 +44,30 @@ pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 /// File permissions error messages
 pub const ERR_READ_METADATA: &str = "Failed to read file metadata: ";
 pub const ERR_SET_PERMS: &str = "Failed to set permissions: ";
+
+/// UPnP output messages
+pub const MSG_REQUESTING_PORT_FORWARD: &str = "Requesting port forwarding: ";
+pub const MSG_UPNP_CONFIGURED: &str = "UPnP configured: ";
+
+/// UPnP error messages
+pub const ERR_IPV6_NOT_SUPPORTED: &str = "UPnP is not supported for IPv6 addresses. Use IPv4 binding (e.g., --bind 0.0.0.0) for UPnP support.";
+pub const ERR_UPNP_SEARCH_TASK_FAILED: &str = "UPnP search task failed: ";
+pub const ERR_UPNP_GATEWAY_NOT_FOUND: &str = "UPnP gateway not found: ";
+pub const ERR_UPNP_GET_EXTERNAL_IP_TASK: &str = "Failed to get external IP task: ";
+pub const ERR_UPNP_GET_EXTERNAL_IP: &str = "Failed to get external IP: ";
+pub const ERR_UPNP_PORT_FORWARD_TASK: &str = "Port forwarding task failed: ";
+pub const ERR_UPNP_ADD_PORT_MAPPING: &str = "Failed to add port mapping: ";
+pub const ERR_UPNP_REMOVE_PORT_TASK: &str = "Remove port mapping task failed: ";
+pub const ERR_UPNP_REMOVE_PORT_MAPPING: &str = "Failed to remove port mapping: ";
+pub const ERR_UPNP_RENEW_LEASE_TASK: &str = "Renew lease task failed: ";
+pub const ERR_UPNP_RENEW_LEASE: &str = "Failed to renew lease: ";
+pub const ERR_UPNP_CREATE_UDP_SOCKET: &str = "Failed to create UDP socket: ";
+pub const ERR_UPNP_DETERMINE_ROUTING: &str = "Failed to determine routing: ";
+pub const ERR_UPNP_LOOPBACK_ONLY: &str = "Only loopback address available";
+pub const ERR_UPNP_IPV6_EXPECTED_IPV4: &str = "Local address is IPv6, expected IPv4";
+pub const ERR_UPNP_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
+
+/// UPnP warning messages
+pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: ";
+pub const WARN_UPNP_PORT_EXPIRE: &str =
+    "Port forwarding may expire. You may need to restart the server.";

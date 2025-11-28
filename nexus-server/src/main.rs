@@ -5,6 +5,7 @@ mod connection;
 mod constants;
 mod db;
 mod handlers;
+mod upnp;
 mod users;
 
 use args::Args;
@@ -34,41 +35,64 @@ async fn main() {
     // Setup network (TCP listener + TLS)
     let (listener, tls_acceptor) = setup_network(args.bind, args.port, &db_path).await;
 
+    // Setup UPnP port forwarding if requested
+    let upnp_handle = setup_upnp(args.upnp, args.bind, args.port).await;
+
+    // Setup graceful shutdown handling
+    let shutdown_signal = setup_shutdown_signal();
+
     // Main server loop - accept incoming connections
     let debug = args.debug;
-    loop {
-        match listener.accept().await {
-            Ok((socket, peer_addr)) => {
-                let user_manager = user_manager.clone();
-                let database = database.clone();
-                let tls_acceptor = tls_acceptor.clone();
+    tokio::select! {
+        _ = shutdown_signal => {
+            println!("\nShutdown signal received");
 
-                // Spawn a new task to handle this connection
-                tokio::spawn(async move {
-                    if let Err(e) = connection::handle_connection(
-                        socket,
-                        peer_addr,
-                        user_manager,
-                        database,
-                        debug,
-                        tls_acceptor,
-                    )
-                    .await
-                    {
-                        // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
-                        let error_msg = e.to_string();
-                        if !error_msg
-                            .contains("peer closed connection without sending TLS close_notify")
-                        {
-                            eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
-                        }
-                    }
-                });
-            }
-            Err(e) => {
-                eprintln!("{}{}", ERR_ACCEPT, e);
+            // Cleanup UPnP port forwarding if enabled
+            if let Some((gateway, renewal_task)) = upnp_handle {
+                renewal_task.abort();
+
+                // Remove port mapping
+                if let Err(e) = gateway.remove_port_mapping().await {
+                    eprintln!("Warning: Failed to remove UPnP port mapping: {}", e);
+                }
             }
         }
+        _ = async {
+            loop {
+                match listener.accept().await {
+                    Ok((socket, peer_addr)) => {
+                        let user_manager = user_manager.clone();
+                        let database = database.clone();
+                        let tls_acceptor = tls_acceptor.clone();
+
+                        // Spawn a new task to handle this connection
+                        tokio::spawn(async move {
+                            if let Err(e) = connection::handle_connection(
+                                socket,
+                                peer_addr,
+                                user_manager,
+                                database,
+                                debug,
+                                tls_acceptor,
+                            )
+                            .await
+                            {
+                                // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
+                                let error_msg = e.to_string();
+                                if !error_msg
+                                    .contains("peer closed connection without sending TLS close_notify")
+                                {
+                                    eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                                }
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("{}{}", ERR_ACCEPT, e);
+                    }
+                }
+            }
+        } => {}
     }
 }
 
@@ -217,6 +241,32 @@ async fn setup_db(
     (database, user_manager, db_path)
 }
 
+/// Setup UPnP port forwarding if enabled
+async fn setup_upnp(
+    enabled: bool,
+    bind: std::net::IpAddr,
+    port: u16,
+) -> Option<(Arc<upnp::UpnpGateway>, tokio::task::JoinHandle<()>)> {
+    if !enabled {
+        return None;
+    }
+
+    match upnp::UpnpGateway::setup(bind, port).await {
+        Ok(gateway) => {
+            // Spawn background task to renew UPnP lease periodically
+            let gateway_arc = Arc::new(gateway);
+            let renewal_task = upnp::spawn_lease_renewal_task(gateway_arc.clone());
+            Some((gateway_arc, renewal_task))
+        }
+        Err(e) => {
+            eprintln!("Warning: UPnP setup failed: {}", e);
+            eprintln!("Server will continue without UPnP port forwarding.");
+            eprintln!("You may need to manually configure port forwarding on your router.");
+            None
+        }
+    }
+}
+
 /// Setup network: TCP listener and TLS acceptor
 async fn setup_network(
     bind: std::net::IpAddr,
@@ -278,4 +328,27 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
 
     println!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
     Ok(())
+}
+
+/// Setup graceful shutdown signal handling (Ctrl+C)
+async fn setup_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
+        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to setup SIGINT handler");
+
+        tokio::select! {
+            _ = sigterm.recv() => {},
+            _ = sigint.recv() => {},
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to setup Ctrl+C handler");
+    }
 }

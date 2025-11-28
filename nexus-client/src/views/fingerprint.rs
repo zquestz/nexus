@@ -31,11 +31,7 @@ const SPACE_BEFORE_BUTTONS: u16 = 10;
 fn format_fingerprint_multiline(fingerprint: &str) -> String {
     let parts: Vec<&str> = fingerprint.split(':').collect();
     let mid = parts.len() / 2;
-    format!(
-        "{}\n{}",
-        parts[..mid].join(":"),
-        parts[mid..].join(":")
-    )
+    format!("{}\n{}", parts[..mid].join(":"), parts[mid..].join(":"))
 }
 
 /// Create the fingerprint mismatch warning dialog
@@ -47,14 +43,11 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
 
     let server_line = text(format!(
         "{} - [{}]:{}",
-        mismatch.bookmark_name,
-        mismatch.server_address,
-        mismatch.server_port
+        mismatch.bookmark_name, mismatch.server_address, mismatch.server_port
     ))
     .size(TEXT_SIZE);
 
-    let warning = text(WARNING_TEXT)
-        .size(TEXT_SIZE);
+    let warning = text(WARNING_TEXT).size(TEXT_SIZE);
 
     let expected_label = text(LABEL_EXPECTED_FINGERPRINT).size(TEXT_SIZE);
     let expected_value = text(format_fingerprint_multiline(&mismatch.expected))
@@ -76,10 +69,15 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     .padding(BUTTON_PADDING)
     .style(primary_button_style());
 
-    let cancel_button = button(text(BUTTON_CANCEL).size(TEXT_SIZE).width(Length::Fill).center())
-        .on_press(Message::CancelFingerprintMismatch)
-        .padding(BUTTON_PADDING)
-        .style(primary_button_style());
+    let cancel_button = button(
+        text(BUTTON_CANCEL)
+            .size(TEXT_SIZE)
+            .width(Length::Fill)
+            .center(),
+    )
+    .on_press(Message::CancelFingerprintMismatch)
+    .padding(BUTTON_PADDING)
+    .style(primary_button_style());
 
     let button_row = row![accept_button, cancel_button].spacing(DIALOG_SPACING);
 

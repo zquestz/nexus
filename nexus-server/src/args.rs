@@ -23,4 +23,8 @@ pub struct Args {
     /// Enable debug logging (shows user connect/disconnect messages)
     #[arg(long, default_value = "false")]
     pub debug: bool,
+
+    /// Enable UPnP port forwarding (automatic NAT traversal)
+    #[arg(long, default_value = "false")]
+    pub upnp: bool,
 }

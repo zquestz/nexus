@@ -1,9 +1,7 @@
 //! User list panel (right sidebar)
 
 use super::colors::SIDEBAR_ICON_DISABLED;
-use super::constants::{
-    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
-};
+use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
 use super::style::{
     BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
     INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_COLOR,
@@ -45,22 +43,22 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
     let current_username = &conn.username;
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
-    let title = text(TITLE_USERS)
-        .size(USER_LIST_TITLE_SIZE)
-        .style(|theme| iced::widget::text::Style {
-            color: Some(section_title_color(theme)),
-        });
+    let title =
+        text(TITLE_USERS)
+            .size(USER_LIST_TITLE_SIZE)
+            .style(|theme| iced::widget::text::Style {
+                color: Some(section_title_color(theme)),
+            });
 
     let mut users_column = Column::new().spacing(USER_LIST_ITEM_SPACING);
 
     if conn.online_users.is_empty() {
-        users_column = users_column.push(
-            text(EMPTY_NO_USERS)
-                .size(USER_LIST_SMALL_TEXT_SIZE)
-                .style(|theme| iced::widget::text::Style {
+        users_column =
+            users_column.push(text(EMPTY_NO_USERS).size(USER_LIST_SMALL_TEXT_SIZE).style(
+                |theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
-                }),
-        );
+                },
+            ));
     } else {
         for (index, user) in conn.online_users.iter().enumerate() {
             let is_expanded = conn.expanded_user.as_ref() == Some(&user.username);

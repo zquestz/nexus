@@ -283,15 +283,14 @@ pub fn users_view<'a>(
                     .size(TEXT_SIZE)
                     .style(primary_text_input_style());
 
-                let password_input =
-                    text_input(PLACEHOLDER_PASSWORD_KEEP_CURRENT, new_password)
-                        .on_input(Message::EditNewPasswordChanged)
-                        .on_submit(submit_action)
-                        .id(text_input::Id::from(InputId::EditNewPassword))
-                        .secure(true)
-                        .padding(INPUT_PADDING)
-                        .size(TEXT_SIZE)
-                        .style(primary_text_input_style());
+                let password_input = text_input(PLACEHOLDER_PASSWORD_KEEP_CURRENT, new_password)
+                    .on_input(Message::EditNewPasswordChanged)
+                    .on_submit(submit_action)
+                    .id(text_input::Id::from(InputId::EditNewPassword))
+                    .secure(true)
+                    .padding(INPUT_PADDING)
+                    .size(TEXT_SIZE)
+                    .style(primary_text_input_style());
 
                 let admin_checkbox = if conn.is_admin {
                     checkbox(LABEL_ADMIN, *is_admin)
