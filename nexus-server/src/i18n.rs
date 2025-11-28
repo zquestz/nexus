@@ -76,6 +76,10 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
 ///
 /// Loads the appropriate .ftl file and creates a bundle.
 /// Falls back to English for unsupported locales.
+///
+/// Note: Currently creates a new bundle on each call. FluentBundle contains
+/// non-Send types (RefCell, TypeMap) which prevent safe caching across threads.
+/// For a BBS server with infrequent errors, this performance trade-off is acceptable.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     let lang: LanguageIdentifier = locale.parse()
         .unwrap_or_else(|_| DEFAULT_LOCALE.parse().unwrap());
