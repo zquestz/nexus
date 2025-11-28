@@ -84,6 +84,10 @@ pub const ERR_USERNAME_EMPTY: &str = "Username cannot be empty";
 pub const ERR_NO_DATA_DIR: &str = "Unable to determine data directory for your platform";
 pub const ERR_CREATE_DB_DIR: &str = "Failed to create directory: ";
 
+/// User manager error messages
+pub const ERR_CHECK_PERMISSION: &str = "Error checking permission for ";
+pub const ERR_CHECK_USER_LIST_PERMISSION: &str = "Error checking user_list permission for ";
+
 /// Database directory and file names
 pub const DATA_DIR_NAME: &str = "nexusd";
 pub const DATABASE_FILENAME: &str = "nexus.db";

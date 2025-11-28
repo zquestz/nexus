@@ -1,6 +1,7 @@
 //! Helper methods for UserManager
 
 use super::UserManager;
+use crate::constants::*;
 use crate::db::{Permission, UserDb};
 use nexus_common::protocol::ServerMessage;
 
@@ -64,10 +65,7 @@ impl UserManager {
                 {
                     Ok(has) => has,
                     Err(e) => {
-                        eprintln!(
-                            "Error checking user_list permission for {}: {}",
-                            user.username, e
-                        );
+                        eprintln!("{}{}: {}", ERR_CHECK_USER_LIST_PERMISSION, user.username, e);
                         continue;
                     }
                 };

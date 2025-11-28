@@ -16,6 +16,9 @@ pub struct User {
     /// Remote address of the user's connection
     pub address: SocketAddr,
     /// When the user account was created (Unix timestamp from database)
+    ///
+    /// This field is stored for potential future features like account age display,
+    /// statistics, or audit logging.
     #[allow(dead_code)]
     pub created_at: i64,
     /// When the user logged in (Unix timestamp)
@@ -56,9 +59,14 @@ impl User {
 }
 
 /// Get current Unix timestamp in seconds
+///
+/// # Panics
+///
+/// Panics if system time is set before Unix epoch (January 1, 1970).
+/// This should never happen on properly configured systems.
 fn current_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("System time is before Unix epoch - check system clock configuration")
         .as_secs()
 }
