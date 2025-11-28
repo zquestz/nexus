@@ -17,7 +17,7 @@ impl ConnectionState {
 
 use crate::constants::*;
 use crate::db::Database;
-use crate::handlers::{self, HandlerContext};
+use crate::handlers::{self, ERR_INVALID_MESSAGE_FORMAT, HandlerContext};
 use crate::users::UserManager;
 use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -254,7 +254,7 @@ async fn handle_client_message(
             // NOTE: Don't log the raw message - it might contain passwords if malformed
             eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, ctx.peer_addr, e);
             return ctx
-                .send_error_and_disconnect(&format!("{}{}", ERR_INVALID_MESSAGE_FORMAT, e), None)
+                .send_error_and_disconnect(ERR_INVALID_MESSAGE_FORMAT, None)
                 .await;
         }
     }

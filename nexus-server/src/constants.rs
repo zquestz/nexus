@@ -122,9 +122,6 @@ pub const ERR_HANDLING_MESSAGE: &str = "Error handling message: ";
 /// Message parsing error
 pub const ERR_PARSE_MESSAGE: &str = "Failed to parse message from ";
 
-/// Invalid message format error
-pub const ERR_INVALID_MESSAGE_FORMAT: &str = "Invalid message format: ";
-
 /// File permissions error
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";
 

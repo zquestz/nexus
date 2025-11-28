@@ -30,6 +30,10 @@ pub const ERR_PERMISSION_DENIED: &str = "Permission denied";
 /// Error message for database errors
 pub const ERR_DATABASE: &str = "Database error";
 
+// Message Format Errors
+/// Error message for invalid message format
+pub const ERR_INVALID_MESSAGE_FORMAT: &str = "Invalid message format";
+
 // User Management Errors
 /// Error message when trying to delete last admin
 pub const ERR_CANNOT_DELETE_LAST_ADMIN: &str = "Cannot delete the last admin";
