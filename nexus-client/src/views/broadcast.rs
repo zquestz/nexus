@@ -4,10 +4,10 @@ use super::constants::{BUTTON_CANCEL, BUTTON_SEND};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
-    primary_text_input_style,
+    primary_text_input_style, shaped_text,
 };
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, text_input};
 use iced::{Center, Element, Fill};
 
 // UI text constants
@@ -18,7 +18,7 @@ const PLACEHOLDER_BROADCAST_MESSAGE: &str = "Enter broadcast message...";
 ///
 /// Shows a form for composing and sending broadcast messages to all connected users.
 pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
-    let title = text(TITLE_BROADCAST_MESSAGE)
+    let title = shaped_text(TITLE_BROADCAST_MESSAGE)
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
@@ -42,16 +42,16 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let button_row = row![
         if can_send {
-            button(text(BUTTON_SEND).size(TEXT_SIZE))
+            button(shaped_text(BUTTON_SEND).size(TEXT_SIZE))
                 .on_press(Message::SendBroadcastPressed)
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         } else {
-            button(text(BUTTON_SEND).size(TEXT_SIZE))
+            button(shaped_text(BUTTON_SEND).size(TEXT_SIZE))
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         },
-        button(text(BUTTON_CANCEL).size(TEXT_SIZE))
+        button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
             .on_press(Message::ToggleBroadcast)
             .padding(BUTTON_PADDING)
             .style(primary_button_style()),
@@ -60,9 +60,9 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let form = column![
         title,
-        text("").size(SPACER_SIZE_LARGE),
+        shaped_text("").size(SPACER_SIZE_LARGE),
         message_input,
-        text("").size(SPACER_SIZE_MEDIUM),
+        shaped_text("").size(SPACER_SIZE_MEDIUM),
         button_row
     ]
     .spacing(ELEMENT_SPACING)

@@ -9,13 +9,13 @@ use super::style::{
     USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH, USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING,
     USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE, admin_user_text_color, alt_row_color,
     button_text_color, disconnect_icon_color, disconnect_icon_hover_color, empty_state_color,
-    interactive_hover_color, primary_scrollbar_style, section_title_color, sidebar_background,
-    sidebar_border, sidebar_icon_color, sidebar_icon_hover_color, tooltip_border,
-    tooltip_text_color,
+    interactive_hover_color, primary_scrollbar_style, section_title_color, shaped_text,
+    sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_hover_color,
+    tooltip_border, tooltip_text_color,
 };
 use crate::icon;
 use crate::types::{Message, ServerConnection};
-use iced::widget::{Column, Row, button, column, container, row, scrollable, text, tooltip};
+use iced::widget::{Column, Row, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill};
 
 // UI text constants
@@ -43,22 +43,22 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
     let current_username = &conn.username;
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
-    let title =
-        text(TITLE_USERS)
-            .size(USER_LIST_TITLE_SIZE)
-            .style(|theme| iced::widget::text::Style {
-                color: Some(section_title_color(theme)),
-            });
+    let title = shaped_text(TITLE_USERS)
+        .size(USER_LIST_TITLE_SIZE)
+        .style(|theme| iced::widget::text::Style {
+            color: Some(section_title_color(theme)),
+        });
 
     let mut users_column = Column::new().spacing(USER_LIST_ITEM_SPACING);
 
     if conn.online_users.is_empty() {
-        users_column =
-            users_column.push(text(EMPTY_NO_USERS).size(USER_LIST_SMALL_TEXT_SIZE).style(
-                |theme| iced::widget::text::Style {
+        users_column = users_column.push(
+            shaped_text(EMPTY_NO_USERS)
+                .size(USER_LIST_SMALL_TEXT_SIZE)
+                .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
-                },
-            ));
+                }),
+        );
     } else {
         for (index, user) in conn.online_users.iter().enumerate() {
             let is_expanded = conn.expanded_user.as_ref() == Some(&user.username);
@@ -69,7 +69,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             let username_clone = user.username.clone();
 
             let user_button = button(
-                container(text(&user.username).size(USER_LIST_TEXT_SIZE))
+                container(shaped_text(&user.username).size(USER_LIST_TEXT_SIZE))
                     .width(Fill)
                     .align_x(iced::alignment::Horizontal::Left),
             )
@@ -101,14 +101,13 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             // Add toolbar if expanded
             if is_expanded {
                 // Soft blue separator line
-                let separator =
-                    container(text(""))
-                        .width(Fill)
-                        .height(1)
-                        .style(|_theme| container::Style {
-                            background: Some(Background::Color(interactive_hover_color())),
-                            ..Default::default()
-                        });
+                let separator = container(shaped_text(""))
+                    .width(Fill)
+                    .height(1)
+                    .style(|_theme| container::Style {
+                        background: Some(Background::Color(interactive_hover_color())),
+                        ..Default::default()
+                    });
                 item_column = item_column.push(separator);
 
                 // Toolbar
@@ -220,7 +219,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -248,7 +247,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -292,7 +291,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -320,7 +319,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -362,7 +361,7 @@ fn create_user_toolbar<'a>(
                 border: Border::default(),
                 shadow: iced::Shadow::default(),
             }),
-        container(text(TOOLTIP_KICK).size(TOOLTIP_TEXT_SIZE))
+        container(shaped_text(TOOLTIP_KICK).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
             .style(|theme| container::Style {
                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -377,7 +376,7 @@ fn create_user_toolbar<'a>(
 
     // Add kick button (if not self, has permission, and target is not admin)
     if !is_self && has_user_kick_permission && !target_is_admin {
-        toolbar_row = toolbar_row.push(container(text("")).width(Fill)); // Spacer
+        toolbar_row = toolbar_row.push(container(shaped_text("")).width(Fill)); // Spacer
         toolbar_row = toolbar_row.push(kick_button);
     }
 

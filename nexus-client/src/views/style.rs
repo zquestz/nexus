@@ -17,8 +17,32 @@
 //! ```
 
 use super::colors;
-use iced::widget::container;
+use iced::widget::{container, text};
 use iced::{Background, Border, Color, Theme};
+
+// ============================================================================
+// Text Shaping (CJK Support)
+// ============================================================================
+
+/// Create a text widget with advanced shaping enabled for CJK character support
+///
+/// Advanced shaping enables font fallback, allowing the system to find fonts
+/// that contain Chinese, Japanese, and Korean characters even if the default
+/// font doesn't support them.
+///
+/// This should be used for ALL text in the application to ensure proper
+/// display of internationalized content.
+///
+/// # Example
+/// ```
+/// use crate::views::style::shaped_text;
+///
+/// shaped_text("你好世界")  // Chinese characters will display correctly
+///     .size(14)
+/// ```
+pub fn shaped_text<'a>(content: impl Into<String>) -> text::Text<'a> {
+    text(content.into()).shaping(text::Shaping::Advanced)
+}
 
 // ============================================================================
 // Font Sizes

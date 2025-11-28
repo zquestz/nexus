@@ -7,10 +7,10 @@ use super::constants::{
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    primary_button_style, primary_checkbox_style, primary_text_input_style,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
-use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Column, button, checkbox, column, container, row, text_input};
 use iced::{Center, Element, Fill};
 
 // UI text constants
@@ -27,7 +27,7 @@ const BUTTON_UPDATE: &str = "Update";
 
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
-    container(text("")).width(Fill).height(Fill).into()
+    container(shaped_text("")).width(Fill).height(Fill).into()
 }
 
 /// Displays user creation or edit form
@@ -44,7 +44,7 @@ pub fn users_view<'a>(
 ) -> Element<'a, Message> {
     // Show Add User form
     if show_add_user {
-        let create_title = text(TITLE_USER_CREATE)
+        let create_title = shaped_text(TITLE_USER_CREATE)
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center);
@@ -98,7 +98,7 @@ pub fn users_view<'a>(
                 .style(primary_checkbox_style())
         };
 
-        let permissions_title = text(LABEL_PERMISSIONS).size(TEXT_SIZE);
+        let permissions_title = shaped_text(LABEL_PERMISSIONS).size(TEXT_SIZE);
 
         // Split permissions into two columns
         let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
@@ -135,32 +135,32 @@ pub fn users_view<'a>(
             .width(Fill);
 
         let create_button = if can_create {
-            button(text(BUTTON_CREATE).size(TEXT_SIZE))
+            button(shaped_text(BUTTON_CREATE).size(TEXT_SIZE))
                 .on_press(Message::CreateUserPressed)
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         } else {
-            button(text(BUTTON_CREATE).size(TEXT_SIZE))
+            button(shaped_text(BUTTON_CREATE).size(TEXT_SIZE))
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         };
 
-        let cancel_button = button(text(BUTTON_CANCEL).size(TEXT_SIZE))
+        let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
             .on_press(Message::ToggleAddUser)
             .padding(BUTTON_PADDING)
             .style(primary_button_style());
 
         let create_form = column![
             create_title,
-            text("").size(SPACER_SIZE_LARGE),
+            shaped_text("").size(SPACER_SIZE_LARGE),
             username_input,
             password_input,
             admin_checkbox,
             enabled_checkbox,
-            text("").size(SPACER_SIZE_SMALL),
+            shaped_text("").size(SPACER_SIZE_SMALL),
             permissions_title,
             permissions_row,
-            text("").size(SPACER_SIZE_MEDIUM),
+            shaped_text("").size(SPACER_SIZE_MEDIUM),
             row![create_button, cancel_button,].spacing(ELEMENT_SPACING),
         ]
         .spacing(ELEMENT_SPACING)
@@ -183,7 +183,7 @@ pub fn users_view<'a>(
             }
             UserEditState::SelectingUser { username } => {
                 // Stage 1: Simple form to select which user to edit
-                let edit_title = text(TITLE_USER_EDIT)
+                let edit_title = shaped_text(TITLE_USER_EDIT)
                     .size(TITLE_SIZE)
                     .width(Fill)
                     .align_x(Center);
@@ -209,37 +209,37 @@ pub fn users_view<'a>(
                     .style(primary_text_input_style());
 
                 let edit_button = if can_edit {
-                    button(text(BUTTON_EDIT).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_EDIT).size(TEXT_SIZE))
                         .on_press(Message::EditUserPressed)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(text(BUTTON_EDIT).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_EDIT).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
                 let delete_button = if can_delete {
-                    button(text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
                         .on_press(Message::DeleteUserPressed(username.to_string()))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
-                let cancel_button = button(text(BUTTON_CANCEL).size(TEXT_SIZE))
+                let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());
 
                 let edit_form = column![
                     edit_title,
-                    text("").size(SPACER_SIZE_LARGE),
+                    shaped_text("").size(SPACER_SIZE_LARGE),
                     username_input,
-                    text("").size(SPACER_SIZE_MEDIUM),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM),
                     row![edit_button, delete_button, cancel_button,].spacing(ELEMENT_SPACING),
                 ]
                 .spacing(ELEMENT_SPACING)
@@ -261,7 +261,7 @@ pub fn users_view<'a>(
                 permissions,
             } => {
                 // Stage 2: Full edit form with current values
-                let update_title = text(TITLE_UPDATE_USER)
+                let update_title = shaped_text(TITLE_UPDATE_USER)
                     .size(TITLE_SIZE)
                     .width(Fill)
                     .align_x(Center);
@@ -314,7 +314,7 @@ pub fn users_view<'a>(
                         .style(primary_checkbox_style())
                 };
 
-                let permissions_title = text(LABEL_PERMISSIONS).size(TEXT_SIZE);
+                let permissions_title = shaped_text(LABEL_PERMISSIONS).size(TEXT_SIZE);
 
                 // Split permissions into two columns
                 let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
@@ -352,32 +352,32 @@ pub fn users_view<'a>(
                     .width(Fill);
 
                 let update_button = if can_update {
-                    button(text(BUTTON_UPDATE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_UPDATE).size(TEXT_SIZE))
                         .on_press(Message::UpdateUserPressed)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(text(BUTTON_UPDATE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_UPDATE).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
-                let cancel_button = button(text(BUTTON_CANCEL).size(TEXT_SIZE))
+                let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());
 
                 let update_form = column![
                     update_title,
-                    text("").size(SPACER_SIZE_LARGE),
+                    shaped_text("").size(SPACER_SIZE_LARGE),
                     username_input,
                     password_input,
                     admin_checkbox,
                     enabled_checkbox,
-                    text("").size(SPACER_SIZE_SMALL),
+                    shaped_text("").size(SPACER_SIZE_SMALL),
                     permissions_title,
                     permissions_row,
-                    text("").size(SPACER_SIZE_MEDIUM),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM),
                     row![update_button, cancel_button,].spacing(ELEMENT_SPACING),
                 ]
                 .spacing(ELEMENT_SPACING)

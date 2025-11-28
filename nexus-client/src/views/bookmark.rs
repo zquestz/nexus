@@ -4,10 +4,10 @@ use super::constants::{BUTTON_CANCEL, BUTTON_DELETE, PLACEHOLDER_PORT};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::types::{BookmarkEditMode, BookmarkFormData, InputId, Message};
-use iced::widget::{button, checkbox, column, container, row, text, text_input};
+use iced::widget::{button, checkbox, column, container, row, text_input};
 use iced::{Center, Element, Fill};
 
 // UI text constants
@@ -46,7 +46,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
     };
 
     let mut column_items = vec![
-        text(dialog_title)
+        shaped_text(dialog_title)
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center)
@@ -55,8 +55,13 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
 
     // Show error if present
     if let Some(error) = form.error {
-        column_items.push(text(error).size(TEXT_SIZE).color(form_error_color()).into());
-        column_items.push(text("").size(SPACER_SIZE_MEDIUM).into());
+        column_items.push(
+            shaped_text(error)
+                .size(TEXT_SIZE)
+                .color(form_error_color())
+                .into(),
+        );
+        column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
     }
 
     column_items.extend(vec![
@@ -101,28 +106,28 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text("").size(SPACER_SIZE_SMALL).into(),
+        shaped_text("").size(SPACER_SIZE_SMALL).into(),
         checkbox(LABEL_AUTO_CONNECT, form.auto_connect)
             .on_toggle(Message::BookmarkAutoConnectToggled)
             .size(TEXT_SIZE)
             .style(primary_checkbox_style())
             .into(),
-        text("").size(SPACER_SIZE_MEDIUM).into(),
+        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'a, Message>> = vec![
                 if can_save {
-                    button(text(BUTTON_SAVE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_SAVE).size(TEXT_SIZE))
                         .on_press(Message::SaveBookmark)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                         .into()
                 } else {
-                    button(text(BUTTON_SAVE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_SAVE).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                         .into()
                 },
-                button(text(BUTTON_CANCEL).size(TEXT_SIZE))
+                button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
                     .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style())
@@ -132,7 +137,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             // Add Delete button only when editing (not adding)
             if let BookmarkEditMode::Edit(index) = form.mode {
                 buttons.push(
-                    button(text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
                         .on_press(Message::DeleteBookmark(*index))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())

@@ -9,11 +9,12 @@ use super::style::{
     TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
     disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color, empty_state_color,
     interactive_hover_color, primary_button_style, primary_scrollbar_style, section_title_color,
-    separator_color, sidebar_background, sidebar_border, tooltip_border, tooltip_text_color,
+    separator_color, shaped_text, sidebar_background, sidebar_border, tooltip_border,
+    tooltip_text_color,
 };
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
-use iced::widget::{Column, button, column, container, row, scrollable, text, tooltip};
+use iced::widget::{Column, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill, alignment};
 use std::collections::HashMap;
 
@@ -39,7 +40,7 @@ pub fn server_list_panel<'a>(
     let mut main_column = Column::new().spacing(PANEL_SPACING);
 
     // === CONNECTED SERVERS SECTION ===
-    let connected_title = text(TITLE_CONNECTED)
+    let connected_title = shaped_text(TITLE_CONNECTED)
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -48,7 +49,7 @@ pub fn server_list_panel<'a>(
 
     if connections.is_empty() {
         connected_column = connected_column.push(
-            text(EMPTY_NO_CONNECTIONS)
+            shaped_text(EMPTY_NO_CONNECTIONS)
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -63,7 +64,7 @@ pub fn server_list_panel<'a>(
             let is_active = active_connection == Some(**conn_id);
 
             // Transparent button with hover effect and blue text for active
-            let btn = button(text(&conn.display_name).size(SERVER_LIST_TEXT_SIZE))
+            let btn = button(shaped_text(&conn.display_name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
@@ -82,7 +83,7 @@ pub fn server_list_panel<'a>(
             // Disconnect button (transparent icon button with hover effect)
             let disconnect_btn = tooltip(
                 transparent_icon_button(icon::logout(), Message::DisconnectFromServer(**conn_id)),
-                container(text(TOOLTIP_DISCONNECT).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(TOOLTIP_DISCONNECT).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -124,7 +125,7 @@ pub fn server_list_panel<'a>(
     main_column = main_column.push(connected_section);
 
     // Separator line
-    let separator = container(text(""))
+    let separator = container(shaped_text(""))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
         .style(|theme| container::Style {
@@ -134,7 +135,7 @@ pub fn server_list_panel<'a>(
     main_column = main_column.push(separator);
 
     // === BOOKMARKS SECTION ===
-    let bookmarks_title = text(TITLE_BOOKMARKS)
+    let bookmarks_title = shaped_text(TITLE_BOOKMARKS)
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -143,7 +144,7 @@ pub fn server_list_panel<'a>(
 
     if bookmarks.is_empty() {
         bookmarks_column = bookmarks_column.push(
-            text(EMPTY_NO_BOOKMARKS)
+            shaped_text(EMPTY_NO_BOOKMARKS)
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -170,7 +171,7 @@ pub fn server_list_panel<'a>(
             };
 
             // Transparent button with hover effect
-            let btn = button(text(&bookmark.name).size(SERVER_LIST_TEXT_SIZE))
+            let btn = button(shaped_text(&bookmark.name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
@@ -189,7 +190,7 @@ pub fn server_list_panel<'a>(
             // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(
                 transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
-                container(text(TOOLTIP_EDIT).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(TOOLTIP_EDIT).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -224,7 +225,7 @@ pub fn server_list_panel<'a>(
         }
     }
 
-    let add_btn = button(text(BUTTON_ADD_BOOKMARK).size(SERVER_LIST_BUTTON_SIZE))
+    let add_btn = button(shaped_text(BUTTON_ADD_BOOKMARK).size(SERVER_LIST_BUTTON_SIZE))
         .on_press(Message::ShowAddBookmark)
         .padding(INPUT_PADDING)
         .style(primary_button_style())

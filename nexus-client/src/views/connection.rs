@@ -4,10 +4,10 @@ use super::constants::{PLACEHOLDER_PASSWORD, PLACEHOLDER_PORT, PLACEHOLDER_USERN
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, error_message_color,
-    primary_button_style, primary_text_input_style,
+    primary_button_style, primary_text_input_style, shaped_text,
 };
 use crate::types::{InputId, Message};
-use iced::widget::{button, column, container, text, text_input};
+use iced::widget::{button, column, container, text_input};
 use iced::{Center, Element, Fill};
 
 /// Connection form input data
@@ -45,7 +45,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         Message::ServerNameChanged(String::new())
     };
 
-    let title = text(TITLE_CONNECT_TO_SERVER)
+    let title = shaped_text(TITLE_CONNECT_TO_SERVER)
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
@@ -92,27 +92,27 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .style(primary_text_input_style());
 
     let connect_button = if can_connect && !data.is_connecting {
-        button(text(BUTTON_CONNECT).size(TEXT_SIZE))
+        button(shaped_text(BUTTON_CONNECT).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     } else {
-        button(text(BUTTON_CONNECT).size(TEXT_SIZE))
+        button(shaped_text(BUTTON_CONNECT).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     };
 
-    let mut column_items = vec![title.into(), text("").size(SPACER_SIZE_LARGE).into()];
+    let mut column_items = vec![title.into(), shaped_text("").size(SPACER_SIZE_LARGE).into()];
 
     // Show error if present (at top for visibility)
     if let Some(error) = data.connection_error {
         column_items.push(
-            text(error)
+            shaped_text(error)
                 .size(TEXT_SIZE)
                 .color(error_message_color())
                 .into(),
         );
-        column_items.push(text("").size(SPACER_SIZE_MEDIUM).into());
+        column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
     }
 
     column_items.extend(vec![
@@ -121,7 +121,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         port_input.into(),
         username_input.into(),
         password_input.into(),
-        text("").size(SPACER_SIZE_MEDIUM).into(),
+        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),
     ]);
 

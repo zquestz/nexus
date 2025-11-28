@@ -6,15 +6,15 @@ use super::style::{
     SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, broadcast_message_color, chat_tab_active_style,
     chat_tab_inactive_style, chat_text_color, error_message_color, info_text_color,
-    primary_button_style, primary_scrollbar_style, primary_text_input_style, sidebar_border,
-    system_text_color, tooltip_border, tooltip_text_color,
+    primary_button_style, primary_scrollbar_style, primary_text_input_style, shaped_text,
+    sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
 };
 use crate::handlers::network::{
     MSG_USERNAME_BROADCAST_PREFIX, MSG_USERNAME_ERROR, MSG_USERNAME_INFO, MSG_USERNAME_SYSTEM,
 };
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{
-    Button, Column, button, column, container, row, scrollable, text, text_input, tooltip,
+    Button, Column, button, column, container, row, scrollable, text_input, tooltip,
 };
 use iced::{Background, Element, Fill};
 
@@ -24,25 +24,25 @@ const PLACEHOLDER_NO_PERMISSION: &str = "No permission";
 const TOOLTIP_CLOSE_TAB: &str = "Close";
 
 /// Create a tab button with appropriate styling and unread indicator
-fn create_tab_button<'a>(
+fn create_tab_button(
     tab: ChatTab,
     label: String,
     is_active: bool,
     has_unread: bool,
-) -> Button<'a, Message> {
+) -> Button<'static, Message> {
     if is_active {
-        button(text(label).size(CHAT_MESSAGE_SIZE))
+        button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
             .style(chat_tab_active_style())
             .padding(INPUT_PADDING)
     } else {
         let tab_text = if has_unread {
             // Bold if there are unread messages
-            text(label).size(CHAT_MESSAGE_SIZE).font(iced::Font {
+            shaped_text(label).size(CHAT_MESSAGE_SIZE).font(iced::Font {
                 weight: iced::font::Weight::Bold,
                 ..iced::Font::DEFAULT
             })
         } else {
-            text(label).size(CHAT_MESSAGE_SIZE)
+            shaped_text(label).size(CHAT_MESSAGE_SIZE)
         };
 
         button(tab_text)
@@ -116,14 +116,16 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                     border: iced::Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(text(format!("{} {}", TOOLTIP_CLOSE_TAB, username)).size(TOOLTIP_TEXT_SIZE))
-                .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
+            container(
+                shaped_text(format!("{} {}", TOOLTIP_CLOSE_TAB, username)).size(TOOLTIP_TEXT_SIZE),
+            )
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                text_color: Some(tooltip_text_color(theme)),
+                border: tooltip_border(),
+                ..Default::default()
+            }),
             tooltip::Position::Bottom,
         )
         .gap(TOOLTIP_GAP)
@@ -153,33 +155,33 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     for msg in messages {
         let time_str = msg.timestamp.format("%H:%M:%S").to_string();
         let display = if msg.username == MSG_USERNAME_SYSTEM {
-            text(format!("[{}] [SYS] {}", time_str, msg.message))
+            shaped_text(format!("[{}] [SYS] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(system_text_color(theme)),
                 })
                 .font(iced::Font::MONOSPACE)
         } else if msg.username == MSG_USERNAME_ERROR {
-            text(format!("[{}] [ERR] {}", time_str, msg.message))
+            shaped_text(format!("[{}] [ERR] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .color(error_message_color())
                 .font(iced::Font::MONOSPACE)
         } else if msg.username == MSG_USERNAME_INFO {
-            text(format!("[{}] [INFO] {}", time_str, msg.message))
+            shaped_text(format!("[{}] [INFO] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(info_text_color(theme)),
                 })
                 .font(iced::Font::MONOSPACE)
         } else if msg.username.starts_with(MSG_USERNAME_BROADCAST_PREFIX) {
-            text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
+            shaped_text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(broadcast_message_color(theme)),
                 })
                 .font(iced::Font::MONOSPACE)
         } else {
-            text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
+            shaped_text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(chat_text_color(theme)),
@@ -226,12 +228,12 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .width(Fill)
         },
         if can_send_message {
-            button(text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
+            button(shaped_text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         } else {
-            button(text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
+            button(shaped_text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         },
@@ -240,7 +242,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     .width(Fill);
 
     // Top border separator to match sidebars
-    let top_separator = container(text(""))
+    let top_separator = container(shaped_text(""))
         .width(Fill)
         .height(BORDER_WIDTH)
         .style(|theme| container::Style {
@@ -249,7 +251,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         });
 
     // Bottom border separator to match sidebars
-    let bottom_separator = container(text(""))
+    let bottom_separator = container(shaped_text(""))
         .width(Fill)
         .height(BORDER_WIDTH)
         .style(|theme| container::Style {
