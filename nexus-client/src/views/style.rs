@@ -33,6 +33,10 @@ use iced::{Background, Border, Color, Theme};
 /// This should be used for ALL text in the application to ensure proper
 /// display of internationalized content.
 ///
+/// # Optimization
+/// Empty strings (used as spacers) skip advanced shaping since there's no
+/// text to render. This is a minor optimization with no functional impact.
+///
 /// # Example
 /// ```
 /// use crate::views::style::shaped_text;
@@ -41,7 +45,12 @@ use iced::{Background, Border, Color, Theme};
 ///     .size(14)
 /// ```
 pub fn shaped_text<'a>(content: impl Into<String>) -> text::Text<'a> {
-    text(content.into()).shaping(text::Shaping::Advanced)
+    let s = content.into();
+    if s.is_empty() {
+        text(s)
+    } else {
+        text(s).shaping(text::Shaping::Advanced)
+    }
 }
 
 // ============================================================================
