@@ -172,6 +172,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::create_test_context;
+    use crate::users::user::NewUserParams;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -203,15 +204,16 @@ mod tests {
         // Add user to UserManager
         let user_id = test_ctx
             .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: user.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: user.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Try to get user info without permission
@@ -253,15 +255,16 @@ mod tests {
         // Add user to UserManager
         let user_id = test_ctx
             .user_manager
-            .add_user(
-                user.id,
-                "alice".to_string(),
-                test_ctx.peer_addr,
-                user.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: user.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: user.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Request info for non-existent username
@@ -330,30 +333,34 @@ mod tests {
             .unwrap();
 
         // Add both users to UserManager
+        // Add requester to UserManager
         let requester_id = test_ctx
             .user_manager
-            .add_user(
-                requester.id,
-                "requester".to_string(),
-                test_ctx.peer_addr,
-                requester.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: requester.id,
+                username: "requester".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: requester.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec!["chat".to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
+        // Add target to UserManager
         let target_id = test_ctx
             .user_manager
-            .add_user(
-                target.id,
-                "target".to_string(),
-                test_ctx.peer_addr,
-                target.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: target.id,
+                username: "target".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: target.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec!["chat".to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Request info about target as non-admin
@@ -424,30 +431,34 @@ mod tests {
             .unwrap();
 
         // Add both users to UserManager
+        // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin.id,
+                username: "admin".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec!["chat".to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
+        // Add target to UserManager
         let target_id = test_ctx
             .user_manager
-            .add_user(
-                target.id,
-                "target".to_string(),
-                test_ctx.peer_addr,
-                target.created_at,
-                test_ctx.tx.clone(),
-                vec!["chat".to_string()],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: target.id,
+                username: "target".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: target.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec!["chat".to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Request info about target as admin
@@ -526,31 +537,34 @@ mod tests {
             .await
             .unwrap();
 
-        // Add both admins to UserManager
+        // Add admin1 to UserManager
         let admin1_id = test_ctx
             .user_manager
-            .add_user(
-                admin1.id,
-                "admin1".to_string(),
-                test_ctx.peer_addr,
-                admin1.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin1.id,
+                username: "admin1".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin1.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
+        // Add admin2 to UserManager
         let admin2_id = test_ctx
             .user_manager
-            .add_user(
-                admin2.id,
-                "admin2".to_string(),
-                test_ctx.peer_addr,
-                admin2.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin2.id,
+                username: "admin2".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin2.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Admin1 requests info about admin2

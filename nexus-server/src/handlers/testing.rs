@@ -6,6 +6,7 @@ pub const DEFAULT_TEST_LOCALE: &str = "en";
 use super::{HandlerContext, Writer};
 use crate::db::Database;
 use crate::users::UserManager;
+use crate::users::user::NewUserParams;
 use nexus_common::protocol::ServerMessage;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
@@ -122,15 +123,16 @@ pub async fn login_user_with_features(
     // Add user to UserManager
     test_ctx
         .user_manager
-        .add_user(
-            user.id,
-            username.to_string(),
-            test_ctx.peer_addr,
-            user.created_at,
-            test_ctx.tx.clone(),
+        .add_user(NewUserParams {
+            session_id: 0, // Will be assigned by add_user
+            db_user_id: user.id,
+            username: username.to_string(),
+            address: test_ctx.peer_addr,
+            created_at: user.created_at,
+            tx: test_ctx.tx.clone(),
             features,
-            DEFAULT_TEST_LOCALE.to_string(),
-        )
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+        })
         .await
 }
 

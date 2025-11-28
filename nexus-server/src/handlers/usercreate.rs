@@ -242,6 +242,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user};
+    use crate::users::user::NewUserParams;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -366,15 +367,16 @@ mod tests {
         // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
-            .add_user(
-                admin.id,
-                "admin".to_string(),
-                test_ctx.peer_addr,
-                admin.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin.id,
+                username: "admin".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Try to create user with duplicate username
@@ -668,15 +670,16 @@ mod tests {
         // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
-            .add_user(
-                creator.id,
-                "creator".to_string(),
-                test_ctx.peer_addr,
-                creator.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: creator.id,
+                username: "creator".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: creator.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Try to create an admin user as non-admin
@@ -731,15 +734,16 @@ mod tests {
         // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
-            .add_user(
-                creator.id,
-                "creator".to_string(),
-                test_ctx.peer_addr,
-                creator.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: creator.id,
+                username: "creator".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: creator.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Try to create a user with UserDelete permission (which creator doesn't have)

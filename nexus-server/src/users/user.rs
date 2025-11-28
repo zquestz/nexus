@@ -4,6 +4,18 @@ use nexus_common::protocol::ServerMessage;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
+/// Parameters for creating a new user
+pub struct NewUserParams {
+    pub session_id: u32,
+    pub db_user_id: i64,
+    pub username: String,
+    pub address: SocketAddr,
+    pub created_at: i64,
+    pub tx: mpsc::UnboundedSender<ServerMessage>,
+    pub features: Vec<String>,
+    pub locale: String,
+}
+
 /// Represents a logged-in user
 #[derive(Debug, Clone)]
 pub struct User {
@@ -33,26 +45,17 @@ pub struct User {
 
 impl User {
     /// Create a new user
-    pub fn new(
-        session_id: u32,
-        db_user_id: i64,
-        username: String,
-        address: SocketAddr,
-        created_at: i64,
-        tx: mpsc::UnboundedSender<ServerMessage>,
-        features: Vec<String>,
-        locale: String,
-    ) -> Self {
+    pub fn new(params: NewUserParams) -> Self {
         Self {
-            session_id,
-            db_user_id,
-            username,
-            address,
-            created_at,
+            session_id: params.session_id,
+            db_user_id: params.db_user_id,
+            username: params.username,
+            address: params.address,
+            created_at: params.created_at,
             login_time: current_timestamp(),
-            tx,
-            features,
-            locale,
+            tx: params.tx,
+            features: params.features,
+            locale: params.locale,
         }
     }
 

@@ -6,6 +6,7 @@ use super::{
 };
 use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
+use crate::users::user::NewUserParams;
 use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use std::io;
 
@@ -126,15 +127,16 @@ pub async fn handle_login(
     // Permissions are checked when executing commands, not at login
     let id = ctx
         .user_manager
-        .add_user(
-            authenticated_account.id,
-            authenticated_account.username.clone(),
-            ctx.peer_addr,
-            authenticated_account.created_at,
-            ctx.tx.clone(),
+        .add_user(NewUserParams {
+            session_id: 0, // Will be assigned by add_user
+            db_user_id: authenticated_account.id,
+            username: authenticated_account.username.clone(),
+            address: ctx.peer_addr,
+            created_at: authenticated_account.created_at,
+            tx: ctx.tx.clone(),
             features,
-            locale.clone(),
-        )
+            locale: locale.clone(),
+        })
         .await;
     *session_id = Some(id);
 

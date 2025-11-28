@@ -179,6 +179,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user};
+    use crate::users::user::NewUserParams;
     use tokio::io::AsyncReadExt;
     use tokio::sync::mpsc;
 
@@ -440,15 +441,16 @@ mod tests {
         let (online_tx, _online_rx) = mpsc::unbounded_channel();
         let online_session_id = test_ctx
             .user_manager
-            .add_user(
-                online_user.id,
-                "online_user".to_string(),
-                test_ctx.peer_addr,
-                online_user.created_at,
-                online_tx,
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: online_user.id,
+                username: "online_user".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: online_user.created_at,
+                tx: online_tx,
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Verify online user is connected

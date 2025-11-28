@@ -19,8 +19,12 @@ use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Background, Border, Center, Element, Fill};
 
 use super::{
-    bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
-    connection::connection_form_view, server_list::server_list_panel, user_list::user_list_panel,
+    bookmark::bookmark_edit_view,
+    broadcast::broadcast_view,
+    chat::chat_view,
+    connection::{ConnectionFormData, connection_form_view},
+    server_list::server_list_panel,
+    user_list::user_list_panel,
     users::users_view,
 };
 
@@ -100,16 +104,16 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             empty_content_view()
         }
     } else {
-        connection_form_view(
-            config.server_name,
-            config.server_address,
-            config.port,
-            config.username,
-            config.password,
-            config.locale,
-            config.connection_error,
-            config.is_connecting,
-        )
+        connection_form_view(ConnectionFormData {
+            server_name: config.server_name,
+            server_address: config.server_address,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            locale: config.locale,
+            connection_error: config.connection_error,
+            is_connecting: config.is_connecting,
+        })
     };
 
     // Right panel: User list (only when connected, visible, and user has permission)

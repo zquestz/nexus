@@ -418,10 +418,10 @@ impl UserDb {
 
         // Validate username format if it's being changed (failsafe)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Some(new_username) = requested_username {
-            if let Err(e) = validate_username(new_username) {
-                return Err(sqlx::Error::Protocol(e.to_string()));
-            }
+        if let Some(new_username) = requested_username
+            && let Err(e) = validate_username(new_username)
+        {
+            return Err(sqlx::Error::Protocol(e.to_string()));
         }
 
         let final_password = requested_password_hash.unwrap_or(&user.hashed_password);

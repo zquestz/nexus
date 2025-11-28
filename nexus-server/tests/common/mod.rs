@@ -3,6 +3,7 @@
 use nexus_common::protocol::ServerMessage;
 use nexus_server::db::Database;
 use nexus_server::users::UserManager;
+use nexus_server::users::user::NewUserParams;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
@@ -39,15 +40,16 @@ pub async fn add_test_user(
 
     // Use the public add_user API
     let session_id = user_manager
-        .add_user(
+        .add_user(NewUserParams {
+            session_id: 0, // Will be assigned by add_user
             db_user_id,
-            username.to_string(),
-            addr,
+            username: username.to_string(),
+            address: addr,
             created_at,
             tx,
-            vec!["chat".to_string()],
-            DEFAULT_TEST_LOCALE.to_string(),
-        )
+            features: vec!["chat".to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+        })
         .await;
 
     (session_id, rx)

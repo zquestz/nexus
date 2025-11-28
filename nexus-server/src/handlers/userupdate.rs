@@ -91,18 +91,18 @@ pub async fn handle_userupdate(
     }
 
     // Validate new username format if it's being changed
-    if let Some(ref new_username) = request.requested_username {
-        if let Err(e) = validate_username(new_username) {
-            eprintln!(
-                "UserUpdate from {} with invalid username: {}",
-                ctx.peer_addr, e
-            );
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(e.to_string()),
-            };
-            return ctx.send_message(&response).await;
-        }
+    if let Some(ref new_username) = request.requested_username
+        && let Err(e) = validate_username(new_username)
+    {
+        eprintln!(
+            "UserUpdate from {} with invalid username: {}",
+            ctx.peer_addr, e
+        );
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(e.to_string()),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Note: Last admin protection is now handled atomically at the database level
@@ -505,6 +505,7 @@ pub async fn handle_userupdate(
 mod tests {
     use super::*;
     use crate::handlers::testing::*;
+    use crate::users::user::NewUserParams;
 
     #[tokio::test]
     async fn test_userupdate_requires_login() {
@@ -1143,15 +1144,16 @@ mod tests {
         // Add editor to UserManager
         let editor_session = test_ctx
             .user_manager
-            .add_user(
-                editor.id,
-                "editor".to_string(),
-                test_ctx.peer_addr,
-                editor.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: editor.id,
+                username: "editor".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: editor.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Editor tries to disable admin (the last admin) - should fail
@@ -1324,28 +1326,30 @@ mod tests {
         // Login both admins
         let admin1_session = test_ctx
             .user_manager
-            .add_user(
-                admin1.id,
-                "admin1".to_string(),
-                test_ctx.peer_addr,
-                admin1.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin1.id,
+                username: "admin1".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin1.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         let _admin2_session = test_ctx
             .user_manager
-            .add_user(
-                admin2.id,
-                "admin2".to_string(),
-                test_ctx.peer_addr,
-                admin2.created_at,
-                test_ctx.tx.clone(),
-                vec![],
-                DEFAULT_TEST_LOCALE.to_string(),
-            )
+            .add_user(NewUserParams {
+                session_id: 0,
+                db_user_id: admin2.id,
+                username: "admin2".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: admin2.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+            })
             .await;
 
         // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
