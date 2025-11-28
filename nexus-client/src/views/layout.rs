@@ -110,7 +110,6 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             port: config.port,
             username: config.username,
             password: config.password,
-            locale: config.locale,
             connection_error: config.connection_error,
             is_connecting: config.is_connecting,
         })

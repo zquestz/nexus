@@ -52,14 +52,6 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle bookmark locale field change
-    pub fn handle_bookmark_locale_changed(&mut self, locale: String) -> Task<Message> {
-        self.bookmark_edit.bookmark.locale = locale;
-        self.bookmark_edit.error = None;
-        self.focused_field = InputId::BookmarkLocale;
-        Task::none()
-    }
-
     /// Handle bookmark auto-connect toggle
     pub fn handle_bookmark_auto_connect_toggled(&mut self, enabled: bool) -> Task<Message> {
         self.bookmark_edit.bookmark.auto_connect = enabled;
@@ -97,12 +89,10 @@ impl NexusApp {
             let server_address = bookmark.address.clone();
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
-            // Default to DEFAULT_LOCALE if locale is empty
-            let locale = if bookmark.locale.trim().is_empty() {
-                DEFAULT_LOCALE.to_string()
-            } else {
-                bookmark.locale.clone()
-            };
+            // Get system locale, fallback to DEFAULT_LOCALE
+            let locale = sys_locale::get_locale()
+                .and_then(|loc| loc.split('-').next().map(String::from))
+                .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
             let server_name = bookmark.name.clone();
 
             // Store bookmark index for this connection

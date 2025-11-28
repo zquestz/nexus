@@ -2878,6 +2878,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sys-locale",
  "tokio",
  "tokio-rustls",
  "webpki-roots 0.26.11",

@@ -17,7 +17,6 @@ const PLACEHOLDER_SERVER_NAME: &str = "Server Name";
 const PLACEHOLDER_IPV6_ADDRESS: &str = "IPv6 Address";
 const PLACEHOLDER_USERNAME_OPTIONAL: &str = "Username (optional)";
 const PLACEHOLDER_PASSWORD_OPTIONAL: &str = "Password (optional)";
-const PLACEHOLDER_LOCALE: &str = "Locale (e.g., en, zh-CN)";
 const LABEL_AUTO_CONNECT: &str = "Auto-connect at startup";
 const BUTTON_SAVE: &str = "Save";
 
@@ -95,17 +94,9 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .into(),
         text_input(PLACEHOLDER_PASSWORD_OPTIONAL, form.password)
             .on_input(Message::BookmarkPasswordChanged)
-            .on_submit(submit_action.clone())
+            .on_submit(submit_action)
             .id(text_input::Id::from(InputId::BookmarkPassword))
             .secure(true)
-            .padding(INPUT_PADDING)
-            .size(TEXT_SIZE)
-            .style(primary_text_input_style())
-            .into(),
-        text_input(PLACEHOLDER_LOCALE, form.locale)
-            .on_input(Message::BookmarkLocaleChanged)
-            .on_submit(submit_action)
-            .id(text_input::Id::from(InputId::BookmarkLocale))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .style(primary_text_input_style())

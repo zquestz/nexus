@@ -21,7 +21,7 @@ pub fn generate_auto_connect_tasks(config: &Config) -> Vec<Task<Message>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{DEFAULT_LOCALE, DEFAULT_PORT, ServerBookmark};
+    use crate::types::{DEFAULT_PORT, ServerBookmark};
 
     #[test]
     fn test_no_auto_connect_bookmarks() {
@@ -34,7 +34,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let tasks = generate_auto_connect_tasks(&config);
@@ -52,7 +51,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: true,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let tasks = generate_auto_connect_tasks(&config);
@@ -70,7 +68,6 @@ mod tests {
             password: "pass1".to_string(),
             auto_connect: true,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
         config.add_bookmark(ServerBookmark {
             name: "Server 2".to_string(),
@@ -80,7 +77,6 @@ mod tests {
             password: "pass2".to_string(),
             auto_connect: false, // Should be skipped
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
         config.add_bookmark(ServerBookmark {
             name: "Server 3".to_string(),
@@ -90,7 +86,6 @@ mod tests {
             password: "pass3".to_string(),
             auto_connect: true,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let tasks = generate_auto_connect_tasks(&config);

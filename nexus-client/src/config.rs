@@ -1,7 +1,5 @@
 //! Server bookmark configuration
 
-#[cfg(test)]
-use crate::types::DEFAULT_LOCALE;
 use crate::types::ServerBookmark;
 use std::fs;
 #[cfg(unix)]
@@ -16,11 +14,29 @@ const CONFIG_FILE_MODE: u32 = 0o600;
 ///
 /// The config is persisted to disk as JSON in the platform-specific
 /// configuration directory (e.g., ~/.config/nexus/config.json on Linux).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Config {
     pub bookmarks: Vec<ServerBookmark>,
     #[serde(default)]
     pub theme: ThemePreference,
+    /// Application-wide locale setting (e.g., "en", "zh-CN")
+    #[serde(default = "default_config_locale")]
+    pub locale: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            bookmarks: Vec::new(),
+            theme: ThemePreference::default(),
+            locale: default_config_locale(),
+        }
+    }
+}
+
+/// Default locale value for Config
+fn default_config_locale() -> String {
+    crate::types::DEFAULT_LOCALE.to_string()
 }
 
 /// Theme preference (Light or Dark mode)
@@ -156,7 +172,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         assert_eq!(config.bookmarks.len(), 1);
@@ -175,7 +190,6 @@ mod tests {
             password: "pass1".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.add_bookmark(ServerBookmark {
@@ -186,7 +200,6 @@ mod tests {
             password: "pass2".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         assert_eq!(config.bookmarks.len(), 2);
@@ -206,7 +219,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.update_bookmark(
@@ -219,7 +231,6 @@ mod tests {
                 password: "newpass".to_string(),
                 auto_connect: true,
                 certificate_fingerprint: None,
-                locale: DEFAULT_LOCALE.to_string(),
             },
         );
 
@@ -242,7 +253,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.update_bookmark(
@@ -255,7 +265,6 @@ mod tests {
                 password: "badpass".to_string(),
                 auto_connect: false,
                 certificate_fingerprint: None,
-                locale: DEFAULT_LOCALE.to_string(),
             },
         );
 
@@ -276,7 +285,6 @@ mod tests {
             password: "pass1".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.add_bookmark(ServerBookmark {
@@ -287,7 +295,6 @@ mod tests {
             password: "pass2".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         config.delete_bookmark(0);
@@ -308,7 +315,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         // Try to delete non-existent index
@@ -331,7 +337,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let bookmark = config.get_bookmark(0);
@@ -351,7 +356,6 @@ mod tests {
             password: "pass".to_string(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: DEFAULT_LOCALE.to_string(),
         });
 
         let bookmark = config.get_bookmark(5);

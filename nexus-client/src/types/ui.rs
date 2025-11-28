@@ -53,8 +53,6 @@ pub enum InputId {
     Username,
     /// Connection form: Password input
     Password,
-    /// Connection form: Locale input
-    Locale,
     /// Bookmark editor: Name input
     BookmarkName,
     /// Bookmark editor: Address input
@@ -65,8 +63,6 @@ pub enum InputId {
     BookmarkUsername,
     /// Bookmark editor: Password input
     BookmarkPassword,
-    /// Bookmark editor: Locale input
-    BookmarkLocale,
     /// Admin panel: Username input
     AdminUsername,
     /// Admin panel: Password input

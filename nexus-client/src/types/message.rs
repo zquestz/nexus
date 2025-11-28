@@ -27,8 +27,6 @@ pub enum Message {
     BookmarkPortChanged(String),
     /// Bookmark editor: Username field changed
     BookmarkUsernameChanged(String),
-    /// Bookmark editor: Locale field changed
-    BookmarkLocaleChanged(String),
     /// Broadcast panel: Message input changed
     BroadcastMessageChanged(String),
     /// Bookmark editor: Cancel button pressed
@@ -83,8 +81,6 @@ pub enum Message {
     PasswordChanged(String),
     /// Connection form: Port field changed
     PortChanged(String),
-    /// Connection form: Locale field changed
-    LocaleChanged(String),
     /// User list: User item clicked (expand/collapse)
     UserListItemClicked(String),
     /// User list: Info icon clicked on expanded user

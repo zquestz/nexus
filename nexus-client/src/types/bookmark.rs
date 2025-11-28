@@ -1,6 +1,6 @@
 //! Server bookmark types
 
-use super::{DEFAULT_LOCALE, DEFAULT_PORT};
+use super::DEFAULT_PORT;
 
 /// Server bookmark configuration
 ///
@@ -24,14 +24,6 @@ pub struct ServerBookmark {
     /// Certificate fingerprint (SHA-256) for Trust On First Use
     #[serde(default)]
     pub certificate_fingerprint: Option<String>,
-    /// Locale for this connection (e.g., "en", "zh-CN")
-    #[serde(default = "default_locale")]
-    pub locale: String,
-}
-
-/// Default locale value for serde deserialization
-fn default_locale() -> String {
-    DEFAULT_LOCALE.to_string()
 }
 
 impl Default for ServerBookmark {
@@ -44,7 +36,6 @@ impl Default for ServerBookmark {
             password: String::new(),
             auto_connect: false,
             certificate_fingerprint: None,
-            locale: String::new(),
         }
     }
 }

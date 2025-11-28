@@ -59,14 +59,6 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle locale field change
-    pub fn handle_locale_changed(&mut self, locale: String) -> Task<Message> {
-        self.connection_form.locale = locale;
-        self.connection_form.error = None;
-        self.focused_field = InputId::Locale;
-        Task::none()
-    }
-
     /// Handle connect button press
     pub fn handle_connect_pressed(&mut self) -> Task<Message> {
         // Prevent duplicate connection attempts
@@ -91,12 +83,10 @@ impl NexusApp {
         let server_address = self.connection_form.server_address.clone();
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
-        // Default to DEFAULT_LOCALE if locale is empty
-        let locale = if self.connection_form.locale.trim().is_empty() {
-            DEFAULT_LOCALE.to_string()
-        } else {
-            self.connection_form.locale.clone()
-        };
+        // Get system locale, fallback to DEFAULT_LOCALE
+        let locale = sys_locale::get_locale()
+            .and_then(|loc| loc.split('-').next().map(String::from))
+            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
         let connection_id = self.next_connection_id;
         self.next_connection_id += 1;
 

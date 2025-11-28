@@ -17,7 +17,6 @@ pub struct ConnectionFormData<'a> {
     pub port: &'a str,
     pub username: &'a str,
     pub password: &'a str,
-    pub locale: &'a str,
     pub connection_error: &'a Option<String>,
     pub is_connecting: bool,
 }
@@ -26,7 +25,6 @@ pub struct ConnectionFormData<'a> {
 const TITLE_CONNECT_TO_SERVER: &str = "Connect to Server";
 const PLACEHOLDER_SERVER_NAME_OPTIONAL: &str = "Server Name (optional)";
 const PLACEHOLDER_SERVER_IPV6_ADDRESS: &str = "Server IPv6 Address";
-const PLACEHOLDER_LOCALE: &str = "Locale (e.g., en, zh-CN)";
 const BUTTON_CONNECT: &str = "Connect";
 
 /// Displays connection form with server details and credentials
@@ -93,14 +91,6 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let locale_input = text_input(PLACEHOLDER_LOCALE, data.locale)
-        .on_input(Message::LocaleChanged)
-        .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::Locale))
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
-
     let connect_button = if can_connect && !data.is_connecting {
         button(text(BUTTON_CONNECT).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
@@ -131,7 +121,6 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         port_input.into(),
         username_input.into(),
         password_input.into(),
-        locale_input.into(),
         text("").size(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),
     ]);
