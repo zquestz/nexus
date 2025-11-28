@@ -1,8 +1,8 @@
 //! Handler for UserMessage command
 
 use super::{
-    err_authentication, err_chat_too_long, err_database, err_message_empty, err_not_logged_in,
-    err_permission_denied, err_user_not_found, err_user_not_online, HandlerContext,
+    HandlerContext, err_authentication, err_chat_too_long, err_database, err_message_empty,
+    err_not_logged_in, err_permission_denied, err_user_not_found, err_user_not_online,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -10,8 +10,6 @@ use std::io;
 
 /// Maximum message length
 const MAX_MESSAGE_LENGTH: usize = 1024;
-
-
 
 /// Handle UserMessage command
 pub async fn handle_usermessage(

@@ -117,25 +117,41 @@ pub fn err_message_empty(locale: &str) -> String {
 
 /// Get translated "broadcast too long" error
 pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
-    t_args(locale, "err-broadcast-too-long", &[("max_length", &max_length.to_string())])
+    t_args(
+        locale,
+        "err-broadcast-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
 /// Get translated "chat too long" error
 pub fn err_chat_too_long(locale: &str, max_length: usize) -> String {
-    t_args(locale, "err-chat-too-long", &[("max_length", &max_length.to_string())])
+    t_args(
+        locale,
+        "err-chat-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
 /// Get translated "topic too long" error
 pub fn err_topic_too_long(locale: &str, max_length: usize) -> String {
-    t_args(locale, "err-topic-too-long", &[("max_length", &max_length.to_string())])
+    t_args(
+        locale,
+        "err-topic-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
 /// Get translated "version mismatch" error
 pub fn err_version_mismatch(locale: &str, server_version: &str, client_version: &str) -> String {
-    t_args(locale, "err-version-mismatch", &[
-        ("server_version", server_version),
-        ("client_version", client_version)
-    ])
+    t_args(
+        locale,
+        "err-version-mismatch",
+        &[
+            ("server_version", server_version),
+            ("client_version", client_version),
+        ],
+    )
 }
 
 /// Get translated "kicked by" message
@@ -160,7 +176,11 @@ pub fn err_user_not_online(locale: &str, username: &str) -> String {
 
 /// Get translated "failed to create user" error
 pub fn err_failed_to_create_user(locale: &str, username: &str) -> String {
-    t_args(locale, "err-failed-to-create-user", &[("username", username)])
+    t_args(
+        locale,
+        "err-failed-to-create-user",
+        &[("username", username)],
+    )
 }
 
 /// Get translated "account disabled" error

@@ -3,14 +3,12 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    err_authentication, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found, HandlerContext,
+    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
+    err_user_not_found,
 };
 use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use std::io;
-
-
 
 /// Handle a userinfo request from the client
 pub async fn handle_userinfo(

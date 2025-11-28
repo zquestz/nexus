@@ -1,8 +1,8 @@
 //! UserEdit message handler - Returns user details for editing
 
 use super::{
-    err_cannot_edit_self, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found, HandlerContext,
+    HandlerContext, err_cannot_edit_self, err_database, err_not_logged_in, err_permission_denied,
+    err_user_not_found,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -46,7 +46,9 @@ pub async fn handle_useredit(
             "UserEdit from {} (user: {}) attempting to edit themselves",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx.send_error(&err_cannot_edit_self(ctx.locale), Some("UserEdit")).await;
+        return ctx
+            .send_error(&err_cannot_edit_self(ctx.locale), Some("UserEdit"))
+            .await;
     }
 
     // Check UserEdit permission
@@ -125,7 +127,9 @@ pub async fn handle_useredit(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message, DEFAULT_TEST_LOCALE};
+    use crate::handlers::testing::{
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+    };
 
     #[tokio::test]
     async fn test_useredit_get_requires_login() {
@@ -191,7 +195,10 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent"));
+                assert_eq!(
+                    message,
+                    err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent")
+                );
             }
             _ => panic!("Expected Error message"),
         }

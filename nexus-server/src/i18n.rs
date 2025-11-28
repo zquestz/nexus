@@ -27,7 +27,10 @@ pub fn t(locale: &str, key: &str) -> String {
     }
 
     // Fallback to English if key missing in requested locale
-    eprintln!("{} '{}' {} {}", ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale);
+    eprintln!(
+        "{} '{}' {} {}",
+        ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale
+    );
     if locale != DEFAULT_LOCALE {
         return t(DEFAULT_LOCALE, key);
     }
@@ -64,7 +67,10 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     }
 
     // Fallback to English if key missing in requested locale
-    eprintln!("{} '{}' {} {}", ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale);
+    eprintln!(
+        "{} '{}' {} {}",
+        ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale
+    );
     if locale != DEFAULT_LOCALE {
         return t_args(DEFAULT_LOCALE, key, args);
     }
@@ -81,7 +87,8 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
 /// non-Send types (RefCell, TypeMap) which prevent safe caching across threads.
 /// For a BBS server with infrequent errors, this performance trade-off is acceptable.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
-    let lang: LanguageIdentifier = locale.parse()
+    let lang: LanguageIdentifier = locale
+        .parse()
         .unwrap_or_else(|_| DEFAULT_LOCALE.parse().unwrap());
 
     let mut bundle = FluentBundle::new(vec![lang]);
@@ -111,11 +118,9 @@ fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
         _ => include_str!("../locales/en/errors.ftl"),
     };
 
-    let resource = FluentResource::try_new(ftl_string.to_string())
-        .expect(ERR_I18N_PARSE_FTL);
+    let resource = FluentResource::try_new(ftl_string.to_string()).expect(ERR_I18N_PARSE_FTL);
 
-    bundle.add_resource(resource)
-        .expect(ERR_I18N_ADD_RESOURCE);
+    bundle.add_resource(resource).expect(ERR_I18N_ADD_RESOURCE);
 
     bundle
 }
@@ -156,10 +161,11 @@ mod tests {
 
     #[test]
     fn test_translation_multiple_args_english() {
-        let result = t_args("en", "err-version-mismatch", &[
-            ("server_version", "1.0"),
-            ("client_version", "0.9")
-        ]);
+        let result = t_args(
+            "en",
+            "err-version-mismatch",
+            &[("server_version", "1.0"), ("client_version", "0.9")],
+        );
         assert!(result.contains("Version mismatch"));
         assert!(result.contains("1.0"));
         assert!(result.contains("0.9"));
@@ -167,10 +173,11 @@ mod tests {
 
     #[test]
     fn test_translation_multiple_args_spanish() {
-        let result = t_args("es", "err-version-mismatch", &[
-            ("server_version", "1.0"),
-            ("client_version", "0.9")
-        ]);
+        let result = t_args(
+            "es",
+            "err-version-mismatch",
+            &[("server_version", "1.0"), ("client_version", "0.9")],
+        );
         assert!(result.contains("Versión incompatible"));
         assert!(result.contains("1.0"));
         assert!(result.contains("0.9"));
@@ -292,5 +299,4 @@ mod tests {
         let result = t("zh-TW", "err-not-logged-in");
         assert_eq!(result, "未登入");
     }
-
 }

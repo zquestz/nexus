@@ -1,10 +1,10 @@
 //! Login message handler
 
+use super::{HandlerContext, current_timestamp};
 use super::{
     err_account_disabled, err_already_logged_in, err_authentication, err_database,
     err_failed_to_create_user, err_handshake_required, err_invalid_credentials,
 };
-use super::{HandlerContext, current_timestamp};
 use crate::db::{self, Permission};
 use crate::users::user::NewUserParams;
 use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
@@ -59,7 +59,10 @@ pub async fn handle_login(
                         username, ctx.peer_addr
                     );
                     return ctx
-                        .send_error_and_disconnect(&err_account_disabled(&locale, &username), Some("Login"))
+                        .send_error_and_disconnect(
+                            &err_account_disabled(&locale, &username),
+                            Some("Login"),
+                        )
                         .await;
                 }
                 account
@@ -87,7 +90,10 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(&err_failed_to_create_user(&locale, &username), Some("Login"))
+                    .send_error_and_disconnect(
+                        &err_failed_to_create_user(&locale, &username),
+                        Some("Login"),
+                    )
                     .await;
             }
         };
@@ -116,7 +122,10 @@ pub async fn handle_login(
             Err(e) => {
                 eprintln!("Failed to create first user {}: {}", username, e);
                 return ctx
-                    .send_error_and_disconnect(&err_failed_to_create_user(&locale, &username), Some("Login"))
+                    .send_error_and_disconnect(
+                        &err_failed_to_create_user(&locale, &username),
+                        Some("Login"),
+                    )
                     .await;
             }
         }
@@ -855,7 +864,9 @@ mod tests {
         let n = test_ctx.client.read(&mut buf).await.unwrap();
         let response = String::from_utf8_lossy(&buf[..n]);
         assert!(
-            response.contains("Account") && response.contains("bob") && response.contains("disabled"),
+            response.contains("Account")
+                && response.contains("bob")
+                && response.contains("disabled"),
             "Should receive account disabled error with username"
         );
     }
@@ -897,7 +908,7 @@ mod tests {
         let mut buf = vec![0u8; 1024];
         let n = test_ctx.client.read(&mut buf).await.unwrap();
         let response = String::from_utf8_lossy(&buf[..n]);
-        
+
         // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
         assert!(
             response.contains("Usuario") || response.contains("contraseña"),
@@ -943,7 +954,7 @@ mod tests {
         let mut buf = vec![0u8; 1024];
         let n = test_ctx.client.read(&mut buf).await.unwrap();
         let response = String::from_utf8_lossy(&buf[..n]);
-        
+
         // English error message should contain "Invalid username or password"
         assert!(
             response.contains("Invalid") && response.contains("username"),

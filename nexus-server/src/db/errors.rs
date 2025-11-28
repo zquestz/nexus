@@ -16,7 +16,11 @@ pub fn err_username_invalid(locale: &str) -> String {
 
 /// Get translated "username too long" error
 pub fn err_username_too_long(locale: &str, max_length: usize) -> String {
-    t_args(locale, "err-username-too-long", &[("max_length", &max_length.to_string())])
+    t_args(
+        locale,
+        "err-username-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
 /// Validate a username

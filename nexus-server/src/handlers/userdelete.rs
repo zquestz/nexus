@@ -3,15 +3,13 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    err_account_deleted, err_authentication, err_cannot_delete_last_admin,
+    HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_last_admin,
     err_cannot_delete_self, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found, HandlerContext,
+    err_user_not_found,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
-
-
 
 /// Handle UserDelete command
 pub async fn handle_userdelete(

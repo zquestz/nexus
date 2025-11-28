@@ -1,8 +1,8 @@
 //! Handler for ChatTopicUpdate command
 
 use super::{
-    err_database, err_not_logged_in, err_permission_denied, err_topic_contains_newlines,
-    err_topic_too_long, HandlerContext,
+    HandlerContext, err_database, err_not_logged_in, err_permission_denied,
+    err_topic_contains_newlines, err_topic_too_long,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -40,7 +40,10 @@ pub async fn handle_chattopicupdate(
     // 3. Validate topic does not contain newlines
     if topic.contains('\n') || topic.contains('\r') {
         return ctx
-            .send_error(&err_topic_contains_newlines(ctx.locale), Some("ChatTopicUpdate"))
+            .send_error(
+                &err_topic_contains_newlines(ctx.locale),
+                Some("ChatTopicUpdate"),
+            )
             .await;
     }
 
@@ -64,7 +67,9 @@ pub async fn handle_chattopicupdate(
         Ok(has_perm) => has_perm,
         Err(e) => {
             eprintln!("Database error checking ChatTopicUpdate permission: {}", e);
-            return ctx.send_error(&err_database(ctx.locale), Some("ChatTopicUpdate")).await;
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
+                .await;
         }
     };
 
@@ -81,7 +86,9 @@ pub async fn handle_chattopicupdate(
     // 6. Save topic to database
     if let Err(e) = ctx.db.config.set_topic(&topic).await {
         eprintln!("Database error setting topic: {}", e);
-        return ctx.send_error(&err_database(ctx.locale), Some("ChatTopicUpdate")).await;
+        return ctx
+            .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
+            .await;
     }
 
     // 7. Broadcast ChatTopic to all users with ChatTopic permission
@@ -110,7 +117,9 @@ pub async fn handle_chattopicupdate(
 mod tests {
     use super::*;
     use crate::db::Permission;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message, DEFAULT_TEST_LOCALE};
+    use crate::handlers::testing::{
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+    };
     use nexus_common::protocol::ServerMessage;
 
     #[tokio::test]

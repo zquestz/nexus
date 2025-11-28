@@ -3,15 +3,13 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    err_authentication, err_cannot_create_admin, err_database, err_message_empty,
-    err_not_logged_in, err_permission_denied, err_username_exists, HandlerContext,
+    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_message_empty,
+    err_not_logged_in, err_permission_denied, err_username_exists,
 };
 use crate::db::errors::validate_username;
 use crate::db::{Permission, Permissions, hash_password};
 use nexus_common::protocol::ServerMessage;
 use std::io;
-
-
 
 /// Handle a user creation request from the client
 pub async fn handle_usercreate(
@@ -157,7 +155,10 @@ pub async fn handle_usercreate(
                     Err(e) => {
                         eprintln!("Permission check error: {}", e);
                         return ctx
-                            .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                            .send_error_and_disconnect(
+                                &err_database(ctx.locale),
+                                Some("UserCreate"),
+                            )
                             .await;
                     }
                 };

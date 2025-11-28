@@ -1,7 +1,7 @@
 //! UserList message handler
 
 use super::{
-    err_authentication, err_database, err_not_logged_in, err_permission_denied, HandlerContext,
+    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 use nexus_common::protocol::{ServerMessage, UserInfo};

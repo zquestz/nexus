@@ -2,8 +2,8 @@
 //! Handler for UserBroadcast command
 
 use super::{
-    HandlerContext, err_authentication, err_broadcast_too_long, err_database, 
-    err_message_empty, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_authentication, err_broadcast_too_long, err_database, err_message_empty,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;

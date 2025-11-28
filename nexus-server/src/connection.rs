@@ -19,7 +19,7 @@ impl ConnectionState {
 
 use crate::constants::*;
 use crate::db::Database;
-use crate::handlers::{self, err_invalid_message_format, HandlerContext};
+use crate::handlers::{self, HandlerContext, err_invalid_message_format};
 use crate::users::UserManager;
 use nexus_common::io::send_server_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -88,7 +88,7 @@ where
                 // Handle the message
                 // Clone locale to avoid borrow checker conflict
                 let locale = conn_state.locale.clone();
-                
+
                 let mut ctx = HandlerContext {
                     writer: &mut writer,
                     peer_addr,
@@ -192,7 +192,7 @@ async fn handle_client_message(
                     ctx,
                 )
                 .await?;
-                
+
                 // Update connection locale after successful login
                 conn_state.locale = locale;
             }

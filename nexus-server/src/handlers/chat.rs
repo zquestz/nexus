@@ -2,8 +2,8 @@
 //! Handler for ChatSend command
 
 use super::{
-    err_authentication, err_chat_too_long, err_database, err_message_empty, err_not_logged_in,
-    err_permission_denied, HandlerContext,
+    HandlerContext, err_authentication, err_chat_too_long, err_database, err_message_empty,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -32,7 +32,10 @@ pub async fn handle_chat_send(
             message.len()
         );
         return ctx
-            .send_error_and_disconnect(&err_chat_too_long(ctx.locale, MAX_CHAT_LENGTH), Some("ChatSend"))
+            .send_error_and_disconnect(
+                &err_chat_too_long(ctx.locale, MAX_CHAT_LENGTH),
+                Some("ChatSend"),
+            )
             .await;
     }
 

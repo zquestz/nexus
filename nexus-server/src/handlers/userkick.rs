@@ -1,14 +1,12 @@
 //! Handler for UserKick command
 
 use super::{
-    err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
-    err_kicked_by, err_not_logged_in, err_permission_denied, err_user_not_online, HandlerContext,
+    HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
+    err_kicked_by, err_not_logged_in, err_permission_denied, err_user_not_online,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
 use std::io;
-
-
 
 /// Handle UserKick command
 pub async fn handle_userkick(
@@ -167,9 +165,7 @@ pub async fn handle_userkick(
 mod tests {
     use super::*;
     use crate::db::Permission;
-    use crate::handlers::testing::{
-        create_test_context, login_user, read_server_message,
-    };
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
     async fn test_userkick_requires_login() {

@@ -3,10 +3,10 @@
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    err_account_disabled_by_admin, err_authentication, err_cannot_demote_last_admin,
-    err_cannot_disable_last_admin, err_cannot_edit_self, err_database, err_not_logged_in,
-    err_permission_denied, err_update_failed, err_user_not_found, err_username_exists,
-    HandlerContext,
+    HandlerContext, err_account_disabled_by_admin, err_authentication,
+    err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_self,
+    err_database, err_not_logged_in, err_permission_denied, err_update_failed, err_user_not_found,
+    err_username_exists,
 };
 use crate::db::errors::{err_username_empty, validate_username};
 use crate::db::{Permission, Permissions, hash_password};
@@ -152,7 +152,10 @@ pub async fn handle_userupdate(
                         Err(e) => {
                             eprintln!("Permission check error: {}", e);
                             return ctx
-                                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                                .send_error_and_disconnect(
+                                    &err_database(ctx.locale),
+                                    Some("UserUpdate"),
+                                )
                                 .await;
                         }
                     };
@@ -199,7 +202,10 @@ pub async fn handle_userupdate(
                             Err(e) => {
                                 eprintln!("Permission check error: {}", e);
                                 return ctx
-                                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                                    .send_error_and_disconnect(
+                                        &err_database(ctx.locale),
+                                        Some("UserUpdate"),
+                                    )
                                     .await;
                             }
                         };
@@ -662,7 +668,10 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success);
-                assert_eq!(error.unwrap(), err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent"));
+                assert_eq!(
+                    error.unwrap(),
+                    err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent")
+                );
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1174,7 +1183,10 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error } => {
                 assert!(!success, "Should not allow disabling last admin");
-                assert_eq!(error, Some(err_cannot_disable_last_admin(DEFAULT_TEST_LOCALE)));
+                assert_eq!(
+                    error,
+                    Some(err_cannot_disable_last_admin(DEFAULT_TEST_LOCALE))
+                );
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
