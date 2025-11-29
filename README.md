@@ -164,8 +164,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 Platform paths:
 
 - Linux: `~/.local/share/nexusd/` and `~/.config/nexus/`
-- macOS: `~/Library/Application Support/`
-- Windows: `%APPDATA%\`
+- macOS: `~/Library/Application Support/nexus/`
+- Windows: `%APPDATA%\nexus\`
 
 ## Internationalization
 
