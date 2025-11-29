@@ -171,6 +171,9 @@ err-broadcast-send-failed = ブロードキャストの送信に失敗しまし�
 err-name-required = ブックマーク名は必須です
 err-address-required = サーバーアドレスは必須です
 err-port-required = ポートは必須です
+err-username-required = ユーザー名は必須です
+err-password-required = パスワードは必須です
+err-message-required = メッセージは必須です
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

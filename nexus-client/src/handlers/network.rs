@@ -69,7 +69,7 @@ impl NexusApp {
                     return self.handle_fingerprint_mismatch(boxed_mismatch, conn, display_name);
                 }
 
-                let session_id = conn.session_id.parse().unwrap_or(0);
+                let session_id = conn.session_id;
                 let username = self.connection_form.username.clone();
                 let connection_id = conn.connection_id;
 
@@ -116,6 +116,7 @@ impl NexusApp {
                     },
                     message_input: String::new(),
                     broadcast_message: String::new(),
+                    broadcast_error: None,
                     user_management: crate::types::UserManagementState::default(),
                 };
 
@@ -182,7 +183,7 @@ impl NexusApp {
     ) -> Task<Message> {
         match result {
             Ok(conn) => {
-                let session_id = conn.session_id.parse().unwrap_or(0);
+                let session_id = conn.session_id;
                 let conn_id = conn.connection_id;
 
                 // Clear the connecting lock for this bookmark
@@ -241,6 +242,7 @@ impl NexusApp {
                     },
                     message_input: String::new(),
                     broadcast_message: String::new(),
+                    broadcast_error: None,
                     user_management: crate::types::UserManagementState::default(),
                 };
 
@@ -412,24 +414,21 @@ impl NexusApp {
                     timestamp: Local::now(),
                 },
             ),
-            ServerMessage::UserBroadcastReply { success, error } => {
-                let message = if success {
-                    ChatMessage {
-                        username: msg_username_system(),
-                        message: t("msg-broadcast-sent"),
-                        timestamp: Local::now(),
+            ServerMessage::UserBroadcastResponse { success, error } => {
+                if success {
+                    // Close broadcast panel on success
+                    self.ui_state.show_broadcast = false;
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.broadcast_error = None;
                     }
+                    Task::none()
                 } else {
-                    ChatMessage {
-                        username: msg_username_error(),
-                        message: t_args(
-                            "err-failed-send-broadcast",
-                            &[("error", &error.unwrap_or_default())],
-                        ),
-                        timestamp: Local::now(),
+                    // On error, keep panel open and show error in form
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.broadcast_error = Some(error.unwrap_or_default());
                     }
-                };
-                self.add_chat_message(connection_id, message)
+                    Task::none()
+                }
             }
             ServerMessage::UserConnected { user } => {
                 // Check if user already exists (multi-device connection)
@@ -513,8 +512,16 @@ impl NexusApp {
                     Task::none()
                 }
             }
-            ServerMessage::UserListResponse { users } => {
+            ServerMessage::UserListResponse {
+                success,
+                error: _,
+                users,
+            } => {
+                if !success {
+                    return Task::none();
+                }
                 conn.online_users = users
+                    .unwrap_or_default()
                     .into_iter()
                     .map(|u| UserInfo {
                         username: u.username,
@@ -584,8 +591,13 @@ impl NexusApp {
 
                 Task::none()
             }
-            ServerMessage::UserInfoResponse { user, error } => {
-                if let Some(err) = error {
+            ServerMessage::UserInfoResponse {
+                success,
+                error,
+                user,
+            } => {
+                if !success {
+                    let err = error.unwrap_or_default();
                     let message = ChatMessage {
                         username: msg_username_info(),
                         message: t_args("user-info-error", &[("error", &err)]),
@@ -597,8 +609,8 @@ impl NexusApp {
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
-                        .as_secs();
-                    let session_duration_secs = now.saturating_sub(user.login_time);
+                        .as_secs() as i64;
+                    let session_duration_secs = now.saturating_sub(user.login_time) as u64;
                     let duration_str = Self::format_duration(session_duration_secs);
 
                     // Format account creation time (ISO 8601)
@@ -770,7 +782,7 @@ impl NexusApp {
                 }
                 Task::none()
             }
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 // Only show error messages - success is obvious from the PM tab
                 if !success {
                     let message = ChatMessage {
@@ -787,102 +799,113 @@ impl NexusApp {
                 }
             }
             ServerMessage::UserCreateResponse { success, error } => {
-                // Close add user panel on any response (success or error)
-                if self.ui_state.show_add_user && self.active_connection == Some(connection_id) {
-                    self.ui_state.show_add_user = false;
-                    if let Some(conn) = self.connections.get_mut(&connection_id) {
-                        conn.user_management.clear_add_user();
+                if success {
+                    // Close add user panel on success
+                    if self.ui_state.show_add_user && self.active_connection == Some(connection_id)
+                    {
+                        self.ui_state.show_add_user = false;
+                        if let Some(conn) = self.connections.get_mut(&connection_id) {
+                            conn.user_management.clear_add_user();
+                        }
                     }
-                }
 
-                let message = if success {
-                    ChatMessage {
-                        username: msg_username_system(),
-                        message: t("msg-user-created"),
-                        timestamp: Local::now(),
-                    }
+                    self.add_chat_message(
+                        connection_id,
+                        ChatMessage {
+                            username: msg_username_system(),
+                            message: t("msg-user-created"),
+                            timestamp: Local::now(),
+                        },
+                    )
                 } else {
-                    ChatMessage {
-                        username: msg_username_error(),
-                        message: t_args(
-                            "err-failed-create-user",
-                            &[("error", &error.unwrap_or_default())],
-                        ),
-                        timestamp: Local::now(),
+                    // On error, keep panel open and show error in form
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.create_error = Some(error.unwrap_or_default());
                     }
-                };
-                self.add_chat_message(connection_id, message)
+                    Task::none()
+                }
             }
             ServerMessage::UserDeleteResponse { success, error } => {
-                // Close edit panel on any response (success or error)
-                if self.ui_state.show_edit_user && self.active_connection == Some(connection_id) {
-                    self.ui_state.show_edit_user = false;
-                    if let Some(conn) = self.connections.get_mut(&connection_id) {
-                        conn.user_management.clear_edit_user();
+                if success {
+                    // Close edit panel on success
+                    if self.ui_state.show_edit_user && self.active_connection == Some(connection_id)
+                    {
+                        self.ui_state.show_edit_user = false;
+                        if let Some(conn) = self.connections.get_mut(&connection_id) {
+                            conn.user_management.clear_edit_user();
+                        }
                     }
-                }
 
-                let message = if success {
-                    ChatMessage {
-                        username: msg_username_system(),
-                        message: t("msg-user-deleted"),
-                        timestamp: Local::now(),
-                    }
+                    self.add_chat_message(
+                        connection_id,
+                        ChatMessage {
+                            username: msg_username_system(),
+                            message: t("msg-user-deleted"),
+                            timestamp: Local::now(),
+                        },
+                    )
                 } else {
-                    ChatMessage {
-                        username: msg_username_error(),
-                        message: t_args(
-                            "err-failed-delete-user",
-                            &[("error", &error.unwrap_or_default())],
-                        ),
-                        timestamp: Local::now(),
+                    // On error, keep panel open and show error in form
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.edit_error = Some(error.unwrap_or_default());
                     }
-                };
-                self.add_chat_message(connection_id, message)
+                    Task::none()
+                }
             }
             ServerMessage::UserEditResponse {
+                success,
+                error,
                 username,
                 is_admin,
                 enabled,
                 permissions,
             } => {
-                // Load the user details into edit form (stage 2)
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management.load_user_for_editing(
-                        username,
-                        is_admin,
-                        enabled,
-                        permissions,
-                    );
+                if success {
+                    // Load the user details into edit form (stage 2)
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.load_user_for_editing(
+                            username.unwrap_or_default(),
+                            is_admin.unwrap_or(false),
+                            enabled.unwrap_or(true),
+                            permissions.unwrap_or_default(),
+                        );
+                    }
+                    Task::none()
+                } else {
+                    // On error, keep panel open and show error in form
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.edit_error =
+                            Some(error.unwrap_or_else(|| t("error-unknown")));
+                    }
+                    Task::none()
                 }
-                Task::none()
             }
             ServerMessage::UserUpdateResponse { success, error } => {
-                // Close edit panel on any response (success or error)
-                if self.ui_state.show_edit_user && self.active_connection == Some(connection_id) {
-                    self.ui_state.show_edit_user = false;
-                    if let Some(conn) = self.connections.get_mut(&connection_id) {
-                        conn.user_management.clear_edit_user();
+                if success {
+                    // Close edit panel on success
+                    if self.ui_state.show_edit_user && self.active_connection == Some(connection_id)
+                    {
+                        self.ui_state.show_edit_user = false;
+                        if let Some(conn) = self.connections.get_mut(&connection_id) {
+                            conn.user_management.clear_edit_user();
+                        }
                     }
-                }
 
-                let message = if success {
-                    ChatMessage {
-                        username: msg_username_system(),
-                        message: t("msg-user-updated"),
-                        timestamp: Local::now(),
-                    }
+                    self.add_chat_message(
+                        connection_id,
+                        ChatMessage {
+                            username: msg_username_system(),
+                            message: t("msg-user-updated"),
+                            timestamp: Local::now(),
+                        },
+                    )
                 } else {
-                    ChatMessage {
-                        username: msg_username_error(),
-                        message: t_args(
-                            "err-failed-update-user",
-                            &[("error", &error.unwrap_or_default())],
-                        ),
-                        timestamp: Local::now(),
+                    // On error, keep panel open and show error in form
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        conn.user_management.edit_error = Some(error.unwrap_or_default());
                     }
-                };
-                self.add_chat_message(connection_id, message)
+                    Task::none()
+                }
             }
             ServerMessage::PermissionsUpdated {
                 is_admin,
@@ -946,19 +969,19 @@ impl NexusApp {
                 self.add_chat_message(connection_id, message)
             }
             ServerMessage::Error { message, command } => {
-                // Close edit user panel if the error is for user management commands
-                // and it's for the active connection
-                if let Some(cmd) = command
-                    && (cmd == "UserEdit" || cmd == "UserUpdate" || cmd == "UserDelete")
+                // Show error in edit user form if it's for user management commands
+                if let Some(ref cmd) = command
+                    && (cmd == "UserEdit" || cmd == "UserUpdate")
                     && self.ui_state.show_edit_user
                     && self.active_connection == Some(connection_id)
                 {
-                    self.ui_state.show_edit_user = false;
                     if let Some(conn) = self.connections.get_mut(&connection_id) {
-                        conn.user_management.clear_edit_user();
+                        conn.user_management.edit_error = Some(message);
                     }
+                    return Task::none();
                 }
 
+                // For other errors (including UserDelete), show in chat
                 self.add_chat_message(
                     connection_id,
                     ChatMessage {
@@ -1013,7 +1036,7 @@ impl NexusApp {
                             server_port: self.config.bookmarks[idx].port.clone(),
                             connection: crate::types::NetworkConnection {
                                 tx: tokio::sync::mpsc::unbounded_channel().0,
-                                session_id: String::new(),
+                                session_id: 0,
                                 connection_id: 0,
                                 shutdown: None,
                                 is_admin: false,

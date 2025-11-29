@@ -27,8 +27,10 @@ pub enum Message {
     BookmarkPortChanged(String),
     /// Bookmark editor: Username field changed
     BookmarkUsernameChanged(String),
-    /// Broadcast panel: Message input changed
+    /// Broadcast: Message input changed
     BroadcastMessageChanged(String),
+    /// Broadcast: Validate broadcast form (on Enter when empty)
+    ValidateBroadcast,
     /// Bookmark editor: Cancel button pressed
     CancelBookmarkEdit,
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
@@ -51,6 +53,8 @@ pub enum Message {
     },
     /// Admin panel: Create User button pressed
     CreateUserPressed,
+    /// Admin panel: Validate create user form (on Enter when form incomplete)
+    ValidateCreateUser,
     /// Delete a bookmark by index
     DeleteBookmark(usize),
     /// Admin panel: Delete User button pressed
@@ -69,6 +73,8 @@ pub enum Message {
     EditPermissionToggled(String, bool),
     /// User edit panel: Edit button pressed (stage 1)
     EditUserPressed,
+    /// User edit panel: Validate edit user form (on Enter when form incomplete)
+    ValidateEditUser,
     /// User edit panel: Username field changed (stage 1)
     EditUsernameChanged(String),
     /// Keyboard or mouse event

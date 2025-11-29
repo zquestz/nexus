@@ -172,6 +172,9 @@ err-broadcast-send-failed = Error al enviar difusión
 err-name-required = El nombre del marcador es requerido
 err-address-required = La dirección del servidor es requerida
 err-port-required = El puerto es requerido
+err-username-required = El nombre de usuario es requerido
+err-password-required = La contraseña es requerida
+err-message-required = El mensaje es requerido
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

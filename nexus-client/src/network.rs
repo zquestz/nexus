@@ -34,7 +34,7 @@ type Writer = tokio::io::WriteHalf<tokio_rustls::client::TlsStream<TcpStream>>;
 
 /// Login information returned from the server
 struct LoginInfo {
-    session_id: String,
+    session_id: u32,
     is_admin: bool,
     permissions: Vec<String>,
     chat_topic: Option<String>,

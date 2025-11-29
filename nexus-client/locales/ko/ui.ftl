@@ -171,6 +171,9 @@ err-broadcast-send-failed = 브로드캐스트 전송 실패
 err-name-required = 북마크 이름은 필수입니다
 err-address-required = 서버 주소는 필수입니다
 err-port-required = 포트는 필수입니다
+err-username-required = 사용자 이름은 필수입니다
+err-password-required = 비밀번호는 필수입니다
+err-message-required = 메시지는 필수입니다
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

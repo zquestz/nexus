@@ -81,6 +81,13 @@ impl NexusApp {
             // Focus broadcast input when opening
             text_input::focus(text_input::Id::from(InputId::BroadcastMessage))
         } else {
+            // Clear error when closing panel
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get_mut(&conn_id)
+            {
+                conn.broadcast_error = None;
+            }
+
             // Return focus to chat when closing
             text_input::focus(text_input::Id::from(InputId::ChatInput))
         }
@@ -100,6 +107,17 @@ impl NexusApp {
             ),
             text_input::focus(text_input::Id::from(InputId::ChatInput)),
         ])
+    }
+
+    /// Handle validation of broadcast form (called on Enter when message empty)
+    pub fn handle_validate_broadcast(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && conn.broadcast_message.trim().is_empty()
+        {
+            conn.broadcast_error = Some(t("err-message-required"));
+        }
+        Task::none()
     }
 
     /// Add an error message to the chat for broadcast errors and auto-scroll

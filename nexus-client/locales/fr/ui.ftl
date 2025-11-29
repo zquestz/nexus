@@ -172,6 +172,9 @@ err-broadcast-send-failed = Échec de l'envoi de la diffusion
 err-name-required = Le nom du signet est requis
 err-address-required = L'adresse du serveur est requise
 err-port-required = Le port est requis
+err-username-required = Le nom d'utilisateur est requis
+err-password-required = Le mot de passe est requis
+err-message-required = Le message est requis
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

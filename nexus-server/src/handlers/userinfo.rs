@@ -72,10 +72,11 @@ pub async fn handle_userinfo(
         .collect();
 
     if target_sessions.is_empty() {
-        // User not found - send response with None
+        // User not found - send response with error
         let response = ServerMessage::UserInfoResponse {
-            user: None,
+            success: false,
             error: Some(err_user_not_found(ctx.locale, &requested_username)),
+            user: None,
         };
         ctx.send_message(&response).await?;
         return Ok(());
@@ -157,8 +158,9 @@ pub async fn handle_userinfo(
     };
 
     let response = ServerMessage::UserInfoResponse {
-        user: Some(user_info),
+        success: true,
         error: None,
+        user: Some(user_info),
     };
     ctx.send_message(&response).await?;
 
@@ -287,7 +289,12 @@ mod tests {
         // Parse and verify response
         let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
-            ServerMessage::UserInfoResponse { user, error } => {
+            ServerMessage::UserInfoResponse {
+                success,
+                user,
+                error,
+            } => {
+                assert!(!success, "Should not be successful");
                 assert!(user.is_none(), "User should be None");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -380,7 +387,12 @@ mod tests {
         // Parse and verify response
         let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
-            ServerMessage::UserInfoResponse { user, error } => {
+            ServerMessage::UserInfoResponse {
+                success,
+                user,
+                error,
+            } => {
+                assert!(success, "Should be successful");
                 assert!(error.is_none(), "Should have no error");
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();
@@ -478,7 +490,12 @@ mod tests {
         // Parse and verify response
         let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
-            ServerMessage::UserInfoResponse { user, error } => {
+            ServerMessage::UserInfoResponse {
+                success,
+                user,
+                error,
+            } => {
+                assert!(success, "Should be successful");
                 assert!(error.is_none(), "Should have no error");
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();
@@ -584,7 +601,12 @@ mod tests {
         // Parse and verify response
         let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
         match response_msg {
-            ServerMessage::UserInfoResponse { user, error } => {
+            ServerMessage::UserInfoResponse {
+                success,
+                user,
+                error,
+            } => {
+                assert!(success, "Should be successful");
                 assert!(error.is_none(), "Should have no error");
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();

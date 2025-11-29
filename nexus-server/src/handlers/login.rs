@@ -203,7 +203,7 @@ pub async fn handle_login(
 
     let response = ServerMessage::LoginResponse {
         success: true,
-        session_id: Some(id.to_string()),
+        session_id: Some(id),
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
         server_info,

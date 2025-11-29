@@ -102,17 +102,54 @@ impl NexusApp {
                 permissions,
             };
 
+            // Clear any previous error on new submission
+            conn.user_management.create_error = None;
+
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self.add_user_management_error(
-                    conn_id,
-                    format!("{}: {}", t("err-send-failed"), e),
-                );
+                conn.user_management.create_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
+                return Task::none();
             }
 
-            // Clear the form and close the panel
-            conn.user_management.clear_add_user();
-            self.ui_state.show_add_user = false;
+            // Don't close panel or clear form here - wait for server response
+            // Panel will close on success, stay open with error on failure
+        }
+        Task::none()
+    }
+
+    /// Handle validation of create user form (called on Enter when form incomplete)
+    pub fn handle_validate_create_user(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            if conn.user_management.username.trim().is_empty() {
+                conn.user_management.create_error = Some(t("err-username-required"));
+            } else if conn.user_management.password.trim().is_empty() {
+                conn.user_management.create_error = Some(t("err-password-required"));
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle validation of edit user form (called on Enter when form incomplete)
+    pub fn handle_validate_edit_user(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            match &conn.user_management.edit_state {
+                UserEditState::SelectingUser { username } => {
+                    if username.trim().is_empty() {
+                        conn.user_management.edit_error = Some(t("err-username-required"));
+                    }
+                }
+                UserEditState::EditingUser { new_username, .. } => {
+                    if new_username.trim().is_empty() {
+                        conn.user_management.edit_error = Some(t("err-username-required"));
+                    }
+                }
+                UserEditState::None => {}
+            }
         }
         Task::none()
     }
@@ -237,12 +274,13 @@ impl NexusApp {
                 username: username.clone(),
             };
 
+            // Clear any previous error on new submission
+            conn.user_management.edit_error = None;
+
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self.add_user_management_error(
-                    conn_id,
-                    format!("{}: {}", t("err-send-failed"), e),
-                );
+                conn.user_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                return Task::none();
             }
             // Stay on this screen, wait for server response
         }
@@ -298,17 +336,17 @@ impl NexusApp {
                 requested_permissions: Some(requested_permissions),
             };
 
+            // Clear any previous error on new submission
+            conn.user_management.edit_error = None;
+
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self.add_user_management_error(
-                    conn_id,
-                    format!("{}: {}", t("err-send-failed"), e),
-                );
+                conn.user_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                return Task::none();
             }
 
-            // Clear the form and close the panel
-            conn.user_management.clear_edit_user();
-            self.ui_state.show_edit_user = false;
+            // Don't close panel or clear form here - wait for server response
+            // Panel will close on success, stay open with error on failure
         }
         Task::none()
     }

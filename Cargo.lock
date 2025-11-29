@@ -2857,7 +2857,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
@@ -2879,7 +2879,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-common"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "chrono",

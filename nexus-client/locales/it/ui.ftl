@@ -171,6 +171,9 @@ err-broadcast-send-failed = Impossibile inviare il broadcast
 err-name-required = Il nome del segnalibro è obbligatorio
 err-address-required = L'indirizzo del server è obbligatorio
 err-port-required = La porta è obbligatoria
+err-username-required = Il nome utente è obbligatorio
+err-password-required = La password è obbligatoria
+err-message-required = Il messaggio è obbligatorio
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

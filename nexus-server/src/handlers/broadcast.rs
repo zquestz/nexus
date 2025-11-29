@@ -15,7 +15,7 @@ const MAX_BROADCAST_LENGTH: usize = 1024;
 /// Handle a broadcast request from the client
 ///
 /// Broadcasts a message to all connected users including the sender.
-/// Also sends a UserBroadcastReply to the sender indicating success or failure.
+/// Also sends a UserBroadcastResponse to the sender indicating success or failure.
 pub async fn handle_user_broadcast(
     message: String,
     session_id: Option<u32>,
@@ -102,8 +102,8 @@ pub async fn handle_user_broadcast(
         )
         .await;
 
-    // Send success reply to the sender
-    ctx.send_message(&ServerMessage::UserBroadcastReply {
+    // Send success response to the sender
+    ctx.send_message(&ServerMessage::UserBroadcastResponse {
         success: true,
         error: None,
     })

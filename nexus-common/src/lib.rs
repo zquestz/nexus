@@ -6,7 +6,7 @@ pub mod io;
 pub mod protocol;
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.2.0";
+pub const PROTOCOL_VERSION: &str = "0.3.0";
 
 #[cfg(test)]
 mod tests {

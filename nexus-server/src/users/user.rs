@@ -34,7 +34,7 @@ pub struct User {
     #[allow(dead_code)]
     pub created_at: i64,
     /// When the user logged in (Unix timestamp)
-    pub login_time: u64,
+    pub login_time: i64,
     /// Channel sender for sending messages to this user
     pub tx: mpsc::UnboundedSender<ServerMessage>,
     /// Features enabled for this user
@@ -71,9 +71,9 @@ impl User {
 ///
 /// Panics if system time is set before Unix epoch (January 1, 1970).
 /// This should never happen on properly configured systems.
-fn current_timestamp() -> u64 {
+fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("System time is before Unix epoch - check system clock configuration")
-        .as_secs()
+        .as_secs() as i64
 }

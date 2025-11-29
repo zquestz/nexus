@@ -65,7 +65,7 @@ pub async fn handle_userlist(
 
     // Deduplicate by username and aggregate sessions
     use std::collections::HashMap;
-    let mut user_map: HashMap<String, (u64, bool, Vec<u32>, String)> = HashMap::new(); // (earliest_login, is_admin, session_ids, locale)
+    let mut user_map: HashMap<String, (i64, bool, Vec<u32>, String)> = HashMap::new(); // (earliest_login, is_admin, session_ids, locale)
 
     for user in all_users {
         // Get user account to check admin status
@@ -108,7 +108,11 @@ pub async fn handle_userlist(
     user_infos.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
 
     // Send user list response
-    let response = ServerMessage::UserListResponse { users: user_infos };
+    let response = ServerMessage::UserListResponse {
+        success: true,
+        error: None,
+        users: Some(user_infos),
+    };
     ctx.send_message(&response).await?;
 
     Ok(())
@@ -189,7 +193,14 @@ mod tests {
         use crate::handlers::testing::read_server_message;
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserListResponse { users } => {
+            ServerMessage::UserListResponse {
+                success,
+                error,
+                users,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let users = users.unwrap();
                 assert_eq!(users.len(), 1, "Should have 1 user in the list");
                 assert_eq!(users[0].username, "alice");
                 assert_eq!(users[0].session_ids.len(), 1);
@@ -221,7 +232,14 @@ mod tests {
         use crate::handlers::testing::read_server_message;
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserListResponse { users } => {
+            ServerMessage::UserListResponse {
+                success,
+                error,
+                users,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let users = users.unwrap();
                 assert_eq!(users.len(), 1, "Should have 1 user in the list");
                 assert_eq!(users[0].username, "admin");
                 assert_eq!(users[0].session_ids.len(), 1);

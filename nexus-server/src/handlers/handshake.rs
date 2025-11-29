@@ -15,7 +15,7 @@ pub async fn handle_handshake(
         eprintln!("Duplicate handshake attempt from {}", ctx.peer_addr);
         let response = ServerMessage::HandshakeResponse {
             success: false,
-            version: nexus_common::PROTOCOL_VERSION.to_string(),
+            version: Some(nexus_common::PROTOCOL_VERSION.to_string()),
             error: Some(err_handshake_already_completed(ctx.locale)),
         };
         ctx.send_message(&response).await?;
@@ -30,7 +30,7 @@ pub async fn handle_handshake(
         *handshake_complete = true;
         let response = ServerMessage::HandshakeResponse {
             success: true,
-            version: server_version.to_string(),
+            version: Some(server_version.to_string()),
             error: None,
         };
         ctx.send_message(&response).await?;
@@ -38,7 +38,7 @@ pub async fn handle_handshake(
         // Version mismatch - reject handshake
         let response = ServerMessage::HandshakeResponse {
             success: false,
-            version: server_version.to_string(),
+            version: Some(server_version.to_string()),
             error: Some(err_version_mismatch(ctx.locale, server_version, &version)),
         };
         ctx.send_message(&response).await?;
@@ -94,7 +94,7 @@ mod tests {
                 error,
             } => {
                 assert!(success, "Response should indicate success");
-                assert_eq!(version, nexus_common::PROTOCOL_VERSION);
+                assert_eq!(version, Some(nexus_common::PROTOCOL_VERSION.to_string()));
                 assert!(error.is_none(), "Error should be None on success");
             }
             _ => panic!("Expected HandshakeResponse"),
@@ -143,7 +143,7 @@ mod tests {
                 error,
             } => {
                 assert!(!success, "Response should indicate failure");
-                assert_eq!(version, nexus_common::PROTOCOL_VERSION);
+                assert_eq!(version, Some(nexus_common::PROTOCOL_VERSION.to_string()));
                 assert!(error.is_some(), "Should have error message");
 
                 let error_msg = error.unwrap();

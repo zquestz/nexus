@@ -158,7 +158,7 @@ async fn test_broadcast_respects_user_list_permission() {
                 user: UserInfo {
                     username: "newuser".to_string(),
                     is_admin: false,
-                    login_time: chrono::Utc::now().timestamp() as u64,
+                    login_time: chrono::Utc::now().timestamp(),
                     session_ids: vec![99],
                     locale: "en".to_string(),
                 },
@@ -221,7 +221,7 @@ async fn test_broadcast_excludes_specified_session() {
                 user: UserInfo {
                     username: "newcomer".to_string(),
                     is_admin: false,
-                    login_time: chrono::Utc::now().timestamp() as u64,
+                    login_time: chrono::Utc::now().timestamp(),
                     session_ids: vec![30],
                     locale: "en".to_string(),
                 },

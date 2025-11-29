@@ -57,6 +57,8 @@ pub struct ServerConnection {
     pub message_input: String,
     /// Current broadcast message input
     pub broadcast_message: String,
+    /// Error message for broadcast operations
+    pub broadcast_error: Option<String>,
     /// User management panel state
     pub user_management: UserManagementState,
 }
@@ -67,7 +69,7 @@ pub struct NetworkConnection {
     /// Channel for sending messages to server
     pub tx: mpsc::UnboundedSender<nexus_common::protocol::ClientMessage>,
     /// Session ID from server
-    pub session_id: String,
+    pub session_id: u32,
     /// Unique connection identifier
     pub connection_id: usize,
     /// Optional shutdown handle

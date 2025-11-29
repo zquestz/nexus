@@ -27,7 +27,7 @@ pub async fn handle_usermessage(
 
     // Step 2: Validate message is not empty (cheap check first)
     if message.trim().is_empty() {
-        let response = ServerMessage::UserMessageReply {
+        let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_message_empty(ctx.locale)),
         };
@@ -36,7 +36,7 @@ pub async fn handle_usermessage(
 
     // Step 3: Validate message length (cheap check)
     if message.len() > MAX_MESSAGE_LENGTH {
-        let response = ServerMessage::UserMessageReply {
+        let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_chat_too_long(ctx.locale, MAX_MESSAGE_LENGTH)),
         };
@@ -55,7 +55,7 @@ pub async fn handle_usermessage(
 
     // Step 5: Prevent self-messaging (cheap check before DB queries)
     if to_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
-        let response = ServerMessage::UserMessageReply {
+        let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
         };
@@ -101,7 +101,7 @@ pub async fn handle_usermessage(
         };
 
     if !has_permission {
-        let response = ServerMessage::UserMessageReply {
+        let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
         };
@@ -112,7 +112,7 @@ pub async fn handle_usermessage(
     let target_user_db = match ctx.db.users.get_user_by_username(&to_username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            let response = ServerMessage::UserMessageReply {
+            let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_user_not_found(ctx.locale, &to_username)),
             };
@@ -133,7 +133,7 @@ pub async fn handle_usermessage(
         .await;
 
     if target_sessions.is_empty() {
-        let response = ServerMessage::UserMessageReply {
+        let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_user_not_online(ctx.locale, &to_username)),
         };
@@ -141,7 +141,7 @@ pub async fn handle_usermessage(
     }
 
     // Step 10: Send success response to sender
-    let response = ServerMessage::UserMessageReply {
+    let response = ServerMessage::UserMessageResponse {
         success: true,
         error: None,
     };
@@ -220,12 +220,12 @@ mod tests {
         // Check response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 assert!(error.is_some());
                 assert!(error.unwrap().to_lowercase().contains("permission"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -254,11 +254,11 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("empty"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -289,11 +289,11 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("too long"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -322,12 +322,12 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 // We return "Permission denied" for self-messaging, so check for that
                 assert!(error.unwrap().to_lowercase().contains("permission"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -356,11 +356,11 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("not found"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -399,11 +399,11 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("not online"));
             }
-            _ => panic!("Expected UserMessageReply"),
+            _ => panic!("Expected UserMessageResponse"),
         }
     }
 
@@ -445,11 +445,11 @@ mod tests {
         // Check sender gets success response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(success);
                 assert!(error.is_none());
             }
-            _ => panic!("Expected UserMessageReply, got: {:?}", response),
+            _ => panic!("Expected UserMessageResponse, got: {:?}", response),
         }
     }
 
@@ -484,11 +484,11 @@ mod tests {
         // Check admin gets success response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageReply { success, error } => {
+            ServerMessage::UserMessageResponse { success, error } => {
                 assert!(success);
                 assert!(error.is_none());
             }
-            _ => panic!("Expected UserMessageReply, got: {:?}", response),
+            _ => panic!("Expected UserMessageResponse, got: {:?}", response),
         }
     }
 }

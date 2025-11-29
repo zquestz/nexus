@@ -171,6 +171,9 @@ err-broadcast-send-failed = Failed to send broadcast
 err-name-required = Bookmark name is required
 err-address-required = Server address is required
 err-port-required = Port is required
+err-username-required = Username is required
+err-password-required = Password is required
+err-message-required = Message is required
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

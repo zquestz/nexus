@@ -171,6 +171,9 @@ err-broadcast-send-failed = Rundnachricht konnte nicht gesendet werden
 err-name-required = Lesezeichenname ist erforderlich
 err-address-required = Serveradresse ist erforderlich
 err-port-required = Port ist erforderlich
+err-username-required = Benutzername ist erforderlich
+err-password-required = Passwort ist erforderlich
+err-message-required = Nachricht ist erforderlich
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

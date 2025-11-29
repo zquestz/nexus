@@ -171,6 +171,9 @@ err-broadcast-send-failed = Falha ao enviar difusão
 err-name-required = O nome do marcador é obrigatório
 err-address-required = O endereço do servidor é obrigatório
 err-port-required = A porta é obrigatória
+err-username-required = O nome de utilizador é obrigatório
+err-password-required = A palavra-passe é obrigatória
+err-message-required = A mensagem é obrigatória
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

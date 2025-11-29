@@ -3,12 +3,12 @@
 use super::constants::PERMISSION_USER_DELETE;
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, primary_button_style,
-    primary_checkbox_style, primary_text_input_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::{t, translate_permission};
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
-use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Column, button, checkbox, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 /// Helper function to create an empty fallback panel
@@ -42,7 +42,7 @@ pub fn users_view<'a>(
         let submit_action = if can_create {
             Message::CreateUserPressed
         } else {
-            Message::AdminUsernameChanged(String::new())
+            Message::ValidateCreateUser
         };
 
         let username_input = text_input(&t("placeholder-username"), &user_management.username)
@@ -142,22 +142,41 @@ pub fn users_view<'a>(
             .padding(BUTTON_PADDING)
             .style(primary_button_style());
 
-        let create_form = column![
-            create_title,
-            shaped_text("").size(SPACER_SIZE_MEDIUM),
-            username_input,
-            password_input,
-            admin_checkbox,
-            enabled_checkbox,
-            shaped_text("").size(SPACER_SIZE_SMALL),
-            permissions_title,
-            permissions_row,
-            shaped_text("").size(SPACER_SIZE_MEDIUM),
-            row![create_button, cancel_button,].spacing(ELEMENT_SPACING),
-        ]
-        .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        let mut create_items: Vec<Element<'a, Message>> = vec![create_title.into()];
+
+        // Show error if present
+        if let Some(error) = &user_management.create_error {
+            create_items.push(
+                shaped_text(error)
+                    .size(TEXT_SIZE)
+                    .width(Fill)
+                    .align_x(Center)
+                    .color(form_error_color())
+                    .into(),
+            );
+            create_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+        } else {
+            create_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+        }
+
+        create_items.extend(vec![
+            username_input.into(),
+            password_input.into(),
+            admin_checkbox.into(),
+            enabled_checkbox.into(),
+            shaped_text("").size(SPACER_SIZE_SMALL).into(),
+            permissions_title.into(),
+            permissions_row.into(),
+            shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+            row![create_button, cancel_button,]
+                .spacing(ELEMENT_SPACING)
+                .into(),
+        ]);
+
+        let create_form = Column::with_children(create_items)
+            .spacing(ELEMENT_SPACING)
+            .padding(FORM_PADDING)
+            .max_width(FORM_MAX_WIDTH);
 
         return container(create_form)
             .width(Fill)
@@ -189,7 +208,7 @@ pub fn users_view<'a>(
                 let submit_action = if can_edit {
                     Message::EditUserPressed
                 } else {
-                    Message::EditUsernameChanged(String::new())
+                    Message::ValidateEditUser
                 };
 
                 let username_input = text_input(&t("placeholder-username"), username)
@@ -227,16 +246,35 @@ pub fn users_view<'a>(
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());
 
-                let edit_form = column![
-                    edit_title,
-                    shaped_text("").size(SPACER_SIZE_MEDIUM),
-                    username_input,
-                    shaped_text("").size(SPACER_SIZE_MEDIUM),
-                    row![edit_button, delete_button, cancel_button,].spacing(ELEMENT_SPACING),
-                ]
-                .spacing(ELEMENT_SPACING)
-                .padding(FORM_PADDING)
-                .max_width(FORM_MAX_WIDTH);
+                let mut edit_items: Vec<Element<'a, Message>> = vec![edit_title.into()];
+
+                // Show error if present
+                if let Some(error) = &user_management.edit_error {
+                    edit_items.push(
+                        shaped_text(error)
+                            .size(TEXT_SIZE)
+                            .width(Fill)
+                            .align_x(Center)
+                            .color(form_error_color())
+                            .into(),
+                    );
+                    edit_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+                } else {
+                    edit_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+                }
+
+                edit_items.extend(vec![
+                    username_input.into(),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+                    row![edit_button, delete_button, cancel_button,]
+                        .spacing(ELEMENT_SPACING)
+                        .into(),
+                ]);
+
+                let edit_form = Column::with_children(edit_items)
+                    .spacing(ELEMENT_SPACING)
+                    .padding(FORM_PADDING)
+                    .max_width(FORM_MAX_WIDTH);
 
                 container(edit_form)
                     .width(Fill)
@@ -264,7 +302,7 @@ pub fn users_view<'a>(
                 let submit_action = if can_update {
                     Message::UpdateUserPressed
                 } else {
-                    Message::EditNewUsernameChanged(String::new())
+                    Message::ValidateEditUser
                 };
 
                 let username_input = text_input(&t("placeholder-username"), new_username)
@@ -366,22 +404,41 @@ pub fn users_view<'a>(
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());
 
-                let update_form = column![
-                    update_title,
-                    shaped_text("").size(SPACER_SIZE_MEDIUM),
-                    username_input,
-                    password_input,
-                    admin_checkbox,
-                    enabled_checkbox,
-                    shaped_text("").size(SPACER_SIZE_SMALL),
-                    permissions_title,
-                    permissions_row,
-                    shaped_text("").size(SPACER_SIZE_MEDIUM),
-                    row![update_button, cancel_button,].spacing(ELEMENT_SPACING),
-                ]
-                .spacing(ELEMENT_SPACING)
-                .padding(FORM_PADDING)
-                .max_width(FORM_MAX_WIDTH);
+                let mut update_items: Vec<Element<'a, Message>> = vec![update_title.into()];
+
+                // Show error if present
+                if let Some(error) = &user_management.edit_error {
+                    update_items.push(
+                        shaped_text(error)
+                            .size(TEXT_SIZE)
+                            .width(Fill)
+                            .align_x(Center)
+                            .color(form_error_color())
+                            .into(),
+                    );
+                    update_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+                } else {
+                    update_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+                }
+
+                update_items.extend(vec![
+                    username_input.into(),
+                    password_input.into(),
+                    admin_checkbox.into(),
+                    enabled_checkbox.into(),
+                    shaped_text("").size(SPACER_SIZE_SMALL).into(),
+                    permissions_title.into(),
+                    permissions_row.into(),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+                    row![update_button, cancel_button,]
+                        .spacing(ELEMENT_SPACING)
+                        .into(),
+                ]);
+
+                let update_form = Column::with_children(update_items)
+                    .spacing(ELEMENT_SPACING)
+                    .padding(FORM_PADDING)
+                    .max_width(FORM_MAX_WIDTH);
 
                 container(update_form)
                     .width(Fill)

@@ -62,10 +62,15 @@ pub enum ClientMessage {
     /// Update a user account
     UserUpdate {
         username: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         requested_username: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         requested_password: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         requested_is_admin: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         requested_enabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         requested_permissions: Option<Vec<String>>,
     },
 }
@@ -91,12 +96,14 @@ pub enum ServerMessage {
     /// Error message
     Error {
         message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         command: Option<String>,
     },
     /// Handshake response
     HandshakeResponse {
         success: bool,
-        version: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -104,7 +111,9 @@ pub enum ServerMessage {
     LoginResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
-        session_id: Option<String>,
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_id: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_admin: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,8 +122,6 @@ pub enum ServerMessage {
         server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
         locale: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
     },
     /// Broadcast message from another user
     ServerBroadcast {
@@ -138,10 +145,17 @@ pub enum ServerMessage {
     },
     /// User edit response (returns current user details for editing)
     UserEditResponse {
-        username: String,
-        is_admin: bool,
-        enabled: bool,
-        permissions: Vec<String>,
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_admin: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
     },
     /// User disconnected event
     UserDisconnected { session_id: u32, username: String },
@@ -150,16 +164,19 @@ pub enum ServerMessage {
         is_admin: bool,
         permissions: Vec<String>,
     },
-    /// User broadcast reply
-    UserBroadcastReply {
+    /// User broadcast response
+    UserBroadcastResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
     /// User information response
     UserInfoResponse {
-        user: Option<UserInfoDetailed>,
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        user: Option<UserInfoDetailed>,
     },
     /// User kick response
     UserKickResponse {
@@ -168,7 +185,13 @@ pub enum ServerMessage {
         error: Option<String>,
     },
     /// User list response
-    UserListResponse { users: Vec<UserInfo> },
+    UserListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        users: Option<Vec<UserInfo>>,
+    },
     /// Private message (broadcast to all sessions of sender and receiver)
     UserMessage {
         from_username: String,
@@ -176,7 +199,7 @@ pub enum ServerMessage {
         message: String,
     },
     /// User message response
-    UserMessageReply {
+    UserMessageResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
@@ -205,7 +228,7 @@ pub struct ServerInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,
-    pub login_time: u64,
+    pub login_time: i64,
     pub is_admin: bool,
     pub session_ids: Vec<u32>,
     pub locale: String,
@@ -215,7 +238,7 @@ pub struct UserInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfoDetailed {
     pub username: String,
-    pub login_time: u64,
+    pub login_time: i64,
     pub session_ids: Vec<u32>,
     pub features: Vec<String>,
     /// When the account was created (Unix timestamp)
@@ -383,7 +406,7 @@ mod tests {
     fn test_serialize_login_response() {
         let msg = ServerMessage::LoginResponse {
             success: true,
-            session_id: Some("abc123".to_string()),
+            session_id: Some(12345),
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
             server_info: None,
@@ -393,6 +416,7 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"LoginResponse\""));
         assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"session_id\":12345"));
     }
 
     #[test]
@@ -415,7 +439,7 @@ mod tests {
     fn test_serialize_login_response_admin() {
         let msg = ServerMessage::LoginResponse {
             success: true,
-            session_id: Some("admin123".to_string()),
+            session_id: Some(99999),
             is_admin: Some(true),
             permissions: Some(vec![]),
             server_info: None,
@@ -433,7 +457,7 @@ mod tests {
     fn test_serialize_login_response_with_permissions() {
         let msg = ServerMessage::LoginResponse {
             success: true,
-            session_id: Some("user123".to_string()),
+            session_id: Some(67890),
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             server_info: None,

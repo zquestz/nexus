@@ -172,6 +172,9 @@ err-broadcast-send-failed = Kan broadcast niet verzenden
 err-name-required = Bladwijzernaam is vereist
 err-address-required = Serveradres is vereist
 err-port-required = Poort is vereist
+err-username-required = Gebruikersnaam is vereist
+err-password-required = Wachtwoord is vereist
+err-message-required = Bericht is vereist
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

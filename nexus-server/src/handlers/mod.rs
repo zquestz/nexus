@@ -86,9 +86,9 @@ impl<'a> HandlerContext<'a> {
 }
 
 /// Get current Unix timestamp in seconds
-pub fn current_timestamp() -> u64 {
+pub fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("System time should be after UNIX_EPOCH")
-        .as_secs()
+        .as_secs() as i64
 }

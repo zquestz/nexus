@@ -172,6 +172,9 @@ err-broadcast-send-failed = 发送广播失败
 err-name-required = 书签名称为必填项
 err-address-required = 服务器地址为必填项
 err-port-required = 端口为必填项
+err-username-required = 用户名为必填项
+err-password-required = 密码为必填项
+err-message-required = 消息为必填项
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

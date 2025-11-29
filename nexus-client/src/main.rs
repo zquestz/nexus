@@ -194,11 +194,13 @@ impl NexusApp {
                 self.handle_admin_permission_toggled(permission, enabled)
             }
             Message::CreateUserPressed => self.handle_create_user_pressed(),
+            Message::ValidateCreateUser => self.handle_validate_create_user(),
             Message::DeleteUserPressed(username) => self.handle_delete_user_pressed(username),
 
             // User edit
             Message::EditUsernameChanged(username) => self.handle_edit_username_changed(username),
             Message::EditUserPressed => self.handle_edit_user_pressed(),
+            Message::ValidateEditUser => self.handle_validate_edit_user(),
             Message::EditNewUsernameChanged(new_username) => {
                 self.handle_edit_new_username_changed(new_username)
             }
@@ -216,6 +218,7 @@ impl NexusApp {
             // Broadcast
             Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),
             Message::SendBroadcastPressed => self.handle_send_broadcast_pressed(),
+            Message::ValidateBroadcast => self.handle_validate_broadcast(),
 
             // UI toggles
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),

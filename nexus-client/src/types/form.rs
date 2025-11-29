@@ -97,6 +97,10 @@ pub struct UserManagementState {
     pub permissions: Vec<(String, bool)>,
     /// Current edit user state
     pub edit_state: UserEditState,
+    /// Error message for create user form
+    pub create_error: Option<String>,
+    /// Error message for edit user form
+    pub edit_error: Option<String>,
 }
 
 impl Default for UserManagementState {
@@ -111,6 +115,8 @@ impl Default for UserManagementState {
                 .map(|s| (s.to_string(), false))
                 .collect(),
             edit_state: UserEditState::None,
+            create_error: None,
+            edit_error: None,
         }
     }
 }
@@ -125,11 +131,13 @@ impl UserManagementState {
         for (_, enabled) in &mut self.permissions {
             *enabled = false;
         }
+        self.create_error = None;
     }
 
     /// Clear the edit user state
     pub fn clear_edit_user(&mut self) {
         self.edit_state = UserEditState::None;
+        self.edit_error = None;
     }
 
     /// Start editing a user (stage 1: enter username)

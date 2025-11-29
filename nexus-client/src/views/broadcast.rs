@@ -2,12 +2,12 @@
 
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style, primary_text_input_style,
-    shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
+    primary_button_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::t;
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::{button, column, container, row, text_input};
+use iced::widget::{button, container, row, text_input};
 use iced::{Center, Element, Fill};
 
 /// Render the broadcast panel
@@ -21,11 +21,11 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let can_send = !conn.broadcast_message.trim().is_empty();
 
-    // No-op message when form is invalid (Iced requires a Message for on_submit)
+    // Validate form on Enter when invalid, submit when valid
     let submit_action = if can_send {
         Message::SendBroadcastPressed
     } else {
-        Message::BroadcastMessageChanged(String::new())
+        Message::ValidateBroadcast
     };
 
     let message_input = text_input(&t("placeholder-broadcast-message"), &conn.broadcast_message)
@@ -55,16 +55,33 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
     ]
     .spacing(ELEMENT_SPACING);
 
-    let form = column![
-        title,
-        shaped_text("").size(SPACER_SIZE_MEDIUM),
-        message_input,
-        shaped_text("").size(SPACER_SIZE_MEDIUM),
-        button_row
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(error) = &conn.broadcast_error {
+        form_items.push(
+            shaped_text(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .color(form_error_color())
+                .into(),
+        );
+        form_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        message_input.into(),
+        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+        button_row.into(),
+    ]);
+
+    let form = iced::widget::Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
 
     container(form).width(Fill).height(Fill).center(Fill).into()
 }

@@ -46,9 +46,15 @@ pub async fn handle_useredit(
             "UserEdit from {} (user: {}) attempting to edit themselves",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(&err_cannot_edit_self(ctx.locale), Some("UserEdit"))
-            .await;
+        let response = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some(err_cannot_edit_self(ctx.locale)),
+            username: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Check UserEdit permission
@@ -72,9 +78,15 @@ pub async fn handle_useredit(
             "UserEdit from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserEdit"))
-            .await;
+        let response = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            username: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Look up target user in database
@@ -82,9 +94,15 @@ pub async fn handle_useredit(
         Ok(Some(user)) => user,
         Ok(None) => {
             eprintln!("UserEdit request for non-existent user: {}", username);
-            return ctx
-                .send_error(&err_user_not_found(ctx.locale, &username), Some("UserEdit"))
-                .await;
+            let response = ServerMessage::UserEditResponse {
+                success: false,
+                error: Some(err_user_not_found(ctx.locale, &username)),
+                username: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+            };
+            return ctx.send_message(&response).await;
         }
         Err(e) => {
             eprintln!("Database error getting user: {}", e);
@@ -114,10 +132,12 @@ pub async fn handle_useredit(
 
     // Send user details for editing
     let response = ServerMessage::UserEditResponse {
-        username: target_user.username,
-        is_admin: target_user.is_admin,
-        enabled: target_user.enabled,
-        permissions,
+        success: true,
+        error: None,
+        username: Some(target_user.username),
+        is_admin: Some(target_user.is_admin),
+        enabled: Some(target_user.enabled),
+        permissions: Some(permissions),
     };
 
     ctx.send_message(&response).await
@@ -170,10 +190,11 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
+            ServerMessage::UserEditResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserEditResponse with error"),
         }
     }
 
@@ -194,13 +215,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::Error { message, .. } => {
+            ServerMessage::UserEditResponse { success, error, .. } => {
+                assert!(!success);
                 assert_eq!(
-                    message,
-                    err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent")
+                    error,
+                    Some(err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent"))
                 );
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserEditResponse with error"),
         }
     }
 
@@ -234,16 +256,30 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::UserEditResponse {
+                success,
+                error,
                 username,
                 is_admin,
                 enabled: _,
                 permissions,
             } => {
-                assert_eq!(username, "bob");
-                assert!(!is_admin);
-                assert!(permissions.contains(&"user_list".to_string()));
-                assert!(permissions.contains(&"chat_send".to_string()));
-                assert_eq!(permissions.len(), 2);
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username.as_deref(), Some("bob"));
+                assert_eq!(is_admin, Some(false));
+                assert!(
+                    permissions
+                        .as_ref()
+                        .unwrap()
+                        .contains(&"user_list".to_string())
+                );
+                assert!(
+                    permissions
+                        .as_ref()
+                        .unwrap()
+                        .contains(&"chat_send".to_string())
+                );
+                assert_eq!(permissions.as_ref().unwrap().len(), 2);
             }
             _ => panic!("Expected UserEditResponse"),
         }
@@ -275,16 +311,20 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::UserEditResponse {
+                success,
+                error,
                 username,
                 is_admin,
                 enabled,
                 permissions,
             } => {
-                assert_eq!(username, "admin2");
-                assert!(is_admin);
-                assert!(enabled);
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username.as_deref(), Some("admin2"));
+                assert_eq!(is_admin, Some(true));
+                assert_eq!(enabled, Some(true));
                 // Admins have no stored permissions (they get all automatically)
-                assert_eq!(permissions.len(), 0);
+                assert_eq!(permissions.as_ref().unwrap().len(), 0);
             }
             _ => panic!("Expected UserEditResponse"),
         }
@@ -322,8 +362,11 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserEditResponse { username, .. } => {
-                assert_eq!(username, "bob");
+            ServerMessage::UserEditResponse {
+                success, username, ..
+            } => {
+                assert!(success);
+                assert_eq!(username.as_deref(), Some("bob"));
             }
             _ => panic!("Expected UserEditResponse"),
         }
@@ -347,10 +390,11 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            ServerMessage::UserEditResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_cannot_edit_self(DEFAULT_TEST_LOCALE)));
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserEditResponse with error"),
         }
     }
 }

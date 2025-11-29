@@ -206,13 +206,7 @@ impl NexusApp {
         let shifted: HashMap<usize, String> = self
             .bookmark_errors
             .drain()
-            .map(|(i, err)| {
-                if i > index {
-                    (i - 1, err)
-                } else {
-                    (i, err)
-                }
-            })
+            .map(|(i, err)| if i > index { (i - 1, err) } else { (i, err) })
             .collect();
         self.bookmark_errors = shifted;
 
