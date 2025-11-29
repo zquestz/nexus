@@ -35,7 +35,7 @@ fn create_tab_button(
             let close_button = tooltip(
                 button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
                     .on_press(Message::CloseUserMessageTab(username_clone))
-                    .padding(0)
+                    .padding(iced::Padding::new(0.0).left(SMALL_PADDING as f32))
                     .style(|_theme, status| button::Style {
                         background: None,
                         text_color: match status {
