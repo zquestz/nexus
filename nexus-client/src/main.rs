@@ -2,6 +2,7 @@
 
 mod autostart;
 mod config;
+mod fonts;
 mod handlers;
 mod icon;
 mod network;
@@ -40,6 +41,10 @@ pub fn main() -> iced::Result {
             ..Default::default()
         })
         .font(icon::FONT)
+        .font(fonts::SAUCECODE_PRO_MONO)
+        .font(fonts::SAUCECODE_PRO_MONO_BOLD)
+        .font(fonts::SAUCECODE_PRO_MONO_ITALIC)
+        .font(fonts::SAUCECODE_PRO_MONO_BOLD_ITALIC)
         .run_with(NexusApp::new)
 }
 
