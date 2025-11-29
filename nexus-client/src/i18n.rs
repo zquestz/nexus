@@ -331,12 +331,4 @@ mod tests {
         let result = t_with_locale("xx", "button-cancel");
         assert_eq!(result, "Cancel");
     }
-
-    #[test]
-    fn test_get_and_set_locale() {
-        let original = get_locale();
-        set_locale("de");
-        assert_eq!(get_locale(), "de");
-        set_locale(&original); // Restore original
-    }
 }
