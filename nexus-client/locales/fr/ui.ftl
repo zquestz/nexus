@@ -179,7 +179,6 @@ err-port-required = Le port est requis
 
 err-failed-save-config = Échec de l'enregistrement de la configuration : { $error }
 err-failed-save-theme = Échec de l'enregistrement du thème : { $error }
-err-bookmark-connection-failed = Échec de la connexion au signet : { $error }
 err-invalid-port-bookmark = Port invalide dans le signet : { $name }
 err-failed-send-broadcast = Échec de l'envoi de la diffusion : { $error }
 err-failed-send-message = Échec de l'envoi du message : { $error }

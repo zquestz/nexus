@@ -76,6 +76,8 @@ struct NexusApp {
     connecting_bookmarks: HashSet<usize>,
     /// Certificate fingerprint mismatch queue (for handling multiple mismatches)
     fingerprint_mismatch_queue: VecDeque<types::FingerprintMismatch>,
+    /// Transient per-bookmark connection errors (not persisted to disk)
+    bookmark_errors: HashMap<usize, String>,
 }
 
 impl Default for NexusApp {
@@ -100,6 +102,7 @@ impl Default for NexusApp {
             default_user_mgmt: UserManagementState::default(),
             connecting_bookmarks: HashSet::new(),
             fingerprint_mismatch_queue: VecDeque::new(),
+            bookmark_errors: HashMap::new(),
         }
     }
 }
@@ -274,6 +277,7 @@ impl NexusApp {
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,
             bookmark_edit_mode: &self.bookmark_edit.mode,
+            bookmark_errors: &self.bookmark_errors,
             server_name: &self.connection_form.server_name,
             server_address: &self.connection_form.server_address,
             port: &self.connection_form.port,

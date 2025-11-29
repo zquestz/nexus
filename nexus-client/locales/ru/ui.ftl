@@ -179,7 +179,6 @@ err-port-required = Требуется порт
 
 err-failed-save-config = Не удалось сохранить конфигурацию: { $error }
 err-failed-save-theme = Не удалось сохранить настройку темы: { $error }
-err-bookmark-connection-failed = Ошибка подключения закладки: { $error }
 err-invalid-port-bookmark = Недопустимый порт в закладке: { $name }
 err-failed-send-broadcast = Не удалось отправить рассылку: { $error }
 err-failed-send-message = Не удалось отправить сообщение: { $error }

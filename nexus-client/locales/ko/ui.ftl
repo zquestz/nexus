@@ -178,7 +178,6 @@ err-port-required = 포트는 필수입니다
 
 err-failed-save-config = 설정 저장 실패: { $error }
 err-failed-save-theme = 테마 설정 저장 실패: { $error }
-err-bookmark-connection-failed = 북마크 연결 실패: { $error }
 err-invalid-port-bookmark = 북마크의 포트가 잘못되었습니다: { $name }
 err-failed-send-broadcast = 브로드캐스트 전송 실패: { $error }
 err-failed-send-message = 메시지 전송 실패: { $error }

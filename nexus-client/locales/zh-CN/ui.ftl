@@ -179,7 +179,6 @@ err-port-required = 端口为必填项
 
 err-failed-save-config = 保存配置失败：{ $error }
 err-failed-save-theme = 保存主题偏好失败：{ $error }
-err-bookmark-connection-failed = 书签连接失败：{ $error }
 err-invalid-port-bookmark = 书签中的端口无效：{ $name }
 err-failed-send-broadcast = 发送广播失败：{ $error }
 err-failed-send-message = 发送消息失败：{ $error }

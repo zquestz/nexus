@@ -178,7 +178,6 @@ err-port-required = Port is required
 
 err-failed-save-config = Failed to save config: { $error }
 err-failed-save-theme = Failed to save theme preference: { $error }
-err-bookmark-connection-failed = Bookmark connection failed: { $error }
 err-invalid-port-bookmark = Invalid port in bookmark: { $name }
 err-failed-send-broadcast = Failed to send broadcast: { $error }
 err-failed-send-message = Failed to send message: { $error }

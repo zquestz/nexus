@@ -2,8 +2,8 @@
 
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
-    primary_text_input_style, shaped_text,
+    SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style, primary_text_input_style,
+    shaped_text,
 };
 use crate::i18n::t;
 use crate::types::{InputId, Message, ServerConnection};
@@ -57,7 +57,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let form = column![
         title,
-        shaped_text("").size(SPACER_SIZE_LARGE),
+        shaped_text("").size(SPACER_SIZE_MEDIUM),
         message_input,
         shaped_text("").size(SPACER_SIZE_MEDIUM),
         button_row

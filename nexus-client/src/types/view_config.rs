@@ -15,6 +15,7 @@ pub struct ViewConfig<'a> {
     // Bookmarks
     pub bookmarks: &'a [ServerBookmark],
     pub bookmark_edit_mode: &'a BookmarkEditMode,
+    pub bookmark_errors: &'a HashMap<usize, String>,
 
     // Connection form
     pub server_name: &'a str,

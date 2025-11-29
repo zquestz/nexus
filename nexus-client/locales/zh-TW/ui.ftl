@@ -178,7 +178,6 @@ err-port-required = 連接埠為必填
 
 err-failed-save-config = 儲存設定失敗：{ $error }
 err-failed-save-theme = 儲存主題偏好失敗：{ $error }
-err-bookmark-connection-failed = 書籤連線失敗：{ $error }
 err-invalid-port-bookmark = 書籤中的連接埠無效：{ $name }
 err-failed-send-broadcast = 傳送廣播失敗：{ $error }
 err-failed-send-message = 傳送訊息失敗：{ $error }

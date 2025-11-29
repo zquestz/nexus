@@ -77,9 +77,6 @@ pub const TITLE_SIZE: u16 = 20;
 /// Standard text and input field size
 pub const TEXT_SIZE: u16 = 14;
 
-/// Large vertical spacer (between title and form)
-pub const SPACER_SIZE_LARGE: u16 = 15;
-
 /// Medium vertical spacer (between sections)
 pub const SPACER_SIZE_MEDIUM: u16 = 10;
 
@@ -464,6 +461,11 @@ pub fn broadcast_message_color(theme: &Theme) -> Color {
 /// Get error text color for form validation messages
 pub fn form_error_color() -> Color {
     colors::FORM_ERROR
+}
+
+/// Get error color for bookmarks with connection errors
+pub fn bookmark_error_color() -> Color {
+    colors::ERROR_MESSAGE
 }
 
 /// Get primary action button background color

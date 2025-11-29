@@ -6,11 +6,11 @@ use super::style::{
     SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING,
     SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE,
     SERVER_LIST_TEXT_SIZE, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
-    disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color, empty_state_color,
-    interactive_hover_color, primary_scrollbar_style, section_title_color, separator_color,
-    shaped_text, sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_hover_color,
-    tooltip_border, tooltip_text_color,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alt_row_color, bookmark_error_color, button_text_color,
+    disconnect_icon_color, disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color,
+    empty_state_color, interactive_hover_color, primary_scrollbar_style, section_title_color,
+    separator_color, shaped_text, sidebar_background, sidebar_border, sidebar_icon_color,
+    sidebar_icon_hover_color, tooltip_border, tooltip_text_color,
 };
 use crate::i18n::t;
 use crate::icon;
@@ -28,6 +28,7 @@ pub fn server_list_panel<'a>(
     bookmarks: &'a [ServerBookmark],
     connections: &'a HashMap<usize, ServerConnection>,
     active_connection: Option<usize>,
+    bookmark_errors: &'a HashMap<usize, String>,
 ) -> Element<'a, Message> {
     let mut main_column = Column::new().spacing(PANEL_SPACING);
 
@@ -149,6 +150,9 @@ pub fn server_list_panel<'a>(
                 .iter()
                 .any(|(_, conn)| conn.bookmark_index == Some(index));
 
+            // Check if this bookmark has an error
+            let has_error = bookmark_errors.contains_key(&index);
+
             // Determine message based on whether bookmark is currently connected
             let bookmark_message = if let Some(conn_id) = connections
                 .iter()
@@ -163,6 +167,7 @@ pub fn server_list_panel<'a>(
             };
 
             // Transparent button with hover effect
+            // Show in red if there's an error, blue if connected, normal otherwise
             let btn = button(shaped_text(&bookmark.name).size(SERVER_LIST_TEXT_SIZE))
                 .width(Fill)
                 .height(SERVER_LIST_BUTTON_HEIGHT)
@@ -172,6 +177,7 @@ pub fn server_list_panel<'a>(
                     background: None,
                     text_color: match status {
                         button::Status::Hovered => interactive_hover_color(),
+                        _ if has_error => bookmark_error_color(),
                         _ if is_connected => interactive_hover_color(),
                         _ => button_text_color(theme),
                     },

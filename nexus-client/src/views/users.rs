@@ -3,8 +3,8 @@
 use super::constants::PERMISSION_USER_DELETE;
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, primary_button_style,
+    primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::{t, translate_permission};
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
@@ -144,7 +144,7 @@ pub fn users_view<'a>(
 
         let create_form = column![
             create_title,
-            shaped_text("").size(SPACER_SIZE_LARGE),
+            shaped_text("").size(SPACER_SIZE_MEDIUM),
             username_input,
             password_input,
             admin_checkbox,
@@ -229,7 +229,7 @@ pub fn users_view<'a>(
 
                 let edit_form = column![
                     edit_title,
-                    shaped_text("").size(SPACER_SIZE_LARGE),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM),
                     username_input,
                     shaped_text("").size(SPACER_SIZE_MEDIUM),
                     row![edit_button, delete_button, cancel_button,].spacing(ELEMENT_SPACING),
@@ -368,7 +368,7 @@ pub fn users_view<'a>(
 
                 let update_form = column![
                     update_title,
-                    shaped_text("").size(SPACER_SIZE_LARGE),
+                    shaped_text("").size(SPACER_SIZE_MEDIUM),
                     username_input,
                     password_input,
                     admin_checkbox,

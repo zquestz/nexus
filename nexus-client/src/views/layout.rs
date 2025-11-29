@@ -73,6 +73,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         config.bookmarks,
         config.connections,
         config.active_connection,
+        config.bookmark_errors,
     );
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)

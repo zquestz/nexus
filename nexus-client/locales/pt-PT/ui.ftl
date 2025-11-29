@@ -178,7 +178,6 @@ err-port-required = A porta é obrigatória
 
 err-failed-save-config = Falha ao guardar configuração: { $error }
 err-failed-save-theme = Falha ao guardar preferência de tema: { $error }
-err-bookmark-connection-failed = Falha na ligação do marcador: { $error }
 err-invalid-port-bookmark = Porta inválida no marcador: { $name }
 err-failed-send-broadcast = Falha ao enviar difusão: { $error }
 err-failed-send-message = Falha ao enviar mensagem: { $error }

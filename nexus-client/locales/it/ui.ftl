@@ -178,7 +178,6 @@ err-port-required = La porta è obbligatoria
 
 err-failed-save-config = Impossibile salvare la configurazione: { $error }
 err-failed-save-theme = Impossibile salvare la preferenza del tema: { $error }
-err-bookmark-connection-failed = Connessione al segnalibro fallita: { $error }
 err-invalid-port-bookmark = Porta non valida nel segnalibro: { $name }
 err-failed-send-broadcast = Impossibile inviare il broadcast: { $error }
 err-failed-send-message = Impossibile inviare il messaggio: { $error }

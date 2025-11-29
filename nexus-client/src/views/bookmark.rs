@@ -48,9 +48,13 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
         column_items.push(
             shaped_text(error)
                 .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
                 .color(form_error_color())
                 .into(),
         );
+        column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+    } else {
         column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
     }
 

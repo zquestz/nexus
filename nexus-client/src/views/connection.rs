@@ -2,9 +2,8 @@
 
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    error_message_color, primary_button_style, primary_checkbox_style, primary_text_input_style,
-    shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::t;
 use crate::types::{InputId, Message};
@@ -98,16 +97,20 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
             .style(primary_button_style())
     };
 
-    let mut column_items = vec![title.into(), shaped_text("").size(SPACER_SIZE_LARGE).into()];
+    let mut column_items = vec![title.into()];
 
     // Show error if present (at top for visibility)
     if let Some(error) = data.connection_error {
         column_items.push(
             shaped_text(error)
                 .size(TEXT_SIZE)
-                .color(error_message_color())
+                .width(Fill)
+                .align_x(Center)
+                .color(form_error_color())
                 .into(),
         );
+        column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+    } else {
         column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
     }
 

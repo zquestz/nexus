@@ -179,7 +179,6 @@ err-port-required = Poort is vereist
 
 err-failed-save-config = Kan configuratie niet opslaan: { $error }
 err-failed-save-theme = Kan themavoorkeur niet opslaan: { $error }
-err-bookmark-connection-failed = Bladwijzerverbinding mislukt: { $error }
 err-invalid-port-bookmark = Ongeldige poort in bladwijzer: { $name }
 err-failed-send-broadcast = Kan broadcast niet verzenden: { $error }
 err-failed-send-message = Kan bericht niet verzenden: { $error }

@@ -178,7 +178,6 @@ err-port-required = ポートは必須です
 
 err-failed-save-config = 設定の保存に失敗しました: { $error }
 err-failed-save-theme = テーマ設定の保存に失敗しました: { $error }
-err-bookmark-connection-failed = ブックマーク接続に失敗しました: { $error }
 err-invalid-port-bookmark = ブックマークのポートが無効です: { $name }
 err-failed-send-broadcast = ブロードキャストの送信に失敗しました: { $error }
 err-failed-send-message = メッセージの送信に失敗しました: { $error }

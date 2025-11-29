@@ -178,7 +178,6 @@ err-port-required = Port ist erforderlich
 
 err-failed-save-config = Konfiguration konnte nicht gespeichert werden: { $error }
 err-failed-save-theme = Design-Einstellung konnte nicht gespeichert werden: { $error }
-err-bookmark-connection-failed = Lesezeichen-Verbindung fehlgeschlagen: { $error }
 err-invalid-port-bookmark = Ungültiger Port im Lesezeichen: { $name }
 err-failed-send-broadcast = Rundnachricht konnte nicht gesendet werden: { $error }
 err-failed-send-message = Nachricht konnte nicht gesendet werden: { $error }

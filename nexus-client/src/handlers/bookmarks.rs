@@ -5,6 +5,7 @@ use crate::i18n::{t, t_args};
 use crate::types::{BookmarkEditMode, BookmarkEditState, DEFAULT_LOCALE, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
+use std::collections::HashMap;
 
 impl NexusApp {
     /// Handle bookmark name field change
@@ -138,6 +139,15 @@ impl NexusApp {
             self.bookmark_edit.mode = BookmarkEditMode::Edit(index);
             self.bookmark_edit.bookmark = bookmark.clone();
             self.focused_field = InputId::BookmarkName;
+
+            // Move any connection error from bookmark_errors to the edit dialog
+            // This shows the error to the user and clears it (acknowledged)
+            if let Some(error) = self.bookmark_errors.remove(&index) {
+                self.bookmark_edit.error = Some(error);
+            } else {
+                self.bookmark_edit.error = None;
+            }
+
             return text_input::focus(text_input::Id::from(InputId::BookmarkName));
         }
         Task::none()
@@ -190,6 +200,22 @@ impl NexusApp {
                 &[("error", &e.to_string())],
             ));
         }
+
+        // Clean up bookmark_errors: remove the deleted index and shift higher indices down
+        self.bookmark_errors.remove(&index);
+        let shifted: HashMap<usize, String> = self
+            .bookmark_errors
+            .drain()
+            .map(|(i, err)| {
+                if i > index {
+                    (i - 1, err)
+                } else {
+                    (i, err)
+                }
+            })
+            .collect();
+        self.bookmark_errors = shifted;
+
         // Close the bookmark edit dialog if it's open
         self.bookmark_edit = BookmarkEditState::default();
         Task::none()

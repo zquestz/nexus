@@ -179,7 +179,6 @@ err-port-required = El puerto es requerido
 
 err-failed-save-config = Error al guardar configuración: { $error }
 err-failed-save-theme = Error al guardar preferencia de tema: { $error }
-err-bookmark-connection-failed = Error de conexión del marcador: { $error }
 err-invalid-port-bookmark = Puerto inválido en marcador: { $name }
 err-failed-send-broadcast = Error al enviar difusión: { $error }
 err-failed-send-message = Error al enviar mensaje: { $error }

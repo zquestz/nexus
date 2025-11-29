@@ -267,13 +267,9 @@ impl NexusApp {
                 // Clear the connecting lock for this bookmark
                 if let Some(idx) = bookmark_index {
                     self.connecting_bookmarks.remove(&idx);
+                    // Store error in per-bookmark error map (transient, not saved to disk)
+                    self.bookmark_errors.insert(idx, error);
                 }
-
-                // Show error to user in connection form
-                self.connection_form.error = Some(t_args(
-                    "err-bookmark-connection-failed",
-                    &[("error", &error)],
-                ));
 
                 Task::none()
             }
