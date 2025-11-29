@@ -2,7 +2,7 @@
 
 use super::constants::{BUTTON_CANCEL, BUTTON_SEND};
 use super::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, primary_button_style,
     primary_text_input_style, shaped_text,
 };
@@ -38,6 +38,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .on_submit(submit_action)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
+        .font(MONOSPACE_FONT)
         .style(primary_text_input_style());
 
     let button_row = row![
