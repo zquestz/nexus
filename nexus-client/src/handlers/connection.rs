@@ -241,8 +241,14 @@ impl NexusApp {
                 self.ui_state.show_edit_user = false;
             }
 
-            // Focus chat input when switching to a connection
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            // Scroll to bottom and focus chat input when switching to a connection
+            return Task::batch([
+                scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                ),
+                text_input::focus(text_input::Id::from(InputId::ChatInput)),
+            ]);
         }
         Task::none()
     }
