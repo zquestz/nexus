@@ -18,7 +18,7 @@
 
 use super::colors;
 use iced::widget::{container, text};
-use iced::{Background, Border, Color, Theme};
+use iced::{Background, Border, Color, Padding, Theme};
 
 // ============================================================================
 // Text Shaping (CJK Support)
@@ -135,6 +135,19 @@ pub const USER_LIST_SMALL_TEXT_SIZE: u16 = 11;
 
 /// Text input field padding
 pub const INPUT_PADDING: u16 = 8;
+
+/// Extra top padding for monospace text inputs to vertically center text
+/// Monospace fonts have different ascender metrics than proportional fonts
+const MONOSPACE_INPUT_PADDING_TOP_OFFSET: f32 = 3.0;
+
+/// Returns padding for monospace text inputs with corrected vertical alignment
+///
+/// Monospace fonts have different ascender/descender metrics than proportional
+/// fonts, causing text to appear misaligned. This adds extra top padding to
+/// vertically center the text within the input box.
+pub fn monospace_input_padding() -> Padding {
+    Padding::new(INPUT_PADDING as f32).top(INPUT_PADDING as f32 + MONOSPACE_INPUT_PADDING_TOP_OFFSET)
+}
 
 /// Button padding
 pub const BUTTON_PADDING: u16 = 10;

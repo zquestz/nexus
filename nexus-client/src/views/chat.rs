@@ -6,8 +6,9 @@ use super::style::{
     SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, broadcast_message_color, chat_tab_active_style,
     chat_tab_inactive_style, chat_text_color, error_message_color, info_text_color,
-    primary_button_style, primary_scrollbar_style, primary_text_input_style, shaped_text,
-    sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
+    monospace_input_padding, primary_button_style, primary_scrollbar_style,
+    primary_text_input_style, shaped_text, sidebar_border, system_text_color, tooltip_border,
+    tooltip_text_color,
 };
 use crate::handlers::network::{
     MSG_USERNAME_BROADCAST_PREFIX, MSG_USERNAME_ERROR, MSG_USERNAME_INFO, MSG_USERNAME_SYSTEM,
@@ -16,7 +17,7 @@ use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{
     Button, Column, button, column, container, row, scrollable, text_input, tooltip,
 };
-use iced::{Background, Element, Fill};
+use iced::{Background, Element, Fill, Font};
 
 // UI text constants
 const PLACEHOLDER_MESSAGE: &str = "Type a message...";
@@ -215,15 +216,17 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .on_input(Message::ChatInputChanged)
                 .on_submit(Message::SendMessagePressed)
                 .id(text_input::Id::from(InputId::ChatInput))
-                .padding(INPUT_PADDING)
+                .padding(monospace_input_padding())
                 .size(CHAT_INPUT_SIZE)
+                .font(Font::MONOSPACE)
                 .style(primary_text_input_style())
                 .width(Fill)
         } else {
             text_input(PLACEHOLDER_NO_PERMISSION, message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
-                .padding(INPUT_PADDING)
+                .padding(monospace_input_padding())
                 .size(CHAT_INPUT_SIZE)
+                .font(Font::MONOSPACE)
                 .style(primary_text_input_style())
                 .width(Fill)
         },
