@@ -1,16 +1,16 @@
 //! Server list panel (left sidebar)
 
 use super::style::{
-    BORDER_WIDTH, FORM_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING, SECTION_TITLE_SIZE,
-    SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_BUTTON_SIZE,
-    SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
-    SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
-    TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
+    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
+    INPUT_PADDING, NO_SPACING, PANEL_SPACING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT,
+    SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING,
+    SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE,
+    SERVER_LIST_TEXT_SIZE, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
     disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color, empty_state_color,
-    interactive_hover_color, primary_button_style, primary_scrollbar_style, section_title_color,
-    separator_color, shaped_text, sidebar_background, sidebar_border, tooltip_border,
-    tooltip_text_color,
+    interactive_hover_color, primary_scrollbar_style, section_title_color, separator_color,
+    shaped_text, sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_hover_color,
+    tooltip_border, tooltip_text_color,
 };
 use crate::i18n::t;
 use crate::icon;
@@ -217,18 +217,51 @@ pub fn server_list_panel<'a>(
         }
     }
 
-    let add_btn = button(shaped_text(t("button-add-bookmark")).size(SERVER_LIST_BUTTON_SIZE))
-        .on_press(Message::ShowAddBookmark)
-        .padding(INPUT_PADDING)
-        .style(primary_button_style())
-        .width(Fill);
+    // Icon size matching user toolbar
+    let icon_size: f32 = 18.0;
+    let add_icon = container(icon::bookmark().size(icon_size))
+        .width(icon_size)
+        .height(icon_size)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center);
+
+    let add_btn = tooltip(
+        button(add_icon)
+            .on_press(Message::ShowAddBookmark)
+            .padding(iced::Padding {
+                top: ICON_BUTTON_PADDING_VERTICAL as f32,
+                right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+                bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
+                left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
+            })
+            .style(|theme, status| button::Style {
+                background: None,
+                text_color: match status {
+                    button::Status::Hovered => sidebar_icon_hover_color(theme),
+                    _ => sidebar_icon_color(theme),
+                },
+                border: Border::default(),
+                shadow: iced::Shadow::default(),
+            }),
+        container(shaped_text(t("tooltip-add-bookmark")).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                text_color: Some(tooltip_text_color(theme)),
+                border: tooltip_border(),
+                ..Default::default()
+            }),
+        tooltip::Position::Top,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING);
 
     let bookmarks_section = column![
         bookmarks_title,
         scrollable(bookmarks_column)
             .height(Fill)
             .style(primary_scrollbar_style()),
-        add_btn,
+        Element::from(add_btn),
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)
     .padding(FORM_PADDING);

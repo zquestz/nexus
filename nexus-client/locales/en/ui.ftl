@@ -12,7 +12,6 @@ button-save = Save
 button-create = Create
 button-edit = Edit
 button-update = Update
-button-add-bookmark = Add Bookmark
 button-accept-new-certificate = Accept New Certificate
 
 # =============================================================================
@@ -53,6 +52,7 @@ placeholder-broadcast-message = Enter broadcast message...
 # =============================================================================
 
 label-auto-connect = Auto-Connect
+label-add-bookmark = Add Bookmark
 label-admin = Admin
 label-enabled = Enabled
 label-permissions = Permissions:
@@ -95,6 +95,7 @@ tooltip-info = Info
 tooltip-message = Message
 tooltip-kick = Kick
 tooltip-close = Close
+tooltip-add-bookmark = Add Bookmark
 
 # =============================================================================
 # Empty States

@@ -12,7 +12,6 @@ button-save = Guardar
 button-create = Criar
 button-edit = Editar
 button-update = Actualizar
-button-add-bookmark = Adicionar Marcador
 button-accept-new-certificate = Aceitar Novo Certificado
 
 # =============================================================================
@@ -53,6 +52,7 @@ placeholder-broadcast-message = Escreva a mensagem de difusão...
 # =============================================================================
 
 label-auto-connect = Auto-Ligar
+label-add-bookmark = Marcador
 label-admin = Administrador
 label-enabled = Activo
 label-permissions = Permissões:
@@ -95,6 +95,7 @@ tooltip-info = Info
 tooltip-message = Mensagem
 tooltip-kick = Expulsar
 tooltip-close = Fechar
+tooltip-add-bookmark = Adicionar Marcador
 
 # =============================================================================
 # Empty States

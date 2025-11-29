@@ -160,6 +160,7 @@ impl NexusApp {
             Message::PortChanged(port) => self.handle_port_changed(port),
             Message::UsernameChanged(username) => self.handle_username_changed(username),
             Message::PasswordChanged(password) => self.handle_password_changed(password),
+            Message::AddBookmarkToggled(enabled) => self.handle_add_bookmark_toggled(enabled),
 
             Message::ConnectPressed => self.handle_connect_pressed(),
 
@@ -280,6 +281,7 @@ impl NexusApp {
             password: &self.connection_form.password,
             connection_error: &self.connection_form.error,
             is_connecting: self.connection_form.is_connecting,
+            add_bookmark: self.connection_form.add_bookmark,
             bookmark_name: &self.bookmark_edit.bookmark.name,
             bookmark_address: &self.bookmark_edit.bookmark.address,
             bookmark_port: &self.bookmark_edit.bookmark.port,

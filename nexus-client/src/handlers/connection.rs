@@ -56,6 +56,12 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle add bookmark checkbox toggle
+    pub fn handle_add_bookmark_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.connection_form.add_bookmark = enabled;
+        Task::none()
+    }
+
     /// Handle connect button press
     pub fn handle_connect_pressed(&mut self) -> Task<Message> {
         // Prevent duplicate connection attempts

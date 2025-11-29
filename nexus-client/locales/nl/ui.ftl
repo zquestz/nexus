@@ -12,7 +12,7 @@ button-save = Opslaan
 button-create = Aanmaken
 button-edit = Bewerken
 button-update = Bijwerken
-button-add-bookmark = Bladwijzer toevoegen
+
 button-accept-new-certificate = Nieuw certificaat accepteren
 
 # =============================================================================
@@ -53,6 +53,7 @@ placeholder-broadcast-message = Voer broadcastbericht in...
 # =============================================================================
 
 label-auto-connect = Auto-Verbinden
+label-add-bookmark = Bladwijzer
 label-admin = Beheerder
 label-enabled = Ingeschakeld
 label-permissions = Machtigingen:
@@ -94,6 +95,7 @@ tooltip-edit = Bewerken
 tooltip-info = Info
 tooltip-message = Bericht
 tooltip-kick = Verwijderen
+tooltip-add-bookmark = Bladwijzer Toevoegen
 tooltip-close = Sluiten
 
 # =============================================================================

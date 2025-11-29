@@ -100,6 +100,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             password: config.password,
             connection_error: config.connection_error,
             is_connecting: config.is_connecting,
+            add_bookmark: config.add_bookmark,
         })
     };
 

@@ -12,7 +12,7 @@ button-save = 保存
 button-create = 创建
 button-edit = 编辑
 button-update = 更新
-button-add-bookmark = 添加书签
+
 button-accept-new-certificate = 接受新证书
 
 # =============================================================================
@@ -53,6 +53,7 @@ placeholder-broadcast-message = 输入广播消息...
 # =============================================================================
 
 label-auto-connect = 自动连接
+label-add-bookmark = 书签
 label-admin = 管理员
 label-enabled = 已启用
 label-permissions = 权限：
@@ -95,6 +96,7 @@ tooltip-info = 信息
 tooltip-message = 消息
 tooltip-kick = 踢出
 tooltip-close = 关闭
+tooltip-add-bookmark = 添加书签
 
 # =============================================================================
 # Empty States

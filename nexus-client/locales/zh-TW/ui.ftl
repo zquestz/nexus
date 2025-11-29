@@ -12,7 +12,6 @@ button-save = 儲存
 button-create = 建立
 button-edit = 編輯
 button-update = 更新
-button-add-bookmark = 新增書籤
 button-accept-new-certificate = 接受新憑證
 
 # =============================================================================
@@ -53,6 +52,7 @@ placeholder-broadcast-message = 輸入廣播訊息...
 # =============================================================================
 
 label-auto-connect = 自動連線
+label-add-bookmark = 新增書籤
 label-admin = 管理員
 label-enabled = 啟用
 label-permissions = 權限：
@@ -93,8 +93,9 @@ tooltip-disconnect = 中斷連線
 tooltip-edit = 編輯
 tooltip-info = 資訊
 tooltip-message = 訊息
-tooltip-kick = 踢除
+tooltip-kick = 踢出
 tooltip-close = 關閉
+tooltip-add-bookmark = 新增書籤
 
 # =============================================================================
 # Empty States

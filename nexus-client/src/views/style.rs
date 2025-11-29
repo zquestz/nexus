@@ -125,9 +125,6 @@ pub const SECTION_TITLE_SIZE: u16 = 14;
 /// Server list server name text size
 pub const SERVER_LIST_TEXT_SIZE: u16 = 13;
 
-/// Server list button text size
-pub const SERVER_LIST_BUTTON_SIZE: u16 = 12;
-
 /// Server list small text size (empty states, action buttons)
 pub const SERVER_LIST_SMALL_TEXT_SIZE: u16 = 11;
 

@@ -12,7 +12,6 @@ button-save = Speichern
 button-create = Erstellen
 button-edit = Bearbeiten
 button-update = Aktualisieren
-button-add-bookmark = Lesezeichen hinzufügen
 button-accept-new-certificate = Neues Zertifikat akzeptieren
 
 # =============================================================================
@@ -53,6 +52,7 @@ placeholder-broadcast-message = Rundnachricht eingeben...
 # =============================================================================
 
 label-auto-connect = Auto-Verbindung
+label-add-bookmark = Lesezeichen
 label-admin = Admin
 label-enabled = Aktiviert
 label-permissions = Berechtigungen:
@@ -95,6 +95,7 @@ tooltip-info = Info
 tooltip-message = Nachricht
 tooltip-kick = Rauswerfen
 tooltip-close = Schließen
+tooltip-add-bookmark = Lesezeichen hinzufügen
 
 # =============================================================================
 # Empty States

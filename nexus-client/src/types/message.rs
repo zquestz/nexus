@@ -95,6 +95,8 @@ pub enum Message {
     CloseUserMessageTab(String),
     /// Bookmark editor: Save button pressed
     SaveBookmark,
+    /// Connection form: Add bookmark checkbox toggled
+    AddBookmarkToggled(bool),
     /// Broadcast panel: Send button pressed
     SendBroadcastPressed,
     /// Chat: Send message button pressed

@@ -12,7 +12,7 @@ button-save = Сохранить
 button-create = Создать
 button-edit = Редактировать
 button-update = Обновить
-button-add-bookmark = Добавить закладку
+
 button-accept-new-certificate = Принять новый сертификат
 
 # =============================================================================
@@ -53,6 +53,7 @@ placeholder-broadcast-message = Введите сообщение рассылк
 # =============================================================================
 
 label-auto-connect = Автоподключение
+label-add-bookmark = Добавить закладку
 label-admin = Администратор
 label-enabled = Включён
 label-permissions = Разрешения:
@@ -95,6 +96,7 @@ tooltip-info = Инфо
 tooltip-message = Сообщение
 tooltip-kick = Выгнать
 tooltip-close = Закрыть
+tooltip-add-bookmark = Добавить закладку
 
 # =============================================================================
 # Empty States

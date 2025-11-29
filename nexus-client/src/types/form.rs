@@ -59,6 +59,8 @@ pub struct ConnectionFormState {
     pub error: Option<String>,
     /// Whether a connection attempt is currently in progress
     pub is_connecting: bool,
+    /// Whether to save this connection as a bookmark on successful connect
+    pub add_bookmark: bool,
 }
 
 impl ConnectionFormState {

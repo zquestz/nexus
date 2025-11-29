@@ -2,12 +2,13 @@
 
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, error_message_color,
-    primary_button_style, primary_text_input_style, shaped_text,
+    SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    error_message_color, primary_button_style, primary_checkbox_style, primary_text_input_style,
+    shaped_text,
 };
 use crate::i18n::t;
 use crate::types::{InputId, Message};
-use iced::widget::{button, column, container, text_input};
+use iced::widget::{button, checkbox, column, container, text, text_input};
 use iced::{Center, Element, Fill};
 
 /// Connection form input data
@@ -19,6 +20,7 @@ pub struct ConnectionFormData<'a> {
     pub password: &'a str,
     pub connection_error: &'a Option<String>,
     pub is_connecting: bool,
+    pub add_bookmark: bool,
 }
 
 /// Displays connection form with server details and credentials
@@ -27,11 +29,10 @@ pub struct ConnectionFormData<'a> {
 /// optional, but address, port, and username are required. Password can be empty
 /// for servers that don't require authentication.
 pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Message> {
-    // Validate required fields (password is optional)
+    // Validate required fields (username and password are optional)
     let can_connect = !data.server_name.trim().is_empty()
         && !data.server_address.trim().is_empty()
-        && !data.port.trim().is_empty()
-        && !data.username.trim().is_empty();
+        && !data.port.trim().is_empty();
 
     // Helper for on_submit - avoid action when form is invalid
     let submit_action = if can_connect {
@@ -69,7 +70,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let username_input = text_input(&t("placeholder-username"), data.username)
+    let username_input = text_input(&t("placeholder-username-optional"), data.username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Username))
@@ -77,7 +78,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let password_input = text_input(&t("placeholder-password"), data.password)
+    let password_input = text_input(&t("placeholder-password-optional"), data.password)
         .on_input(Message::PasswordChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Password))
@@ -116,6 +117,13 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         port_input.into(),
         username_input.into(),
         password_input.into(),
+        shaped_text("").size(SPACER_SIZE_SMALL).into(),
+        checkbox(t("label-add-bookmark"), data.add_bookmark)
+            .on_toggle(Message::AddBookmarkToggled)
+            .size(TEXT_SIZE)
+            .text_shaping(text::Shaping::Advanced)
+            .style(primary_checkbox_style())
+            .into(),
         shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),
     ]);

@@ -12,8 +12,7 @@ button-save = 保存
 button-create = 作成
 button-edit = 編集
 button-update = 更新
-button-add-bookmark = ブックマークを追加
-button-accept-new-certificate = 新しい証明書を受け入れる
+button-accept-new-certificate = 新しい証明書を承認
 
 # =============================================================================
 # Titles
@@ -53,6 +52,7 @@ placeholder-broadcast-message = ブロードキャストメッセージを入力
 # =============================================================================
 
 label-auto-connect = 自動接続
+label-add-bookmark = ブックマークに追加
 label-admin = 管理者
 label-enabled = 有効
 label-permissions = 権限:
@@ -95,6 +95,7 @@ tooltip-info = 情報
 tooltip-message = メッセージ
 tooltip-kick = キック
 tooltip-close = 閉じる
+tooltip-add-bookmark = ブックマークを追加
 
 # =============================================================================
 # Empty States

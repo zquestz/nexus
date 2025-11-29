@@ -3,7 +3,8 @@
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ChatMessage, ChatTab, InputId, Message, ScrollableId, ServerConnection, UserInfo,
+    ChatMessage, ChatTab, InputId, Message, ScrollableId, ServerBookmark, ServerConnection,
+    UserInfo,
 };
 use chrono::Local;
 use iced::Task;
@@ -135,6 +136,26 @@ impl NexusApp {
 
                 // Add chat topic message if present
                 self.add_topic_message_if_present(connection_id, chat_topic);
+
+                // Save as bookmark if checkbox was enabled (and not already a bookmark)
+                if self.connection_form.add_bookmark && bookmark_index.is_none() {
+                    let new_bookmark = ServerBookmark {
+                        name: self.connection_form.server_name.clone(),
+                        address: self.connection_form.server_address.clone(),
+                        port: self.connection_form.port.clone(),
+                        username: self.connection_form.username.clone(),
+                        password: self.connection_form.password.clone(),
+                        auto_connect: false,
+                        certificate_fingerprint: Some(conn.certificate_fingerprint.clone()),
+                    };
+                    self.config.add_bookmark(new_bookmark);
+                    let _ = self.config.save();
+
+                    // Update the connection's bookmark_index to point to the new bookmark
+                    if let Some(server_conn) = self.connections.get_mut(&connection_id) {
+                        server_conn.bookmark_index = Some(self.config.bookmarks.len() - 1);
+                    }
+                }
 
                 // Clear connection form
                 self.connection_form.clear();

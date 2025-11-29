@@ -12,7 +12,6 @@ button-save = 저장
 button-create = 생성
 button-edit = 편집
 button-update = 업데이트
-button-add-bookmark = 북마크 추가
 button-accept-new-certificate = 새 인증서 수락
 
 # =============================================================================
@@ -53,6 +52,7 @@ placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요.
 # =============================================================================
 
 label-auto-connect = 자동 연결
+label-add-bookmark = 북마크 추가
 label-admin = 관리자
 label-enabled = 활성화
 label-permissions = 권한:
@@ -95,6 +95,7 @@ tooltip-info = 정보
 tooltip-message = 메시지
 tooltip-kick = 추방
 tooltip-close = 닫기
+tooltip-add-bookmark = 북마크 추가
 
 # =============================================================================
 # Empty States

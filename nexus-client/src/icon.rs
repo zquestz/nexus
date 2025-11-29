@@ -1,10 +1,14 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// d04576d6e1dde46f673694b949aa7892a7958fb34d00cc8e7cc61dac91bd36ac
+// 04a7bfe860d59b634f46091931706aede1cf49cd9f8f7184da242a33499ff090
 use iced::Font;
 use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../fonts/icons.ttf");
+
+pub fn bookmark<'a>() -> Text<'a> {
+    icon("\u{1F516}")
+}
 
 pub fn chat<'a>() -> Text<'a> {
     icon("\u{E720}")

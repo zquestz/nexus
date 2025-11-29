@@ -24,6 +24,7 @@ pub struct ViewConfig<'a> {
     pub password: &'a str,
     pub connection_error: &'a Option<String>,
     pub is_connecting: bool,
+    pub add_bookmark: bool,
 
     // Bookmark edit form
     pub bookmark_name: &'a str,
