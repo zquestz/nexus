@@ -1,7 +1,9 @@
 //! Certificate fingerprint mismatch dialog view
 
 use super::constants::BUTTON_CANCEL;
-use super::style::*;
+use super::style::{
+    modal_overlay_style, primary_button_style, shaped_text, MONOSPACE_FONT,
+};
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::{Space, button, column, container, row};
 use iced::{Element, Length};
@@ -52,12 +54,12 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     let expected_label = shaped_text(LABEL_EXPECTED_FINGERPRINT).size(TEXT_SIZE);
     let expected_value = shaped_text(format_fingerprint_multiline(&mismatch.expected))
         .size(TEXT_SIZE)
-        .font(iced::Font::MONOSPACE);
+        .font(MONOSPACE_FONT);
 
     let received_label = shaped_text(LABEL_RECEIVED_FINGERPRINT).size(TEXT_SIZE);
     let received_value = shaped_text(format_fingerprint_multiline(&mismatch.received))
         .size(TEXT_SIZE)
-        .font(iced::Font::MONOSPACE);
+        .font(MONOSPACE_FONT);
 
     let accept_button = button(
         shaped_text(BUTTON_ACCEPT_NEW_CERTIFICATE)

@@ -160,33 +160,33 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .style(|theme| iced::widget::text::Style {
                     color: Some(system_text_color(theme)),
                 })
-                .font(iced::Font::MONOSPACE)
+                .font(MONOSPACE_FONT)
         } else if msg.username == MSG_USERNAME_ERROR {
             shaped_text(format!("[{}] [ERR] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .color(error_message_color())
-                .font(iced::Font::MONOSPACE)
+                .font(MONOSPACE_FONT)
         } else if msg.username == MSG_USERNAME_INFO {
             shaped_text(format!("[{}] [INFO] {}", time_str, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(info_text_color(theme)),
                 })
-                .font(iced::Font::MONOSPACE)
+                .font(MONOSPACE_FONT)
         } else if msg.username.starts_with(MSG_USERNAME_BROADCAST_PREFIX) {
             shaped_text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(broadcast_message_color(theme)),
                 })
-                .font(iced::Font::MONOSPACE)
+                .font(MONOSPACE_FONT)
         } else {
             shaped_text(format!("[{}] {}: {}", time_str, msg.username, msg.message))
                 .size(CHAT_MESSAGE_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(chat_text_color(theme)),
                 })
-                .font(iced::Font::MONOSPACE)
+                .font(MONOSPACE_FONT)
         };
         chat_column = chat_column.push(display);
     }
