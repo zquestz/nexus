@@ -116,6 +116,7 @@ impl NexusApp {
                     },
                     message_input: String::new(),
                     broadcast_message: String::new(),
+                    chat_auto_scroll: true,
                     broadcast_error: None,
                     user_management: crate::types::UserManagementState::default(),
                 };
@@ -242,6 +243,7 @@ impl NexusApp {
                     },
                     message_input: String::new(),
                     broadcast_message: String::new(),
+                    chat_auto_scroll: true,
                     broadcast_error: None,
                     user_management: crate::types::UserManagementState::default(),
                 };
@@ -334,7 +336,7 @@ impl NexusApp {
                 conn.unread_tabs.insert(ChatTab::Server);
             }
 
-            if self.active_connection == Some(connection_id) {
+            if self.active_connection == Some(connection_id) && conn.chat_auto_scroll {
                 return scrollable::snap_to(
                     crate::types::ScrollableId::ChatMessages.into(),
                     scrollable::RelativeOffset::END,
@@ -772,8 +774,10 @@ impl NexusApp {
                         conn.unread_tabs.insert(pm_tab);
                     }
 
-                    // Auto-scroll if viewing this tab
-                    if conn.active_chat_tab == ChatTab::UserMessage(other_user.clone()) {
+                    // Auto-scroll if viewing this tab and at bottom
+                    if conn.active_chat_tab == ChatTab::UserMessage(other_user.clone())
+                        && conn.chat_auto_scroll
+                    {
                         return scrollable::snap_to(
                             ScrollableId::ChatMessages.into(),
                             scrollable::RelativeOffset::END,

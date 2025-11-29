@@ -14,6 +14,8 @@ use nexus_common::protocol::ClientMessage;
 
 // Constants
 const MAX_CHAT_LENGTH: usize = 1024;
+/// Threshold for considering scroll position "at bottom" (0.0 = top, 1.0 = bottom)
+const SCROLL_BOTTOM_THRESHOLD: f32 = 0.99;
 
 impl NexusApp {
     /// Handle server name field change
@@ -107,6 +109,20 @@ impl NexusApp {
             },
             Message::ConnectionResult,
         )
+    }
+
+    /// Handle chat scroll position change
+    pub fn handle_chat_scrolled(
+        &mut self,
+        viewport: iced::widget::scrollable::Viewport,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            // Consider "at bottom" if within threshold of the end
+            conn.chat_auto_scroll = viewport.relative_offset().y >= SCROLL_BOTTOM_THRESHOLD;
+        }
+        Task::none()
     }
 
     /// Handle chat message input change

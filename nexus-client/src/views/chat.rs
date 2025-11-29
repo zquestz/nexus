@@ -195,6 +195,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
 
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages.into())
+        .on_scroll(Message::ChatScrolled)
         .width(Fill)
         .height(Fill)
         .style(primary_scrollbar_style());

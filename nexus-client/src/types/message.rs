@@ -37,6 +37,8 @@ pub enum Message {
     CancelFingerprintMismatch,
     /// User edit panel: Cancel button pressed
     CancelEditUser,
+    /// Chat scrollable: scroll position changed
+    ChatScrolled(iced::widget::scrollable::Viewport),
     /// Fingerprint mismatch: Accept button pressed (update stored fingerprint)
     AcceptNewFingerprint,
     /// Connect to a bookmark by index

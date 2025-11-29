@@ -440,11 +440,13 @@ impl NexusApp {
                 );
             }
 
-            // Auto-scroll to show kick response
-            return scrollable::snap_to(
-                ScrollableId::ChatMessages.into(),
-                scrollable::RelativeOffset::END,
-            );
+            // Auto-scroll to show kick response if at bottom
+            if conn.chat_auto_scroll {
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
+            }
         }
         Task::none()
     }
@@ -485,11 +487,13 @@ impl NexusApp {
                 );
             }
 
-            // Auto-scroll to show info response
-            return scrollable::snap_to(
-                ScrollableId::ChatMessages.into(),
-                scrollable::RelativeOffset::END,
-            );
+            // Auto-scroll to show info response if at bottom
+            if conn.chat_auto_scroll {
+                return scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                );
+            }
         }
         Task::none()
     }

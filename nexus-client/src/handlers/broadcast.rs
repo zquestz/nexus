@@ -98,15 +98,28 @@ impl NexusApp {
         // Close all panels
         self.close_all_panels();
 
-        // Switch to Server tab, auto-scroll to bottom, and focus chat input
-        Task::batch([
-            Task::done(Message::SwitchChatTab(ChatTab::Server)),
-            scrollable::snap_to(
-                ScrollableId::ChatMessages.into(),
-                scrollable::RelativeOffset::END,
-            ),
-            text_input::focus(text_input::Id::from(InputId::ChatInput)),
-        ])
+        // Check if we should auto-scroll
+        let should_scroll = self
+            .active_connection
+            .and_then(|id| self.connections.get(&id))
+            .is_some_and(|conn| conn.chat_auto_scroll);
+
+        // Switch to Server tab, conditionally scroll, and focus chat input
+        if should_scroll {
+            Task::batch([
+                Task::done(Message::SwitchChatTab(ChatTab::Server)),
+                scrollable::snap_to(
+                    ScrollableId::ChatMessages.into(),
+                    scrollable::RelativeOffset::END,
+                ),
+                text_input::focus(text_input::Id::from(InputId::ChatInput)),
+            ])
+        } else {
+            Task::batch([
+                Task::done(Message::SwitchChatTab(ChatTab::Server)),
+                text_input::focus(text_input::Id::from(InputId::ChatInput)),
+            ])
+        }
     }
 
     /// Handle validation of broadcast form (called on Enter when message empty)

@@ -57,6 +57,8 @@ pub struct ServerConnection {
     pub message_input: String,
     /// Current broadcast message input
     pub broadcast_message: String,
+    /// Whether to auto-scroll chat when new messages arrive
+    pub chat_auto_scroll: bool,
     /// Error message for broadcast operations
     pub broadcast_error: Option<String>,
     /// User management panel state

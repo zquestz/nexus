@@ -168,6 +168,7 @@ impl NexusApp {
             Message::ConnectPressed => self.handle_connect_pressed(),
 
             // Chat operations
+            Message::ChatScrolled(viewport) => self.handle_chat_scrolled(viewport),
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
             Message::UserListItemClicked(username) => self.handle_user_list_item_clicked(username),
