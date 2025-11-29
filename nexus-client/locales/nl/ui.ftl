@@ -54,9 +54,9 @@ placeholder-broadcast-message = Voer broadcastbericht in...
 # Labels
 # =============================================================================
 
-label-auto-connect = Automatisch verbinden bij opstarten
-label-admin = beheerder
-label-enabled = ingeschakeld
+label-auto-connect = Auto-Verbinden
+label-admin = Beheerder
+label-enabled = Ingeschakeld
 label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:

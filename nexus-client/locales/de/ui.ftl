@@ -54,9 +54,9 @@ placeholder-broadcast-message = Rundnachricht eingeben...
 # Labels
 # =============================================================================
 
-label-auto-connect = Automatisch beim Start verbinden
-label-admin = Administrator
-label-enabled = aktiviert
+label-auto-connect = Auto-Verbindung
+label-admin = Admin
+label-enabled = Aktiviert
 label-permissions = Berechtigungen:
 label-expected-fingerprint = Erwarteter Fingerabdruck:
 label-received-fingerprint = Empfangener Fingerabdruck:

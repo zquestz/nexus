@@ -54,9 +54,9 @@ placeholder-broadcast-message = Escreva a mensagem de difusão...
 # Labels
 # =============================================================================
 
-label-auto-connect = Ligar automaticamente ao iniciar
-label-admin = administrador
-label-enabled = activo
+label-auto-connect = Auto-Ligar
+label-admin = Administrador
+label-enabled = Activo
 label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
 label-received-fingerprint = Impressão digital recebida:

@@ -54,9 +54,9 @@ placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요.
 # Labels
 # =============================================================================
 
-label-auto-connect = 시작 시 자동 연결
+label-auto-connect = 자동 연결
 label-admin = 관리자
-label-enabled = 활성화됨
+label-enabled = 활성화
 label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
 label-received-fingerprint = 수신된 지문:

@@ -54,7 +54,7 @@ placeholder-broadcast-message = 输入广播消息...
 # Labels
 # =============================================================================
 
-label-auto-connect = 启动时自动连接
+label-auto-connect = 自动连接
 label-admin = 管理员
 label-enabled = 已启用
 label-permissions = 权限：

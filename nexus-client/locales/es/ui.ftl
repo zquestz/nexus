@@ -54,9 +54,9 @@ placeholder-broadcast-message = Escribe un mensaje de difusión...
 # Labels
 # =============================================================================
 
-label-auto-connect = Conectar automáticamente al iniciar
-label-admin = administrador
-label-enabled = habilitado
+label-auto-connect = Auto-Conectar
+label-admin = Administrador
+label-enabled = Habilitado
 label-permissions = Permisos:
 label-expected-fingerprint = Huella esperada:
 label-received-fingerprint = Huella recibida:

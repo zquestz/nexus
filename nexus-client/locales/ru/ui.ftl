@@ -54,9 +54,9 @@ placeholder-broadcast-message = Введите сообщение рассылк
 # Labels
 # =============================================================================
 
-label-auto-connect = Автоподключение при запуске
-label-admin = администратор
-label-enabled = включён
+label-auto-connect = Автоподключение
+label-admin = Администратор
+label-enabled = Включён
 label-permissions = Разрешения:
 label-expected-fingerprint = Ожидаемый отпечаток:
 label-received-fingerprint = Полученный отпечаток:

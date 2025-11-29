@@ -54,7 +54,7 @@ placeholder-broadcast-message = ブロードキャストメッセージを入力
 # Labels
 # =============================================================================
 
-label-auto-connect = 起動時に自動接続
+label-auto-connect = 自動接続
 label-admin = 管理者
 label-enabled = 有効
 label-permissions = 権限:

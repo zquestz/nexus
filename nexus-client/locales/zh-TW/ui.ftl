@@ -54,9 +54,9 @@ placeholder-broadcast-message = 輸入廣播訊息...
 # Labels
 # =============================================================================
 
-label-auto-connect = 啟動時自動連線
+label-auto-connect = 自動連線
 label-admin = 管理員
-label-enabled = 已啟用
+label-enabled = 啟用
 label-permissions = 權限：
 label-expected-fingerprint = 預期指紋：
 label-received-fingerprint = 收到的指紋：

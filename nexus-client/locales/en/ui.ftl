@@ -54,9 +54,9 @@ placeholder-broadcast-message = Enter broadcast message...
 # Labels
 # =============================================================================
 
-label-auto-connect = Auto-connect at startup
-label-admin = admin
-label-enabled = enabled
+label-auto-connect = Auto-Connect
+label-admin = Admin
+label-enabled = Enabled
 label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:

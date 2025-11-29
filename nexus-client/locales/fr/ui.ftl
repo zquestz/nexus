@@ -54,9 +54,9 @@ placeholder-broadcast-message = Entrez le message de diffusion...
 # Labels
 # =============================================================================
 
-label-auto-connect = Connexion automatique au démarrage
-label-admin = administrateur
-label-enabled = activé
+label-auto-connect = Connexion auto
+label-admin = Administrateur
+label-enabled = Activé
 label-permissions = Permissions :
 label-expected-fingerprint = Empreinte attendue :
 label-received-fingerprint = Empreinte reçue :

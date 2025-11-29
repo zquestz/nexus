@@ -54,9 +54,9 @@ placeholder-broadcast-message = Inserisci messaggio broadcast...
 # Labels
 # =============================================================================
 
-label-auto-connect = Connetti automaticamente all'avvio
-label-admin = amministratore
-label-enabled = abilitato
+label-auto-connect = Auto-Connessione
+label-admin = Amministratore
+label-enabled = Abilitato
 label-permissions = Permessi:
 label-expected-fingerprint = Impronta prevista:
 label-received-fingerprint = Impronta ricevuta:
