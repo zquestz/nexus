@@ -21,7 +21,7 @@ button-accept-new-certificate = 接受新证书
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = 连接到服务器
-title-add-server = 添加服务器
+title-add-bookmark = 添加书签
 title-edit-server = 编辑服务器
 title-broadcast-message = 广播消息
 title-user-create = 创建用户

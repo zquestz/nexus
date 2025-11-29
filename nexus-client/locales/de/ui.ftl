@@ -20,7 +20,7 @@ button-accept-new-certificate = Neues Zertifikat akzeptieren
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Mit Server verbinden
-title-add-server = Server hinzufügen
+title-add-bookmark = Lesezeichen hinzufügen
 title-edit-server = Server bearbeiten
 title-broadcast-message = Rundnachricht
 title-user-create = Benutzer erstellen

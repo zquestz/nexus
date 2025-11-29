@@ -17,7 +17,7 @@ use iced::{Center, Element, Fill};
 /// fields (name, address, port) are non-empty before enabling save button.
 pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message> {
     let dialog_title = match form.mode {
-        BookmarkEditMode::Add => t("title-add-server"),
+        BookmarkEditMode::Add => t("title-add-bookmark"),
         BookmarkEditMode::Edit(_) => t("title-edit-server"),
         BookmarkEditMode::None => String::new(),
     };

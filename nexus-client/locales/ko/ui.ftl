@@ -20,7 +20,7 @@ button-accept-new-certificate = 새 인증서 수락
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = 서버에 연결
-title-add-server = 서버 추가
+title-add-bookmark = 북마크 추가
 title-edit-server = 서버 편집
 title-broadcast-message = 브로드캐스트 메시지
 title-user-create = 사용자 생성

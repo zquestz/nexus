@@ -20,7 +20,7 @@ button-accept-new-certificate = 接受新憑證
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = 連線至伺服器
-title-add-server = 新增伺服器
+title-add-bookmark = 新增書籤
 title-edit-server = 編輯伺服器
 title-broadcast-message = 廣播訊息
 title-user-create = 建立使用者

@@ -20,7 +20,7 @@ button-accept-new-certificate = 新しい証明書を承認
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = サーバーに接続
-title-add-server = サーバーを追加
+title-add-bookmark = ブックマークを追加
 title-edit-server = サーバーを編集
 title-broadcast-message = ブロードキャストメッセージ
 title-user-create = ユーザー作成
