@@ -13,17 +13,11 @@ use super::style::{
     sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_hover_color,
     tooltip_border, tooltip_text_color,
 };
+use crate::i18n::t;
 use crate::icon;
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill};
-
-// UI text constants
-const TITLE_USERS: &str = "Users";
-const EMPTY_NO_USERS: &str = "No users online";
-const TOOLTIP_INFO: &str = "Info";
-const TOOLTIP_MESSAGE: &str = "Message";
-const TOOLTIP_KICK: &str = "Kick";
 
 /// Icon size for user action toolbar
 const ICON_SIZE: f32 = 18.0;
@@ -43,7 +37,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
     let current_username = &conn.username;
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
-    let title = shaped_text(TITLE_USERS)
+    let title = shaped_text(t("title-users"))
         .size(USER_LIST_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -53,7 +47,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
     if conn.online_users.is_empty() {
         users_column = users_column.push(
-            shaped_text(EMPTY_NO_USERS)
+            shaped_text(t("empty-no-users"))
                 .size(USER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -219,7 +213,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(shaped_text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(t("tooltip-info")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -247,7 +241,7 @@ fn create_user_toolbar<'a>(
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
-            container(shaped_text(TOOLTIP_INFO).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(t("tooltip-info")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(|theme| container::Style {
                     background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -291,7 +285,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(shaped_text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-message")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -319,7 +313,7 @@ fn create_user_toolbar<'a>(
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),
-                container(shaped_text(TOOLTIP_MESSAGE).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-message")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -361,7 +355,7 @@ fn create_user_toolbar<'a>(
                 border: Border::default(),
                 shadow: iced::Shadow::default(),
             }),
-        container(shaped_text(TOOLTIP_KICK).size(TOOLTIP_TEXT_SIZE))
+        container(shaped_text(t("tooltip-kick")).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
             .style(|theme| container::Style {
                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),

@@ -1,11 +1,11 @@
 //! Connection form for new server connections
 
-use super::constants::{PLACEHOLDER_PASSWORD, PLACEHOLDER_PORT, PLACEHOLDER_USERNAME};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, TEXT_SIZE, TITLE_SIZE, error_message_color,
     primary_button_style, primary_text_input_style, shaped_text,
 };
+use crate::i18n::t;
 use crate::types::{InputId, Message};
 use iced::widget::{button, column, container, text_input};
 use iced::{Center, Element, Fill};
@@ -20,12 +20,6 @@ pub struct ConnectionFormData<'a> {
     pub connection_error: &'a Option<String>,
     pub is_connecting: bool,
 }
-
-// UI text constants
-const TITLE_CONNECT_TO_SERVER: &str = "Connect to Server";
-const PLACEHOLDER_SERVER_NAME_OPTIONAL: &str = "Server Name (optional)";
-const PLACEHOLDER_SERVER_IPV6_ADDRESS: &str = "Server IPv6 Address";
-const BUTTON_CONNECT: &str = "Connect";
 
 /// Displays connection form with server details and credentials
 ///
@@ -45,12 +39,12 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         Message::ServerNameChanged(String::new())
     };
 
-    let title = shaped_text(TITLE_CONNECT_TO_SERVER)
+    let title = shaped_text(t("title-connect-to-server"))
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
 
-    let server_name_input = text_input(PLACEHOLDER_SERVER_NAME_OPTIONAL, data.server_name)
+    let server_name_input = text_input(&t("placeholder-server-name-optional"), data.server_name)
         .on_input(Message::ServerNameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerName))
@@ -58,7 +52,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let server_address_input = text_input(PLACEHOLDER_SERVER_IPV6_ADDRESS, data.server_address)
+    let server_address_input = text_input(&t("placeholder-server-address"), data.server_address)
         .on_input(Message::ServerAddressChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerAddress))
@@ -66,7 +60,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let port_input = text_input(PLACEHOLDER_PORT, data.port)
+    let port_input = text_input(&t("placeholder-port"), data.port)
         .on_input(Message::PortChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Port))
@@ -74,7 +68,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let username_input = text_input(PLACEHOLDER_USERNAME, data.username)
+    let username_input = text_input(&t("placeholder-username"), data.username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Username))
@@ -82,7 +76,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .size(TEXT_SIZE)
         .style(primary_text_input_style());
 
-    let password_input = text_input(PLACEHOLDER_PASSWORD, data.password)
+    let password_input = text_input(&t("placeholder-password"), data.password)
         .on_input(Message::PasswordChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Password))
@@ -92,12 +86,12 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .style(primary_text_input_style());
 
     let connect_button = if can_connect && !data.is_connecting {
-        button(shaped_text(BUTTON_CONNECT).size(TEXT_SIZE))
+        button(shaped_text(t("button-connect")).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     } else {
-        button(shaped_text(BUTTON_CONNECT).size(TEXT_SIZE))
+        button(shaped_text(t("button-connect")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
             .style(primary_button_style())
     };

@@ -1,24 +1,14 @@
 //! Bookmark add/edit form
 
-use super::constants::{BUTTON_CANCEL, BUTTON_DELETE, PLACEHOLDER_PORT};
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    primary_button_style, primary_text_input_style, shaped_text, styled_checkbox,
 };
+use crate::i18n::t;
 use crate::types::{BookmarkEditMode, BookmarkFormData, InputId, Message};
-use iced::widget::{button, checkbox, column, container, row, text_input};
+use iced::widget::{button, column, container, row, text_input};
 use iced::{Center, Element, Fill};
-
-// UI text constants
-const TITLE_ADD_SERVER: &str = "Add Server";
-const TITLE_EDIT_SERVER: &str = "Edit Server";
-const PLACEHOLDER_SERVER_NAME: &str = "Server Name";
-const PLACEHOLDER_IPV6_ADDRESS: &str = "IPv6 Address";
-const PLACEHOLDER_USERNAME_OPTIONAL: &str = "Username (optional)";
-const PLACEHOLDER_PASSWORD_OPTIONAL: &str = "Password (optional)";
-const LABEL_AUTO_CONNECT: &str = "Auto-connect at startup";
-const BUTTON_SAVE: &str = "Save";
 
 /// Displays form for adding or editing a server bookmark
 ///
@@ -27,9 +17,9 @@ const BUTTON_SAVE: &str = "Save";
 /// fields (name, address, port) are non-empty before enabling save button.
 pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message> {
     let dialog_title = match form.mode {
-        BookmarkEditMode::Add => TITLE_ADD_SERVER,
-        BookmarkEditMode::Edit(_) => TITLE_EDIT_SERVER,
-        BookmarkEditMode::None => "",
+        BookmarkEditMode::Add => t("title-add-server"),
+        BookmarkEditMode::Edit(_) => t("title-edit-server"),
+        BookmarkEditMode::None => String::new(),
     };
 
     // Validate required fields (username/password are optional)
@@ -46,7 +36,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
     };
 
     let mut column_items = vec![
-        shaped_text(dialog_title)
+        shaped_text(&dialog_title)
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center)
@@ -65,7 +55,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
     }
 
     column_items.extend(vec![
-        text_input(PLACEHOLDER_SERVER_NAME, form.name)
+        text_input(&t("placeholder-server-name"), form.name)
             .on_input(Message::BookmarkNameChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::BookmarkName))
@@ -73,7 +63,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(PLACEHOLDER_IPV6_ADDRESS, form.address)
+        text_input(&t("placeholder-ipv6-address"), form.address)
             .on_input(Message::BookmarkAddressChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::BookmarkAddress))
@@ -81,7 +71,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(PLACEHOLDER_PORT, form.port)
+        text_input(&t("placeholder-port"), form.port)
             .on_input(Message::BookmarkPortChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::BookmarkPort))
@@ -89,7 +79,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(PLACEHOLDER_USERNAME_OPTIONAL, form.username)
+        text_input(&t("placeholder-username-optional"), form.username)
             .on_input(Message::BookmarkUsernameChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::BookmarkUsername))
@@ -97,7 +87,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(PLACEHOLDER_PASSWORD_OPTIONAL, form.password)
+        text_input(&t("placeholder-password-optional"), form.password)
             .on_input(Message::BookmarkPasswordChanged)
             .on_submit(submit_action)
             .id(text_input::Id::from(InputId::BookmarkPassword))
@@ -107,27 +97,27 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .style(primary_text_input_style())
             .into(),
         shaped_text("").size(SPACER_SIZE_SMALL).into(),
-        checkbox(LABEL_AUTO_CONNECT, form.auto_connect)
-            .on_toggle(Message::BookmarkAutoConnectToggled)
-            .size(TEXT_SIZE)
-            .style(primary_checkbox_style())
-            .into(),
+        styled_checkbox(
+            t("label-auto-connect"),
+            form.auto_connect,
+            Some(Message::BookmarkAutoConnectToggled),
+        ),
         shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'a, Message>> = vec![
                 if can_save {
-                    button(shaped_text(BUTTON_SAVE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-save")).size(TEXT_SIZE))
                         .on_press(Message::SaveBookmark)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                         .into()
                 } else {
-                    button(shaped_text(BUTTON_SAVE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-save")).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                         .into()
                 },
-                button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
+                button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
                     .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style())
@@ -137,7 +127,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             // Add Delete button only when editing (not adding)
             if let BookmarkEditMode::Edit(index) = form.mode {
                 buttons.push(
-                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-delete")).size(TEXT_SIZE))
                         .on_press(Message::DeleteBookmark(*index))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())

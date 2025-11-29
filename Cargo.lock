@@ -2870,6 +2870,7 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
+ "fluent-bundle",
  "iced",
  "iced_fontello",
  "nexus-common",
@@ -2881,6 +2882,7 @@ dependencies = [
  "sys-locale",
  "tokio",
  "tokio-rustls",
+ "unic-langid",
  "webpki-roots 0.26.11",
 ]
 

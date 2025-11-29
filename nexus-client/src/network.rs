@@ -1,5 +1,6 @@
 //! Network connection and message handling
 
+use crate::i18n::{t, t_args};
 use crate::types::{Message, NetworkConnection};
 use iced::futures::{SinkExt, Stream};
 use iced::stream;
@@ -169,33 +170,40 @@ async fn establish_connection(
     port: u16,
 ) -> Result<(tokio_rustls::client::TlsStream<TcpStream>, String), String> {
     // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
-    let mut addrs = (address, port)
-        .to_socket_addrs()
-        .map_err(|e| format!("Invalid address '{}': {}", address, e))?;
+    let mut addrs = (address, port).to_socket_addrs().map_err(|e| {
+        t_args(
+            "err-invalid-address",
+            &[("address", address), ("error", &e.to_string())],
+        )
+    })?;
 
     let socket_addr = addrs
         .next()
-        .ok_or_else(|| format!("Could not resolve address '{}'", address))?;
+        .ok_or_else(|| t_args("err-could-not-resolve", &[("address", address)]))?;
 
     // Establish TCP connection
     let tcp_stream = tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
         .await
         .map_err(|_| {
-            format!(
-                "Connection timed out after {} seconds",
-                CONNECTION_TIMEOUT.as_secs()
+            t_args(
+                "err-connection-timeout",
+                &[("seconds", &CONNECTION_TIMEOUT.as_secs().to_string())],
             )
         })?
-        .map_err(|e| format!("Connection failed: {}", e))?;
+        .map_err(|e| t_args("err-connection-failed", &[("error", &e.to_string())]))?;
 
     // Perform TLS handshake (hostname doesn't matter, we accept any cert)
-    let server_name = ServerName::try_from("localhost")
-        .map_err(|e| format!("Failed to create server name: {}", e))?;
+    let server_name = ServerName::try_from("localhost").map_err(|e| {
+        t_args(
+            "err-failed-create-server-name",
+            &[("error", &e.to_string())],
+        )
+    })?;
 
     let tls_stream = TLS_CONNECTOR
         .connect(server_name, tcp_stream)
         .await
-        .map_err(|e| format!("TLS handshake failed: {}", e))?;
+        .map_err(|e| t_args("err-tls-handshake-failed", &[("error", &e.to_string())]))?;
 
     // Calculate certificate fingerprint for TOFU verification
     let fingerprint = calculate_certificate_fingerprint(&tls_stream)?;
@@ -211,10 +219,10 @@ fn calculate_certificate_fingerprint(
     let (_io, session) = tls_stream.get_ref();
     let certs = session
         .peer_certificates()
-        .ok_or("No peer certificates found")?;
+        .ok_or_else(|| t("err-no-peer-certificates"))?;
 
     if certs.is_empty() {
-        return Err("No certificates in chain".to_string());
+        return Err(t("err-no-certificates-in-chain"));
     }
 
     // Calculate SHA-256 fingerprint of the first certificate (end entity)
@@ -240,14 +248,14 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
     };
     send_client_message(writer, &handshake)
         .await
-        .map_err(|e| format!("Failed to send handshake: {}", e))?;
+        .map_err(|e| t_args("err-failed-send-handshake", &[("error", &e.to_string())]))?;
 
     // Wait for handshake response
     let mut line = String::new();
     reader
         .read_line(&mut line)
         .await
-        .map_err(|e| format!("Failed to read handshake response: {}", e))?;
+        .map_err(|e| t_args("err-failed-read-handshake", &[("error", &e.to_string())]))?;
 
     match serde_json::from_str::<ServerMessage>(line.trim()) {
         Ok(ServerMessage::HandshakeResponse { success: true, .. }) => Ok(()),
@@ -255,9 +263,15 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
             success: false,
             error,
             ..
-        }) => Err(format!("Handshake failed: {}", error.unwrap_or_default())),
-        Ok(_) => Err("Unexpected handshake response".to_string()),
-        Err(e) => Err(format!("Failed to parse handshake response: {}", e)),
+        }) => Err(t_args(
+            "err-handshake-failed",
+            &[("error", &error.unwrap_or_default())],
+        )),
+        Ok(_) => Err(t("err-unexpected-handshake-response")),
+        Err(e) => Err(t_args(
+            "err-failed-parse-handshake",
+            &[("error", &e.to_string())],
+        )),
     }
 }
 
@@ -278,14 +292,14 @@ async fn perform_login(
     };
     send_client_message(writer, &login)
         .await
-        .map_err(|e| format!("Failed to send login: {}", e))?;
+        .map_err(|e| t_args("err-failed-send-login", &[("error", &e.to_string())]))?;
 
     // Wait for login response
     let mut line = String::new();
     reader
         .read_line(&mut line)
         .await
-        .map_err(|e| format!("Failed to read login response: {}", e))?;
+        .map_err(|e| t_args("err-failed-read-login", &[("error", &e.to_string())]))?;
 
     match serde_json::from_str::<ServerMessage>(line.trim()) {
         Ok(ServerMessage::LoginResponse {
@@ -307,7 +321,7 @@ async fn perform_login(
             success: true,
             session_id: None,
             ..
-        }) => Err("No session ID received".to_string()),
+        }) => Err(t("err-no-session-id")),
         Ok(ServerMessage::LoginResponse {
             success: false,
             error: Some(msg),
@@ -317,10 +331,13 @@ async fn perform_login(
             success: false,
             error: None,
             ..
-        }) => Err("Login failed".to_string()),
+        }) => Err(t("err-login-failed")),
         Ok(ServerMessage::Error { message, .. }) => Err(message),
-        Ok(_) => Err("Unexpected login response".to_string()),
-        Err(e) => Err(format!("Failed to parse login response: {}", e)),
+        Ok(_) => Err(t("err-unexpected-login-response")),
+        Err(e) => Err(t_args(
+            "err-failed-parse-login",
+            &[("error", &e.to_string())],
+        )),
     }
 }
 
@@ -433,7 +450,7 @@ pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
         let _ = output
             .send(Message::NetworkError(
                 connection_id,
-                "Connection closed".to_string(),
+                t("err-connection-closed"),
             ))
             .await;
 

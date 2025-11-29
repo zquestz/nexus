@@ -1,29 +1,15 @@
 //! User management panel (add, edit, delete users)
 
-use super::constants::{
-    BUTTON_CANCEL, BUTTON_DELETE, PERMISSION_USER_DELETE, PLACEHOLDER_PASSWORD,
-    PLACEHOLDER_USERNAME,
-};
+use super::constants::PERMISSION_USER_DELETE;
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    primary_button_style, primary_text_input_style, shaped_text, styled_checkbox,
 };
+use crate::i18n::{t, translate_permission};
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
-use iced::widget::{Column, button, checkbox, column, container, row, text_input};
+use iced::widget::{Column, button, column, container, row, text_input};
 use iced::{Center, Element, Fill};
-
-// UI text constants
-const TITLE_USER_CREATE: &str = "User Create";
-const TITLE_USER_EDIT: &str = "User Edit";
-const TITLE_UPDATE_USER: &str = "Update User";
-const PLACEHOLDER_PASSWORD_KEEP_CURRENT: &str = "Password (leave empty to keep current)";
-const LABEL_ADMIN: &str = "admin";
-const LABEL_ENABLED: &str = "enabled";
-const LABEL_PERMISSIONS: &str = "Permissions:";
-const BUTTON_CREATE: &str = "Create";
-const BUTTON_EDIT: &str = "Edit";
-const BUTTON_UPDATE: &str = "Update";
 
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
@@ -44,7 +30,7 @@ pub fn users_view<'a>(
 ) -> Element<'a, Message> {
     // Show Add User form
     if show_add_user {
-        let create_title = shaped_text(TITLE_USER_CREATE)
+        let create_title = shaped_text(t("title-user-create"))
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center);
@@ -59,7 +45,7 @@ pub fn users_view<'a>(
             Message::AdminUsernameChanged(String::new())
         };
 
-        let username_input = text_input(PLACEHOLDER_USERNAME, &user_management.username)
+        let username_input = text_input(&t("placeholder-username"), &user_management.username)
             .on_input(Message::AdminUsernameChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::AdminUsername))
@@ -67,7 +53,7 @@ pub fn users_view<'a>(
             .size(TEXT_SIZE)
             .style(primary_text_input_style());
 
-        let password_input = text_input(PLACEHOLDER_PASSWORD, &user_management.password)
+        let password_input = text_input(&t("placeholder-password"), &user_management.password)
             .on_input(Message::AdminPasswordChanged)
             .on_submit(submit_action)
             .id(text_input::Id::from(InputId::AdminPassword))
@@ -77,28 +63,34 @@ pub fn users_view<'a>(
             .style(primary_text_input_style());
 
         let admin_checkbox = if conn.is_admin {
-            checkbox(LABEL_ADMIN, user_management.is_admin)
-                .on_toggle(Message::AdminIsAdminToggled)
-                .size(TEXT_SIZE)
-                .style(primary_checkbox_style())
+            styled_checkbox(
+                t("label-admin"),
+                user_management.is_admin,
+                Some(Message::AdminIsAdminToggled),
+            )
         } else {
-            checkbox(LABEL_ADMIN, user_management.is_admin)
-                .size(TEXT_SIZE)
-                .style(primary_checkbox_style())
+            styled_checkbox(
+                t("label-admin"),
+                user_management.is_admin,
+                None::<fn(bool) -> Message>,
+            )
         };
 
         let enabled_checkbox = if conn.is_admin {
-            checkbox(LABEL_ENABLED, user_management.enabled)
-                .on_toggle(Message::AdminEnabledToggled)
-                .size(TEXT_SIZE)
-                .style(primary_checkbox_style())
+            styled_checkbox(
+                t("label-enabled"),
+                user_management.enabled,
+                Some(Message::AdminEnabledToggled),
+            )
         } else {
-            checkbox(LABEL_ENABLED, user_management.enabled)
-                .size(TEXT_SIZE)
-                .style(primary_checkbox_style())
+            styled_checkbox(
+                t("label-enabled"),
+                user_management.enabled,
+                None::<fn(bool) -> Message>,
+            )
         };
 
-        let permissions_title = shaped_text(LABEL_PERMISSIONS).size(TEXT_SIZE);
+        let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
 
         // Split permissions into two columns
         let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
@@ -106,20 +98,19 @@ pub fn users_view<'a>(
 
         for (index, (permission, enabled)) in user_management.permissions.iter().enumerate() {
             let perm_name = permission.clone();
-            let display_name = permission.replace('_', " ");
+            let display_name = translate_permission(permission);
             let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission) {
                 // Can toggle permissions they have
-                checkbox(&display_name, *enabled)
-                    .on_toggle(move |checked| {
+                styled_checkbox(
+                    display_name,
+                    *enabled,
+                    Some(move |checked| {
                         Message::AdminPermissionToggled(perm_name.clone(), checked)
-                    })
-                    .size(TEXT_SIZE)
-                    .style(primary_checkbox_style())
+                    }),
+                )
             } else {
                 // Cannot toggle permissions they don't have
-                checkbox(&display_name, *enabled)
-                    .size(TEXT_SIZE)
-                    .style(primary_checkbox_style())
+                styled_checkbox(display_name, *enabled, None::<fn(bool) -> Message>)
             };
 
             // Alternate between left and right columns
@@ -135,17 +126,17 @@ pub fn users_view<'a>(
             .width(Fill);
 
         let create_button = if can_create {
-            button(shaped_text(BUTTON_CREATE).size(TEXT_SIZE))
+            button(shaped_text(t("button-create")).size(TEXT_SIZE))
                 .on_press(Message::CreateUserPressed)
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         } else {
-            button(shaped_text(BUTTON_CREATE).size(TEXT_SIZE))
+            button(shaped_text(t("button-create")).size(TEXT_SIZE))
                 .padding(BUTTON_PADDING)
                 .style(primary_button_style())
         };
 
-        let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
+        let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::ToggleAddUser)
             .padding(BUTTON_PADDING)
             .style(primary_button_style());
@@ -183,7 +174,7 @@ pub fn users_view<'a>(
             }
             UserEditState::SelectingUser { username } => {
                 // Stage 1: Simple form to select which user to edit
-                let edit_title = shaped_text(TITLE_USER_EDIT)
+                let edit_title = shaped_text(t("title-user-edit"))
                     .size(TITLE_SIZE)
                     .width(Fill)
                     .align_x(Center);
@@ -200,7 +191,7 @@ pub fn users_view<'a>(
                     Message::EditUsernameChanged(String::new())
                 };
 
-                let username_input = text_input(PLACEHOLDER_USERNAME, username)
+                let username_input = text_input(&t("placeholder-username"), username)
                     .on_input(Message::EditUsernameChanged)
                     .on_submit(submit_action)
                     .id(text_input::Id::from(InputId::EditUsername))
@@ -209,28 +200,28 @@ pub fn users_view<'a>(
                     .style(primary_text_input_style());
 
                 let edit_button = if can_edit {
-                    button(shaped_text(BUTTON_EDIT).size(TEXT_SIZE))
+                    button(shaped_text(t("button-edit")).size(TEXT_SIZE))
                         .on_press(Message::EditUserPressed)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(shaped_text(BUTTON_EDIT).size(TEXT_SIZE))
+                    button(shaped_text(t("button-edit")).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
                 let delete_button = if can_delete {
-                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-delete")).size(TEXT_SIZE))
                         .on_press(Message::DeleteUserPressed(username.to_string()))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(shaped_text(BUTTON_DELETE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-delete")).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
-                let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
+                let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());
@@ -261,7 +252,7 @@ pub fn users_view<'a>(
                 permissions,
             } => {
                 // Stage 2: Full edit form with current values
-                let update_title = shaped_text(TITLE_UPDATE_USER)
+                let update_title = shaped_text(t("title-update-user"))
                     .size(TITLE_SIZE)
                     .width(Fill)
                     .align_x(Center);
@@ -275,7 +266,7 @@ pub fn users_view<'a>(
                     Message::EditNewUsernameChanged(String::new())
                 };
 
-                let username_input = text_input(PLACEHOLDER_USERNAME, new_username)
+                let username_input = text_input(&t("placeholder-username"), new_username)
                     .on_input(Message::EditNewUsernameChanged)
                     .on_submit(submit_action.clone())
                     .id(text_input::Id::from(InputId::EditNewUsername))
@@ -283,38 +274,37 @@ pub fn users_view<'a>(
                     .size(TEXT_SIZE)
                     .style(primary_text_input_style());
 
-                let password_input = text_input(PLACEHOLDER_PASSWORD_KEEP_CURRENT, new_password)
-                    .on_input(Message::EditNewPasswordChanged)
-                    .on_submit(submit_action)
-                    .id(text_input::Id::from(InputId::EditNewPassword))
-                    .secure(true)
-                    .padding(INPUT_PADDING)
-                    .size(TEXT_SIZE)
-                    .style(primary_text_input_style());
+                let password_input =
+                    text_input(&t("placeholder-password-keep-current"), new_password)
+                        .on_input(Message::EditNewPasswordChanged)
+                        .on_submit(submit_action)
+                        .id(text_input::Id::from(InputId::EditNewPassword))
+                        .secure(true)
+                        .padding(INPUT_PADDING)
+                        .size(TEXT_SIZE)
+                        .style(primary_text_input_style());
 
                 let admin_checkbox = if conn.is_admin {
-                    checkbox(LABEL_ADMIN, *is_admin)
-                        .on_toggle(Message::EditIsAdminToggled)
-                        .size(TEXT_SIZE)
-                        .style(primary_checkbox_style())
+                    styled_checkbox(
+                        t("label-admin"),
+                        *is_admin,
+                        Some(Message::EditIsAdminToggled),
+                    )
                 } else {
-                    checkbox(LABEL_ADMIN, *is_admin)
-                        .size(TEXT_SIZE)
-                        .style(primary_checkbox_style())
+                    styled_checkbox(t("label-admin"), *is_admin, None::<fn(bool) -> Message>)
                 };
 
                 let enabled_checkbox = if conn.is_admin {
-                    checkbox(LABEL_ENABLED, *enabled)
-                        .on_toggle(Message::EditEnabledToggled)
-                        .size(TEXT_SIZE)
-                        .style(primary_checkbox_style())
+                    styled_checkbox(
+                        t("label-enabled"),
+                        *enabled,
+                        Some(Message::EditEnabledToggled),
+                    )
                 } else {
-                    checkbox(LABEL_ENABLED, *enabled)
-                        .size(TEXT_SIZE)
-                        .style(primary_checkbox_style())
+                    styled_checkbox(t("label-enabled"), *enabled, None::<fn(bool) -> Message>)
                 };
 
-                let permissions_title = shaped_text(LABEL_PERMISSIONS).size(TEXT_SIZE);
+                let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
 
                 // Split permissions into two columns
                 let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
@@ -322,21 +312,20 @@ pub fn users_view<'a>(
 
                 for (index, (permission, enabled)) in permissions.iter().enumerate() {
                     let perm_name = permission.clone();
-                    let display_name = permission.replace('_', " ");
+                    let display_name = translate_permission(permission);
                     let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission)
                     {
                         // Can toggle permissions they have
-                        checkbox(&display_name, *enabled)
-                            .on_toggle(move |checked| {
+                        styled_checkbox(
+                            display_name,
+                            *enabled,
+                            Some(move |checked| {
                                 Message::EditPermissionToggled(perm_name.clone(), checked)
-                            })
-                            .size(TEXT_SIZE)
-                            .style(primary_checkbox_style())
+                            }),
+                        )
                     } else {
                         // Cannot toggle permissions they don't have
-                        checkbox(&display_name, *enabled)
-                            .size(TEXT_SIZE)
-                            .style(primary_checkbox_style())
+                        styled_checkbox(display_name, *enabled, None::<fn(bool) -> Message>)
                     };
 
                     // Alternate between left and right columns
@@ -352,17 +341,17 @@ pub fn users_view<'a>(
                     .width(Fill);
 
                 let update_button = if can_update {
-                    button(shaped_text(BUTTON_UPDATE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-update")).size(TEXT_SIZE))
                         .on_press(Message::UpdateUserPressed)
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 } else {
-                    button(shaped_text(BUTTON_UPDATE).size(TEXT_SIZE))
+                    button(shaped_text(t("button-update")).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
                         .style(primary_button_style())
                 };
 
-                let cancel_button = button(shaped_text(BUTTON_CANCEL).size(TEXT_SIZE))
+                let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
                     .on_press(Message::CancelEditUser)
                     .padding(BUTTON_PADDING)
                     .style(primary_button_style());

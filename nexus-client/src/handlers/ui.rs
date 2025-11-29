@@ -1,6 +1,7 @@
 //! UI panel toggles
 
 use crate::NexusApp;
+use crate::i18n::{t, t_args};
 use crate::types::{InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
@@ -88,7 +89,10 @@ impl NexusApp {
 
         // Save config to persist theme preference
         if let Err(e) = self.config.save() {
-            eprintln!("Failed to save theme preference: {}", e);
+            self.connection_form.error = Some(t_args(
+                "err-failed-save-theme",
+                &[("error", &e.to_string())],
+            ));
         }
         Task::none()
     }
@@ -125,8 +129,7 @@ impl NexusApp {
         // If no more mismatches in queue, close the dialog
         if self.fingerprint_mismatch_queue.is_empty() {
             self.ui_state.show_fingerprint_mismatch = false;
-            self.connection_form.error =
-                Some("Connection cancelled due to certificate mismatch".to_string());
+            self.connection_form.error = Some(t("msg-connection-cancelled"));
         }
         // Otherwise, dialog stays open showing next mismatch
 

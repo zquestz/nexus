@@ -1,5 +1,7 @@
 //! Connection and chat message handlers
 
+use crate::handlers::network::msg_username_error;
+use crate::i18n::t;
 use crate::types::{ChatMessage, ChatTab, DEFAULT_LOCALE, InputId, Message, ScrollableId};
 use crate::views::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
@@ -12,11 +14,6 @@ use nexus_common::protocol::ClientMessage;
 
 // Constants
 const MAX_CHAT_LENGTH: usize = 1024;
-
-// Error messages
-const ERR_PORT_INVALID: &str = "Port must be a valid number (1-65535)";
-const ERR_MESSAGE_TOO_LONG: &str = "Chat message too long";
-const ERR_SEND_FAILED: &str = "Failed to send message";
 
 impl NexusApp {
     /// Handle server name field change
@@ -72,7 +69,7 @@ impl NexusApp {
         let port: u16 = match self.connection_form.port.parse() {
             Ok(p) => p,
             Err(_) => {
-                self.connection_form.error = Some(ERR_PORT_INVALID.to_string());
+                self.connection_form.error = Some(t("err-port-invalid"));
                 return Task::none();
             }
         };
@@ -133,7 +130,7 @@ impl NexusApp {
             if message.len() > MAX_CHAT_LENGTH {
                 let error_msg = format!(
                     "{} ({} characters, max {})",
-                    ERR_MESSAGE_TOO_LONG,
+                    t("err-message-too-long"),
                     message.len(),
                     MAX_CHAT_LENGTH
                 );
@@ -153,7 +150,7 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_error(conn_id, error_msg);
             }
 
@@ -233,7 +230,7 @@ impl NexusApp {
         self.add_chat_message(
             connection_id,
             ChatMessage {
-                username: "Error".to_string(),
+                username: msg_username_error(),
                 message,
                 timestamp: Local::now(),
             },

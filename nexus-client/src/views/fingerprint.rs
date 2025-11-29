@@ -1,17 +1,10 @@
 //! Certificate fingerprint mismatch dialog view
 
-use super::constants::BUTTON_CANCEL;
 use super::style::{MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text};
+use crate::i18n::t;
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::{Space, button, column, container, row};
 use iced::{Element, Length};
-
-// UI text constants
-const TITLE_FINGERPRINT_MISMATCH: &str = "Certificate Fingerprint Mismatch!";
-const WARNING_TEXT: &str = "This could indicate a security issue (MITM attack) or the server's certificate was regenerated. Only accept if you trust the server administrator.";
-const LABEL_EXPECTED_FINGERPRINT: &str = "Expected fingerprint:";
-const LABEL_RECEIVED_FINGERPRINT: &str = "Received fingerprint:";
-const BUTTON_ACCEPT_NEW_CERTIFICATE: &str = "Accept New Certificate";
 
 // Size constants
 const TITLE_SIZE: u16 = 20;
@@ -36,7 +29,7 @@ fn format_fingerprint_multiline(fingerprint: &str) -> String {
 
 /// Create the fingerprint mismatch warning dialog
 pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Element<'a, Message> {
-    let title = shaped_text(TITLE_FINGERPRINT_MISMATCH)
+    let title = shaped_text(t("title-fingerprint-mismatch"))
         .size(TITLE_SIZE)
         .width(Length::Fill)
         .center();
@@ -47,20 +40,20 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     ))
     .size(TEXT_SIZE);
 
-    let warning = shaped_text(WARNING_TEXT).size(TEXT_SIZE);
+    let warning = shaped_text(t("fingerprint-warning")).size(TEXT_SIZE);
 
-    let expected_label = shaped_text(LABEL_EXPECTED_FINGERPRINT).size(TEXT_SIZE);
+    let expected_label = shaped_text(t("label-expected-fingerprint")).size(TEXT_SIZE);
     let expected_value = shaped_text(format_fingerprint_multiline(&mismatch.expected))
         .size(TEXT_SIZE)
         .font(MONOSPACE_FONT);
 
-    let received_label = shaped_text(LABEL_RECEIVED_FINGERPRINT).size(TEXT_SIZE);
+    let received_label = shaped_text(t("label-received-fingerprint")).size(TEXT_SIZE);
     let received_value = shaped_text(format_fingerprint_multiline(&mismatch.received))
         .size(TEXT_SIZE)
         .font(MONOSPACE_FONT);
 
     let accept_button = button(
-        shaped_text(BUTTON_ACCEPT_NEW_CERTIFICATE)
+        shaped_text(t("button-accept-new-certificate"))
             .size(TEXT_SIZE)
             .width(Length::Fill)
             .center(),
@@ -70,7 +63,7 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     .style(primary_button_style());
 
     let cancel_button = button(
-        shaped_text(BUTTON_CANCEL)
+        shaped_text(t("button-cancel"))
             .size(TEXT_SIZE)
             .width(Length::Fill)
             .center(),

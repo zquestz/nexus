@@ -11,6 +11,7 @@ use super::style::{
     shaped_text, toolbar_background, toolbar_icon_color, toolbar_icon_disabled_color,
     tooltip_border, tooltip_text_color,
 };
+use crate::i18n::t;
 use crate::icon;
 use crate::types::{
     BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState, ViewConfig,
@@ -32,19 +33,6 @@ use super::{
 fn hidden_panel<'a>() -> Element<'a, Message> {
     container(shaped_text("")).width(0).into()
 }
-
-// UI text constants
-const TITLE_NEXUS_BBS: &str = "Nexus BBS";
-const TOOLTIP_CHAT: &str = "Chat";
-const TOOLTIP_BROADCAST: &str = "Broadcast";
-const TOOLTIP_USER_CREATE: &str = "User Create";
-const TOOLTIP_USER_EDIT: &str = "User Edit";
-const TOOLTIP_TOGGLE_THEME: &str = "Toggle Theme";
-const TOOLTIP_HIDE_BOOKMARKS: &str = "Hide Bookmarks";
-const TOOLTIP_SHOW_BOOKMARKS: &str = "Show Bookmarks";
-const TOOLTIP_HIDE_USER_LIST: &str = "Hide User List";
-const TOOLTIP_SHOW_USER_LIST: &str = "Show User List";
-const EMPTY_SELECT_SERVER: &str = "Select a server from the list";
 
 /// Main application layout with toolbar and three-panel layout
 ///
@@ -168,7 +156,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
     let toolbar = container(
         row![
             // Title
-            shaped_text(TITLE_NEXUS_BBS).size(TOOLBAR_TITLE_SIZE),
+            shaped_text(t("title-nexus-bbs")).size(TOOLBAR_TITLE_SIZE),
             // Main icon group (Chat, Broadcast, User Create, User Edit)
             row![
                 // Chat button - always visible when connected
@@ -203,7 +191,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                     }
                                 }
                             }),
-                        container(shaped_text(TOOLTIP_CHAT).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -225,7 +213,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                 shadow: iced::Shadow::default(),
                             }
                         }),
-                        container(shaped_text(TOOLTIP_CHAT).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -267,7 +255,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                     }
                                 }
                             }),
-                        container(shaped_text(TOOLTIP_BROADCAST).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -289,7 +277,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                 shadow: iced::Shadow::default(),
                             },
                         ),
-                        container(shaped_text(TOOLTIP_BROADCAST).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -331,7 +319,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                     }
                                 }
                             }),
-                        container(shaped_text(TOOLTIP_USER_CREATE).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -353,7 +341,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                 shadow: iced::Shadow::default(),
                             },
                         ),
-                        container(shaped_text(TOOLTIP_USER_CREATE).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -395,7 +383,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                     }
                                 }
                             }),
-                        container(shaped_text(TOOLTIP_USER_EDIT).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -417,7 +405,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                                 shadow: iced::Shadow::default(),
                             }
                         }),
-                        container(shaped_text(TOOLTIP_USER_EDIT).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -449,7 +437,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             border: Border::default(),
                             shadow: iced::Shadow::default(),
                         }),
-                    container(shaped_text(TOOLTIP_TOGGLE_THEME).size(TOOLTIP_TEXT_SIZE))
+                    container(shaped_text(t("tooltip-toggle-theme")).size(TOOLTIP_TEXT_SIZE))
                         .padding(TOOLTIP_BACKGROUND_PADDING)
                         .style(|theme| container::Style {
                             background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -483,9 +471,9 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     }),
                     container(
                         shaped_text(if state.show_bookmarks {
-                            TOOLTIP_HIDE_BOOKMARKS
+                            t("tooltip-hide-bookmarks")
                         } else {
-                            TOOLTIP_SHOW_BOOKMARKS
+                            t("tooltip-show-bookmarks")
                         })
                         .size(TOOLTIP_TEXT_SIZE)
                     )
@@ -523,9 +511,9 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         }),
                         container(
                             shaped_text(if state.show_user_list {
-                                TOOLTIP_HIDE_USER_LIST
+                                t("tooltip-hide-user-list")
                             } else {
-                                TOOLTIP_SHOW_USER_LIST
+                                t("tooltip-show-user-list")
                             })
                             .size(TOOLTIP_TEXT_SIZE),
                         )
@@ -556,7 +544,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             border: Border::default(),
                             shadow: iced::Shadow::default(),
                         }),
-                        container(shaped_text(TOOLTIP_USER_EDIT).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(|theme| container::Style {
                                 background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -614,7 +602,7 @@ fn server_content_view<'a>(
 /// Displays a centered message prompting the user to select a server.
 fn empty_content_view<'a>() -> Element<'a, Message> {
     container(
-        shaped_text(EMPTY_SELECT_SERVER)
+        shaped_text(t("empty-select-server"))
             .size(EMPTY_VIEW_SIZE)
             .style(|theme| iced::widget::text::Style {
                 color: Some(empty_view_text_color(theme)),

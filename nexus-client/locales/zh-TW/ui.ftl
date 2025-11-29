@@ -1,0 +1,243 @@
+# Nexus BBS Client - Traditional Chinese Translations
+
+# =============================================================================
+# Buttons
+# =============================================================================
+
+button-cancel = 取消
+button-send = 傳送
+button-delete = 刪除
+button-connect = 連線
+button-save = 儲存
+button-create = 建立
+button-edit = 編輯
+button-update = 更新
+button-add-bookmark = 新增書籤
+button-accept-new-certificate = 接受新憑證
+
+# =============================================================================
+# Titles
+# =============================================================================
+
+title-nexus-bbs = Nexus BBS
+title-connect-to-server = 連線至伺服器
+title-add-server = 新增伺服器
+title-edit-server = 編輯伺服器
+title-broadcast-message = 廣播訊息
+title-user-create = 建立使用者
+title-user-edit = 編輯使用者
+title-update-user = 更新使用者
+title-connected = 已連線
+title-bookmarks = 書籤
+title-users = 使用者
+title-fingerprint-mismatch = 憑證指紋不符！
+
+# =============================================================================
+# Placeholders
+# =============================================================================
+
+placeholder-username = 使用者名稱
+placeholder-password = 密碼
+placeholder-port = 連接埠
+placeholder-server-name-optional = 伺服器名稱（選填）
+placeholder-server-address = 伺服器IPv6位址
+placeholder-server-name = 伺服器名稱
+placeholder-ipv6-address = IPv6位址
+placeholder-username-optional = 使用者名稱（選填）
+placeholder-password-optional = 密碼（選填）
+placeholder-password-keep-current = 密碼（留空保持目前密碼）
+placeholder-message = 輸入訊息...
+placeholder-no-permission = 無權限
+placeholder-broadcast-message = 輸入廣播訊息...
+
+# =============================================================================
+# Labels
+# =============================================================================
+
+label-auto-connect = 啟動時自動連線
+label-admin = 管理員
+label-enabled = 已啟用
+label-permissions = 權限：
+label-expected-fingerprint = 預期指紋：
+label-received-fingerprint = 收到的指紋：
+
+# =============================================================================
+# Permission Display Names
+# =============================================================================
+
+permission-user_list = 使用者清單
+permission-user_info = 使用者資訊
+permission-chat_send = 傳送聊天
+permission-chat_receive = 接收聊天
+permission-chat_topic = 聊天主題
+permission-chat_topic_edit = 編輯聊天主題
+permission-user_broadcast = 使用者廣播
+permission-user_create = 建立使用者
+permission-user_delete = 刪除使用者
+permission-user_edit = 編輯使用者
+permission-user_kick = 踢除使用者
+permission-user_message = 使用者訊息
+
+# =============================================================================
+# Tooltips
+# =============================================================================
+
+tooltip-chat = 聊天
+tooltip-broadcast = 廣播
+tooltip-user-create = 建立使用者
+tooltip-user-edit = 編輯使用者
+tooltip-toggle-theme = 切換主題
+tooltip-hide-bookmarks = 隱藏書籤
+tooltip-show-bookmarks = 顯示書籤
+tooltip-hide-user-list = 隱藏使用者清單
+tooltip-show-user-list = 顯示使用者清單
+tooltip-disconnect = 中斷連線
+tooltip-edit = 編輯
+tooltip-info = 資訊
+tooltip-message = 訊息
+tooltip-kick = 踢除
+tooltip-close = 關閉
+
+# =============================================================================
+# Empty States
+# =============================================================================
+
+empty-select-server = 從清單中選擇伺服器
+empty-no-connections = 無連線
+empty-no-bookmarks = 無書籤
+empty-no-users = 無線上使用者
+
+# =============================================================================
+# Chat Tab Labels
+# =============================================================================
+
+chat-tab-server = #伺服器
+
+# =============================================================================
+# System Message Usernames
+# =============================================================================
+
+msg-username-system = 系統
+msg-username-error = 錯誤
+msg-username-info = 資訊
+msg-username-broadcast-prefix = [廣播]
+
+# =============================================================================
+# Success Messages
+# =============================================================================
+
+msg-user-kicked-success = 使用者已成功踢除
+msg-broadcast-sent = 廣播已成功傳送
+msg-user-created = 使用者已成功建立
+msg-user-deleted = 使用者已成功刪除
+msg-user-updated = 使用者已成功更新
+msg-permissions-updated = 您的權限已更新
+msg-topic-updated = 主題已成功更新
+
+# =============================================================================
+# Dynamic Messages (with parameters)
+# =============================================================================
+
+msg-topic-cleared = { $username } 清除了主題
+msg-topic-set = { $username } 設定了主題：{ $topic }
+msg-topic-display = 主題：{ $topic }
+msg-user-connected = { $username } 已連線
+msg-user-disconnected = { $username } 已中斷連線
+msg-disconnected = 已中斷連線：{ $error }
+msg-connection-cancelled = 由於憑證不符，連線已取消
+
+# =============================================================================
+# Error Messages
+# =============================================================================
+
+err-connection-broken = 連線錯誤
+err-user-kick-failed = 踢除使用者失敗
+err-no-shutdown-handle = 連線錯誤：無關閉控制代碼
+err-userlist-failed = 重新整理使用者清單失敗
+err-port-invalid = 連接埠必須是有效數字（1-65535）
+
+# Network connection errors
+err-no-peer-certificates = 未找到伺服器憑證
+err-no-certificates-in-chain = 憑證鏈中沒有憑證
+err-unexpected-handshake-response = 意外的握手回應
+err-no-session-id = 未收到工作階段ID
+err-login-failed = 登入失敗
+err-unexpected-login-response = 意外的登入回應
+err-connection-closed = 連線已關閉
+err-could-not-determine-config-dir = 無法確定設定目錄
+err-message-too-long = 訊息過長
+err-send-failed = 傳送訊息失敗
+err-broadcast-too-long = 廣播訊息過長
+err-broadcast-send-failed = 傳送廣播失敗
+err-name-required = 書籤名稱為必填
+err-address-required = 伺服器位址為必填
+err-port-required = 連接埠為必填
+
+# =============================================================================
+# Dynamic Error Messages (with parameters)
+# =============================================================================
+
+err-failed-save-config = 儲存設定失敗：{ $error }
+err-failed-save-theme = 儲存主題偏好失敗：{ $error }
+err-bookmark-connection-failed = 書籤連線失敗：{ $error }
+err-invalid-port-bookmark = 書籤中的連接埠無效：{ $name }
+err-failed-send-broadcast = 傳送廣播失敗：{ $error }
+err-failed-send-message = 傳送訊息失敗：{ $error }
+err-failed-create-user = 建立使用者失敗：{ $error }
+err-failed-delete-user = 刪除使用者失敗：{ $error }
+err-failed-update-user = 更新使用者失敗：{ $error }
+err-failed-update-topic = 更新主題失敗：{ $error }
+err-message-too-long-details = { $error }（{ $length }字元，最大{ $max }）
+
+# Network connection errors (with parameters)
+err-invalid-address = 無效位址 '{ $address }'：{ $error }
+err-could-not-resolve = 無法解析位址 '{ $address }'
+err-connection-timeout = 連線在 { $seconds } 秒後逾時
+err-connection-failed = 連線失敗：{ $error }
+err-tls-handshake-failed = TLS握手失敗：{ $error }
+err-failed-send-handshake = 傳送握手失敗：{ $error }
+err-failed-read-handshake = 讀取握手回應失敗：{ $error }
+err-handshake-failed = 握手失敗：{ $error }
+err-failed-parse-handshake = 解析握手回應失敗：{ $error }
+err-failed-send-login = 傳送登入失敗：{ $error }
+err-failed-read-login = 讀取登入回應失敗：{ $error }
+err-failed-parse-login = 解析登入回應失敗：{ $error }
+err-failed-create-server-name = 建立伺服器名稱失敗：{ $error }
+err-failed-create-config-dir = 建立設定目錄失敗：{ $error }
+err-failed-serialize-config = 序列化設定失敗：{ $error }
+err-failed-write-config = 寫入設定檔失敗：{ $error }
+err-failed-read-config-metadata = 讀取設定檔中繼資料失敗：{ $error }
+err-failed-set-config-permissions = 設定設定檔權限失敗：{ $error }
+
+# =============================================================================
+# Fingerprint Warning
+# =============================================================================
+
+fingerprint-warning = 這可能表示存在安全問題（中間人攻擊）或伺服器憑證已重新產生。僅在信任伺服器管理員時才接受。
+
+# =============================================================================
+# User Info Display
+# =============================================================================
+
+user-info-header = [{ $username }]
+user-info-is-admin = 是管理員
+user-info-connected-ago = 已連線：{ $duration }前
+user-info-connected-sessions = 已連線：{ $duration }前（{ $count }個工作階段）
+user-info-features = 功能：{ $features }
+user-info-locale = 語言：{ $locale }
+user-info-address = 位址：{ $address }
+user-info-addresses = 位址：
+user-info-address-item = - { $address }
+user-info-created = 建立時間：{ $created }
+user-info-end = 使用者資訊結束
+user-info-unknown = 未知
+user-info-error = 錯誤：{ $error }
+
+# =============================================================================
+# Time Duration
+# =============================================================================
+
+time-days = { $count }天
+time-hours = { $count }小時
+time-minutes = { $count }分鐘
+time-seconds = { $count }秒

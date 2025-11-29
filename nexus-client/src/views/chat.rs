@@ -1,6 +1,6 @@
 //! Chat interface for active server connections
 
-use super::constants::{BUTTON_SEND, PERMISSION_CHAT_SEND};
+use super::constants::PERMISSION_CHAT_SEND;
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, MONOSPACE_FONT,
     SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING,
@@ -10,16 +10,12 @@ use super::style::{
     shaped_text, sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
 };
 use crate::handlers::network::{
-    MSG_USERNAME_BROADCAST_PREFIX, MSG_USERNAME_ERROR, MSG_USERNAME_INFO, MSG_USERNAME_SYSTEM,
+    msg_username_broadcast_prefix, msg_username_error, msg_username_info, msg_username_system,
 };
+use crate::i18n::t;
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, text_input, tooltip};
 use iced::{Background, Element, Fill};
-
-// UI text constants
-const PLACEHOLDER_MESSAGE: &str = "Type a message...";
-const PLACEHOLDER_NO_PERMISSION: &str = "No permission";
-const TOOLTIP_CLOSE_TAB: &str = "Close";
 
 /// Create a tab button with appropriate styling and unread indicator
 fn create_tab_button(
@@ -46,7 +42,7 @@ fn create_tab_button(
                         shadow: iced::Shadow::default(),
                     }),
                 container(
-                    shaped_text(format!("{} {}", TOOLTIP_CLOSE_TAB, username))
+                    shaped_text(format!("{} {}", t("tooltip-close"), username))
                         .size(TOOLTIP_TEXT_SIZE),
                 )
                 .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -113,7 +109,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     let server_has_unread = conn.unread_tabs.contains(&ChatTab::Server);
     let server_tab_button = create_tab_button(
         ChatTab::Server,
-        "#server".to_string(),
+        t("chat-tab-server"),
         is_server_active,
         server_has_unread,
     );
@@ -159,26 +155,26 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
         for line in msg.message.split('\n') {
-            let display = if msg.username == MSG_USERNAME_SYSTEM {
+            let display = if msg.username == msg_username_system() {
                 shaped_text(format!("[{}] [SYS] {}", time_str, line))
                     .size(CHAT_MESSAGE_SIZE)
                     .style(|theme| iced::widget::text::Style {
                         color: Some(system_text_color(theme)),
                     })
                     .font(MONOSPACE_FONT)
-            } else if msg.username == MSG_USERNAME_ERROR {
+            } else if msg.username == msg_username_error() {
                 shaped_text(format!("[{}] [ERR] {}", time_str, line))
                     .size(CHAT_MESSAGE_SIZE)
                     .color(error_message_color())
                     .font(MONOSPACE_FONT)
-            } else if msg.username == MSG_USERNAME_INFO {
+            } else if msg.username == msg_username_info() {
                 shaped_text(format!("[{}] [INFO] {}", time_str, line))
                     .size(CHAT_MESSAGE_SIZE)
                     .style(|theme| iced::widget::text::Style {
                         color: Some(info_text_color(theme)),
                     })
                     .font(MONOSPACE_FONT)
-            } else if msg.username.starts_with(MSG_USERNAME_BROADCAST_PREFIX) {
+            } else if msg.username.starts_with(&msg_username_broadcast_prefix()) {
                 shaped_text(format!("[{}] {}: {}", time_str, msg.username, line))
                     .size(CHAT_MESSAGE_SIZE)
                     .style(|theme| iced::widget::text::Style {
@@ -204,7 +200,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         .style(primary_scrollbar_style());
 
     // Message input placeholder based on active tab
-    let placeholder = PLACEHOLDER_MESSAGE;
+    let placeholder = t("placeholder-message");
 
     // Can send if: (Server tab + chat_send) OR (PM tab + user_message)
     let can_send_message = match &conn.active_chat_tab {
@@ -217,7 +213,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     // Message input
     let input_row = row![
         if can_send_message {
-            text_input(placeholder, message_input)
+            text_input(&placeholder, message_input)
                 .on_input(Message::ChatInputChanged)
                 .on_submit(Message::SendMessagePressed)
                 .id(text_input::Id::from(InputId::ChatInput))
@@ -227,7 +223,7 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .style(primary_text_input_style())
                 .width(Fill)
         } else {
-            text_input(PLACEHOLDER_NO_PERMISSION, message_input)
+            text_input(&t("placeholder-no-permission"), message_input)
                 .id(text_input::Id::from(InputId::ChatInput))
                 .padding(INPUT_PADDING)
                 .size(CHAT_INPUT_SIZE)
@@ -236,12 +232,12 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
                 .width(Fill)
         },
         if can_send_message {
-            button(shaped_text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
+            button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::SendMessagePressed)
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         } else {
-            button(shaped_text(BUTTON_SEND).size(CHAT_MESSAGE_SIZE))
+            button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
                 .padding(INPUT_PADDING)
                 .style(primary_button_style())
         },

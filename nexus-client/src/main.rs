@@ -4,6 +4,7 @@ mod autostart;
 mod config;
 mod fonts;
 mod handlers;
+mod i18n;
 mod icon;
 mod network;
 mod types;
@@ -31,8 +32,11 @@ const MIN_WINDOW_WIDTH: f32 = 800.0;
 /// Minimum window height
 const MIN_WINDOW_HEIGHT: f32 = 500.0;
 
+/// Window title (static, not localized - Iced requires &'static str or closure)
+const WINDOW_TITLE: &str = "Nexus BBS";
+
 pub fn main() -> iced::Result {
-    iced::application("Nexus BBS", NexusApp::update, NexusApp::view)
+    iced::application(WINDOW_TITLE, NexusApp::update, NexusApp::view)
         .theme(NexusApp::theme)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {

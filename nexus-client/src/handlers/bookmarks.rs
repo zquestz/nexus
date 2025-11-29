@@ -1,15 +1,10 @@
 //! Bookmark management
 
 use crate::NexusApp;
+use crate::i18n::{t, t_args};
 use crate::types::{BookmarkEditMode, BookmarkEditState, DEFAULT_LOCALE, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
-
-// Error message constants
-const ERR_NAME_REQUIRED: &str = "Bookmark name is required";
-const ERR_ADDRESS_REQUIRED: &str = "Server address is required";
-const ERR_PORT_REQUIRED: &str = "Port is required";
-const ERR_PORT_INVALID: &str = "Port must be a valid number (1-65535)";
 
 impl NexusApp {
     /// Handle bookmark name field change
@@ -80,8 +75,10 @@ impl NexusApp {
                 Err(_) => {
                     // Clear the connecting lock on validation failure
                     self.connecting_bookmarks.remove(&index);
-                    self.connection_form.error =
-                        Some(format!("Invalid port in bookmark: {}", bookmark.name));
+                    self.connection_form.error = Some(t_args(
+                        "err-invalid-port-bookmark",
+                        &[("name", &bookmark.name)],
+                    ));
                     return Task::none();
                 }
             };
@@ -173,7 +170,10 @@ impl NexusApp {
         }
 
         if let Err(e) = self.config.save() {
-            self.bookmark_edit.error = Some(format!("Failed to save config: {}", e));
+            self.bookmark_edit.error = Some(t_args(
+                "err-failed-save-config",
+                &[("error", &e.to_string())],
+            ));
             return Task::none();
         }
 
@@ -185,7 +185,10 @@ impl NexusApp {
     pub fn handle_delete_bookmark(&mut self, index: usize) -> Task<Message> {
         self.config.delete_bookmark(index);
         if let Err(e) = self.config.save() {
-            self.connection_form.error = Some(format!("Failed to save config: {}", e));
+            self.connection_form.error = Some(t_args(
+                "err-failed-save-config",
+                &[("error", &e.to_string())],
+            ));
         }
         // Close the bookmark edit dialog if it's open
         self.bookmark_edit = BookmarkEditState::default();
@@ -195,16 +198,16 @@ impl NexusApp {
     /// Validate bookmark fields
     fn validate_bookmark(&self) -> Option<String> {
         if self.bookmark_edit.bookmark.name.trim().is_empty() {
-            return Some(ERR_NAME_REQUIRED.to_string());
+            return Some(t("err-name-required"));
         }
         if self.bookmark_edit.bookmark.address.trim().is_empty() {
-            return Some(ERR_ADDRESS_REQUIRED.to_string());
+            return Some(t("err-address-required"));
         }
         if self.bookmark_edit.bookmark.port.trim().is_empty() {
-            return Some(ERR_PORT_REQUIRED.to_string());
+            return Some(t("err-port-required"));
         }
         if self.bookmark_edit.bookmark.port.parse::<u16>().is_err() {
-            return Some(ERR_PORT_INVALID.to_string());
+            return Some(t("err-port-invalid"));
         }
         None
     }

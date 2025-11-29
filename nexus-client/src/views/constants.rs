@@ -1,29 +1,13 @@
-//! Shared UI constants used across multiple view files
-
-// === Common Button Labels ===
-
-/// "Cancel" button text - used in multiple dialogs
-pub(crate) const BUTTON_CANCEL: &str = "Cancel";
-
-/// "Send" button text - used in broadcast and chat
-pub(crate) const BUTTON_SEND: &str = "Send";
-
-/// "Delete" button text - used in bookmark and user management
-pub(crate) const BUTTON_DELETE: &str = "Delete";
-
-// === Common Input Placeholders ===
-
-/// "Username" placeholder - used in connection and user management forms
-pub(crate) const PLACEHOLDER_USERNAME: &str = "Username";
-
-/// "Password" placeholder - used in connection and user management forms
-pub(crate) const PLACEHOLDER_PASSWORD: &str = "Password";
-
-/// "Port" placeholder - used in connection and bookmark forms
-pub(crate) const PLACEHOLDER_PORT: &str = "Port";
+//! Shared constants used across multiple view files
+//!
+//! NOTE: UI text constants have been moved to locales/*.ftl for i18n support.
+//! Use `crate::i18n::t("key")` to get localized strings.
+//!
+//! This file contains only non-localizable constants like permission names
+//! that must match server-side values exactly.
 
 // === Permission String Constants ===
-// These must match the server-side permission names exactly
+// These must match the server-side permission names exactly (not translated)
 
 /// Permission to view the user list
 pub(crate) const PERMISSION_USER_LIST: &str = "user_list";

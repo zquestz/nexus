@@ -1,15 +1,13 @@
 //! User management
 
 use crate::NexusApp;
+use crate::handlers::network::msg_username_error;
+use crate::i18n::t;
 use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState};
 use chrono::Local;
 use iced::Task;
 use iced::widget::scrollable;
 use nexus_common::protocol::ClientMessage;
-
-// Constants
-const MSG_USERNAME_ERROR: &str = "Error";
-const ERR_SEND_FAILED: &str = "Failed to send command";
 
 impl NexusApp {
     /// Handle admin panel username field change
@@ -106,8 +104,10 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self
-                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                return self.add_user_management_error(
+                    conn_id,
+                    format!("{}: {}", t("err-send-failed"), e),
+                );
             }
 
             // Clear the form and close the panel
@@ -126,8 +126,10 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self
-                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                return self.add_user_management_error(
+                    conn_id,
+                    format!("{}: {}", t("err-send-failed"), e),
+                );
             }
             // Note: This is called from the Delete button in the User Edit form
             // The edit form will handle closing itself
@@ -237,8 +239,10 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self
-                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                return self.add_user_management_error(
+                    conn_id,
+                    format!("{}: {}", t("err-send-failed"), e),
+                );
             }
             // Stay on this screen, wait for server response
         }
@@ -296,8 +300,10 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                return self
-                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                return self.add_user_management_error(
+                    conn_id,
+                    format!("{}: {}", t("err-send-failed"), e),
+                );
             }
 
             // Clear the form and close the panel
@@ -327,7 +333,7 @@ impl NexusApp {
         self.add_chat_message(
             connection_id,
             ChatMessage {
-                username: MSG_USERNAME_ERROR.to_string(),
+                username: msg_username_error(),
                 message,
                 timestamp: Local::now(),
             },
@@ -366,8 +372,10 @@ impl NexusApp {
             };
 
             if let Err(e) = conn.tx.send(msg) {
-                return self
-                    .add_user_management_error(conn_id, format!("{}: {}", ERR_SEND_FAILED, e));
+                return self.add_user_management_error(
+                    conn_id,
+                    format!("{}: {}", t("err-send-failed"), e),
+                );
             }
         }
         Task::none()
@@ -383,11 +391,11 @@ impl NexusApp {
         {
             // Send UserKick request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserKick { username }) {
-                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(
                     conn_id,
                     ChatMessage {
-                        username: MSG_USERNAME_ERROR.to_string(),
+                        username: msg_username_error(),
                         message: error_msg,
                         timestamp: Local::now(),
                     },
@@ -428,11 +436,11 @@ impl NexusApp {
         {
             // Send UserInfo request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
-                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(
                     conn_id,
                     ChatMessage {
-                        username: MSG_USERNAME_ERROR.to_string(),
+                        username: msg_username_error(),
                         message: error_msg,
                         timestamp: Local::now(),
                     },

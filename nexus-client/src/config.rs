@@ -1,5 +1,6 @@
 //! Server bookmark configuration
 
+use crate::i18n::{t, t_args};
 use crate::types::ServerBookmark;
 use std::fs;
 #[cfg(unix)]
@@ -79,20 +80,22 @@ impl Config {
     /// On Unix systems, sets file permissions to 0o600 (owner read/write only)
     /// to protect saved passwords.
     pub fn save(&self) -> Result<(), String> {
-        let path = Self::config_path().ok_or("Could not determine config directory")?;
+        let path = Self::config_path().ok_or_else(|| t("err-could-not-determine-config-dir"))?;
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                t_args("err-failed-create-config-dir", &[("error", &e.to_string())])
+            })?;
         }
 
         // Serialize config to pretty JSON
         let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+            .map_err(|e| t_args("err-failed-serialize-config", &[("error", &e.to_string())]))?;
 
         // Write to disk
-        fs::write(&path, json).map_err(|e| format!("Failed to write config file: {}", e))?;
+        fs::write(&path, json)
+            .map_err(|e| t_args("err-failed-write-config", &[("error", &e.to_string())]))?;
 
         // Set restrictive permissions on Unix (owner read/write only)
         #[cfg(unix)]
@@ -106,13 +109,21 @@ impl Config {
     fn set_config_permissions(path: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
 
-        let metadata = fs::metadata(path)
-            .map_err(|e| format!("Failed to read config file metadata: {}", e))?;
+        let metadata = fs::metadata(path).map_err(|e| {
+            t_args(
+                "err-failed-read-config-metadata",
+                &[("error", &e.to_string())],
+            )
+        })?;
         let mut perms = metadata.permissions();
         perms.set_mode(CONFIG_FILE_MODE);
 
-        fs::set_permissions(path, perms)
-            .map_err(|e| format!("Failed to set config file permissions: {}", e))?;
+        fs::set_permissions(path, perms).map_err(|e| {
+            t_args(
+                "err-failed-set-config-permissions",
+                &[("error", &e.to_string())],
+            )
+        })?;
 
         Ok(())
     }

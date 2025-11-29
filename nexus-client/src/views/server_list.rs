@@ -12,20 +12,12 @@ use super::style::{
     separator_color, shaped_text, sidebar_background, sidebar_border, tooltip_border,
     tooltip_text_color,
 };
+use crate::i18n::t;
 use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill, alignment};
 use std::collections::HashMap;
-
-// UI text constants
-const TITLE_CONNECTED: &str = "Connected";
-const TITLE_BOOKMARKS: &str = "Bookmarks";
-const EMPTY_NO_CONNECTIONS: &str = "No connections";
-const EMPTY_NO_BOOKMARKS: &str = "No bookmarks";
-const TOOLTIP_DISCONNECT: &str = "Disconnect";
-const TOOLTIP_EDIT: &str = "Edit";
-const BUTTON_ADD_BOOKMARK: &str = "Add Bookmark";
 
 /// Displays connected servers and saved bookmarks
 ///
@@ -40,7 +32,7 @@ pub fn server_list_panel<'a>(
     let mut main_column = Column::new().spacing(PANEL_SPACING);
 
     // === CONNECTED SERVERS SECTION ===
-    let connected_title = shaped_text(TITLE_CONNECTED)
+    let connected_title = shaped_text(t("title-connected"))
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -49,7 +41,7 @@ pub fn server_list_panel<'a>(
 
     if connections.is_empty() {
         connected_column = connected_column.push(
-            shaped_text(EMPTY_NO_CONNECTIONS)
+            shaped_text(t("empty-no-connections"))
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -83,7 +75,7 @@ pub fn server_list_panel<'a>(
             // Disconnect button (transparent icon button with hover effect)
             let disconnect_btn = tooltip(
                 transparent_icon_button(icon::logout(), Message::DisconnectFromServer(**conn_id)),
-                container(shaped_text(TOOLTIP_DISCONNECT).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-disconnect")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -135,7 +127,7 @@ pub fn server_list_panel<'a>(
     main_column = main_column.push(separator);
 
     // === BOOKMARKS SECTION ===
-    let bookmarks_title = shaped_text(TITLE_BOOKMARKS)
+    let bookmarks_title = shaped_text(t("title-bookmarks"))
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
@@ -144,7 +136,7 @@ pub fn server_list_panel<'a>(
 
     if bookmarks.is_empty() {
         bookmarks_column = bookmarks_column.push(
-            shaped_text(EMPTY_NO_BOOKMARKS)
+            shaped_text(t("empty-no-bookmarks"))
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
                     color: Some(empty_state_color(theme)),
@@ -190,7 +182,7 @@ pub fn server_list_panel<'a>(
             // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(
                 transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
-                container(shaped_text(TOOLTIP_EDIT).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(|theme| container::Style {
                         background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
@@ -225,7 +217,7 @@ pub fn server_list_panel<'a>(
         }
     }
 
-    let add_btn = button(shaped_text(BUTTON_ADD_BOOKMARK).size(SERVER_LIST_BUTTON_SIZE))
+    let add_btn = button(shaped_text(t("button-add-bookmark")).size(SERVER_LIST_BUTTON_SIZE))
         .on_press(Message::ShowAddBookmark)
         .padding(INPUT_PADDING)
         .style(primary_button_style())

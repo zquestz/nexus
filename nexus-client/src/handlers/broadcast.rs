@@ -1,6 +1,8 @@
 //! Broadcast message handlers
 
 use crate::NexusApp;
+use crate::handlers::network::msg_username_error;
+use crate::i18n::t;
 use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use chrono::Local;
 use iced::Task;
@@ -9,10 +11,6 @@ use nexus_common::protocol::ClientMessage;
 
 // Constants
 const MAX_BROADCAST_LENGTH: usize = 1024;
-
-// Error messages
-const ERR_MESSAGE_TOO_LONG: &str = "Broadcast message too long";
-const ERR_SEND_FAILED: &str = "Failed to send broadcast";
 
 impl NexusApp {
     /// Handle broadcast message input change
@@ -42,7 +40,7 @@ impl NexusApp {
             if message.len() > MAX_BROADCAST_LENGTH {
                 let error_msg = format!(
                     "{} ({} characters, max {})",
-                    ERR_MESSAGE_TOO_LONG,
+                    t("err-broadcast-too-long"),
                     message.len(),
                     MAX_BROADCAST_LENGTH
                 );
@@ -55,7 +53,7 @@ impl NexusApp {
 
             // Send message and handle errors
             if let Err(e) = conn.tx.send(msg) {
-                let error_msg = format!("{}: {}", ERR_SEND_FAILED, e);
+                let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);
                 return self.add_broadcast_error(conn_id, error_msg);
             }
 
@@ -109,7 +107,7 @@ impl NexusApp {
         self.add_chat_message(
             connection_id,
             ChatMessage {
-                username: "Error".to_string(),
+                username: msg_username_error(),
                 message,
                 timestamp: Local::now(),
             },

@@ -17,9 +17,10 @@
 //! ```
 
 use super::colors;
+use crate::types::Message;
 use iced::font::Family;
-use iced::widget::{container, text};
-use iced::{Background, Border, Color, Font, Theme};
+use iced::widget::{checkbox, container, row, text};
+use iced::{Alignment, Background, Border, Color, Element, Font, Theme};
 
 // ============================================================================
 // Fonts
@@ -67,6 +68,60 @@ pub fn shaped_text<'a>(content: impl Into<String>) -> text::Text<'a> {
     }
 }
 
+/// Create a styled checkbox with label that aligns to top when text wraps
+///
+/// Uses a row with an empty-label checkbox and separate shaped text
+/// so that the checkbox aligns with the top of wrapped text instead of
+/// being vertically centered (Iced's default behavior).
+///
+/// # Arguments
+/// * `label` - The label text to display next to the checkbox
+/// * `is_checked` - Whether the checkbox is currently checked
+/// * `on_toggle` - Optional callback when checkbox is toggled. If None, checkbox is disabled.
+///
+/// # Example
+/// ```
+/// styled_checkbox(
+///     "Enable feature".to_string(),
+///     true,
+///     Some(Message::FeatureToggled),
+/// )
+/// ```
+pub fn styled_checkbox<'a>(
+    label: String,
+    is_checked: bool,
+    on_toggle: Option<impl Fn(bool) -> Message + 'a>,
+) -> Element<'a, Message> {
+    let cb = if let Some(f) = on_toggle {
+        checkbox("", is_checked)
+            .on_toggle(f)
+            .size(TEXT_SIZE)
+            .style(primary_checkbox_style())
+    } else {
+        checkbox("", is_checked)
+            .size(TEXT_SIZE)
+            .style(primary_checkbox_style())
+    };
+
+    row![
+        cb,
+        container(
+            shaped_text(label)
+                .size(TEXT_SIZE + 2)
+                .line_height(text::LineHeight::Relative(1.3))
+        )
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0
+        })
+    ]
+    .spacing(CHECKBOX_LABEL_SPACING)
+    .align_y(Alignment::Start)
+    .into()
+}
+
 // ============================================================================
 // Font Sizes
 // ============================================================================
@@ -91,6 +146,9 @@ pub const CHAT_MESSAGE_SIZE: u16 = 14;
 
 /// Chat input field size (slightly larger than messages)
 pub const CHAT_INPUT_SIZE: u16 = 16;
+
+/// Spacing between checkbox and its label (for custom top-aligned checkboxes)
+pub const CHECKBOX_LABEL_SPACING: u16 = 0;
 
 /// Toolbar title text size
 pub const TOOLBAR_TITLE_SIZE: u16 = 16;
