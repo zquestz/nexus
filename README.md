@@ -18,6 +18,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 
 - **Mandatory TLS encryption** with auto-generated self-signed certificates
 - **UPnP port forwarding** for automatic NAT traversal (optional)
+- **Internationalization (i18n)** - 12 languages supported (auto-detects system locale)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (12 permissions)
@@ -151,9 +152,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 **Test Coverage:**
 
-- Autostart tests
-- Protocol tests
-- Server unit tests
+- 174+ server tests
+- 16 client tests
 - Integration tests (multi-session scenarios)
 
 ## Database & Configuration
@@ -166,6 +166,17 @@ Platform paths:
 - Linux: `~/.local/share/nexusd/` and `~/.config/nexus/`
 - macOS: `~/Library/Application Support/`
 - Windows: `%APPDATA%\`
+
+## Internationalization
+
+Both server and client support 12 languages with automatic locale detection:
+
+- English (en) - Default fallback
+- Spanish (es), French (fr), German (de), Italian (it), Dutch (nl)
+- Portuguese (pt-BR, pt-PT), Russian (ru)
+- Japanese (ja), Chinese (zh-CN, zh-TW), Korean (ko)
+
+The client auto-detects your system locale at startup. Server error messages are localized based on the client's locale sent during login.
 
 ## License
 
