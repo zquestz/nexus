@@ -551,7 +551,7 @@ pub fn chat_tab_active_style()
 /// Create styled button for inactive chat tab (transparent with hover)
 pub fn chat_tab_inactive_style()
 -> fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
-    |_theme, status| {
+    |theme, status| {
         use iced::widget::button::Status;
 
         match status {
@@ -563,7 +563,7 @@ pub fn chat_tab_inactive_style()
             },
             _ => iced::widget::button::Style {
                 background: None,
-                text_color: action_button_text(),
+                text_color: chat_text_color(theme),
                 border: Border::default(),
                 shadow: iced::Shadow::default(),
             },

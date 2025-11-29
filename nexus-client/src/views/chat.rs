@@ -4,7 +4,7 @@ use super::constants::{BUTTON_SEND, PERMISSION_CHAT_SEND};
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, MONOSPACE_FONT,
     SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, broadcast_message_color,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, action_button_text, broadcast_message_color,
     chat_tab_active_style, chat_tab_inactive_style, chat_text_color, error_message_color,
     info_text_color, primary_button_style, primary_scrollbar_style, primary_text_input_style,
     shaped_text, sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
@@ -36,11 +36,11 @@ fn create_tab_button(
                 button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
                     .on_press(Message::CloseUserMessageTab(username_clone))
                     .padding(0)
-                    .style(|theme, status| button::Style {
+                    .style(|_theme, status| button::Style {
                         background: None,
                         text_color: match status {
                             button::Status::Hovered => error_message_color(),
-                            _ => chat_text_color(theme),
+                            _ => action_button_text(),
                         },
                         border: iced::Border::default(),
                         shadow: iced::Shadow::default(),
