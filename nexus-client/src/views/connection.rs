@@ -27,8 +27,9 @@ pub struct ConnectionFormData<'a> {
 /// optional, but address, port, and username are required. Password can be empty
 /// for servers that don't require authentication.
 pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Message> {
-    // Validate required fields (server name and password are optional)
-    let can_connect = !data.server_address.trim().is_empty()
+    // Validate required fields (password is optional)
+    let can_connect = !data.server_name.trim().is_empty()
+        && !data.server_address.trim().is_empty()
         && !data.port.trim().is_empty()
         && !data.username.trim().is_empty();
 
@@ -44,7 +45,7 @@ pub fn connection_form_view<'a>(data: ConnectionFormData<'a>) -> Element<'a, Mes
         .width(Fill)
         .align_x(Center);
 
-    let server_name_input = text_input(&t("placeholder-server-name-optional"), data.server_name)
+    let server_name_input = text_input(&t("placeholder-server-name"), data.server_name)
         .on_input(Message::ServerNameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerName))

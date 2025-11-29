@@ -51,6 +51,9 @@ pub const TLS_CERT_COMMON_NAME: &str = "Nexus BBS Server";
 /// TLS close notify error pattern
 pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
 
+/// TLS handshake failure error prefix (used for debug-only logging)
+pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed:";
+
 // =============================================================================
 // Server Startup Messages (operator-facing)
 // =============================================================================

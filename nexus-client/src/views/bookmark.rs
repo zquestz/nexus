@@ -63,7 +63,7 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(&t("placeholder-ipv6-address"), form.address)
+        text_input(&t("placeholder-server-address"), form.address)
             .on_input(Message::BookmarkAddressChanged)
             .on_submit(submit_action.clone())
             .id(text_input::Id::from(InputId::BookmarkAddress))

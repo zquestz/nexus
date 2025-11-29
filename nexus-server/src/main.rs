@@ -78,13 +78,22 @@ async fn main() {
                             )
                             .await
                             {
-                                // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
                                 let error_msg = e.to_string();
-                                if !error_msg
-                                    .contains(TLS_CLOSE_NOTIFY_MSG)
-                                {
-                                    eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+
+                                // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
+                                if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
+                                    return;
                                 }
+
+                                // TLS handshake failures are debug-only (scanners, incompatible clients)
+                                if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
+                                    if debug {
+                                        eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                                    }
+                                    return;
+                                }
+
+                                eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
                             }
                         });
                     }
