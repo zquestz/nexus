@@ -40,11 +40,11 @@ pub fn main() -> iced::Result {
             min_size: Some(iced::Size::new(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
             ..Default::default()
         })
-        .font(icon::FONT)
         .font(fonts::SAUCECODE_PRO_MONO)
         .font(fonts::SAUCECODE_PRO_MONO_BOLD)
         .font(fonts::SAUCECODE_PRO_MONO_ITALIC)
         .font(fonts::SAUCECODE_PRO_MONO_BOLD_ITALIC)
+        .font(icon::FONT)
         .run_with(NexusApp::new)
 }
 
