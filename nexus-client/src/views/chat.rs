@@ -13,9 +13,7 @@ use crate::handlers::network::{
     MSG_USERNAME_BROADCAST_PREFIX, MSG_USERNAME_ERROR, MSG_USERNAME_INFO, MSG_USERNAME_SYSTEM,
 };
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
-use iced::widget::{
-    Button, Column, button, column, container, row, scrollable, text_input, tooltip,
-};
+use iced::widget::{Column, button, column, container, row, scrollable, text_input, tooltip};
 use iced::{Background, Element, Fill};
 
 // UI text constants
@@ -29,11 +27,54 @@ fn create_tab_button(
     label: String,
     is_active: bool,
     has_unread: bool,
-) -> Button<'static, Message> {
+) -> Element<'static, Message> {
     if is_active {
-        button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
-            .style(chat_tab_active_style())
-            .padding(INPUT_PADDING)
+        // Active PM tabs include a close button
+        if let ChatTab::UserMessage(ref username) = tab {
+            let username_clone = username.clone();
+            let close_button = tooltip(
+                button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
+                    .on_press(Message::CloseUserMessageTab(username_clone))
+                    .padding(0)
+                    .style(|theme, status| button::Style {
+                        background: None,
+                        text_color: match status {
+                            button::Status::Hovered => error_message_color(),
+                            _ => chat_text_color(theme),
+                        },
+                        border: iced::Border::default(),
+                        shadow: iced::Shadow::default(),
+                    }),
+                container(
+                    shaped_text(format!("{} {}", TOOLTIP_CLOSE_TAB, username))
+                        .size(TOOLTIP_TEXT_SIZE),
+                )
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(|theme| container::Style {
+                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
+                    text_color: Some(tooltip_text_color(theme)),
+                    border: tooltip_border(),
+                    ..Default::default()
+                }),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
+
+            let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
+                .spacing(SMALL_SPACING)
+                .align_y(iced::Alignment::Center);
+
+            button(tab_content)
+                .style(chat_tab_active_style())
+                .padding(iced::Padding::new(INPUT_PADDING as f32).right(SMALL_PADDING as f32))
+                .into()
+        } else {
+            button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
+                .style(chat_tab_active_style())
+                .padding(INPUT_PADDING)
+                .into()
+        }
     } else {
         let tab_text = if has_unread {
             // Bold if there are unread messages
@@ -49,6 +90,7 @@ fn create_tab_button(
             .on_press(Message::SwitchChatTab(tab))
             .style(chat_tab_inactive_style())
             .padding(INPUT_PADDING)
+            .into()
     }
 }
 
@@ -92,49 +134,8 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
         tab_row = tab_row.push(pm_tab_button);
     }
 
-    // Wrap tab bar in scrollable (tabs only, not close button)
-    let scrollable_tabs = scrollable(tab_row)
-        .direction(scrollable::Direction::Horizontal(
-            scrollable::Scrollbar::default(),
-        ))
-        .width(Fill)
-        .style(primary_scrollbar_style());
-
-    // Build final tab bar with close button outside scrollable
-    let tab_bar = if let ChatTab::UserMessage(ref username) = conn.active_chat_tab {
-        let username_clone = username.clone();
-        let close_button = tooltip(
-            button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
-                .on_press(Message::CloseUserMessageTab(username_clone))
-                .padding(INPUT_PADDING)
-                .style(|theme, status| button::Style {
-                    background: None,
-                    text_color: match status {
-                        button::Status::Hovered => error_message_color(),
-                        _ => chat_text_color(theme),
-                    },
-                    border: iced::Border::default(),
-                    shadow: iced::Shadow::default(),
-                }),
-            container(
-                shaped_text(format!("{} {}", TOOLTIP_CLOSE_TAB, username)).size(TOOLTIP_TEXT_SIZE),
-            )
-            .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                text_color: Some(tooltip_text_color(theme)),
-                border: tooltip_border(),
-                ..Default::default()
-            }),
-            tooltip::Position::Bottom,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING);
-
-        row![scrollable_tabs, close_button].spacing(SMALL_SPACING)
-    } else {
-        row![scrollable_tabs]
-    };
+    // Wrap tabs to multiple rows if needed
+    let tab_bar = tab_row.wrap();
 
     // Check send permission (for server chat)
     let can_send = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND);

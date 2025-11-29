@@ -1,9 +1,7 @@
 //! Certificate fingerprint mismatch dialog view
 
 use super::constants::BUTTON_CANCEL;
-use super::style::{
-    modal_overlay_style, primary_button_style, shaped_text, MONOSPACE_FONT,
-};
+use super::style::{MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text};
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::{Space, button, column, container, row};
 use iced::{Element, Length};
