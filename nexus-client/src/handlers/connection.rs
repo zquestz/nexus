@@ -122,10 +122,10 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get(&conn_id)
         {
-            let message = conn.message_input.trim();
+            let message = &conn.message_input;
 
-            // Validate message is not empty
-            if message.is_empty() {
+            // Validate message is not empty (trim only for validation)
+            if message.trim().is_empty() {
                 return Task::none();
             }
 
@@ -143,11 +143,11 @@ impl NexusApp {
             // Route message based on active chat tab
             let msg = match &conn.active_chat_tab {
                 ChatTab::Server => ClientMessage::ChatSend {
-                    message: message.to_string(),
+                    message: message.clone(),
                 },
                 ChatTab::UserMessage(username) => ClientMessage::UserMessage {
                     to_username: username.clone(),
-                    message: message.to_string(),
+                    message: message.clone(),
                 },
             };
 
