@@ -24,10 +24,10 @@ chrono = "0.4"
 dirs = "6.0"
 tokio-rustls = "0.26"
 rustls-native-certs = "0.8"
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 sha2 = "0.10"
 sys-locale = "0.3"
-fluent-bundle = "0.15"
+fluent-bundle = "0.16"
 unic-langid = "0.9"
 
 [build-dependencies]

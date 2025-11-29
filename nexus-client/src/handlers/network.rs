@@ -474,6 +474,11 @@ impl NexusApp {
                     if user.session_ids.is_empty() {
                         conn.online_users.retain(|u| u.username != username);
                         is_last_session = true;
+
+                        // Clear expanded_user if the disconnected user was expanded
+                        if conn.expanded_user.as_ref() == Some(&username) {
+                            conn.expanded_user = None;
+                        }
                     }
                 }
 
@@ -502,6 +507,13 @@ impl NexusApp {
                     .collect();
                 // Sort to maintain alphabetical order
                 sort_user_list(&mut conn.online_users);
+
+                // Clear expanded_user if the user is no longer in the list
+                if let Some(expanded) = &conn.expanded_user
+                    && !conn.online_users.iter().any(|u| &u.username == expanded)
+                {
+                    conn.expanded_user = None;
+                }
                 Task::none()
             }
             ServerMessage::UserUpdated {
@@ -545,6 +557,11 @@ impl NexusApp {
                     // Update active_chat_tab if it's for this user
                     if conn.active_chat_tab == old_tab {
                         conn.active_chat_tab = ChatTab::UserMessage(user.username.clone());
+                    }
+
+                    // Update expanded_user if it was set to the old username
+                    if conn.expanded_user.as_ref() == Some(&previous_username) {
+                        conn.expanded_user = Some(user.username.clone());
                     }
                 }
 
