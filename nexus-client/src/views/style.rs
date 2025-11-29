@@ -86,11 +86,11 @@ pub const SPACER_SIZE_MEDIUM: u16 = 10;
 /// Small vertical spacer (between related items)
 pub const SPACER_SIZE_SMALL: u16 = 5;
 
-/// Chat message text size (compact for readability)
-pub const CHAT_MESSAGE_SIZE: u16 = 12;
+/// Chat message text size
+pub const CHAT_MESSAGE_SIZE: u16 = 14;
 
 /// Chat input field size (slightly larger than messages)
-pub const CHAT_INPUT_SIZE: u16 = 13;
+pub const CHAT_INPUT_SIZE: u16 = 16;
 
 /// Toolbar title text size
 pub const TOOLBAR_TITLE_SIZE: u16 = 16;
