@@ -415,6 +415,11 @@ impl NexusApp {
             }
             ServerMessage::UserConnected { user } => {
                 // Check if user already exists (multi-device connection)
+                let is_new_user = !conn
+                    .online_users
+                    .iter()
+                    .any(|u| u.username == user.username);
+
                 if let Some(existing_user) = conn
                     .online_users
                     .iter_mut()
@@ -436,20 +441,27 @@ impl NexusApp {
                     // Sort to maintain alphabetical order
                     sort_user_list(&mut conn.online_users);
                 }
-                self.add_chat_message(
-                    connection_id,
-                    ChatMessage {
-                        username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: format!("{} connected", user.username),
-                        timestamp: Local::now(),
-                    },
-                )
+
+                // Only announce if this is their first session (new user)
+                if is_new_user {
+                    self.add_chat_message(
+                        connection_id,
+                        ChatMessage {
+                            username: MSG_USERNAME_SYSTEM.to_string(),
+                            message: format!("{} connected", user.username),
+                            timestamp: Local::now(),
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
             }
             ServerMessage::UserDisconnected {
                 session_id,
                 username,
             } => {
                 // Remove the specific session_id from the user's sessions
+                let mut is_last_session = false;
                 if let Some(user) = conn
                     .online_users
                     .iter_mut()
@@ -460,16 +472,23 @@ impl NexusApp {
                     // If user has no more sessions, remove them entirely
                     if user.session_ids.is_empty() {
                         conn.online_users.retain(|u| u.username != username);
+                        is_last_session = true;
                     }
                 }
-                self.add_chat_message(
-                    connection_id,
-                    ChatMessage {
-                        username: MSG_USERNAME_SYSTEM.to_string(),
-                        message: format!("{} disconnected", username),
-                        timestamp: Local::now(),
-                    },
-                )
+
+                // Only announce if this was their last session (fully offline)
+                if is_last_session {
+                    self.add_chat_message(
+                        connection_id,
+                        ChatMessage {
+                            username: MSG_USERNAME_SYSTEM.to_string(),
+                            message: format!("{} disconnected", username),
+                            timestamp: Local::now(),
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
             }
             ServerMessage::UserListResponse { users } => {
                 conn.online_users = users
@@ -591,7 +610,10 @@ impl NexusApp {
                         if addresses.len() == 1 {
                             lines.push(format!("  address: {}", addresses[0]));
                         } else {
-                            lines.push(format!("  addresses: {}", addresses.join(", ")));
+                            lines.push("  addresses:".to_string());
+                            for addr in &addresses {
+                                lines.push(format!("    - {}", addr));
+                            }
                         }
                     }
 
