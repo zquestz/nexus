@@ -4,11 +4,11 @@ use super::constants::PERMISSION_USER_DELETE;
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    primary_button_style, primary_text_input_style, shaped_text, styled_checkbox,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::{t, translate_permission};
 use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
-use iced::widget::{Column, button, column, container, row, text_input};
+use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 /// Helper function to create an empty fallback panel
@@ -63,31 +63,29 @@ pub fn users_view<'a>(
             .style(primary_text_input_style());
 
         let admin_checkbox = if conn.is_admin {
-            styled_checkbox(
-                t("label-admin"),
-                user_management.is_admin,
-                Some(Message::AdminIsAdminToggled),
-            )
+            checkbox(t("label-admin"), user_management.is_admin)
+                .on_toggle(Message::AdminIsAdminToggled)
+                .size(TEXT_SIZE)
+                .text_shaping(text::Shaping::Advanced)
+                .style(primary_checkbox_style())
         } else {
-            styled_checkbox(
-                t("label-admin"),
-                user_management.is_admin,
-                None::<fn(bool) -> Message>,
-            )
+            checkbox(t("label-admin"), user_management.is_admin)
+                .size(TEXT_SIZE)
+                .text_shaping(text::Shaping::Advanced)
+                .style(primary_checkbox_style())
         };
 
         let enabled_checkbox = if conn.is_admin {
-            styled_checkbox(
-                t("label-enabled"),
-                user_management.enabled,
-                Some(Message::AdminEnabledToggled),
-            )
+            checkbox(t("label-enabled"), user_management.enabled)
+                .on_toggle(Message::AdminEnabledToggled)
+                .size(TEXT_SIZE)
+                .text_shaping(text::Shaping::Advanced)
+                .style(primary_checkbox_style())
         } else {
-            styled_checkbox(
-                t("label-enabled"),
-                user_management.enabled,
-                None::<fn(bool) -> Message>,
-            )
+            checkbox(t("label-enabled"), user_management.enabled)
+                .size(TEXT_SIZE)
+                .text_shaping(text::Shaping::Advanced)
+                .style(primary_checkbox_style())
         };
 
         let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
@@ -101,16 +99,19 @@ pub fn users_view<'a>(
             let display_name = translate_permission(permission);
             let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission) {
                 // Can toggle permissions they have
-                styled_checkbox(
-                    display_name,
-                    *enabled,
-                    Some(move |checked| {
+                checkbox(display_name, *enabled)
+                    .on_toggle(move |checked| {
                         Message::AdminPermissionToggled(perm_name.clone(), checked)
-                    }),
-                )
+                    })
+                    .size(TEXT_SIZE)
+                    .text_shaping(text::Shaping::Advanced)
+                    .style(primary_checkbox_style())
             } else {
                 // Cannot toggle permissions they don't have
-                styled_checkbox(display_name, *enabled, None::<fn(bool) -> Message>)
+                checkbox(display_name, *enabled)
+                    .size(TEXT_SIZE)
+                    .text_shaping(text::Shaping::Advanced)
+                    .style(primary_checkbox_style())
             };
 
             // Alternate between left and right columns
@@ -285,23 +286,29 @@ pub fn users_view<'a>(
                         .style(primary_text_input_style());
 
                 let admin_checkbox = if conn.is_admin {
-                    styled_checkbox(
-                        t("label-admin"),
-                        *is_admin,
-                        Some(Message::EditIsAdminToggled),
-                    )
+                    checkbox(t("label-admin"), *is_admin)
+                        .on_toggle(Message::EditIsAdminToggled)
+                        .size(TEXT_SIZE)
+                        .text_shaping(text::Shaping::Advanced)
+                        .style(primary_checkbox_style())
                 } else {
-                    styled_checkbox(t("label-admin"), *is_admin, None::<fn(bool) -> Message>)
+                    checkbox(t("label-admin"), *is_admin)
+                        .size(TEXT_SIZE)
+                        .text_shaping(text::Shaping::Advanced)
+                        .style(primary_checkbox_style())
                 };
 
                 let enabled_checkbox = if conn.is_admin {
-                    styled_checkbox(
-                        t("label-enabled"),
-                        *enabled,
-                        Some(Message::EditEnabledToggled),
-                    )
+                    checkbox(t("label-enabled"), *enabled)
+                        .on_toggle(Message::EditEnabledToggled)
+                        .size(TEXT_SIZE)
+                        .text_shaping(text::Shaping::Advanced)
+                        .style(primary_checkbox_style())
                 } else {
-                    styled_checkbox(t("label-enabled"), *enabled, None::<fn(bool) -> Message>)
+                    checkbox(t("label-enabled"), *enabled)
+                        .size(TEXT_SIZE)
+                        .text_shaping(text::Shaping::Advanced)
+                        .style(primary_checkbox_style())
                 };
 
                 let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
@@ -316,16 +323,19 @@ pub fn users_view<'a>(
                     let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission)
                     {
                         // Can toggle permissions they have
-                        styled_checkbox(
-                            display_name,
-                            *enabled,
-                            Some(move |checked| {
+                        checkbox(display_name, *enabled)
+                            .on_toggle(move |checked| {
                                 Message::EditPermissionToggled(perm_name.clone(), checked)
-                            }),
-                        )
+                            })
+                            .size(TEXT_SIZE)
+                            .text_shaping(text::Shaping::Advanced)
+                            .style(primary_checkbox_style())
                     } else {
                         // Cannot toggle permissions they don't have
-                        styled_checkbox(display_name, *enabled, None::<fn(bool) -> Message>)
+                        checkbox(display_name, *enabled)
+                            .size(TEXT_SIZE)
+                            .text_shaping(text::Shaping::Advanced)
+                            .style(primary_checkbox_style())
                     };
 
                     // Alternate between left and right columns

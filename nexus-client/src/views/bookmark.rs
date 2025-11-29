@@ -3,11 +3,11 @@
 use super::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
-    primary_button_style, primary_text_input_style, shaped_text, styled_checkbox,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
 };
 use crate::i18n::t;
 use crate::types::{BookmarkEditMode, BookmarkFormData, InputId, Message};
-use iced::widget::{button, column, container, row, text_input};
+use iced::widget::{button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 /// Displays form for adding or editing a server bookmark
@@ -97,11 +97,12 @@ pub fn bookmark_edit_view<'a>(form: BookmarkFormData<'a>) -> Element<'a, Message
             .style(primary_text_input_style())
             .into(),
         shaped_text("").size(SPACER_SIZE_SMALL).into(),
-        styled_checkbox(
-            t("label-auto-connect"),
-            form.auto_connect,
-            Some(Message::BookmarkAutoConnectToggled),
-        ),
+        checkbox(t("label-auto-connect"), form.auto_connect)
+            .on_toggle(Message::BookmarkAutoConnectToggled)
+            .size(TEXT_SIZE)
+            .text_shaping(text::Shaping::Advanced)
+            .style(primary_checkbox_style())
+            .into(),
         shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'a, Message>> = vec![
