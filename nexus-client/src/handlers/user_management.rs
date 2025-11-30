@@ -410,27 +410,6 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Send a private message to a user
-    #[allow(dead_code)]
-    pub fn send_private_message(&mut self, to_username: String, message: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            let msg = ClientMessage::UserMessage {
-                to_username: to_username.clone(),
-                message: message.clone(),
-            };
-
-            if let Err(e) = conn.tx.send(msg) {
-                return self.add_user_management_error(
-                    conn_id,
-                    format!("{}: {}", t("err-send-failed"), e),
-                );
-            }
-        }
-        Task::none()
-    }
-
     /// Handle user kick icon click (kick/disconnect user)
     pub fn handle_user_kick_icon_clicked(&mut self, username: String) -> Task<Message> {
         // Close all panels to show chat

@@ -37,7 +37,29 @@ impl Default for UiState {
     }
 }
 
-/// Certificate fingerprint mismatch information
+/// Certificate fingerprint mismatch details (without connection)
+///
+/// Used as return type from fingerprint verification to avoid creating
+/// dummy NetworkConnection objects.
+#[derive(Debug, Clone)]
+pub struct FingerprintMismatchDetails {
+    /// Bookmark index with mismatched fingerprint
+    pub bookmark_index: usize,
+    /// Expected fingerprint (stored)
+    pub expected: String,
+    /// Received fingerprint (new)
+    pub received: String,
+    /// Bookmark name for display
+    pub bookmark_name: String,
+    /// Server address (IP or hostname)
+    pub server_address: String,
+    /// Server port
+    pub server_port: String,
+}
+
+/// Certificate fingerprint mismatch information (with connection)
+///
+/// Used in the mismatch queue for user verification.
 #[derive(Debug, Clone)]
 pub struct FingerprintMismatch {
     /// Bookmark index with mismatched fingerprint
@@ -59,7 +81,7 @@ pub struct FingerprintMismatch {
 }
 
 /// Text input IDs for focus management
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputId {
     /// Connection form: Server name input
     ServerName,

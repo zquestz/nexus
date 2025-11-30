@@ -7,73 +7,6 @@ use iced::widget::text_input;
 use iced::{Event, Task};
 
 impl NexusApp {
-    /// Handle Tab key navigation across different screens
-    pub fn handle_tab_navigation(&mut self) -> Task<Message> {
-        if self.bookmark_edit.mode != BookmarkEditMode::None {
-            // On bookmark edit screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::BookmarkName => InputId::BookmarkAddress,
-                InputId::BookmarkAddress => InputId::BookmarkPort,
-                InputId::BookmarkPort => InputId::BookmarkUsername,
-                InputId::BookmarkUsername => InputId::BookmarkPassword,
-                InputId::BookmarkPassword => InputId::BookmarkName,
-                _ => InputId::BookmarkName,
-            };
-            self.focused_field = next_field.clone();
-            return text_input::focus(text_input::Id::from(next_field));
-        } else if self.ui_state.active_panel == ActivePanel::AddUser {
-            // On add user screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::AdminUsername => InputId::AdminPassword,
-                InputId::AdminPassword => InputId::AdminUsername,
-                _ => InputId::AdminUsername,
-            };
-            self.focused_field = next_field.clone();
-            return text_input::focus(text_input::Id::from(next_field));
-        } else if self.ui_state.active_panel == ActivePanel::EditUser {
-            // On edit user screen, handle both stages
-            if let Some(conn_id) = self.active_connection
-                && let Some(conn) = self.connections.get(&conn_id)
-            {
-                match &conn.user_management.edit_state {
-                    UserEditState::SelectingUser { .. } => {
-                        // Stage 1: Only username field
-                        self.focused_field = InputId::EditUsername;
-                        return text_input::focus(text_input::Id::from(InputId::EditUsername));
-                    }
-                    UserEditState::EditingUser { .. } => {
-                        // Stage 2: Cycle through edit fields
-                        let next_field = match self.focused_field {
-                            InputId::EditNewUsername => InputId::EditNewPassword,
-                            InputId::EditNewPassword => InputId::EditNewUsername,
-                            _ => InputId::EditNewUsername,
-                        };
-                        self.focused_field = next_field.clone();
-                        return text_input::focus(text_input::Id::from(next_field));
-                    }
-                    UserEditState::None => {}
-                }
-            }
-        } else if self.ui_state.active_panel == ActivePanel::Broadcast {
-            // Broadcast screen only has one field, so focus stays
-            self.focused_field = InputId::BroadcastMessage;
-            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
-        } else if self.active_connection.is_none() {
-            // On connection screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::ServerName => InputId::ServerAddress,
-                InputId::ServerAddress => InputId::Port,
-                InputId::Port => InputId::Username,
-                InputId::Username => InputId::Password,
-                InputId::Password => InputId::ServerName,
-                _ => InputId::ServerName,
-            };
-            self.focused_field = next_field.clone();
-            return text_input::focus(text_input::Id::from(next_field));
-        }
-        Task::none()
-    }
-
     /// Handle keyboard events (Tab, Enter, Escape)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
         // Handle Tab key
@@ -171,6 +104,73 @@ impl NexusApp {
                     ActivePanel::None => {}
                 }
             }
+        }
+        Task::none()
+    }
+
+    /// Handle Tab key navigation across different screens
+    pub fn handle_tab_navigation(&mut self) -> Task<Message> {
+        if self.bookmark_edit.mode != BookmarkEditMode::None {
+            // On bookmark edit screen, cycle through fields
+            let next_field = match self.focused_field {
+                InputId::BookmarkName => InputId::BookmarkAddress,
+                InputId::BookmarkAddress => InputId::BookmarkPort,
+                InputId::BookmarkPort => InputId::BookmarkUsername,
+                InputId::BookmarkUsername => InputId::BookmarkPassword,
+                InputId::BookmarkPassword => InputId::BookmarkName,
+                _ => InputId::BookmarkName,
+            };
+            self.focused_field = next_field;
+            return text_input::focus(text_input::Id::from(next_field));
+        } else if self.ui_state.active_panel == ActivePanel::AddUser {
+            // On add user screen, cycle through fields
+            let next_field = match self.focused_field {
+                InputId::AdminUsername => InputId::AdminPassword,
+                InputId::AdminPassword => InputId::AdminUsername,
+                _ => InputId::AdminUsername,
+            };
+            self.focused_field = next_field;
+            return text_input::focus(text_input::Id::from(next_field));
+        } else if self.ui_state.active_panel == ActivePanel::EditUser {
+            // On edit user screen, handle both stages
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+            {
+                match &conn.user_management.edit_state {
+                    UserEditState::SelectingUser { .. } => {
+                        // Stage 1: Only username field
+                        self.focused_field = InputId::EditUsername;
+                        return text_input::focus(text_input::Id::from(InputId::EditUsername));
+                    }
+                    UserEditState::EditingUser { .. } => {
+                        // Stage 2: Cycle through edit fields
+                        let next_field = match self.focused_field {
+                            InputId::EditNewUsername => InputId::EditNewPassword,
+                            InputId::EditNewPassword => InputId::EditNewUsername,
+                            _ => InputId::EditNewUsername,
+                        };
+                        self.focused_field = next_field;
+                        return text_input::focus(text_input::Id::from(next_field));
+                    }
+                    UserEditState::None => {}
+                }
+            }
+        } else if self.ui_state.active_panel == ActivePanel::Broadcast {
+            // Broadcast screen only has one field, so focus stays
+            self.focused_field = InputId::BroadcastMessage;
+            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
+        } else if self.active_connection.is_none() {
+            // On connection screen, cycle through fields
+            let next_field = match self.focused_field {
+                InputId::ServerName => InputId::ServerAddress,
+                InputId::ServerAddress => InputId::Port,
+                InputId::Port => InputId::Username,
+                InputId::Username => InputId::Password,
+                InputId::Password => InputId::ServerName,
+                _ => InputId::ServerName,
+            };
+            self.focused_field = next_field;
+            return text_input::focus(text_input::Id::from(next_field));
         }
         Task::none()
     }

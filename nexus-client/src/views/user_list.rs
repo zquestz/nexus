@@ -174,11 +174,11 @@ fn create_user_toolbar<'a>(
 
     // Check permissions (admins have all permissions)
     let has_user_info_permission =
-        current_user_is_admin || permissions.contains(&PERMISSION_USER_INFO.to_string());
+        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_INFO);
     let has_user_message_permission =
-        current_user_is_admin || permissions.contains(&PERMISSION_USER_MESSAGE.to_string());
+        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_MESSAGE);
     let has_user_kick_permission =
-        current_user_is_admin || permissions.contains(&PERMISSION_USER_KICK.to_string());
+        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_KICK);
 
     // Square button size
     let button_size = ICON_SIZE;

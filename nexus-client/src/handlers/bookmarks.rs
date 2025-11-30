@@ -8,6 +8,22 @@ use iced::widget::text_input;
 use std::collections::HashMap;
 
 impl NexusApp {
+    // ==================== Form Field Handlers ====================
+
+    /// Handle bookmark address field change
+    pub fn handle_bookmark_address_changed(&mut self, addr: String) -> Task<Message> {
+        self.bookmark_edit.bookmark.address = addr;
+        self.bookmark_edit.error = None;
+        self.focused_field = InputId::BookmarkAddress;
+        Task::none()
+    }
+
+    /// Handle bookmark auto-connect toggle
+    pub fn handle_bookmark_auto_connect_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.bookmark_edit.bookmark.auto_connect = enabled;
+        Task::none()
+    }
+
     /// Handle bookmark name field change
     pub fn handle_bookmark_name_changed(&mut self, name: String) -> Task<Message> {
         self.bookmark_edit.bookmark.name = name;
@@ -16,11 +32,11 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle bookmark address field change
-    pub fn handle_bookmark_address_changed(&mut self, addr: String) -> Task<Message> {
-        self.bookmark_edit.bookmark.address = addr;
+    /// Handle bookmark password field change
+    pub fn handle_bookmark_password_changed(&mut self, password: String) -> Task<Message> {
+        self.bookmark_edit.bookmark.password = password;
         self.bookmark_edit.error = None;
-        self.focused_field = InputId::BookmarkAddress;
+        self.focused_field = InputId::BookmarkPassword;
         Task::none()
     }
 
@@ -40,115 +56,7 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle bookmark password field change
-    pub fn handle_bookmark_password_changed(&mut self, password: String) -> Task<Message> {
-        self.bookmark_edit.bookmark.password = password;
-        self.bookmark_edit.error = None;
-        self.focused_field = InputId::BookmarkPassword;
-        Task::none()
-    }
-
-    /// Handle bookmark auto-connect toggle
-    pub fn handle_bookmark_auto_connect_toggled(&mut self, enabled: bool) -> Task<Message> {
-        self.bookmark_edit.bookmark.auto_connect = enabled;
-        Task::none()
-    }
-
-    /// Connect to a bookmarked server
-    pub fn handle_connect_to_bookmark(&mut self, index: usize) -> Task<Message> {
-        // Check if this bookmark is already connecting
-        if self.connecting_bookmarks.contains(&index) {
-            return Task::none();
-        }
-
-        // Get bookmark data
-        if let Some(bookmark) = self.config.get_bookmark(index) {
-            // Mark this bookmark as connecting
-            self.connecting_bookmarks.insert(index);
-
-            // Generate connection ID
-            let connection_id = self.next_connection_id;
-            self.next_connection_id += 1;
-
-            // Validate port
-            let port: u16 = match bookmark.port.parse() {
-                Ok(p) => p,
-                Err(_) => {
-                    // Clear the connecting lock on validation failure
-                    self.connecting_bookmarks.remove(&index);
-                    self.connection_form.error = Some(t_args(
-                        "err-invalid-port-bookmark",
-                        &[("name", &bookmark.name)],
-                    ));
-                    return Task::none();
-                }
-            };
-
-            let server_address = bookmark.address.clone();
-            let username = bookmark.username.clone();
-            let password = bookmark.password.clone();
-            let locale = get_locale().to_string();
-            let server_name = bookmark.name.clone();
-
-            // Store bookmark index for this connection
-            let bookmark_index = Some(index);
-
-            // Clone server_name for the result handler closure
-            let display_name_for_result = server_name.clone();
-
-            // Connect directly without modifying connection_form
-            return Task::perform(
-                async move {
-                    crate::network::connect_to_server(
-                        server_address,
-                        port,
-                        username,
-                        password,
-                        locale,
-                        connection_id,
-                    )
-                    .await
-                },
-                move |result| {
-                    let display_name = display_name_for_result.clone();
-                    Message::BookmarkConnectionResult {
-                        result,
-                        bookmark_index,
-                        display_name,
-                    }
-                },
-            );
-        }
-        Task::none()
-    }
-
-    /// Show the add bookmark dialog
-    pub fn handle_show_add_bookmark(&mut self) -> Task<Message> {
-        self.bookmark_edit = BookmarkEditState::default();
-        self.bookmark_edit.mode = BookmarkEditMode::Add;
-        self.focused_field = InputId::BookmarkName;
-        text_input::focus(text_input::Id::from(InputId::BookmarkName))
-    }
-
-    /// Show the edit bookmark dialog for a specific bookmark
-    pub fn handle_show_edit_bookmark(&mut self, index: usize) -> Task<Message> {
-        if let Some(bookmark) = self.config.get_bookmark(index) {
-            self.bookmark_edit.mode = BookmarkEditMode::Edit(index);
-            self.bookmark_edit.bookmark = bookmark.clone();
-            self.focused_field = InputId::BookmarkName;
-
-            // Move any connection error from bookmark_errors to the edit dialog
-            // This shows the error to the user and clears it (acknowledged)
-            if let Some(error) = self.bookmark_errors.remove(&index) {
-                self.bookmark_edit.error = Some(error);
-            } else {
-                self.bookmark_edit.error = None;
-            }
-
-            return text_input::focus(text_input::Id::from(InputId::BookmarkName));
-        }
-        Task::none()
-    }
+    // ==================== Dialog Actions ====================
 
     /// Cancel bookmark editing and close the dialog
     pub fn handle_cancel_bookmark_edit(&mut self) -> Task<Message> {
@@ -158,7 +66,6 @@ impl NexusApp {
 
     /// Save the current bookmark (add or update)
     pub fn handle_save_bookmark(&mut self) -> Task<Message> {
-        // Validate bookmark fields
         if let Some(error) = self.validate_bookmark() {
             self.bookmark_edit.error = Some(error);
             return Task::none();
@@ -188,6 +95,83 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Show the add bookmark dialog
+    pub fn handle_show_add_bookmark(&mut self) -> Task<Message> {
+        self.bookmark_edit = BookmarkEditState::default();
+        self.bookmark_edit.mode = BookmarkEditMode::Add;
+        self.focused_field = InputId::BookmarkName;
+        text_input::focus(text_input::Id::from(InputId::BookmarkName))
+    }
+
+    /// Show the edit bookmark dialog for a specific bookmark
+    pub fn handle_show_edit_bookmark(&mut self, index: usize) -> Task<Message> {
+        if let Some(bookmark) = self.config.get_bookmark(index) {
+            self.bookmark_edit.mode = BookmarkEditMode::Edit(index);
+            self.bookmark_edit.bookmark = bookmark.clone();
+            self.focused_field = InputId::BookmarkName;
+
+            // Move any connection error to the edit dialog (acknowledges and clears it)
+            self.bookmark_edit.error = self.bookmark_errors.remove(&index);
+
+            return text_input::focus(text_input::Id::from(InputId::BookmarkName));
+        }
+        Task::none()
+    }
+
+    // ==================== Bookmark Operations ====================
+
+    /// Connect to a bookmarked server
+    pub fn handle_connect_to_bookmark(&mut self, index: usize) -> Task<Message> {
+        if self.connecting_bookmarks.contains(&index) {
+            return Task::none();
+        }
+
+        if let Some(bookmark) = self.config.get_bookmark(index) {
+            self.connecting_bookmarks.insert(index);
+
+            let connection_id = self.next_connection_id;
+            self.next_connection_id += 1;
+
+            let port: u16 = match bookmark.port.parse() {
+                Ok(p) => p,
+                Err(_) => {
+                    self.connecting_bookmarks.remove(&index);
+                    self.connection_form.error = Some(t_args(
+                        "err-invalid-port-bookmark",
+                        &[("name", &bookmark.name)],
+                    ));
+                    return Task::none();
+                }
+            };
+
+            let server_address = bookmark.address.clone();
+            let username = bookmark.username.clone();
+            let password = bookmark.password.clone();
+            let locale = get_locale().to_string();
+            let display_name = bookmark.name.clone();
+
+            return Task::perform(
+                async move {
+                    crate::network::connect_to_server(
+                        server_address,
+                        port,
+                        username,
+                        password,
+                        locale,
+                        connection_id,
+                    )
+                    .await
+                },
+                move |result| Message::BookmarkConnectionResult {
+                    result,
+                    bookmark_index: Some(index),
+                    display_name: display_name.clone(),
+                },
+            );
+        }
+        Task::none()
+    }
+
     /// Delete a bookmark by index
     pub fn handle_delete_bookmark(&mut self, index: usize) -> Task<Message> {
         self.config.delete_bookmark(index);
@@ -207,10 +191,11 @@ impl NexusApp {
             .collect();
         self.bookmark_errors = shifted;
 
-        // Close the bookmark edit dialog if it's open
         self.bookmark_edit = BookmarkEditState::default();
         Task::none()
     }
+
+    // ==================== Private Helpers ====================
 
     /// Validate bookmark fields
     fn validate_bookmark(&self) -> Option<String> {
