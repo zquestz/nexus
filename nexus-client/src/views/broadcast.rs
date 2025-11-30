@@ -1,14 +1,15 @@
 //! Broadcast message panel view
 
-use super::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
-    primary_button_style, primary_text_input_style, shaped_text,
+use crate::style::{
+    BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    content_background, form_error_color, primary_button_style, primary_text_input_style,
+    shaped_text, sidebar_border,
 };
 use crate::i18n::t;
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::{button, container, row, text_input};
-use iced::{Center, Element, Fill};
+use iced::widget::{button, column, container, row, text_input};
+use iced::{Background, Center, Element, Fill};
 
 /// Render the broadcast panel
 ///
@@ -49,7 +50,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 .style(primary_button_style())
         },
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
-            .on_press(Message::ToggleBroadcast)
+            .on_press(Message::CancelBroadcast)
             .padding(BUTTON_PADDING)
             .style(primary_button_style()),
     ]
@@ -83,5 +84,37 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    container(form).width(Fill).height(Fill).center(Fill).into()
+    // Top border separator to match chat view
+    let top_separator = container(shaped_text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
+    // Bottom border separator to match chat view
+    let bottom_separator = container(shaped_text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
+    column![
+        top_separator,
+        container(form)
+            .width(Fill)
+            .height(Fill)
+            .center(Fill)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(content_background(theme))),
+                ..Default::default()
+            }),
+        bottom_separator,
+    ]
+    .width(Fill)
+    .height(Fill)
+    .into()
 }

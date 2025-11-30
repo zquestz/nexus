@@ -3,13 +3,11 @@
 mod bookmark;
 mod broadcast;
 mod chat;
-mod colors;
 mod connection;
 pub(crate) mod constants;
 mod fingerprint;
 mod layout;
 mod server_list;
-mod style;
 mod user_list;
 mod users;
 

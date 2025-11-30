@@ -1,7 +1,7 @@
 //! Keyboard navigation
 
 use crate::NexusApp;
-use crate::types::{BookmarkEditMode, InputId, Message, UserEditState};
+use crate::types::{ActivePanel, BookmarkEditMode, InputId, Message, UserEditState};
 use iced::keyboard::{self, key};
 use iced::widget::text_input;
 use iced::{Event, Task};
@@ -21,7 +21,7 @@ impl NexusApp {
             };
             self.focused_field = next_field.clone();
             return text_input::focus(text_input::Id::from(next_field));
-        } else if self.ui_state.show_add_user {
+        } else if self.ui_state.active_panel == ActivePanel::AddUser {
             // On add user screen, cycle through fields
             let next_field = match self.focused_field {
                 InputId::AdminUsername => InputId::AdminPassword,
@@ -30,7 +30,7 @@ impl NexusApp {
             };
             self.focused_field = next_field.clone();
             return text_input::focus(text_input::Id::from(next_field));
-        } else if self.ui_state.show_edit_user {
+        } else if self.ui_state.active_panel == ActivePanel::EditUser {
             // On edit user screen, handle both stages
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
@@ -54,7 +54,7 @@ impl NexusApp {
                     UserEditState::None => {}
                 }
             }
-        } else if self.ui_state.show_broadcast {
+        } else if self.ui_state.active_panel == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
@@ -100,7 +100,7 @@ impl NexusApp {
                 if can_save {
                     return self.update(Message::SaveBookmark);
                 }
-            } else if self.ui_state.show_add_user {
+            } else if self.ui_state.active_panel == ActivePanel::AddUser {
                 // On add user screen, try to create user
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -111,7 +111,7 @@ impl NexusApp {
                         return self.update(Message::CreateUserPressed);
                     }
                 }
-            } else if self.ui_state.show_edit_user {
+            } else if self.ui_state.active_panel == ActivePanel::EditUser {
                 // On edit user screen, handle Enter for both stages
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -132,7 +132,7 @@ impl NexusApp {
                         UserEditState::None => {}
                     }
                 }
-            } else if self.ui_state.show_broadcast {
+            } else if self.ui_state.active_panel == ActivePanel::Broadcast {
                 // On broadcast screen, try to send broadcast
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -162,19 +162,13 @@ impl NexusApp {
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // Cancel bookmark edit
                 return self.update(Message::CancelBookmarkEdit);
-            } else if self.ui_state.show_add_user
-                || self.ui_state.show_edit_user
-                || self.ui_state.show_broadcast
-            {
-                // Cancel add/edit user screens or broadcast
-                if self.ui_state.show_add_user {
-                    return self.update(Message::ToggleAddUser);
-                }
-                if self.ui_state.show_edit_user {
-                    return self.update(Message::CancelEditUser);
-                }
-                if self.ui_state.show_broadcast {
-                    return self.update(Message::ToggleBroadcast);
+            } else {
+                // Cancel active panel
+                match self.ui_state.active_panel {
+                    ActivePanel::AddUser => return self.update(Message::CancelAddUser),
+                    ActivePanel::EditUser => return self.update(Message::CancelEditUser),
+                    ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
+                    ActivePanel::None => {}
                 }
             }
         }

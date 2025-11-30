@@ -3,7 +3,9 @@
 use crate::NexusApp;
 use crate::handlers::network::msg_username_error;
 use crate::i18n::t;
-use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState};
+use crate::types::{
+    ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState,
+};
 use chrono::Local;
 use iced::Task;
 use iced::widget::scrollable;
@@ -351,6 +353,17 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle Cancel button press in add user panel
+    pub fn handle_cancel_add_user(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.clear_add_user();
+        }
+        self.ui_state.active_panel = ActivePanel::None;
+        Task::none()
+    }
+
     /// Handle Cancel button press in edit user panel
     pub fn handle_cancel_edit_user(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
@@ -358,7 +371,7 @@ impl NexusApp {
         {
             conn.user_management.clear_edit_user();
         }
-        self.ui_state.show_edit_user = false;
+        self.ui_state.active_panel = ActivePanel::None;
         Task::none()
     }
 

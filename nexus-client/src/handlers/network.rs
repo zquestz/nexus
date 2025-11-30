@@ -3,8 +3,8 @@
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ChatMessage, ChatTab, InputId, Message, ScrollableId, ServerBookmark, ServerConnection,
-    UserInfo,
+    ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId, ServerBookmark,
+    ServerConnection, UserInfo,
 };
 use chrono::Local;
 use iced::Task;
@@ -419,7 +419,7 @@ impl NexusApp {
             ServerMessage::UserBroadcastResponse { success, error } => {
                 if success {
                     // Close broadcast panel on success
-                    self.ui_state.show_broadcast = false;
+                    self.ui_state.active_panel = ActivePanel::None;
                     if let Some(conn) = self.connections.get_mut(&connection_id) {
                         conn.broadcast_error = None;
                     }
@@ -805,9 +805,10 @@ impl NexusApp {
             ServerMessage::UserCreateResponse { success, error } => {
                 if success {
                     // Close add user panel on success
-                    if self.ui_state.show_add_user && self.active_connection == Some(connection_id)
+                    if self.ui_state.active_panel == ActivePanel::AddUser
+                        && self.active_connection == Some(connection_id)
                     {
-                        self.ui_state.show_add_user = false;
+                        self.ui_state.active_panel = ActivePanel::None;
                         if let Some(conn) = self.connections.get_mut(&connection_id) {
                             conn.user_management.clear_add_user();
                         }
@@ -832,9 +833,10 @@ impl NexusApp {
             ServerMessage::UserDeleteResponse { success, error } => {
                 if success {
                     // Close edit panel on success
-                    if self.ui_state.show_edit_user && self.active_connection == Some(connection_id)
+                    if self.ui_state.active_panel == ActivePanel::EditUser
+                        && self.active_connection == Some(connection_id)
                     {
-                        self.ui_state.show_edit_user = false;
+                        self.ui_state.active_panel = ActivePanel::None;
                         if let Some(conn) = self.connections.get_mut(&connection_id) {
                             conn.user_management.clear_edit_user();
                         }
@@ -887,9 +889,10 @@ impl NexusApp {
             ServerMessage::UserUpdateResponse { success, error } => {
                 if success {
                     // Close edit panel on success
-                    if self.ui_state.show_edit_user && self.active_connection == Some(connection_id)
+                    if self.ui_state.active_panel == ActivePanel::EditUser
+                        && self.active_connection == Some(connection_id)
                     {
-                        self.ui_state.show_edit_user = false;
+                        self.ui_state.active_panel = ActivePanel::None;
                         if let Some(conn) = self.connections.get_mut(&connection_id) {
                             conn.user_management.clear_edit_user();
                         }
@@ -976,7 +979,7 @@ impl NexusApp {
                 // Show error in edit user form if it's for user management commands
                 if let Some(ref cmd) = command
                     && (cmd == "UserEdit" || cmd == "UserUpdate")
-                    && self.ui_state.show_edit_user
+                    && self.ui_state.active_panel == ActivePanel::EditUser
                     && self.active_connection == Some(connection_id)
                 {
                     if let Some(conn) = self.connections.get_mut(&connection_id) {
@@ -1089,7 +1092,6 @@ impl NexusApp {
                 display_name,
             });
 
-        self.ui_state.show_fingerprint_mismatch = true;
         self.connection_form.is_connecting = false;
         Task::none()
     }

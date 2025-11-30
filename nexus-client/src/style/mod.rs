@@ -16,10 +16,30 @@
 //! text("Hello").color(Color::from_rgb(0.7, 0.7, 0.7))
 //! ```
 
-use super::colors;
+mod colors;
+
 use iced::font::Family;
 use iced::widget::{container, text};
 use iced::{Background, Border, Color, Font, Theme};
+
+// ============================================================================
+// Window Dimensions
+// ============================================================================
+
+/// Default window width
+pub const WINDOW_WIDTH: f32 = 1200.0;
+
+/// Default window height
+pub const WINDOW_HEIGHT: f32 = 700.0;
+
+/// Minimum window width
+pub const WINDOW_WIDTH_MIN: f32 = 800.0;
+
+/// Minimum window height
+pub const WINDOW_HEIGHT_MIN: f32 = 500.0;
+
+/// Window title (static, not localized - Iced requires &'static str or closure)
+pub const WINDOW_TITLE: &str = "Nexus BBS";
 
 // ============================================================================
 // Fonts
@@ -53,7 +73,7 @@ pub const MONOSPACE_FONT: Font = Font {
 ///
 /// # Example
 /// ```
-/// use crate::views::style::shaped_text;
+/// use crate::style::shaped_text;
 ///
 /// shaped_text("你好世界")  // Chinese characters will display correctly
 ///     .size(14)
@@ -254,6 +274,11 @@ pub fn sidebar_background(theme: &Theme) -> Color {
     }
 }
 
+/// Get content area background color (matches the default window background)
+pub fn content_background(theme: &Theme) -> Color {
+    theme.palette().background
+}
+
 /// Get sidebar panel border color for the current theme
 pub fn sidebar_border(theme: &Theme) -> Color {
     match theme {
@@ -446,6 +471,13 @@ pub fn sidebar_icon_hover_color(theme: &Theme) -> Color {
         Theme::Light => colors::SIDEBAR_ICON_HOVER_LIGHT,
         _ => colors::SIDEBAR_ICON_HOVER_DARK,
     }
+}
+
+/// Disabled color for sidebar icons (theme-independent)
+///
+/// Used for disabled icons in user list toolbar
+pub fn sidebar_icon_disabled_color() -> Color {
+    colors::SIDEBAR_ICON_DISABLED
 }
 
 /// Get interactive element hover color (theme-independent signature blue)

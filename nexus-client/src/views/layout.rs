@@ -3,7 +3,7 @@
 use super::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
-use super::style::{
+use crate::style::{
     EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
     TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
     TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
@@ -14,9 +14,10 @@ use super::style::{
 use crate::i18n::t;
 use crate::icon;
 use crate::types::{
-    BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState, ViewConfig,
+    ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
+    ViewConfig,
 };
-use iced::widget::{button, column, container, row, tooltip};
+use iced::widget::{button, column, container, row, stack, tooltip};
 use iced::{Background, Border, Center, Element, Fill};
 
 use super::{
@@ -59,9 +60,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     let toolbar = build_toolbar(ToolbarState {
         show_bookmarks: config.show_bookmarks,
         show_user_list: config.show_user_list,
-        show_broadcast: config.show_broadcast,
-        show_add_user: config.show_add_user,
-        show_edit_user: config.show_edit_user,
+        active_panel: config.active_panel,
         is_connected: config.active_connection.is_some(),
         is_admin,
         permissions,
@@ -85,9 +84,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 conn,
                 config.message_input,
                 config.user_management,
-                config.show_add_user,
-                config.show_edit_user,
-                config.show_broadcast,
+                config.active_panel,
                 config.theme.clone(),
             )
         } else {
@@ -138,9 +135,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
 /// state and user permissions.
 fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
     // Need to capture this for the closures
-    let show_broadcast_copy = state.show_broadcast;
-    let show_add_user_copy = state.show_add_user;
-    let show_edit_user_copy = state.show_edit_user;
+    let active_panel = state.active_panel;
 
     // Check permissions (avoid string allocations)
     let has_broadcast = state.is_admin
@@ -168,10 +163,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         button(icon::chat().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ShowChatView)
                             .style(move |theme, status| {
-                                if !show_broadcast_copy
-                                    && !show_add_user_copy
-                                    && !show_edit_user_copy
-                                {
+                                if active_panel == ActivePanel::None {
                                     // Active state (on chat view) - blue background
                                     button::Style {
                                         background: Some(Background::Color(
@@ -235,7 +227,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleBroadcast)
                             .style(move |theme, status| {
-                                if show_broadcast_copy {
+                                if active_panel == ActivePanel::Broadcast {
                                     // Active state - blue background
                                     button::Style {
                                         background: Some(Background::Color(
@@ -299,7 +291,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleAddUser)
                             .style(move |theme, status| {
-                                if show_add_user_copy {
+                                if active_panel == ActivePanel::AddUser {
                                     // Active state - blue background
                                     button::Style {
                                         background: Some(Background::Color(
@@ -363,7 +355,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleEditUser)
                             .style(move |theme, status| {
-                                if show_edit_user_copy {
+                                if active_panel == ActivePanel::EditUser {
                                     // Active state - blue background
                                     button::Style {
                                         background: Some(Background::Color(
@@ -578,26 +570,31 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
 
 /// Dispatches to appropriate content view based on active panels
 ///
-/// Shows broadcast view, user management view, or chat view depending on
-/// which panels are currently open.
+/// Always renders chat view at the bottom layer to preserve scroll position,
+/// then overlays broadcast or user management panels on top when active.
 fn server_content_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
     user_management: &'a UserManagementState,
-    show_add_user: bool,
-    show_edit_user: bool,
-    show_broadcast: bool,
+    active_panel: ActivePanel,
     theme: iced::Theme,
 ) -> Element<'a, Message> {
-    // If broadcast panel is open, show broadcast view
-    if show_broadcast {
-        broadcast_view(conn)
-    } else if show_add_user || show_edit_user {
-        // If any user management panel is open, show users view
-        users_view(conn, user_management, show_add_user, show_edit_user)
-    } else {
-        // Otherwise show chat
-        chat_view(conn, message_input, theme)
+    // Always render chat view as the base layer to preserve scroll position
+    let chat = chat_view(conn, message_input, theme);
+
+    // Overlay panels on top when active
+    match active_panel {
+        ActivePanel::Broadcast => stack![chat, broadcast_view(conn)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
+        ActivePanel::AddUser | ActivePanel::EditUser => {
+            stack![chat, users_view(conn, user_management, active_panel)]
+                .width(Fill)
+                .height(Fill)
+                .into()
+        }
+        ActivePanel::None => chat,
     }
 }
 

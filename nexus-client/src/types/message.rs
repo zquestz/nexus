@@ -35,6 +35,8 @@ pub enum Message {
     CancelBookmarkEdit,
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
     CancelFingerprintMismatch,
+    /// User add panel: Cancel button pressed
+    CancelAddUser,
     /// User edit panel: Cancel button pressed
     CancelEditUser,
     /// Chat scrollable: scroll position changed
@@ -129,6 +131,8 @@ pub enum Message {
     ToggleBookmarks,
     /// Toolbar: Toggle Broadcast panel
     ToggleBroadcast,
+    /// Broadcast panel: Cancel button pressed
+    CancelBroadcast,
     /// Toolbar: Show chat view
     ShowChatView,
     /// Toolbar: Toggle Edit User panel

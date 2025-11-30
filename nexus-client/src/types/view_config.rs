@@ -1,6 +1,8 @@
 //! View configuration struct for passing state to view rendering
 
-use crate::types::{BookmarkEditMode, ServerBookmark, ServerConnection, UserManagementState};
+use crate::types::{
+    ActivePanel, BookmarkEditMode, ServerBookmark, ServerConnection, UserManagementState,
+};
 use iced::Theme;
 use std::collections::HashMap;
 
@@ -48,9 +50,7 @@ pub struct ViewConfig<'a> {
     // UI panel visibility
     pub show_bookmarks: bool,
     pub show_user_list: bool,
-    pub show_add_user: bool,
-    pub show_edit_user: bool,
-    pub show_broadcast: bool,
+    pub active_panel: ActivePanel,
 }
 
 /// Bookmark form data for add/edit dialogs
@@ -89,9 +89,7 @@ impl<'a> ViewConfig<'a> {
 pub struct ToolbarState<'a> {
     pub show_bookmarks: bool,
     pub show_user_list: bool,
-    pub show_broadcast: bool,
-    pub show_add_user: bool,
-    pub show_edit_user: bool,
+    pub active_panel: ActivePanel,
     pub is_connected: bool,
     pub is_admin: bool,
     pub permissions: &'a [String],

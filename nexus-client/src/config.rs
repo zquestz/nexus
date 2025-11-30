@@ -374,12 +374,16 @@ mod tests {
     }
 
     #[test]
-    fn test_config_path_returns_some() {
-        // This test just verifies the method doesn't panic
-        // The actual path depends on the platform
-        let path = Config::config_path();
-        // On most systems this should return Some
-        // We can't assert the exact path as it's platform-dependent
-        assert!(path.is_some() || path.is_none()); // Always passes, just exercises the code
+    fn test_config_path_format() {
+        // Verify the config path ends with the expected filename
+        // The actual directory depends on the platform
+        if let Some(path) = Config::config_path() {
+            assert!(
+                path.ends_with("nexus/config.json"),
+                "Config path should end with nexus/config.json, got: {:?}",
+                path
+            );
+        }
+        // If config_path() returns None (no config dir), that's acceptable
     }
 }

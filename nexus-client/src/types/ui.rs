@@ -2,6 +2,20 @@
 
 use iced::widget::{scrollable, text_input};
 
+/// Which panel is currently active in the main content area
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ActivePanel {
+    /// No panel active (show chat)
+    #[default]
+    None,
+    /// Add User panel
+    AddUser,
+    /// Edit User panel
+    EditUser,
+    /// Broadcast panel
+    Broadcast,
+}
+
 /// UI visibility state for toggleable panels
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
@@ -9,14 +23,8 @@ pub struct UiState {
     pub show_bookmarks: bool,
     /// Show user list sidebar
     pub show_user_list: bool,
-    /// Show Add User panel
-    pub show_add_user: bool,
-    /// Show Edit User panel
-    pub show_edit_user: bool,
-    /// Show Broadcast panel
-    pub show_broadcast: bool,
-    /// Show fingerprint mismatch dialog
-    pub show_fingerprint_mismatch: bool,
+    /// Currently active panel in the main content area
+    pub active_panel: ActivePanel,
 }
 
 /// Certificate fingerprint mismatch information

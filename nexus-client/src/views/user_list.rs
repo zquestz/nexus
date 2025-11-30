@@ -1,8 +1,7 @@
 //! User list panel (right sidebar)
 
-use super::colors::SIDEBAR_ICON_DISABLED;
 use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
-use super::style::{
+use crate::style::{
     BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
     INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_COLOR,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
@@ -10,8 +9,8 @@ use super::style::{
     USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE, admin_user_text_color, alt_row_color,
     button_text_color, disconnect_icon_color, disconnect_icon_hover_color, empty_state_color,
     interactive_hover_color, primary_scrollbar_style, section_title_color, shaped_text,
-    sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_hover_color,
-    tooltip_border, tooltip_text_color,
+    sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_disabled_color,
+    sidebar_icon_hover_color, tooltip_border, tooltip_text_color,
 };
 use crate::i18n::t;
 use crate::icon;
@@ -237,7 +236,7 @@ fn create_user_toolbar<'a>(
                 })
                 .style(|_theme, _status| button::Style {
                     background: None,
-                    text_color: SIDEBAR_ICON_DISABLED,
+                    text_color: sidebar_icon_disabled_color(),
                     border: Border::default(),
                     shadow: iced::Shadow::default(),
                 }),
@@ -309,7 +308,7 @@ fn create_user_toolbar<'a>(
                     })
                     .style(|_theme, _status| button::Style {
                         background: None,
-                        text_color: SIDEBAR_ICON_DISABLED,
+                        text_color: sidebar_icon_disabled_color(),
                         border: Border::default(),
                         shadow: iced::Shadow::default(),
                     }),

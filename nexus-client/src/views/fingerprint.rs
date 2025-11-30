@@ -1,6 +1,6 @@
 //! Certificate fingerprint mismatch dialog view
 
-use super::style::{MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text};
+use crate::style::{MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text};
 use crate::i18n::t;
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::{Space, button, column, container, row};

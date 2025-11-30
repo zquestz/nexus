@@ -1,19 +1,55 @@
 //! User management panel (add, edit, delete users)
 
 use super::constants::PERMISSION_USER_DELETE;
-use super::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+use crate::style::{
+    BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background,
+    form_error_color, primary_button_style, primary_checkbox_style, primary_text_input_style,
+    shaped_text, sidebar_border,
 };
 use crate::i18n::{t, translate_permission};
-use crate::types::{InputId, Message, ServerConnection, UserEditState, UserManagementState};
-use iced::widget::{Column, button, checkbox, container, row, text, text_input};
-use iced::{Center, Element, Fill};
+use crate::types::{
+    ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
+};
+use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
+use iced::{Background, Center, Element, Fill};
+
+/// Helper function to wrap content with top and bottom border separators
+fn wrap_with_borders<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
+    let top_separator = container(shaped_text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
+    let bottom_separator = container(shaped_text(""))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        });
+
+    column![top_separator, content, bottom_separator,]
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
 
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
-    container(shaped_text("")).width(Fill).height(Fill).into()
+    wrap_with_borders(
+        container(shaped_text(""))
+            .width(Fill)
+            .height(Fill)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(content_background(theme))),
+                ..Default::default()
+            })
+            .into(),
+    )
 }
 
 /// Displays user creation or edit form
@@ -25,11 +61,10 @@ fn empty_panel<'a>() -> Element<'a, Message> {
 pub fn users_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
-    show_add_user: bool,
-    show_edit_user: bool,
+    active_panel: ActivePanel,
 ) -> Element<'a, Message> {
     // Show Add User form
-    if show_add_user {
+    if active_panel == ActivePanel::AddUser {
         let create_title = shaped_text(t("title-user-create"))
             .size(TITLE_SIZE)
             .width(Fill)
@@ -138,7 +173,7 @@ pub fn users_view<'a>(
         };
 
         let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
-            .on_press(Message::ToggleAddUser)
+            .on_press(Message::CancelAddUser)
             .padding(BUTTON_PADDING)
             .style(primary_button_style());
 
@@ -178,15 +213,21 @@ pub fn users_view<'a>(
             .padding(FORM_PADDING)
             .max_width(FORM_MAX_WIDTH);
 
-        return container(create_form)
-            .width(Fill)
-            .height(Fill)
-            .center(Fill)
-            .into();
+        return wrap_with_borders(
+            container(create_form)
+                .width(Fill)
+                .height(Fill)
+                .center(Fill)
+                .style(|theme| container::Style {
+                    background: Some(Background::Color(content_background(theme))),
+                    ..Default::default()
+                })
+                .into(),
+        );
     }
 
     // Show Edit User panel
-    if show_edit_user {
+    if active_panel == ActivePanel::EditUser {
         match &user_management.edit_state {
             UserEditState::None => {
                 // Should never happen, but handle gracefully
@@ -276,11 +317,17 @@ pub fn users_view<'a>(
                     .padding(FORM_PADDING)
                     .max_width(FORM_MAX_WIDTH);
 
-                container(edit_form)
-                    .width(Fill)
-                    .height(Fill)
-                    .center(Fill)
-                    .into()
+                wrap_with_borders(
+                    container(edit_form)
+                        .width(Fill)
+                        .height(Fill)
+                        .center(Fill)
+                        .style(|theme| container::Style {
+                            background: Some(Background::Color(content_background(theme))),
+                            ..Default::default()
+                        })
+                        .into(),
+                )
             }
             UserEditState::EditingUser {
                 original_username: _,
@@ -440,11 +487,17 @@ pub fn users_view<'a>(
                     .padding(FORM_PADDING)
                     .max_width(FORM_MAX_WIDTH);
 
-                container(update_form)
-                    .width(Fill)
-                    .height(Fill)
-                    .center(Fill)
-                    .into()
+                wrap_with_borders(
+                    container(update_form)
+                        .width(Fill)
+                        .height(Fill)
+                        .center(Fill)
+                        .style(|theme| container::Style {
+                            background: Some(Background::Color(content_background(theme))),
+                            ..Default::default()
+                        })
+                        .into(),
+                )
             }
         }
     } else {

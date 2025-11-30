@@ -1,7 +1,7 @@
 //! Chat interface for active server connections
 
 use super::constants::PERMISSION_CHAT_SEND;
-use super::style::{
+use crate::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
     INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
@@ -177,7 +177,7 @@ pub fn chat_view<'a>(
                 // System messages: timestamp grey, rest in system color
                 let color = system_text_color(&theme);
                 rich_text![
-                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{} ", t("chat-prefix-system"))).color(color),
                     span(line).color(color),
                 ]
@@ -189,7 +189,7 @@ pub fn chat_view<'a>(
                 // Error messages: timestamp grey, rest in error color
                 let color = error_message_color();
                 rich_text![
-                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{} ", t("chat-prefix-error"))).color(color),
                     span(line).color(color),
                 ]
@@ -201,7 +201,7 @@ pub fn chat_view<'a>(
                 // Info messages: timestamp grey, rest in info color
                 let color = info_text_color(&theme);
                 rich_text![
-                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{} ", t("chat-prefix-info"))).color(color),
                     span(line).color(color),
                 ]
@@ -213,7 +213,7 @@ pub fn chat_view<'a>(
                 // Broadcast messages: timestamp grey, rest in broadcast color
                 let broadcast_color = broadcast_message_color(&theme);
                 rich_text![
-                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{}: ", msg.username)).color(broadcast_color),
                     span(line).color(broadcast_color),
                 ]
@@ -230,7 +230,7 @@ pub fn chat_view<'a>(
                 };
                 let text_color = chat_text_color(&theme);
                 rich_text![
-                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{}: ", msg.username)).color(username_color),
                     span(line).color(text_color),
                 ]

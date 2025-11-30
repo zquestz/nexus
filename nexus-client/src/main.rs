@@ -7,41 +7,33 @@ mod handlers;
 mod i18n;
 mod icon;
 mod network;
+mod style;
 mod types;
 mod views;
+
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use iced::widget::text_input;
 use iced::{Element, Subscription, Task, Theme};
 
 use config::ThemePreference;
-use std::collections::{HashMap, HashSet, VecDeque};
+use style::{WINDOW_HEIGHT, WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_WIDTH_MIN};
 use types::{
-    BookmarkEditState, ConnectionFormState, InputId, Message, ServerConnection, UiState,
-    UserManagementState, ViewConfig,
+    ActivePanel, BookmarkEditState, ConnectionFormState, InputId, Message, ServerConnection,
+    UiState, UserManagementState, ViewConfig,
 };
 
-/// Default window width
-const WINDOW_WIDTH: f32 = 1200.0;
-
-/// Default window height
-const WINDOW_HEIGHT: f32 = 700.0;
-
-/// Minimum window width
-const MIN_WINDOW_WIDTH: f32 = 800.0;
-
-/// Minimum window height
-const MIN_WINDOW_HEIGHT: f32 = 500.0;
-
-/// Window title (static, not localized - Iced requires &'static str or closure)
-const WINDOW_TITLE: &str = "Nexus BBS";
-
+/// Application entry point
+///
+/// Configures the Iced application with window settings, fonts, and theme,
+/// then starts the event loop.
 pub fn main() -> iced::Result {
     iced::application(WINDOW_TITLE, NexusApp::update, NexusApp::view)
         .theme(NexusApp::theme)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {
             size: iced::Size::new(WINDOW_WIDTH, WINDOW_HEIGHT),
-            min_size: Some(iced::Size::new(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)),
+            min_size: Some(iced::Size::new(WINDOW_WIDTH_MIN, WINDOW_HEIGHT_MIN)),
             ..Default::default()
         })
         .font(fonts::SAUCECODE_PRO_MONO)
@@ -94,10 +86,7 @@ impl Default for NexusApp {
             ui_state: UiState {
                 show_bookmarks: true,
                 show_user_list: true,
-                show_add_user: false,
-                show_edit_user: false,
-                show_broadcast: false,
-                show_fingerprint_mismatch: false,
+                active_panel: ActivePanel::None,
             },
             default_user_mgmt: UserManagementState::default(),
             connecting_bookmarks: HashSet::new(),
@@ -214,6 +203,7 @@ impl NexusApp {
                 self.handle_edit_permission_toggled(permission, enabled)
             }
             Message::UpdateUserPressed => self.handle_update_user_pressed(),
+            Message::CancelAddUser => self.handle_cancel_add_user(),
             Message::CancelEditUser => self.handle_cancel_edit_user(),
 
             // Broadcast
@@ -227,6 +217,7 @@ impl NexusApp {
             Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleEditUser => self.handle_toggle_edit_user(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
+            Message::CancelBroadcast => self.handle_cancel_broadcast(),
             Message::ShowChatView => self.handle_show_chat_view(),
             Message::ToggleTheme => self.handle_toggle_theme(),
 
@@ -302,17 +293,13 @@ impl NexusApp {
             user_management,
             show_bookmarks: self.ui_state.show_bookmarks,
             show_user_list: self.ui_state.show_user_list,
-            show_add_user: self.ui_state.show_add_user,
-            show_edit_user: self.ui_state.show_edit_user,
-            show_broadcast: self.ui_state.show_broadcast,
+            active_panel: self.ui_state.active_panel,
         };
 
         let main_view = views::main_layout(config);
 
         // Overlay fingerprint mismatch dialog if present (show first in queue)
-        if self.ui_state.show_fingerprint_mismatch
-            && let Some(mismatch) = self.fingerprint_mismatch_queue.front()
-        {
+        if let Some(mismatch) = self.fingerprint_mismatch_queue.front() {
             return views::fingerprint_mismatch_dialog(mismatch);
         }
 

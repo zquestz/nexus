@@ -2,7 +2,9 @@
 
 use crate::handlers::network::msg_username_error;
 use crate::i18n::t;
-use crate::types::{ChatMessage, ChatTab, DEFAULT_LOCALE, InputId, Message, ScrollableId};
+use crate::types::{
+    ActivePanel, ChatMessage, ChatTab, DEFAULT_LOCALE, InputId, Message, ScrollableId,
+};
 use crate::views::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
 };
@@ -229,16 +231,18 @@ impl NexusApp {
             let has_user_edit =
                 conn.is_admin || conn.permissions.contains(&PERMISSION_USER_EDIT.to_string());
 
-            if self.ui_state.show_broadcast && !has_broadcast {
-                self.ui_state.show_broadcast = false;
-            }
-
-            if self.ui_state.show_add_user && !has_user_create {
-                self.ui_state.show_add_user = false;
-            }
-
-            if self.ui_state.show_edit_user && !has_user_edit {
-                self.ui_state.show_edit_user = false;
+            // Close active panel if user doesn't have permission for it
+            match self.ui_state.active_panel {
+                ActivePanel::Broadcast if !has_broadcast => {
+                    self.ui_state.active_panel = ActivePanel::None;
+                }
+                ActivePanel::AddUser if !has_user_create => {
+                    self.ui_state.active_panel = ActivePanel::None;
+                }
+                ActivePanel::EditUser if !has_user_edit => {
+                    self.ui_state.active_panel = ActivePanel::None;
+                }
+                _ => {}
             }
 
             // Scroll to bottom and focus chat input when switching to a connection

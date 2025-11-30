@@ -3,7 +3,7 @@
 use crate::NexusApp;
 use crate::handlers::network::msg_username_error;
 use crate::i18n::t;
-use crate::types::{ChatMessage, ChatTab, InputId, Message, ScrollableId};
+use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use chrono::Local;
 use iced::Task;
 use iced::widget::{scrollable, text_input};
@@ -63,34 +63,39 @@ impl NexusApp {
             }
 
             // Close broadcast panel and return focus to chat
-            self.ui_state.show_broadcast = false;
+            self.ui_state.active_panel = ActivePanel::None;
             return text_input::focus(text_input::Id::from(InputId::ChatInput));
         }
         Task::none()
     }
 
-    /// Handle toggle broadcast panel
-    pub fn handle_toggle_broadcast(&mut self) -> Task<Message> {
-        self.ui_state.show_broadcast = !self.ui_state.show_broadcast;
-
-        // Close other admin panels when opening broadcast
-        if self.ui_state.show_broadcast {
-            self.ui_state.show_add_user = false;
-            self.ui_state.show_edit_user = false;
-
-            // Focus broadcast input when opening
-            text_input::focus(text_input::Id::from(InputId::BroadcastMessage))
-        } else {
-            // Clear error when closing panel
-            if let Some(conn_id) = self.active_connection
-                && let Some(conn) = self.connections.get_mut(&conn_id)
-            {
-                conn.broadcast_error = None;
-            }
-
-            // Return focus to chat when closing
-            text_input::focus(text_input::Id::from(InputId::ChatInput))
+    /// Cancel/close broadcast panel
+    pub fn handle_cancel_broadcast(&mut self) -> Task<Message> {
+        // Clear error when closing panel
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.broadcast_error = None;
         }
+
+        self.ui_state.active_panel = ActivePanel::None;
+
+        // Return focus to chat when closing
+        text_input::focus(text_input::Id::from(InputId::ChatInput))
+    }
+
+    /// Show broadcast panel (does nothing if already shown)
+    pub fn handle_toggle_broadcast(&mut self) -> Task<Message> {
+        // If already showing, do nothing
+        if self.ui_state.active_panel == ActivePanel::Broadcast {
+            return Task::none();
+        }
+
+        // Show broadcast panel
+        self.ui_state.active_panel = ActivePanel::Broadcast;
+
+        // Focus broadcast input when opening
+        text_input::focus(text_input::Id::from(InputId::BroadcastMessage))
     }
 
     /// Handle showing chat view - closes all panels, switches to Server tab, and focuses chat input

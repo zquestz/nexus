@@ -2,16 +2,14 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{InputId, Message};
+use crate::types::{ActivePanel, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
 
 impl NexusApp {
     /// Close all panels (broadcast, add user, edit user)
     pub fn close_all_panels(&mut self) {
-        self.ui_state.show_broadcast = false;
-        self.ui_state.show_add_user = false;
-        self.ui_state.show_edit_user = false;
+        self.ui_state.active_panel = ActivePanel::None;
     }
 
     /// Toggle bookmarks sidebar visibility
@@ -26,53 +24,44 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Toggle Add User panel visibility
+    /// Show Add User panel (does nothing if already shown)
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
-        // Toggle Add User, and turn off Edit User and Broadcast
-        self.ui_state.show_add_user = !self.ui_state.show_add_user;
-        if self.ui_state.show_add_user {
-            self.ui_state.show_edit_user = false;
-            self.ui_state.show_broadcast = false;
-            // Clear form and set focus (only if connected)
-            if let Some(conn_id) = self.active_connection {
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.user_management.clear_add_user();
-                }
-                self.focused_field = InputId::AdminUsername;
-                return text_input::focus(text_input::Id::from(InputId::AdminUsername));
+        // If already showing, do nothing
+        if self.ui_state.active_panel == ActivePanel::AddUser {
+            return Task::none();
+        }
+
+        // Show Add User panel
+        self.ui_state.active_panel = ActivePanel::AddUser;
+
+        // Clear form and set focus (only if connected)
+        if let Some(conn_id) = self.active_connection {
+            if let Some(conn) = self.connections.get_mut(&conn_id) {
+                conn.user_management.clear_add_user();
             }
-        } else {
-            // Closing panel - focus chat input if connected
-            if self.active_connection.is_some() {
-                return text_input::focus(text_input::Id::from(InputId::ChatInput));
-            }
+            self.focused_field = InputId::AdminUsername;
+            return text_input::focus(text_input::Id::from(InputId::AdminUsername));
         }
         Task::none()
     }
 
-    /// Toggle Edit User panel visibility
+    /// Show Edit User panel (does nothing if already shown)
     pub fn handle_toggle_edit_user(&mut self) -> Task<Message> {
-        // Toggle Edit User, and turn off Add User and Broadcast
-        self.ui_state.show_edit_user = !self.ui_state.show_edit_user;
-        if self.ui_state.show_edit_user {
-            self.ui_state.show_add_user = false;
-            self.ui_state.show_broadcast = false;
-            // Start editing and set focus (only if connected)
-            if let Some(conn_id) = self.active_connection {
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.user_management.start_editing();
-                }
-                self.focused_field = InputId::EditUsername;
-                return text_input::focus(text_input::Id::from(InputId::EditUsername));
+        // If already showing, do nothing
+        if self.ui_state.active_panel == ActivePanel::EditUser {
+            return Task::none();
+        }
+
+        // Show Edit User panel
+        self.ui_state.active_panel = ActivePanel::EditUser;
+
+        // Start editing and set focus (only if connected)
+        if let Some(conn_id) = self.active_connection {
+            if let Some(conn) = self.connections.get_mut(&conn_id) {
+                conn.user_management.start_editing();
             }
-        } else {
-            // Closing panel - clear and focus chat input if connected
-            if let Some(conn_id) = self.active_connection {
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.user_management.clear_edit_user();
-                }
-                return text_input::focus(text_input::Id::from(InputId::ChatInput));
-            }
+            self.focused_field = InputId::EditUsername;
+            return text_input::focus(text_input::Id::from(InputId::EditUsername));
         }
         Task::none()
     }
@@ -105,12 +94,6 @@ impl NexusApp {
                 Some(mismatch.received);
             let _ = self.config.save();
 
-            // If no more mismatches in queue, close the dialog
-            if self.fingerprint_mismatch_queue.is_empty() {
-                self.ui_state.show_fingerprint_mismatch = false;
-            }
-            // Otherwise, dialog stays open showing next mismatch
-
             // Complete the connection that was pending
             return self.handle_bookmark_connection_result(
                 Ok(mismatch.connection),
@@ -126,12 +109,10 @@ impl NexusApp {
         // Remove the current mismatch from queue
         self.fingerprint_mismatch_queue.pop_front();
 
-        // If no more mismatches in queue, close the dialog
+        // Show error only when all mismatches have been handled
         if self.fingerprint_mismatch_queue.is_empty() {
-            self.ui_state.show_fingerprint_mismatch = false;
             self.connection_form.error = Some(t("msg-connection-cancelled"));
         }
-        // Otherwise, dialog stays open showing next mismatch
 
         Task::none()
     }

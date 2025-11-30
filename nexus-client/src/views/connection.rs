@@ -1,6 +1,6 @@
 //! Connection form for new server connections
 
-use super::style::{
+use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
     primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
