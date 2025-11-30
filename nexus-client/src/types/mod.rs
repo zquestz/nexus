@@ -17,9 +17,3 @@ pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;
 pub use ui::{ActivePanel, FingerprintMismatch, InputId, ScrollableId, UiState};
 pub use view_config::{ToolbarState, ViewConfig};
-
-/// Default Nexus BBS port
-pub const DEFAULT_PORT: &str = "7500";
-
-/// Default locale for connections
-pub const DEFAULT_LOCALE: &str = "en";

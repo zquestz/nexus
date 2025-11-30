@@ -6,15 +6,15 @@
 //!
 //! License: SIL Open Font License (OFL)
 
-/// SauceCodePro Nerd Font Mono - Regular weight
+/// SauceCodePro Nerd Font Mono - Regular
 pub const SAUCECODE_PRO_MONO: &[u8] =
     include_bytes!("../fonts/SauceCodeProNerdFontMono-Regular.ttf");
 
-/// SauceCodePro Nerd Font Mono - Bold weight
+/// SauceCodePro Nerd Font Mono - Bold
 pub const SAUCECODE_PRO_MONO_BOLD: &[u8] =
     include_bytes!("../fonts/SauceCodeProNerdFontMono-Bold.ttf");
 
-/// SauceCodePro Nerd Font Mono - Italic style
+/// SauceCodePro Nerd Font Mono - Italic
 pub const SAUCECODE_PRO_MONO_ITALIC: &[u8] =
     include_bytes!("../fonts/SauceCodeProNerdFontMono-Italic.ttf");
 

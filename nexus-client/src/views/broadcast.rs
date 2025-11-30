@@ -1,12 +1,12 @@
 //! Broadcast message panel view
 
+use crate::i18n::t;
 use crate::style::{
     BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    content_background, form_error_color, primary_button_style, primary_text_input_style,
-    shaped_text, sidebar_border,
+    content_background, error_color, primary_button_style, primary_text_input_style, shaped_text,
+    shaped_text_wrapped, sidebar_border,
 };
-use crate::i18n::t;
 use crate::types::{InputId, Message, ServerConnection};
 use iced::widget::{button, column, container, row, text_input};
 use iced::{Background, Center, Element, Fill};
@@ -61,11 +61,13 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
     // Show error if present
     if let Some(error) = &conn.broadcast_error {
         form_items.push(
-            shaped_text(error)
+            shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .color(form_error_color())
+                .style(|theme| iced::widget::text::Style {
+                    color: Some(error_color(theme)),
+                })
                 .into(),
         );
         form_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());

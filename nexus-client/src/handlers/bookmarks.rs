@@ -1,8 +1,8 @@
 //! Bookmark management
 
 use crate::NexusApp;
-use crate::i18n::{t, t_args};
-use crate::types::{BookmarkEditMode, BookmarkEditState, DEFAULT_LOCALE, InputId, Message};
+use crate::i18n::{get_locale, t, t_args};
+use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
 use std::collections::HashMap;
@@ -87,10 +87,7 @@ impl NexusApp {
             let server_address = bookmark.address.clone();
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
-            // Get system locale, fallback to DEFAULT_LOCALE
-            let locale = sys_locale::get_locale()
-                .and_then(|loc| loc.split('-').next().map(String::from))
-                .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
+            let locale = get_locale().to_string();
             let server_name = bookmark.name.clone();
 
             // Store bookmark index for this connection

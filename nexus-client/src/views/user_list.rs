@@ -1,19 +1,19 @@
 //! User list panel (right sidebar)
 
 use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
-use crate::style::{
-    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
-    INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_COLOR,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH, USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING,
-    USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE, admin_user_text_color, alt_row_color,
-    button_text_color, disconnect_icon_color, disconnect_icon_hover_color, empty_state_color,
-    interactive_hover_color, primary_scrollbar_style, section_title_color, shaped_text,
-    sidebar_background, sidebar_border, sidebar_icon_color, sidebar_icon_disabled_color,
-    sidebar_icon_hover_color, tooltip_border, tooltip_text_color,
-};
 use crate::i18n::t;
 use crate::icon;
+use crate::style::{
+    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
+    INPUT_PADDING, TOOLBAR_CONTAINER_PADDING_HORIZONTAL, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
+    USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
+    admin_user_text_color, alt_row_color, button_text_color, disconnect_icon_color,
+    disconnect_icon_hover_color, interactive_hover_color, primary_scrollbar_style,
+    section_title_color, shaped_text, sidebar_background, sidebar_border, sidebar_empty_color,
+    sidebar_icon_color, sidebar_icon_disabled_color, sidebar_icon_hover_color,
+    tooltip_container_style,
+};
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill};
@@ -49,7 +49,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             shaped_text(t("empty-no-users"))
                 .size(USER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
-                    color: Some(empty_state_color(theme)),
+                    color: Some(sidebar_empty_color(theme)),
                 }),
         );
     } else {
@@ -214,12 +214,7 @@ fn create_user_toolbar<'a>(
                 }),
             container(shaped_text(t("tooltip-info")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
+                .style(tooltip_container_style),
             tooltip::Position::Bottom,
         )
         .gap(TOOLTIP_GAP)
@@ -242,12 +237,7 @@ fn create_user_toolbar<'a>(
                 }),
             container(shaped_text(t("tooltip-info")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
+                .style(tooltip_container_style),
             tooltip::Position::Bottom,
         )
         .gap(TOOLTIP_GAP)
@@ -286,12 +276,7 @@ fn create_user_toolbar<'a>(
                     }),
                 container(shaped_text(t("tooltip-message")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|theme| container::Style {
-                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                        text_color: Some(tooltip_text_color(theme)),
-                        border: tooltip_border(),
-                        ..Default::default()
-                    }),
+                    .style(tooltip_container_style),
                 tooltip::Position::Bottom,
             )
             .gap(TOOLTIP_GAP)
@@ -314,12 +299,7 @@ fn create_user_toolbar<'a>(
                     }),
                 container(shaped_text(t("tooltip-message")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|theme| container::Style {
-                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                        text_color: Some(tooltip_text_color(theme)),
-                        border: tooltip_border(),
-                        ..Default::default()
-                    }),
+                    .style(tooltip_container_style),
                 tooltip::Position::Bottom,
             )
             .gap(TOOLTIP_GAP)
@@ -356,12 +336,7 @@ fn create_user_toolbar<'a>(
             }),
         container(shaped_text(t("tooltip-kick")).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                text_color: Some(tooltip_text_color(theme)),
-                border: tooltip_border(),
-                ..Default::default()
-            }),
+            .style(tooltip_container_style),
         tooltip::Position::Bottom,
     )
     .gap(TOOLTIP_GAP)

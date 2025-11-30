@@ -1,13 +1,13 @@
 //! User management panel (add, edit, delete users)
 
 use super::constants::PERMISSION_USER_DELETE;
+use crate::i18n::{t, translate_permission};
 use crate::style::{
     BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background,
-    form_error_color, primary_button_style, primary_checkbox_style, primary_text_input_style,
-    shaped_text, sidebar_border,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background, error_color,
+    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    shaped_text_wrapped, sidebar_border,
 };
-use crate::i18n::{t, translate_permission};
 use crate::types::{
     ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
 };
@@ -182,11 +182,13 @@ pub fn users_view<'a>(
         // Show error if present
         if let Some(error) = &user_management.create_error {
             create_items.push(
-                shaped_text(error)
+                shaped_text_wrapped(error)
                     .size(TEXT_SIZE)
                     .width(Fill)
                     .align_x(Center)
-                    .color(form_error_color())
+                    .style(|theme| iced::widget::text::Style {
+                        color: Some(error_color(theme)),
+                    })
                     .into(),
             );
             create_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
@@ -292,11 +294,13 @@ pub fn users_view<'a>(
                 // Show error if present
                 if let Some(error) = &user_management.edit_error {
                     edit_items.push(
-                        shaped_text(error)
+                        shaped_text_wrapped(error)
                             .size(TEXT_SIZE)
                             .width(Fill)
                             .align_x(Center)
-                            .color(form_error_color())
+                            .style(|theme| iced::widget::text::Style {
+                                color: Some(error_color(theme)),
+                            })
                             .into(),
                     );
                     edit_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
@@ -456,11 +460,13 @@ pub fn users_view<'a>(
                 // Show error if present
                 if let Some(error) = &user_management.edit_error {
                     update_items.push(
-                        shaped_text(error)
+                        shaped_text_wrapped(error)
                             .size(TEXT_SIZE)
                             .width(Fill)
                             .align_x(Center)
-                            .color(form_error_color())
+                            .style(|theme| iced::widget::text::Style {
+                                color: Some(error_color(theme)),
+                            })
                             .into(),
                     );
                     update_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());

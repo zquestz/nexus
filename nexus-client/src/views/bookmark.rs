@@ -1,11 +1,12 @@
 //! Bookmark add/edit form
 
+use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_color,
     primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    shaped_text_wrapped,
 };
-use crate::i18n::t;
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::widget::{button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
@@ -46,11 +47,13 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
     // Show error if present
     if let Some(error) = &state.error {
         column_items.push(
-            shaped_text(error)
+            shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .color(form_error_color())
+                .style(|theme| iced::widget::text::Style {
+                    color: Some(error_color(theme)),
+                })
                 .into(),
         );
         column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
@@ -83,23 +86,29 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             .size(TEXT_SIZE)
             .style(primary_text_input_style())
             .into(),
-        text_input(&t("placeholder-username-optional"), &state.bookmark.username)
-            .on_input(Message::BookmarkUsernameChanged)
-            .on_submit(submit_action.clone())
-            .id(text_input::Id::from(InputId::BookmarkUsername))
-            .padding(INPUT_PADDING)
-            .size(TEXT_SIZE)
-            .style(primary_text_input_style())
-            .into(),
-        text_input(&t("placeholder-password-optional"), &state.bookmark.password)
-            .on_input(Message::BookmarkPasswordChanged)
-            .on_submit(submit_action)
-            .id(text_input::Id::from(InputId::BookmarkPassword))
-            .secure(true)
-            .padding(INPUT_PADDING)
-            .size(TEXT_SIZE)
-            .style(primary_text_input_style())
-            .into(),
+        text_input(
+            &t("placeholder-username-optional"),
+            &state.bookmark.username,
+        )
+        .on_input(Message::BookmarkUsernameChanged)
+        .on_submit(submit_action.clone())
+        .id(text_input::Id::from(InputId::BookmarkUsername))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style())
+        .into(),
+        text_input(
+            &t("placeholder-password-optional"),
+            &state.bookmark.password,
+        )
+        .on_input(Message::BookmarkPasswordChanged)
+        .on_submit(submit_action)
+        .id(text_input::Id::from(InputId::BookmarkPassword))
+        .secure(true)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .style(primary_text_input_style())
+        .into(),
         shaped_text("").size(SPACER_SIZE_SMALL).into(),
         checkbox(t("label-auto-connect"), state.bookmark.auto_connect)
             .on_toggle(Message::BookmarkAutoConnectToggled)

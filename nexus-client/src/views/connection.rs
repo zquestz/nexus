@@ -1,11 +1,12 @@
 //! Connection form for new server connections
 
+use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, form_error_color,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_color,
     primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    shaped_text_wrapped,
 };
-use crate::i18n::t;
 use crate::types::{ConnectionFormState, InputId, Message};
 use iced::widget::{button, checkbox, column, container, text, text_input};
 use iced::{Center, Element, Fill};
@@ -90,11 +91,13 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
     // Show error if present (at top for visibility)
     if let Some(error) = &form.error {
         column_items.push(
-            shaped_text(error)
+            shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .color(form_error_color())
+                .style(|theme| iced::widget::text::Style {
+                    color: Some(error_color(theme)),
+                })
                 .into(),
         );
         column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());

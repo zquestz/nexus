@@ -1,10 +1,7 @@
 //! Connection and chat message handlers
 
-use crate::handlers::network::msg_username_error;
-use crate::i18n::t;
-use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, DEFAULT_LOCALE, InputId, Message, ScrollableId,
-};
+use crate::i18n::{get_locale, t};
+use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::views::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
 };
@@ -90,10 +87,7 @@ impl NexusApp {
         let server_address = self.connection_form.server_address.clone();
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
-        // Get system locale, fallback to DEFAULT_LOCALE
-        let locale = sys_locale::get_locale()
-            .and_then(|loc| loc.split('-').next().map(String::from))
-            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
+        let locale = get_locale().to_string();
         let connection_id = self.next_connection_id;
         self.next_connection_id += 1;
 
@@ -262,7 +256,7 @@ impl NexusApp {
         self.add_chat_message(
             connection_id,
             ChatMessage {
-                username: msg_username_error(),
+                username: t("msg-username-error"),
                 message,
                 timestamp: Local::now(),
             },

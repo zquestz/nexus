@@ -1,7 +1,6 @@
 //! User management
 
 use crate::NexusApp;
-use crate::handlers::network::msg_username_error;
 use crate::i18n::t;
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState,
@@ -384,7 +383,7 @@ impl NexusApp {
         self.add_chat_message(
             connection_id,
             ChatMessage {
-                username: msg_username_error(),
+                username: t("msg-username-error"),
                 message,
                 timestamp: Local::now(),
             },
@@ -446,7 +445,7 @@ impl NexusApp {
                 return self.add_chat_message(
                     conn_id,
                     ChatMessage {
-                        username: msg_username_error(),
+                        username: t("msg-username-error"),
                         message: error_msg,
                         timestamp: Local::now(),
                     },
@@ -493,7 +492,7 @@ impl NexusApp {
                 return self.add_chat_message(
                     conn_id,
                     ChatMessage {
-                        username: msg_username_error(),
+                        username: t("msg-username-error"),
                         message: error_msg,
                         timestamp: Local::now(),
                     },

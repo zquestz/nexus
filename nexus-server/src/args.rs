@@ -1,6 +1,7 @@
 //! Command-line argument parsing
 
 use clap::Parser;
+use nexus_common::DEFAULT_PORT;
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -29,7 +30,7 @@ pub struct Args {
     pub bind: IpAddr,
 
     /// Port to listen on
-    #[arg(short, long, default_value = "7500")]
+    #[arg(short, long, default_value_t = DEFAULT_PORT)]
     pub port: u16,
 
     /// Database file path (overrides platform default)

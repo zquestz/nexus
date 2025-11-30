@@ -3,16 +3,15 @@
 use super::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
+use crate::i18n::t;
+use crate::icon;
 use crate::style::{
     EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
     TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
-    TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, action_button_text, empty_view_text_color, interactive_hover_color,
-    shaped_text, toolbar_background, toolbar_icon_color, toolbar_icon_disabled_color,
-    tooltip_border, tooltip_text_color,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    action_button_text, content_empty_color, interactive_hover_color, shaped_text,
+    toolbar_background, toolbar_icon_color, toolbar_icon_disabled_color, tooltip_container_style,
 };
-use crate::i18n::t;
-use crate::icon;
 use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
     ViewConfig,
@@ -21,12 +20,8 @@ use iced::widget::{button, column, container, row, stack, tooltip};
 use iced::{Background, Border, Center, Element, Fill};
 
 use super::{
-    bookmark::bookmark_edit_view,
-    broadcast::broadcast_view,
-    chat::chat_view,
-    connection::connection_form_view,
-    server_list::server_list_panel,
-    user_list::user_list_panel,
+    bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
+    connection::connection_form_view, server_list::server_list_panel, user_list::user_list_panel,
     users::users_view,
 };
 
@@ -181,12 +176,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             }),
                         container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -203,12 +193,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         }),
                         container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -245,12 +230,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             }),
                         container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -267,12 +247,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         ),
                         container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -309,12 +284,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             }),
                         container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -331,12 +301,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         ),
                         container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -373,12 +338,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             }),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -395,12 +355,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         }),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -427,12 +382,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         }),
                     container(shaped_text(t("tooltip-toggle-theme")).size(TOOLTIP_TEXT_SIZE))
                         .padding(TOOLTIP_BACKGROUND_PADDING)
-                        .style(|theme| container::Style {
-                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                            text_color: Some(tooltip_text_color(theme)),
-                            border: tooltip_border(),
-                            ..Default::default()
-                        }),
+                        .style(tooltip_container_style),
                     tooltip::Position::Bottom,
                 )
                 .gap(TOOLTIP_GAP)
@@ -466,12 +416,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         .size(TOOLTIP_TEXT_SIZE)
                     )
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|theme| container::Style {
-                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                        text_color: Some(tooltip_text_color(theme)),
-                        border: tooltip_border(),
-                        ..Default::default()
-                    }),
+                    .style(tooltip_container_style),
                     tooltip::Position::Bottom,
                 )
                 .gap(TOOLTIP_GAP)
@@ -506,12 +451,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             .size(TOOLTIP_TEXT_SIZE),
                         )
                         .padding(TOOLTIP_BACKGROUND_PADDING)
-                        .style(|theme| container::Style {
-                            background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                            text_color: Some(tooltip_text_color(theme)),
-                            border: tooltip_border(),
-                            ..Default::default()
-                        }),
+                        .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -534,12 +474,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         }),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(|theme| container::Style {
-                                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                                text_color: Some(tooltip_text_color(theme)),
-                                border: tooltip_border(),
-                                ..Default::default()
-                            }),
+                            .style(tooltip_container_style),
                         tooltip::Position::Bottom,
                     )
                     .gap(TOOLTIP_GAP)
@@ -599,7 +534,7 @@ fn empty_content_view<'a>() -> Element<'a, Message> {
         shaped_text(t("empty-select-server"))
             .size(EMPTY_VIEW_SIZE)
             .style(|theme| iced::widget::text::Style {
-                color: Some(empty_view_text_color(theme)),
+                color: Some(content_empty_color(theme)),
             }),
     )
     .width(Fill)

@@ -1,8 +1,8 @@
 //! View configuration struct for passing state to view rendering
 
 use crate::types::{
-    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
-    UiState, UserManagementState,
+    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection, UiState,
+    UserManagementState,
 };
 use iced::Theme;
 use std::collections::HashMap;

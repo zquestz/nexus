@@ -1,404 +1,202 @@
-//! Color constants for the Nexus BBS Client
+//! Theme-aware color helper functions
 //!
-//! All color values are defined here as constants, organized by UI element.
-//! Each color has both a dark theme and light theme variant, placed side-by-side
-//! for easy comparison and maintenance.
-//!
-//! Helper functions in `style.rs` reference these constants to provide theme-aware colors.
+//! These functions return the appropriate color for the current theme.
+//! Color names in the function bodies are self-documenting - they describe
+//! the actual colors used for each theme variant.
 
-use iced::Color;
-
-// ============================================================================
-// Toolbar Colors
-// ============================================================================
-
-/// Toolbar background - Dark theme
-/// A dark gray that separates the toolbar from the main content area
-pub const TOOLBAR_BACKGROUND_DARK: Color = Color::from_rgb(0.15, 0.15, 0.15);
-
-/// Toolbar background - Light theme
-/// A light gray that provides subtle contrast in light mode
-pub const TOOLBAR_BACKGROUND_LIGHT: Color = Color::from_rgb(0.92, 0.92, 0.92);
-
-/// Toolbar icon color (enabled) - Dark theme
-/// Light gray for good contrast on dark toolbar
-pub const TOOLBAR_ICON_DARK: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// Toolbar icon color (enabled) - Light theme
-/// Dark gray for good contrast on light toolbar
-pub const TOOLBAR_ICON_LIGHT: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-/// Toolbar icon color (disabled) - Dark theme
-/// Dimmed dark gray to indicate unavailable actions
-pub const TOOLBAR_ICON_DISABLED_DARK: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-/// Toolbar icon color (disabled) - Light theme
-/// Dimmed light gray to indicate unavailable actions
-pub const TOOLBAR_ICON_DISABLED_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
+use super::palette;
+use iced::{Color, Theme};
 
 // ============================================================================
-// Sidebar Colors (Server List & User List)
+// Helper
 // ============================================================================
 
-/// Sidebar panel background - Dark theme
-/// Very dark gray, slightly darker than toolbar for visual hierarchy
-pub const SIDEBAR_BACKGROUND_DARK: Color = Color::from_rgb(0.12, 0.12, 0.12);
-
-/// Sidebar panel background - Light theme
-/// Very light gray, slightly lighter than toolbar
-pub const SIDEBAR_BACKGROUND_LIGHT: Color = Color::from_rgb(0.95, 0.95, 0.95);
-
-/// Sidebar panel border - Dark theme
-/// Subtle border to define panel edges
-pub const SIDEBAR_BORDER_DARK: Color = Color::from_rgb(0.2, 0.2, 0.2);
-
-/// Sidebar panel border - Light theme
-/// Subtle border visible on light background
-pub const SIDEBAR_BORDER_LIGHT: Color = Color::from_rgb(0.8, 0.8, 0.8);
-
-/// Section title color (e.g., "Connected", "Bookmarks", "Users") - Dark theme
-/// Light gray for good readability
-pub const SECTION_TITLE_DARK: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// Section title color (e.g., "Connected", "Bookmarks", "Users") - Light theme
-/// Dark gray for strong contrast
-pub const SECTION_TITLE_LIGHT: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-/// Empty state text (e.g., "No connections", "No bookmarks") - Dark theme
-/// Dimmed gray to indicate inactive/empty state
-pub const EMPTY_STATE_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Empty state text (e.g., "No connections", "No bookmarks") - Light theme
-/// Medium gray for subtle empty state indication
-pub const EMPTY_STATE_LIGHT: Color = Color::from_rgb(0.6, 0.6, 0.6);
-
-/// Alternating row background color - Dark theme
-/// Slightly lighter than sidebar background for zebra striping
-pub const ALT_ROW_BACKGROUND_DARK: Color = Color::from_rgb(0.15, 0.15, 0.15);
-
-/// Alternating row background color - Light theme
-/// Slightly darker than sidebar background for zebra striping
-pub const ALT_ROW_BACKGROUND_LIGHT: Color = Color::from_rgb(0.90, 0.90, 0.90);
-
-/// Button text color on transparent buttons - Dark theme
-/// White text on dark backgrounds
-pub const BUTTON_TEXT_DARK: Color = Color::WHITE;
-
-/// Button text color on transparent buttons - Light theme
-/// Black text on light backgrounds
-pub const BUTTON_TEXT_LIGHT: Color = Color::BLACK;
-
-/// Separator line color - Dark theme
-/// Subtle line to divide sections
-pub const SEPARATOR_DARK: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-/// Separator line color - Light theme
-/// Subtle line visible on light background
-pub const SEPARATOR_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
+/// Select a color based on the current theme.
+///
+/// Returns `light` color for `Theme::Light`, `dark` color for all other themes.
+/// This is an internal helper used by color functions and widget styles.
+#[inline]
+pub(crate) fn theme_color(theme: &Theme, light: Color, dark: Color) -> Color {
+    match theme {
+        Theme::Light => light,
+        _ => dark,
+    }
+}
 
 // ============================================================================
-// Icon Colors (Disconnect, Edit, etc.)
+// Layout Colors (Toolbar, Sidebar, Content)
 // ============================================================================
 
-/// Disconnect icon default color - Dark theme
-/// Light gray for visibility on dark background
-pub const DISCONNECT_ICON_DARK: Color = Color::from_rgb(0.6, 0.6, 0.6);
+/// Toolbar background color
+pub fn toolbar_background(theme: &Theme) -> Color {
+    theme_color(theme, palette::PLATINUM, palette::CHARCOAL)
+}
 
-/// Disconnect icon default color - Light theme
-/// Medium gray for visibility on light background
-pub const DISCONNECT_ICON_LIGHT: Color = Color::from_rgb(0.4, 0.4, 0.4);
+/// Sidebar panel background color
+pub fn sidebar_background(theme: &Theme) -> Color {
+    theme_color(theme, palette::SMOKE, palette::EBONY)
+}
 
-/// Disconnect icon hover color - Dark theme
-/// Bright red to indicate destructive action
-pub const DISCONNECT_ICON_HOVER_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
+/// Content area background color (matches the default window background)
+pub fn content_background(theme: &Theme) -> Color {
+    theme.palette().background
+}
 
-/// Disconnect icon hover color - Light theme
-/// Darker red for better contrast on light background
-pub const DISCONNECT_ICON_HOVER_LIGHT: Color = Color::from_rgb(0.8, 0.2, 0.2);
+/// Sidebar panel border color
+pub fn sidebar_border(theme: &Theme) -> Color {
+    theme_color(theme, palette::GAINSBORO, palette::JET)
+}
 
-/// Sidebar icon default color - Dark theme
-/// Light gray for visibility on dark background
-/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
-pub const SIDEBAR_ICON_DARK: Color = Color::from_rgb(0.6, 0.6, 0.6);
+/// Section title color (e.g., "Connected", "Bookmarks", "Users")
+pub fn section_title_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::DIM_GRAY, palette::SILVER)
+}
 
-/// Sidebar icon default color - Light theme
-/// Medium gray for visibility on light background
-/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
-pub const SIDEBAR_ICON_LIGHT: Color = Color::from_rgb(0.4, 0.4, 0.4);
+/// Sidebar empty state text color (e.g., "No connections", "No bookmarks")
+pub fn sidebar_empty_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::LIGHT_SLATE, palette::GRANITE)
+}
 
-/// Sidebar icon hover color - Dark theme
-/// Light blue to indicate interactive element
-/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
-pub const SIDEBAR_ICON_HOVER_DARK: Color = Color::from_rgb(0.5, 0.7, 1.0);
+/// Separator line color
+pub fn separator_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::SILVER, palette::DIM_GRAY)
+}
 
-/// Sidebar icon hover color - Light theme
-/// Darker blue for better contrast on light background
-/// Used for: bookmark edit/cog icons, user list toolbar icons (info, message, kick)
-pub const SIDEBAR_ICON_HOVER_LIGHT: Color = Color::from_rgb(0.2, 0.4, 0.8);
-
-/// Sidebar icon disabled color (both themes)
-/// Dimmed gray for disabled state
-/// Used for: disabled icons in user list toolbar
-pub const SIDEBAR_ICON_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-// ============================================================================
-// Chat Message Colors
-// ============================================================================
-
-/// Chat timestamp text - Dark theme
-/// Dimmed gray for visual hierarchy, less prominent than message content
-pub const CHAT_TIMESTAMP_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Chat timestamp text - Light theme
-/// Medium gray for visual hierarchy
-pub const CHAT_TIMESTAMP_LIGHT: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Regular chat message text - Dark theme
-/// Pure white for maximum readability
-pub const CHAT_TEXT_DARK: Color = Color::WHITE;
-
-/// Regular chat message text - Light theme
-/// Pure black for maximum readability
-pub const CHAT_TEXT_LIGHT: Color = Color::BLACK;
-
-/// System message text (e.g., [SYS] user connected) - Dark theme
-/// Lighter gray, subdued compared to regular messages
-pub const SYSTEM_TEXT_DARK: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// System message text (e.g., [SYS] user connected) - Light theme
-/// Darker gray, subdued and less prominent than regular messages
-pub const SYSTEM_TEXT_LIGHT: Color = Color::from_rgb(0.35, 0.35, 0.35);
-
-/// Info message text (e.g., [INFO] notifications) - Dark theme
-/// Light blue to stand out as informational
-pub const INFO_TEXT_DARK: Color = Color::from_rgb(0.5, 0.8, 1.0);
-
-/// Info message text (e.g., [INFO] notifications) - Light theme
-/// Dark blue for good contrast and readability
-pub const INFO_TEXT_LIGHT: Color = Color::from_rgb(0.2, 0.5, 0.8);
-
-/// Broadcast message text (e.g., [BROADCAST] announcements) - Dark theme
-/// Bright red to stand out as important announcements
-pub const BROADCAST_TEXT_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
-
-/// Broadcast message text (e.g., [BROADCAST] announcements) - Light theme
-/// Dark red for visibility and importance
-pub const BROADCAST_TEXT_LIGHT: Color = Color::from_rgb(0.8, 0.0, 0.0);
-
-/// Admin user text in user list - Dark theme
-/// Red to indicate admin status
-pub const ADMIN_USER_TEXT_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3);
-
-/// Admin user text in user list - Light theme
-/// Dark red to indicate admin status
-pub const ADMIN_USER_TEXT_LIGHT: Color = Color::from_rgb(0.8, 0.0, 0.0);
+/// Alternating row background color
+pub fn alt_row_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::PEWTER, palette::CHARCOAL)
+}
 
 // ============================================================================
-// Empty View Colors
+// Text Colors
 // ============================================================================
 
-/// Empty view text (e.g., "Select a server to connect") - Dark theme
-/// Medium gray for centered placeholder text
-pub const EMPTY_VIEW_TEXT_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
+/// Button text color on transparent buttons
+pub fn button_text_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::BLACK, palette::WHITE)
+}
 
-/// Empty view text (e.g., "Select a server to connect") - Light theme
-/// Same medium gray works well on both backgrounds
-pub const EMPTY_VIEW_TEXT_LIGHT: Color = Color::from_rgb(0.5, 0.5, 0.5);
+/// Tooltip text color
+pub fn tooltip_text_color(_theme: &Theme) -> Color {
+    // Always white since tooltip background is dark in both themes
+    palette::WHITE
+}
+
+/// Chat message text color (regular messages)
+pub fn chat_text_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::BLACK, palette::WHITE)
+}
+
+/// System message text color (e.g., [SYS] user connected)
+pub fn system_text_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::DARK_SLATE, palette::SILVER)
+}
+
+/// Info message text color (e.g., [INFO] notifications)
+pub fn info_text_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::AZURE, palette::SKY_BLUE)
+}
+
+/// Chat timestamp color
+pub fn chat_timestamp_color(_theme: &Theme) -> Color {
+    // Same gray works well on both backgrounds
+    palette::SLATE
+}
+
+/// Admin user text color (red to indicate admin status)
+pub fn admin_user_text_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::CRIMSON, palette::CORAL)
+}
+
+/// Content area empty state text color (e.g., "Select a server to connect")
+pub fn content_empty_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::LIGHT_SLATE, palette::GRANITE)
+}
+
+/// Broadcast message text color
+pub fn broadcast_message_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::CRIMSON, palette::CORAL)
+}
+
+// ============================================================================
+// Icon Colors
+// ============================================================================
+
+/// Toolbar icon color (enabled)
+pub fn toolbar_icon_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::DIM_GRAY, palette::SILVER)
+}
+
+/// Toolbar icon color (disabled)
+pub fn toolbar_icon_disabled_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::SILVER, palette::DIM_GRAY)
+}
+
+/// Disconnect icon default color
+pub fn disconnect_icon_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::GRANITE, palette::LIGHT_SLATE)
+}
+
+/// Disconnect icon hover color (red for destructive action)
+pub fn disconnect_icon_hover_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::CRIMSON, palette::CORAL)
+}
+
+/// Sidebar icon default color (bookmark cog, user list toolbar icons)
+pub fn sidebar_icon_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::GRANITE, palette::LIGHT_SLATE)
+}
+
+/// Sidebar icon hover color
+pub fn sidebar_icon_hover_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::COBALT, palette::CORNFLOWER)
+}
+
+/// Sidebar icon disabled color
+pub fn sidebar_icon_disabled_color() -> Color {
+    palette::DIM_GRAY
+}
 
 // ============================================================================
 // Theme-Independent Colors
 // ============================================================================
-// These colors are the same in both themes because they represent semantic
-// meanings (error = red, primary action = blue) that should be consistent.
 
-/// Error message text in chat - Theme-independent
-/// Bright red for maximum visibility and urgency
-pub const ERROR_MESSAGE: Color = Color::from_rgb(1.0, 0.0, 0.0);
+/// Interactive element hover color (our signature blue)
+pub fn interactive_hover_color() -> Color {
+    palette::STEEL_BLUE
+}
 
-/// Form validation error text - Theme-independent
-/// Slightly softer red for form errors
-pub const FORM_ERROR: Color = Color::from_rgb(1.0, 0.3, 0.3);
+/// Error text color (form validation, chat errors, bookmark errors)
+pub fn error_color(theme: &Theme) -> Color {
+    theme_color(theme, palette::CRIMSON, palette::CORAL)
+}
 
-/// Primary action button background - Theme-independent
-/// Our signature blue used throughout the app
-pub const PRIMARY_ACTION_BG: Color = Color::from_rgb(0.3, 0.5, 0.7);
+/// Primary action button background color
+pub fn primary_action_background() -> Color {
+    palette::STEEL_BLUE
+}
 
-/// Primary action button hover state - Theme-independent
-/// Lighter blue to indicate hover
-pub const PRIMARY_ACTION_BG_HOVER: Color = Color::from_rgb(0.35, 0.55, 0.75);
+/// Primary action button background color (hovered)
+pub fn primary_action_background_hovered() -> Color {
+    palette::STEEL_BLUE_PALE
+}
 
-/// Primary action button pressed state - Theme-independent
-/// Darker blue to indicate pressed/active
-pub const PRIMARY_ACTION_BG_PRESSED: Color = Color::from_rgb(0.25, 0.45, 0.65);
+/// Primary action button background color (pressed)
+pub fn primary_action_background_pressed() -> Color {
+    palette::STEEL_BLUE_DARK
+}
 
-/// Disabled button background - Theme-independent
-/// Gray to indicate disabled state
-pub const DISABLED_ACTION_BG: Color = Color::from_rgb(0.5, 0.5, 0.5);
+/// Disabled button background color
+pub fn disabled_action_background() -> Color {
+    palette::SLATE
+}
 
-/// Disabled button text - Theme-independent
-/// Light gray for low contrast on disabled buttons
-pub const DISABLED_ACTION_TEXT: Color = Color::from_rgb(0.8, 0.8, 0.8);
+/// Disabled button text color
+pub fn disabled_action_text() -> Color {
+    palette::GAINSBORO
+}
 
-/// Button text on colored backgrounds - Theme-independent
-/// White text works on all our colored buttons (blue, gray)
-pub const ACTION_BUTTON_TEXT: Color = Color::WHITE;
-
-/// Interactive hover color (buttons, selections) - Theme-independent
-/// Our signature blue used for hover states and active selections
-pub const INTERACTIVE_HOVER: Color = Color::from_rgb(0.3, 0.5, 0.7);
-
-/// Tooltip background - Theme-independent
-/// Semi-transparent black works well on both light and dark backgrounds
-pub const TOOLTIP_BACKGROUND: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.8);
-
-/// Tooltip text - Dark theme
-/// White text for readability on dark tooltip background
-pub const TOOLTIP_TEXT_DARK: Color = Color::WHITE;
-
-/// Tooltip text - Light theme
-/// White text also works on semi-transparent black background
-pub const TOOLTIP_TEXT_LIGHT: Color = Color::WHITE;
-
-// ============================================================================
-// Checkbox Widget Colors
-// ============================================================================
-
-/// Checkbox unchecked background - Dark theme
-/// Medium gray background for unchecked checkboxes in dark mode
-pub const CHECKBOX_UNCHECKED_BG_DARK: Color = Color::from_rgb(0.3, 0.3, 0.3);
-
-/// Checkbox unchecked background - Light theme
-/// Light gray background for unchecked checkboxes in light mode
-pub const CHECKBOX_UNCHECKED_BG_LIGHT: Color = Color::from_rgb(0.9, 0.9, 0.9);
-
-/// Checkbox unchecked border - Dark theme
-/// Lighter gray border for visibility in dark mode
-pub const CHECKBOX_UNCHECKED_BORDER_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Checkbox unchecked border - Light theme
-/// Medium gray border for unchecked checkboxes in light mode
-pub const CHECKBOX_UNCHECKED_BORDER_LIGHT: Color = Color::from_rgb(0.6, 0.6, 0.6);
-
-/// Checkbox unchecked background hover - Dark theme
-/// Slightly lighter gray when hovering in dark mode
-pub const CHECKBOX_UNCHECKED_BG_HOVER_DARK: Color = Color::from_rgb(0.35, 0.35, 0.35);
-
-/// Checkbox unchecked background hover - Light theme
-/// Slightly lighter gray when hovering in light mode
-pub const CHECKBOX_UNCHECKED_BG_HOVER_LIGHT: Color = Color::from_rgb(0.95, 0.95, 0.95);
-
-/// Checkbox disabled icon - Dark theme
-/// Dimmed gray for disabled checkbox icon in dark mode
-pub const CHECKBOX_DISABLED_ICON_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Checkbox disabled icon - Light theme
-/// Light gray for disabled checkbox icon in light mode
-pub const CHECKBOX_DISABLED_ICON_LIGHT: Color = Color::from_rgb(0.8, 0.8, 0.8);
-
-/// Checkbox disabled border - Dark theme
-/// Dimmed border for disabled checkboxes in dark mode
-pub const CHECKBOX_DISABLED_BORDER_DARK: Color = Color::from_rgb(0.35, 0.35, 0.35);
-
-/// Checkbox disabled border - Light theme
-/// Gray border for disabled checkboxes in light mode
-pub const CHECKBOX_DISABLED_BORDER_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// Checkbox disabled text - Dark theme
-/// Dimmed text for disabled checkbox labels in dark mode
-pub const CHECKBOX_DISABLED_TEXT_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Checkbox disabled text - Light theme
-/// Medium gray for disabled checkbox labels in light mode
-pub const CHECKBOX_DISABLED_TEXT_LIGHT: Color = Color::from_rgb(0.6, 0.6, 0.6);
-
-// ============================================================================
-// Text Input Widget Colors
-// ============================================================================
-
-/// Text input background - Dark theme
-/// Dark gray background for text inputs in dark mode
-pub const TEXT_INPUT_BG_DARK: Color = Color::from_rgb(0.15, 0.15, 0.15);
-
-/// Text input background - Light theme
-/// White background for text inputs in light mode
-pub const TEXT_INPUT_BG_LIGHT: Color = Color::WHITE;
-
-/// Text input border (active) - Dark theme
-/// Medium gray border for active text inputs
-pub const TEXT_INPUT_BORDER_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Text input border (active) - Light theme
-/// Medium gray border for active text inputs
-pub const TEXT_INPUT_BORDER_LIGHT: Color = Color::from_rgb(0.6, 0.6, 0.6);
-
-/// Text input icon - Dark theme
-/// Medium gray for input field icons in dark mode
-pub const TEXT_INPUT_ICON_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Text input icon - Light theme
-/// Medium gray for input field icons in light mode
-pub const TEXT_INPUT_ICON_LIGHT: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Text input placeholder - Dark theme
-/// Dimmed gray for placeholder text in dark mode
-pub const TEXT_INPUT_PLACEHOLDER_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Text input placeholder - Light theme
-/// Medium gray for placeholder text in light mode
-pub const TEXT_INPUT_PLACEHOLDER_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// Text input value (text content) - Dark theme
-/// White text for input content in dark mode
-pub const TEXT_INPUT_VALUE_DARK: Color = Color::WHITE;
-
-/// Text input value (text content) - Light theme
-/// Black text for input content in light mode
-pub const TEXT_INPUT_VALUE_LIGHT: Color = Color::BLACK;
-
-/// Text input disabled background - Dark theme
-/// Darker gray for disabled inputs in dark mode
-pub const TEXT_INPUT_DISABLED_BG_DARK: Color = Color::from_rgb(0.25, 0.25, 0.25);
-
-/// Text input disabled background - Light theme
-/// Very light gray for disabled inputs in light mode
-pub const TEXT_INPUT_DISABLED_BG_LIGHT: Color = Color::from_rgb(0.95, 0.95, 0.95);
-
-/// Text input disabled border - Dark theme
-/// Dimmed border for disabled inputs in dark mode
-pub const TEXT_INPUT_DISABLED_BORDER_DARK: Color = Color::from_rgb(0.35, 0.35, 0.35);
-
-/// Text input disabled border - Light theme
-/// Light gray border for disabled inputs in light mode
-pub const TEXT_INPUT_DISABLED_BORDER_LIGHT: Color = Color::from_rgb(0.8, 0.8, 0.8);
-
-/// Text input disabled icon - Dark theme
-/// Dimmed gray icon for disabled input fields in dark mode
-pub const TEXT_INPUT_DISABLED_ICON_DARK: Color = Color::from_rgb(0.35, 0.35, 0.35);
-
-/// Text input disabled icon - Light theme
-/// Light gray icon for disabled input fields in light mode
-pub const TEXT_INPUT_DISABLED_ICON_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
-
-/// Text input disabled placeholder - Dark theme
-/// Dimmed placeholder text for disabled inputs in dark mode
-pub const TEXT_INPUT_DISABLED_PLACEHOLDER_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Text input disabled placeholder - Light theme
-/// Light gray placeholder for disabled inputs in light mode
-pub const TEXT_INPUT_DISABLED_PLACEHOLDER_LIGHT: Color = Color::from_rgb(0.8, 0.8, 0.8);
-
-/// Text input disabled value - Dark theme
-/// Dimmed text for disabled input content in dark mode
-pub const TEXT_INPUT_DISABLED_VALUE_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
-
-/// Text input disabled value - Light theme
-/// Medium gray text for disabled input content in light mode
-pub const TEXT_INPUT_DISABLED_VALUE_LIGHT: Color = Color::from_rgb(0.6, 0.6, 0.6);
-
-/// Text input disabled selection - Dark theme
-/// Dimmed selection highlight for disabled inputs in dark mode
-pub const TEXT_INPUT_DISABLED_SELECTION_DARK: Color = Color::from_rgb(0.4, 0.4, 0.4);
-
-/// Text input disabled selection - Light theme
-/// Gray selection highlight for disabled inputs in light mode
-pub const TEXT_INPUT_DISABLED_SELECTION_LIGHT: Color = Color::from_rgb(0.7, 0.7, 0.7);
+/// Text color for buttons with colored backgrounds (always white)
+pub fn action_button_text() -> Color {
+    palette::WHITE
+}

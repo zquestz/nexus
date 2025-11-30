@@ -1,19 +1,16 @@
 //! Chat interface for active server connections
 
 use super::constants::PERMISSION_CHAT_SEND;
+use crate::i18n::t;
 use crate::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
-    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    action_button_text, admin_user_text_color, broadcast_message_color, chat_tab_active_style,
-    chat_tab_inactive_style, chat_text_color, chat_timestamp_color, error_message_color,
-    info_text_color, primary_button_style, primary_scrollbar_style, primary_text_input_style,
-    shaped_text, sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
+    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, action_button_text, admin_user_text_color,
+    broadcast_message_color, chat_tab_active_style, chat_tab_inactive_style, chat_text_color,
+    chat_timestamp_color, content_background, error_color, info_text_color, primary_button_style,
+    primary_scrollbar_style, primary_text_input_style, shaped_text, sidebar_border,
+    system_text_color, tooltip_container_style,
 };
-use crate::handlers::network::{
-    msg_username_broadcast_prefix, msg_username_error, msg_username_info, msg_username_system,
-};
-use crate::i18n::t;
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
 use iced::Theme;
 use iced::widget::{
@@ -36,10 +33,10 @@ fn create_tab_button(
                 button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
                     .on_press(Message::CloseUserMessageTab(username_clone))
                     .padding(iced::Padding::new(0.0).left(SMALL_PADDING as f32))
-                    .style(|_theme, status| button::Style {
+                    .style(|theme, status| button::Style {
                         background: None,
                         text_color: match status {
-                            button::Status::Hovered => error_message_color(),
+                            button::Status::Hovered => error_color(theme),
                             _ => action_button_text(),
                         },
                         border: iced::Border::default(),
@@ -50,12 +47,7 @@ fn create_tab_button(
                         .size(TOOLTIP_TEXT_SIZE),
                 )
                 .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(|theme| container::Style {
-                    background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                    text_color: Some(tooltip_text_color(theme)),
-                    border: tooltip_border(),
-                    ..Default::default()
-                }),
+                .style(tooltip_container_style),
                 tooltip::Position::Bottom,
             )
             .gap(TOOLTIP_GAP)
@@ -173,7 +165,7 @@ pub fn chat_view<'a>(
             // Grey timestamp for all message types
             let timestamp_color = chat_timestamp_color(&theme);
 
-            let display: Element<'_, Message> = if msg.username == msg_username_system() {
+            let display: Element<'_, Message> = if msg.username == t("msg-username-system") {
                 // System messages: timestamp grey, rest in system color
                 let color = system_text_color(&theme);
                 rich_text![
@@ -185,9 +177,9 @@ pub fn chat_view<'a>(
                 .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
-            } else if msg.username == msg_username_error() {
+            } else if msg.username == t("msg-username-error") {
                 // Error messages: timestamp grey, rest in error color
-                let color = error_message_color();
+                let color = error_color(&theme);
                 rich_text![
                     span(format!("[{}] ", time_str)).color(timestamp_color),
                     span(format!("{} ", t("chat-prefix-error"))).color(color),
@@ -197,7 +189,7 @@ pub fn chat_view<'a>(
                 .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
-            } else if msg.username == msg_username_info() {
+            } else if msg.username == t("msg-username-info") {
                 // Info messages: timestamp grey, rest in info color
                 let color = info_text_color(&theme);
                 rich_text![
@@ -209,7 +201,10 @@ pub fn chat_view<'a>(
                 .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
-            } else if msg.username.starts_with(&msg_username_broadcast_prefix()) {
+            } else if msg
+                .username
+                .starts_with(&t("msg-username-broadcast-prefix"))
+            {
                 // Broadcast messages: timestamp grey, rest in broadcast color
                 let broadcast_color = broadcast_message_color(&theme);
                 rich_text![
@@ -324,7 +319,11 @@ pub fn chat_view<'a>(
                     .padding(SMALL_PADDING),
             )
             .width(Fill)
-            .height(Fill),
+            .height(Fill)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(content_background(theme))),
+                ..Default::default()
+            }),
             bottom_separator,
         ]
         .width(Fill)
@@ -340,7 +339,11 @@ pub fn chat_view<'a>(
                     .padding(SMALL_PADDING),
             )
             .width(Fill)
-            .height(Fill),
+            .height(Fill)
+            .style(|theme| container::Style {
+                background: Some(Background::Color(content_background(theme))),
+                ..Default::default()
+            }),
             bottom_separator,
         ]
         .width(Fill)

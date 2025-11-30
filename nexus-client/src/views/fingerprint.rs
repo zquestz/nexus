@@ -1,7 +1,9 @@
 //! Certificate fingerprint mismatch dialog view
 
-use crate::style::{MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text};
 use crate::i18n::t;
+use crate::style::{
+    MONOSPACE_FONT, modal_overlay_style, primary_button_style, shaped_text, shaped_text_wrapped,
+};
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::{Space, button, column, container, row};
 use iced::{Element, Length};
@@ -40,7 +42,7 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     ))
     .size(TEXT_SIZE);
 
-    let warning = shaped_text(t("fingerprint-warning")).size(TEXT_SIZE);
+    let warning = shaped_text_wrapped(t("fingerprint-warning")).size(TEXT_SIZE);
 
     let expected_label = shaped_text(t("label-expected-fingerprint")).size(TEXT_SIZE);
     let expected_value = shaped_text(format_fingerprint_multiline(&mismatch.expected))

@@ -1,14 +1,14 @@
 //! Server connection types
 
-use crate::types::UserManagementState;
 use nexus_common::protocol::ClientMessage;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-use super::{ChatMessage, ChatTab, UserInfo};
+use super::{ChatMessage, ChatTab, UserInfo, UserManagementState};
 
-/// Type alias for shutdown handle
-type ShutdownHandle = std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
+/// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
+type WrappedShutdownHandle =
+    std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
 
 /// Active connection to a server
 ///
@@ -20,8 +20,7 @@ pub struct ServerConnection {
     /// Session ID assigned by server
     #[allow(dead_code)]
     pub session_id: u32,
-    /// Authenticated username
-    #[allow(dead_code)]
+    /// Authenticated username (used for PM routing)
     pub username: String,
     /// Display name (bookmark name or address:port)
     pub display_name: String,
@@ -52,7 +51,7 @@ pub struct ServerConnection {
     /// Channel for sending commands to server
     pub tx: mpsc::UnboundedSender<ClientMessage>,
     /// Handle for graceful shutdown
-    pub shutdown_handle: ShutdownHandle,
+    pub shutdown_handle: WrappedShutdownHandle,
     /// Current chat message input
     pub message_input: String,
     /// Current broadcast message input
@@ -75,7 +74,7 @@ pub struct NetworkConnection {
     /// Unique connection identifier
     pub connection_id: usize,
     /// Optional shutdown handle
-    pub shutdown: Option<ShutdownHandle>,
+    pub shutdown: Option<WrappedShutdownHandle>,
     /// Whether user is admin
     pub is_admin: bool,
     /// User's permissions

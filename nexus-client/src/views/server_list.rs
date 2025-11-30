@@ -1,19 +1,18 @@
 //! Server list panel (left sidebar)
 
+use crate::i18n::t;
+use crate::icon;
 use crate::style::{
     BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
     INPUT_PADDING, NO_SPACING, PANEL_SPACING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT,
     SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING,
     SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE,
-    SERVER_LIST_TEXT_SIZE, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alt_row_color, bookmark_error_color, button_text_color,
-    disconnect_icon_color, disconnect_icon_hover_color, edit_icon_color, edit_icon_hover_color,
-    empty_state_color, interactive_hover_color, primary_scrollbar_style, section_title_color,
-    separator_color, shaped_text, sidebar_background, sidebar_border, sidebar_icon_color,
-    sidebar_icon_hover_color, tooltip_border, tooltip_text_color,
+    SERVER_LIST_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
+    TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
+    disconnect_icon_hover_color, error_color, interactive_hover_color, primary_scrollbar_style,
+    section_title_color, separator_color, shaped_text, sidebar_background, sidebar_border,
+    sidebar_empty_color, sidebar_icon_color, sidebar_icon_hover_color, tooltip_container_style,
 };
-use crate::i18n::t;
-use crate::icon;
 use crate::types::{Message, ServerBookmark, ServerConnection};
 use iced::widget::{Column, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill, alignment};
@@ -45,7 +44,7 @@ pub fn server_list_panel<'a>(
             shaped_text(t("empty-no-connections"))
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
-                    color: Some(empty_state_color(theme)),
+                    color: Some(sidebar_empty_color(theme)),
                 }),
         );
     } else {
@@ -78,12 +77,7 @@ pub fn server_list_panel<'a>(
                 transparent_icon_button(icon::logout(), Message::DisconnectFromServer(**conn_id)),
                 container(shaped_text(t("tooltip-disconnect")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|theme| container::Style {
-                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                        text_color: Some(tooltip_text_color(theme)),
-                        border: tooltip_border(),
-                        ..Default::default()
-                    }),
+                    .style(tooltip_container_style),
                 tooltip::Position::Right,
             )
             .gap(TOOLTIP_GAP)
@@ -140,7 +134,7 @@ pub fn server_list_panel<'a>(
             shaped_text(t("empty-no-bookmarks"))
                 .size(SERVER_LIST_SMALL_TEXT_SIZE)
                 .style(|theme| iced::widget::text::Style {
-                    color: Some(empty_state_color(theme)),
+                    color: Some(sidebar_empty_color(theme)),
                 }),
         );
     } else {
@@ -177,7 +171,7 @@ pub fn server_list_panel<'a>(
                     background: None,
                     text_color: match status {
                         button::Status::Hovered => interactive_hover_color(),
-                        _ if has_error => bookmark_error_color(),
+                        _ if has_error => error_color(theme),
                         _ if is_connected => interactive_hover_color(),
                         _ => button_text_color(theme),
                     },
@@ -190,12 +184,7 @@ pub fn server_list_panel<'a>(
                 transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
                 container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(|theme| container::Style {
-                        background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                        text_color: Some(tooltip_text_color(theme)),
-                        border: tooltip_border(),
-                        ..Default::default()
-                    }),
+                    .style(tooltip_container_style),
                 tooltip::Position::Right,
             )
             .gap(TOOLTIP_GAP)
@@ -251,12 +240,7 @@ pub fn server_list_panel<'a>(
             }),
         container(shaped_text(t("tooltip-add-bookmark")).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(TOOLTIP_BACKGROUND_COLOR)),
-                text_color: Some(tooltip_text_color(theme)),
-                border: tooltip_border(),
-                ..Default::default()
-            }),
+            .style(tooltip_container_style),
         tooltip::Position::Top,
     )
     .gap(TOOLTIP_GAP)
@@ -322,8 +306,8 @@ fn transparent_edit_button(
         .style(|theme, status| button::Style {
             background: None,
             text_color: match status {
-                button::Status::Hovered => edit_icon_hover_color(theme),
-                _ => edit_icon_color(theme),
+                button::Status::Hovered => sidebar_icon_hover_color(theme),
+                _ => sidebar_icon_color(theme),
             },
             border: Border::default(),
             shadow: iced::Shadow::default(),

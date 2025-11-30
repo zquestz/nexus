@@ -133,6 +133,7 @@ impl Default for Permissions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexus_common::ALL_PERMISSIONS;
 
     #[test]
     fn test_permission_snake_case_conversion() {
@@ -237,5 +238,49 @@ mod tests {
         assert!(vec.contains(&Permission::UserList));
         assert!(vec.contains(&Permission::ChatSend));
         assert!(vec.contains(&Permission::UserInfo));
+    }
+
+    #[test]
+    fn test_permission_enum_matches_all_permissions() {
+        // Verify that every permission in ALL_PERMISSIONS can be parsed
+        for perm_str in ALL_PERMISSIONS {
+            assert!(
+                Permission::parse(perm_str).is_some(),
+                "ALL_PERMISSIONS contains '{}' but Permission::parse() doesn't recognize it",
+                perm_str
+            );
+        }
+
+        // Verify that every Permission variant is in ALL_PERMISSIONS
+        let all_variants = [
+            Permission::ChatReceive,
+            Permission::ChatSend,
+            Permission::ChatTopic,
+            Permission::ChatTopicEdit,
+            Permission::UserBroadcast,
+            Permission::UserCreate,
+            Permission::UserDelete,
+            Permission::UserEdit,
+            Permission::UserInfo,
+            Permission::UserKick,
+            Permission::UserList,
+            Permission::UserMessage,
+        ];
+
+        for variant in all_variants {
+            assert!(
+                ALL_PERMISSIONS.contains(&variant.as_str()),
+                "Permission::{:?} (as '{}') is not in ALL_PERMISSIONS",
+                variant,
+                variant.as_str()
+            );
+        }
+
+        // Verify counts match
+        assert_eq!(
+            all_variants.len(),
+            ALL_PERMISSIONS.len(),
+            "Permission enum variant count doesn't match ALL_PERMISSIONS length"
+        );
     }
 }

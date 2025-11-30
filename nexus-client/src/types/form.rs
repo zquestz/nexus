@@ -1,22 +1,6 @@
 //! Connection and user management form state
 
-use super::DEFAULT_PORT;
-
-/// Complete list of all available permissions
-const ALL_PERMISSIONS: &[&str] = &[
-    "chat_receive",
-    "chat_send",
-    "chat_topic",
-    "chat_topic_edit",
-    "user_broadcast",
-    "user_create",
-    "user_delete",
-    "user_edit",
-    "user_info",
-    "user_kick",
-    "user_list",
-    "user_message",
-];
+use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 /// User edit flow state (two-stage process)
 #[derive(Debug, Clone, PartialEq)]
@@ -47,7 +31,7 @@ pub enum UserEditState {
 pub struct ConnectionFormState {
     /// Optional display name for connection
     pub server_name: String,
-    /// Server IPv6 address
+    /// Server address (IPv4 or IPv6)
     pub server_address: String,
     /// Server port number
     pub port: String,
@@ -68,7 +52,7 @@ impl Default for ConnectionFormState {
         Self {
             server_name: String::new(),
             server_address: String::new(),
-            port: DEFAULT_PORT.to_string(),
+            port: DEFAULT_PORT_STR.to_string(),
             username: String::new(),
             password: String::new(),
             error: None,
@@ -83,7 +67,7 @@ impl ConnectionFormState {
     pub fn clear(&mut self) {
         self.server_name.clear();
         self.server_address.clear();
-        self.port = DEFAULT_PORT.to_string();
+        self.port = DEFAULT_PORT_STR.to_string();
         self.username.clear();
         self.password.clear();
     }
@@ -154,8 +138,7 @@ impl UserManagementState {
         };
     }
 
-    /// Move to stage 2 of editing with user details from server
-    /// Load a user for editing (stage 2)
+    /// Load a user for editing (stage 2: full form with current values from server)
     pub fn load_user_for_editing(
         &mut self,
         username: String,

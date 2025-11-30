@@ -1,6 +1,6 @@
 //! Server bookmark types
 
-use super::DEFAULT_PORT;
+use nexus_common::DEFAULT_PORT_STR;
 
 /// Server bookmark configuration
 ///
@@ -31,7 +31,7 @@ impl Default for ServerBookmark {
         Self {
             name: String::new(),
             address: String::new(),
-            port: DEFAULT_PORT.to_string(),
+            port: DEFAULT_PORT_STR.to_string(),
             username: String::new(),
             password: String::new(),
             auto_connect: false,
