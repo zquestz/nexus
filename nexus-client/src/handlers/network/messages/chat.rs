@@ -1,9 +1,8 @@
 //! Chat message handlers
 
+use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
 
 impl NexusApp {
@@ -14,14 +13,7 @@ impl NexusApp {
         username: String,
         message: String,
     ) -> Task<Message> {
-        self.add_chat_message(
-            connection_id,
-            ChatMessage {
-                username,
-                message,
-                timestamp: Local::now(),
-            },
-        )
+        self.add_chat_message(connection_id, ChatMessage::new(username, message))
     }
 
     /// Handle chat topic change notification
@@ -41,11 +33,7 @@ impl NexusApp {
         };
         self.add_chat_message(
             connection_id,
-            ChatMessage {
-                username: t("msg-username-info"),
-                message,
-                timestamp: Local::now(),
-            },
+            ChatMessage::new(t("msg-username-info"), message),
         )
     }
 
@@ -57,20 +45,15 @@ impl NexusApp {
         error: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            ChatMessage {
-                username: t("msg-username-system"),
-                message: t("msg-topic-updated"),
-                timestamp: Local::now(),
-            }
+            ChatMessage::new(t("msg-username-system"), t("msg-topic-updated"))
         } else {
-            ChatMessage {
-                username: t("msg-username-error"),
-                message: t_args(
+            ChatMessage::new(
+                t("msg-username-error"),
+                t_args(
                     "err-failed-update-topic",
                     &[("error", &error.unwrap_or_default())],
                 ),
-                timestamp: Local::now(),
-            }
+            )
         };
         self.add_chat_message(connection_id, message)
     }

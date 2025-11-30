@@ -14,8 +14,8 @@ mod user_message;
 
 pub use user_admin::UserEditResponseData;
 
-use crate::types::Message;
 use crate::NexusApp;
+use crate::types::Message;
 use iced::Task;
 use nexus_common::protocol::ServerMessage;
 

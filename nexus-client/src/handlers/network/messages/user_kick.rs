@@ -1,9 +1,8 @@
 //! User kick response handler
 
+use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
 
 impl NexusApp {
@@ -15,20 +14,15 @@ impl NexusApp {
         error: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            ChatMessage {
-                username: t("msg-username-system"),
-                message: t("msg-user-kicked-success"),
-                timestamp: Local::now(),
-            }
+            ChatMessage::new(t("msg-username-system"), t("msg-user-kicked-success"))
         } else {
-            ChatMessage {
-                username: t("msg-username-error"),
-                message: t_args(
+            ChatMessage::new(
+                t("msg-username-error"),
+                t_args(
                     "err-failed-send-message",
                     &[("error", &error.unwrap_or_default())],
                 ),
-                timestamp: Local::now(),
-            }
+            )
         };
         self.add_chat_message(connection_id, message)
     }

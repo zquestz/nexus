@@ -5,12 +5,13 @@ use crate::i18n::t;
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState,
 };
-use chrono::Local;
 use iced::Task;
 use iced::widget::scrollable;
 use nexus_common::protocol::ClientMessage;
 
 impl NexusApp {
+    // ==================== Add User Form Handlers ====================
+
     /// Handle admin panel username field change
     pub fn handle_admin_username_changed(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
@@ -71,6 +72,8 @@ impl NexusApp {
         }
         Task::none()
     }
+
+    // ==================== Add User Actions ====================
 
     /// Handle Create User button press
     pub fn handle_create_user_pressed(&mut self) -> Task<Message> {
@@ -133,6 +136,8 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Edit User Form Handlers ====================
+
     /// Handle validation of edit user form (called on Enter when form incomplete)
     pub fn handle_validate_edit_user(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
@@ -154,6 +159,8 @@ impl NexusApp {
         }
         Task::none()
     }
+
+    // ==================== Edit User Actions ====================
 
     /// Handle Delete User button press
     pub fn handle_delete_user_pressed(&mut self, username: String) -> Task<Message> {
@@ -352,6 +359,8 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Cancel Handlers ====================
+
     /// Handle Cancel button press in add user panel
     pub fn handle_cancel_add_user(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
@@ -374,6 +383,8 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Private Helpers ====================
+
     /// Add an error message to the chat for user management errors and auto-scroll
     fn add_user_management_error(
         &mut self,
@@ -382,13 +393,11 @@ impl NexusApp {
     ) -> Task<Message> {
         self.add_chat_message(
             connection_id,
-            ChatMessage {
-                username: t("msg-username-error"),
-                message,
-                timestamp: Local::now(),
-            },
+            ChatMessage::new(t("msg-username-error"), message),
         )
     }
+
+    // ==================== User List Icon Handlers ====================
 
     /// Handle user message icon click (create/switch to PM tab)
     pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
@@ -399,9 +408,7 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
             // Create PM tab entry if it doesn't exist
-            if !conn.user_messages.contains_key(&username) {
-                conn.user_messages.insert(username.clone(), Vec::new());
-            }
+            conn.user_messages.entry(username.clone()).or_default();
 
             // Switch to the PM tab
             let tab = ChatTab::UserMessage(username);
@@ -423,11 +430,7 @@ impl NexusApp {
                 let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(
                     conn_id,
-                    ChatMessage {
-                        username: t("msg-username-error"),
-                        message: error_msg,
-                        timestamp: Local::now(),
-                    },
+                    ChatMessage::new(t("msg-username-error"), error_msg),
                 );
             }
 
@@ -470,11 +473,7 @@ impl NexusApp {
                 let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(
                     conn_id,
-                    ChatMessage {
-                        username: t("msg-username-error"),
-                        message: error_msg,
-                        timestamp: Local::now(),
-                    },
+                    ChatMessage::new(t("msg-username-error"), error_msg),
                 );
             }
 

@@ -1,10 +1,13 @@
 //! Error message handler
 
+use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, Message};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
+
+// Protocol command names (must match server exactly)
+const CMD_USER_EDIT: &str = "UserEdit";
+const CMD_USER_UPDATE: &str = "UserUpdate";
 
 impl NexusApp {
     /// Handle error message from server
@@ -15,12 +18,7 @@ impl NexusApp {
         command: Option<String>,
     ) -> Task<Message> {
         // Show error in edit user form if it's for user management commands
-        // Note: These command names come from the server protocol and must match exactly
-        if let Some(ref cmd) = command
-            && (cmd == "UserEdit" || cmd == "UserUpdate")
-            && self.ui_state.active_panel == ActivePanel::EditUser
-            && self.active_connection == Some(connection_id)
-        {
+        if self.is_user_edit_error(&command, connection_id) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.edit_error = Some(message);
             }
@@ -30,11 +28,18 @@ impl NexusApp {
         // For other errors (including UserDelete), show in chat
         self.add_chat_message(
             connection_id,
-            ChatMessage {
-                username: t("msg-username-error"),
-                message,
-                timestamp: Local::now(),
-            },
+            ChatMessage::new(t("msg-username-error"), message),
         )
+    }
+
+    /// Check if error should be shown in user edit form
+    fn is_user_edit_error(&self, command: &Option<String>, connection_id: usize) -> bool {
+        let Some(cmd) = command else {
+            return false;
+        };
+
+        (cmd == CMD_USER_EDIT || cmd == CMD_USER_UPDATE)
+            && self.ui_state.active_panel == ActivePanel::EditUser
+            && self.active_connection == Some(connection_id)
     }
 }

@@ -15,5 +15,7 @@ pub use display::{ChatMessage, ChatTab, UserInfo};
 pub use form::{ConnectionFormState, UserEditState, UserManagementState};
 pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;
-pub use ui::{ActivePanel, FingerprintMismatch, FingerprintMismatchDetails, InputId, ScrollableId, UiState};
+pub use ui::{
+    ActivePanel, FingerprintMismatch, FingerprintMismatchDetails, InputId, ScrollableId, UiState,
+};
 pub use view_config::{ToolbarState, ViewConfig};

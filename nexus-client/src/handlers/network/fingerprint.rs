@@ -1,7 +1,7 @@
 //! Certificate fingerprint verification and handling
 
-use crate::types::{FingerprintMismatch, FingerprintMismatchDetails, Message, NetworkConnection};
 use crate::NexusApp;
+use crate::types::{FingerprintMismatch, FingerprintMismatchDetails, Message, NetworkConnection};
 use iced::Task;
 
 impl NexusApp {
@@ -53,16 +53,17 @@ impl NexusApp {
         conn: NetworkConnection,
         display_name: String,
     ) -> Task<Message> {
-        self.fingerprint_mismatch_queue.push_back(FingerprintMismatch {
-            bookmark_index: details.bookmark_index,
-            expected: details.expected,
-            received: details.received,
-            bookmark_name: details.bookmark_name,
-            server_address: details.server_address,
-            server_port: details.server_port,
-            connection: conn,
-            display_name,
-        });
+        self.fingerprint_mismatch_queue
+            .push_back(FingerprintMismatch {
+                bookmark_index: details.bookmark_index,
+                expected: details.expected,
+                received: details.received,
+                bookmark_name: details.bookmark_name,
+                server_address: details.server_address,
+                server_port: details.server_port,
+                connection: conn,
+                display_name,
+            });
 
         self.connection_form.is_connecting = false;
         Task::none()

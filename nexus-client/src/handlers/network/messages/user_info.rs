@@ -1,13 +1,16 @@
 //! User info response handlers
 
+use crate::NexusApp;
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
-use crate::NexusApp;
 use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
+
+/// Indentation for user info display lines
+const INFO_INDENT: &str = "  ";
 
 impl NexusApp {
     /// Handle user info response
@@ -20,12 +23,13 @@ impl NexusApp {
     ) -> Task<Message> {
         if !success {
             let err = error.unwrap_or_default();
-            let message = ChatMessage {
-                username: t("msg-username-info"),
-                message: t_args("user-info-error", &[("error", &err)]),
-                timestamp: Local::now(),
-            };
-            return self.add_chat_message(connection_id, message);
+            return self.add_chat_message(
+                connection_id,
+                ChatMessage::new(
+                    t("msg-username-info"),
+                    t_args("user-info-error", &[("error", &err)]),
+                ),
+            );
         }
 
         let Some(user) = user else {
@@ -55,19 +59,19 @@ impl NexusApp {
         if let Some(is_admin) = user.is_admin
             && is_admin
         {
-            lines.push(format!("  {}", t("user-info-is-admin")));
+            lines.push(format!("{INFO_INDENT}{}", t("user-info-is-admin")));
         }
 
         // Sessions
         let session_count = user.session_ids.len();
         if session_count == 1 {
             lines.push(format!(
-                "  {}",
+                "{INFO_INDENT}{}",
                 t_args("user-info-connected-ago", &[("duration", &duration_str)])
             ));
         } else {
             lines.push(format!(
-                "  {}",
+                "{INFO_INDENT}{}",
                 t_args(
                     "user-info-connected-sessions",
                     &[
@@ -81,7 +85,7 @@ impl NexusApp {
         // Features
         if !user.features.is_empty() {
             lines.push(format!(
-                "  {}",
+                "{INFO_INDENT}{}",
                 t_args(
                     "user-info-features",
                     &[("features", &user.features.join(", "))]
@@ -91,7 +95,7 @@ impl NexusApp {
 
         // Locale
         lines.push(format!(
-            "  {}",
+            "{INFO_INDENT}{}",
             t_args("user-info-locale", &[("locale", &user.locale)])
         ));
 
@@ -101,14 +105,14 @@ impl NexusApp {
         {
             if addresses.len() == 1 {
                 lines.push(format!(
-                    "  {}",
+                    "{INFO_INDENT}{}",
                     t_args("user-info-address", &[("address", &addresses[0])])
                 ));
             } else {
-                lines.push(format!("  {}", t("user-info-addresses")));
+                lines.push(format!("{INFO_INDENT}{}", t("user-info-addresses")));
                 for addr in &addresses {
                     lines.push(format!(
-                        "  {}",
+                        "{INFO_INDENT}{}",
                         t_args("user-info-address-item", &[("address", addr)])
                     ));
                 }
@@ -117,23 +121,19 @@ impl NexusApp {
 
         // Account created (last field)
         lines.push(format!(
-            "  {}",
+            "{INFO_INDENT}{}",
             t_args("user-info-created", &[("created", &created)])
         ));
 
-        lines.push(format!("  {}", t("user-info-end")));
+        lines.push(format!("{INFO_INDENT}{}", t("user-info-end")));
 
-        // Add each line as a separate chat message
+        // Add each line as a separate chat message with shared timestamp
         let timestamp = Local::now();
         let mut task = Task::none();
         for line in lines {
             task = self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-info"),
-                    message: line,
-                    timestamp,
-                },
+                ChatMessage::with_timestamp(t("msg-username-info"), line, timestamp),
             );
         }
         // Last add_chat_message will handle auto-scroll
@@ -164,7 +164,6 @@ impl NexusApp {
                 session_ids: u.session_ids,
             })
             .collect();
-        // Sort to maintain alphabetical order
         sort_user_list(&mut conn.online_users);
 
         // Clear expanded_user if the user is no longer in the list
@@ -187,6 +186,9 @@ impl NexusApp {
             return Task::none();
         };
 
+        let new_username = user.username;
+        let username_changed = previous_username != new_username;
+
         // Update the user's info in the online_users list
         // Use previous_username to find the user (in case username changed)
         if let Some(existing_user) = conn
@@ -194,7 +196,7 @@ impl NexusApp {
             .iter_mut()
             .find(|u| u.username == previous_username)
         {
-            existing_user.username = user.username.clone();
+            existing_user.username = new_username.clone();
             existing_user.is_admin = user.is_admin;
             existing_user.session_ids = user.session_ids;
 
@@ -203,32 +205,32 @@ impl NexusApp {
         }
 
         // If username changed, update user_messages HashMap and active tab
-        if previous_username != user.username {
+        if username_changed {
             // If this is our own username changing, update conn.username
             if conn.username == previous_username {
-                conn.username = user.username.clone();
+                conn.username = new_username.clone();
             }
 
             // Rename the user_messages entry
             if let Some(messages) = conn.user_messages.remove(&previous_username) {
-                conn.user_messages.insert(user.username.clone(), messages);
+                conn.user_messages.insert(new_username.clone(), messages);
             }
 
             // Update unread_tabs if present
             let old_tab = ChatTab::UserMessage(previous_username.clone());
             if conn.unread_tabs.remove(&old_tab) {
                 conn.unread_tabs
-                    .insert(ChatTab::UserMessage(user.username.clone()));
+                    .insert(ChatTab::UserMessage(new_username.clone()));
             }
 
             // Update active_chat_tab if it's for this user
             if conn.active_chat_tab == old_tab {
-                conn.active_chat_tab = ChatTab::UserMessage(user.username.clone());
+                conn.active_chat_tab = ChatTab::UserMessage(new_username.clone());
             }
 
             // Update expanded_user if it was set to the old username
             if conn.expanded_user.as_ref() == Some(&previous_username) {
-                conn.expanded_user = Some(user.username.clone());
+                conn.expanded_user = Some(new_username);
             }
         }
 

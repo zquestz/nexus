@@ -1,9 +1,8 @@
 //! User administration response handlers
 
+use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, Message};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
 
 /// Data from a UserEditResponse message
@@ -37,11 +36,7 @@ impl NexusApp {
 
             self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-system"),
-                    message: t("msg-user-created"),
-                    timestamp: Local::now(),
-                },
+                ChatMessage::new(t("msg-username-system"), t("msg-user-created")),
             )
         } else {
             // On error, keep panel open and show error in form
@@ -72,11 +67,7 @@ impl NexusApp {
 
             self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-system"),
-                    message: t("msg-user-deleted"),
-                    timestamp: Local::now(),
-                },
+                ChatMessage::new(t("msg-username-system"), t("msg-user-deleted")),
             )
         } else {
             // On error, keep panel open and show error in form
@@ -107,8 +98,7 @@ impl NexusApp {
         } else {
             // On error, keep panel open and show error in form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.edit_error =
-                    Some(data.error.unwrap_or_else(|| t("error-unknown")));
+                conn.user_management.edit_error = Some(data.error.unwrap_or_default());
             }
             Task::none()
         }
@@ -134,11 +124,7 @@ impl NexusApp {
 
             self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-system"),
-                    message: t("msg-user-updated"),
-                    timestamp: Local::now(),
-                },
+                ChatMessage::new(t("msg-username-system"), t("msg-user-updated")),
             )
         } else {
             // On error, keep panel open and show error in form

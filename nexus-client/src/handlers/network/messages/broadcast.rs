@@ -1,9 +1,8 @@
 //! Broadcast message handlers
 
+use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, Message};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
 
 impl NexusApp {
@@ -16,11 +15,10 @@ impl NexusApp {
     ) -> Task<Message> {
         self.add_chat_message(
             connection_id,
-            ChatMessage {
-                username: format!("{} {}", t("msg-username-broadcast-prefix"), username),
+            ChatMessage::new(
+                format!("{} {}", t("msg-username-broadcast-prefix"), username),
                 message,
-                timestamp: Local::now(),
-            },
+            ),
         )
     }
 
@@ -31,19 +29,14 @@ impl NexusApp {
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        if success {
-            // Close broadcast panel on success
-            self.ui_state.active_panel = ActivePanel::None;
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
+            if success {
+                self.ui_state.active_panel = ActivePanel::None;
                 conn.broadcast_error = None;
-            }
-            Task::none()
-        } else {
-            // On error, keep panel open and show error in form
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
+            } else {
                 conn.broadcast_error = Some(error.unwrap_or_default());
             }
-            Task::none()
         }
+        Task::none()
     }
 }

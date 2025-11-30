@@ -6,7 +6,6 @@ use crate::views::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
 };
 use crate::{NexusApp, network};
-use chrono::Local;
 use iced::Task;
 use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::ClientMessage;
@@ -292,11 +291,7 @@ impl NexusApp {
     fn add_chat_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
         self.add_chat_message(
             connection_id,
-            ChatMessage {
-                username: t("msg-username-error"),
-                message,
-                timestamp: Local::now(),
-            },
+            ChatMessage::new(t("msg-username-error"), message),
         )
     }
 }

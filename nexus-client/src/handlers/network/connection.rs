@@ -1,14 +1,14 @@
 //! Connection result handlers
 
+use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
     ChatTab, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
     UserManagementState,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
-use crate::NexusApp;
-use iced::widget::text_input;
 use iced::Task;
+use iced::widget::text_input;
 use nexus_common::protocol::ClientMessage;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::UnboundedSender;
@@ -50,8 +50,8 @@ impl NexusApp {
                 let certificate_fingerprint = conn.certificate_fingerprint.clone();
 
                 // Create and register connection
-                let Some((conn_tx, chat_topic, should_request_userlist)) =
-                    self.create_and_register_connection(conn, bookmark_index, username, display_name)
+                let Some((conn_tx, chat_topic, should_request_userlist)) = self
+                    .create_and_register_connection(conn, bookmark_index, username, display_name)
                 else {
                     self.connection_form.error = Some(t("err-no-shutdown-handle"));
                     return Task::none();
@@ -120,8 +120,8 @@ impl NexusApp {
                     .unwrap_or_default();
 
                 // Create and register connection
-                let Some((conn_tx, chat_topic, should_request_userlist)) =
-                    self.create_and_register_connection(conn, bookmark_index, username, display_name)
+                let Some((conn_tx, chat_topic, should_request_userlist)) = self
+                    .create_and_register_connection(conn, bookmark_index, username, display_name)
                 else {
                     if let Some(idx) = bookmark_index {
                         self.bookmark_errors
@@ -261,9 +261,7 @@ impl NexusApp {
         conn_tx: &UnboundedSender<ClientMessage>,
         should_request: bool,
     ) -> Result<(), String> {
-        if should_request
-            && let Err(e) = conn_tx.send(ClientMessage::UserList)
-        {
+        if should_request && let Err(e) = conn_tx.send(ClientMessage::UserList) {
             return Err(format!("{}: {}", t("err-connection-broken"), e));
         }
         Ok(())

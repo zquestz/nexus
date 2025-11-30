@@ -157,7 +157,7 @@ pub fn chat_view<'a>(
     };
 
     for msg in messages {
-        let time_str = msg.timestamp.format("%H:%M").to_string();
+        let time_str = msg.get_timestamp().format("%H:%M").to_string();
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix

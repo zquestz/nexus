@@ -1,10 +1,9 @@
 //! User connection/disconnection handlers
 
+use crate::NexusApp;
 use crate::handlers::network::helpers::sort_user_list;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
-use crate::NexusApp;
-use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::UserInfo as ProtocolUserInfo;
 
@@ -19,13 +18,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Check if user already exists (multi-device connection)
-        let is_new_user = !conn
-            .online_users
-            .iter()
-            .any(|u| u.username == user.username);
-
-        if let Some(existing_user) = conn
+        // Check if user already exists (multi-device connection) and update accordingly
+        let is_new_user = if let Some(existing_user) = conn
             .online_users
             .iter_mut()
             .find(|u| u.username == user.username)
@@ -36,6 +30,7 @@ impl NexusApp {
                     existing_user.session_ids.push(*session_id);
                 }
             }
+            false
         } else {
             // New user - add to list
             conn.online_users.push(ClientUserInfo {
@@ -43,19 +38,18 @@ impl NexusApp {
                 is_admin: user.is_admin,
                 session_ids: user.session_ids.clone(),
             });
-            // Sort to maintain alphabetical order
             sort_user_list(&mut conn.online_users);
-        }
+            true
+        };
 
         // Only announce if this is their first session (new user)
         if is_new_user {
             self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-system"),
-                    message: t_args("msg-user-connected", &[("username", &user.username)]),
-                    timestamp: Local::now(),
-                },
+                ChatMessage::new(
+                    t("msg-username-system"),
+                    t_args("msg-user-connected", &[("username", &user.username)]),
+                ),
             )
         } else {
             Task::none()
@@ -98,11 +92,10 @@ impl NexusApp {
         if is_last_session {
             self.add_chat_message(
                 connection_id,
-                ChatMessage {
-                    username: t("msg-username-system"),
-                    message: t_args("msg-user-disconnected", &[("username", &username)]),
-                    timestamp: Local::now(),
-                },
+                ChatMessage::new(
+                    t("msg-username-system"),
+                    t_args("msg-user-disconnected", &[("username", &username)]),
+                ),
             )
         } else {
             Task::none()
