@@ -1,6 +1,7 @@
 //! View configuration struct for passing state to view rendering
 
 use crate::types::{BookmarkEditMode, ServerBookmark, ServerConnection, UserManagementState};
+use iced::Theme;
 use std::collections::HashMap;
 
 /// Configuration struct for view rendering
@@ -8,6 +9,10 @@ use std::collections::HashMap;
 /// Holds all the state needed to render the main layout, replacing the previous
 /// 25-parameter function signature with a single, well-organized struct.
 pub struct ViewConfig<'a> {
+    // Theme for views that need concrete colors (e.g., rich_text spans)
+    // Owned rather than borrowed since Theme is Copy
+    pub theme: Theme,
+
     // Connection state
     pub connections: &'a HashMap<usize, ServerConnection>,
     pub active_connection: Option<usize>,

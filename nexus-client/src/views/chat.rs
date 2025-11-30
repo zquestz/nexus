@@ -4,17 +4,21 @@ use super::constants::PERMISSION_CHAT_SEND;
 use super::style::{
     BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, MONOSPACE_FONT,
     SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, action_button_text, broadcast_message_color,
-    chat_tab_active_style, chat_tab_inactive_style, chat_text_color, error_message_color,
-    info_text_color, primary_button_style, primary_scrollbar_style, primary_text_input_style,
-    shaped_text, sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, action_button_text, admin_user_text_color,
+    broadcast_message_color, chat_tab_active_style, chat_tab_inactive_style, chat_text_color,
+    chat_timestamp_color, error_message_color, info_text_color, primary_button_style,
+    primary_scrollbar_style, primary_text_input_style, shaped_text, sidebar_border,
+    system_text_color, tooltip_border, tooltip_text_color,
 };
 use crate::handlers::network::{
     msg_username_broadcast_prefix, msg_username_error, msg_username_info, msg_username_system,
 };
 use crate::i18n::t;
 use crate::types::{ChatTab, InputId, Message, ScrollableId, ServerConnection};
-use iced::widget::{Column, button, column, container, row, scrollable, text_input, tooltip};
+use iced::Theme;
+use iced::widget::{
+    Column, button, column, container, rich_text, row, scrollable, span, text_input, tooltip,
+};
 use iced::{Background, Element, Fill};
 
 /// Create a tab button with appropriate styling and unread indicator
@@ -100,7 +104,11 @@ fn create_tab_button(
 /// - Chat messages (server enforces chat_receive permission)
 ///
 /// The send input is only enabled with chat_send permission.
-pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Element<'a, Message> {
+pub fn chat_view<'a>(
+    conn: &'a ServerConnection,
+    message_input: &'a str,
+    theme: Theme,
+) -> Element<'a, Message> {
     // Build tab bar row
     let mut tab_row = row![].spacing(SMALL_SPACING);
 
@@ -149,45 +157,81 @@ pub fn chat_view<'a>(conn: &'a ServerConnection, message_input: &'a str) -> Elem
     // Build message list
     let mut chat_column = Column::new().spacing(CHAT_SPACING).padding(INPUT_PADDING);
 
+    // Check if a username belongs to an admin
+    let is_admin_user = |username: &str| -> bool {
+        conn.online_users
+            .iter()
+            .any(|u| u.username == username && u.is_admin)
+    };
+
     for msg in messages {
-        let time_str = msg.timestamp.format("%H:%M:%S").to_string();
+        let time_str = msg.timestamp.format("%H:%M").to_string();
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
         for line in msg.message.split('\n') {
-            let display = if msg.username == msg_username_system() {
-                shaped_text(format!("[{}] [SYS] {}", time_str, line))
-                    .size(CHAT_MESSAGE_SIZE)
-                    .style(|theme| iced::widget::text::Style {
-                        color: Some(system_text_color(theme)),
-                    })
-                    .font(MONOSPACE_FONT)
+            let display: Element<'_, Message> = if msg.username == msg_username_system() {
+                // System messages: all in system color
+                let color = system_text_color(&theme);
+                rich_text![
+                    span(format!("[{}] ", time_str)).color(color),
+                    span("[SYS] ").color(color),
+                    span(line).color(color),
+                ]
+                .size(CHAT_MESSAGE_SIZE)
+                .font(MONOSPACE_FONT)
+                .into()
             } else if msg.username == msg_username_error() {
-                shaped_text(format!("[{}] [ERR] {}", time_str, line))
-                    .size(CHAT_MESSAGE_SIZE)
-                    .color(error_message_color())
-                    .font(MONOSPACE_FONT)
+                // Error messages: all in error color
+                let color = error_message_color();
+                rich_text![
+                    span(format!("[{}] ", time_str)).color(color),
+                    span("[ERR] ").color(color),
+                    span(line).color(color),
+                ]
+                .size(CHAT_MESSAGE_SIZE)
+                .font(MONOSPACE_FONT)
+                .into()
             } else if msg.username == msg_username_info() {
-                shaped_text(format!("[{}] [INFO] {}", time_str, line))
-                    .size(CHAT_MESSAGE_SIZE)
-                    .style(|theme| iced::widget::text::Style {
-                        color: Some(info_text_color(theme)),
-                    })
-                    .font(MONOSPACE_FONT)
+                // Info messages: all in info color
+                let color = info_text_color(&theme);
+                rich_text![
+                    span(format!("[{}] ", time_str)).color(color),
+                    span("[INFO] ").color(color),
+                    span(line).color(color),
+                ]
+                .size(CHAT_MESSAGE_SIZE)
+                .font(MONOSPACE_FONT)
+                .into()
             } else if msg.username.starts_with(&msg_username_broadcast_prefix()) {
-                shaped_text(format!("[{}] {}: {}", time_str, msg.username, line))
-                    .size(CHAT_MESSAGE_SIZE)
-                    .style(|theme| iced::widget::text::Style {
-                        color: Some(broadcast_message_color(theme)),
-                    })
-                    .font(MONOSPACE_FONT)
+                // Broadcast messages: timestamp dimmed, rest in broadcast color
+                let timestamp_color = chat_timestamp_color(&theme);
+                let broadcast_color = broadcast_message_color(&theme);
+                rich_text![
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
+                    span(format!("{}: ", msg.username)).color(broadcast_color),
+                    span(line).color(broadcast_color),
+                ]
+                .size(CHAT_MESSAGE_SIZE)
+                .font(MONOSPACE_FONT)
+                .into()
             } else {
-                shaped_text(format!("[{}] {}: {}", time_str, msg.username, line))
-                    .size(CHAT_MESSAGE_SIZE)
-                    .style(|theme| iced::widget::text::Style {
-                        color: Some(chat_text_color(theme)),
-                    })
-                    .font(MONOSPACE_FONT)
+                // Regular chat messages: timestamp dimmed, username colored by admin status, message normal
+                let timestamp_color = chat_timestamp_color(&theme);
+                let username_color = if is_admin_user(&msg.username) {
+                    admin_user_text_color(&theme)
+                } else {
+                    chat_text_color(&theme)
+                };
+                let text_color = chat_text_color(&theme);
+                rich_text![
+                    span(format!("[{}] ", time_str)).color(timestamp_color),
+                    span(format!("{}: ", msg.username)).color(username_color),
+                    span(line).color(text_color),
+                ]
+                .size(CHAT_MESSAGE_SIZE)
+                .font(MONOSPACE_FONT)
+                .into()
             };
             chat_column = chat_column.push(display);
         }

@@ -339,6 +339,14 @@ pub fn info_text_color(theme: &Theme) -> Color {
     }
 }
 
+/// Get chat timestamp color for the current theme
+pub fn chat_timestamp_color(theme: &Theme) -> Color {
+    match theme {
+        Theme::Light => colors::CHAT_TIMESTAMP_LIGHT,
+        _ => colors::CHAT_TIMESTAMP_DARK,
+    }
+}
+
 /// Admin user text color in user list (theme-aware red)
 pub fn admin_user_text_color(theme: &Theme) -> Color {
     match theme {

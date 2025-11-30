@@ -277,6 +277,7 @@ impl NexusApp {
 
         // Build view configuration
         let config = ViewConfig {
+            theme: self.theme(),
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,

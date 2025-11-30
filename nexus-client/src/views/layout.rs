@@ -88,6 +88,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 config.show_add_user,
                 config.show_edit_user,
                 config.show_broadcast,
+                config.theme.clone(),
             )
         } else {
             empty_content_view()
@@ -586,6 +587,7 @@ fn server_content_view<'a>(
     show_add_user: bool,
     show_edit_user: bool,
     show_broadcast: bool,
+    theme: iced::Theme,
 ) -> Element<'a, Message> {
     // If broadcast panel is open, show broadcast view
     if show_broadcast {
@@ -595,7 +597,7 @@ fn server_content_view<'a>(
         users_view(conn, user_management, show_add_user, show_edit_user)
     } else {
         // Otherwise show chat
-        chat_view(conn, message_input)
+        chat_view(conn, message_input, theme)
     }
 }
 

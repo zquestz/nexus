@@ -145,6 +145,14 @@ pub const SIDEBAR_ICON_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
 // Chat Message Colors
 // ============================================================================
 
+/// Chat timestamp text - Dark theme
+/// Dimmed gray for visual hierarchy, less prominent than message content
+pub const CHAT_TIMESTAMP_DARK: Color = Color::from_rgb(0.5, 0.5, 0.5);
+
+/// Chat timestamp text - Light theme
+/// Medium gray for visual hierarchy
+pub const CHAT_TIMESTAMP_LIGHT: Color = Color::from_rgb(0.5, 0.5, 0.5);
+
 /// Regular chat message text - Dark theme
 /// Pure white for maximum readability
 pub const CHAT_TEXT_DARK: Color = Color::WHITE;
