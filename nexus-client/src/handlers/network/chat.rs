@@ -1,7 +1,7 @@
 //! Chat utility functions for network handlers
 
 use crate::NexusApp;
-use crate::i18n::{t, t_args};
+use crate::i18n::t_args;
 use crate::types::{ChatMessage, ChatTab, Message, ScrollableId};
 use iced::Task;
 use iced::widget::scrollable;
@@ -43,10 +43,7 @@ impl NexusApp {
         {
             let _ = self.add_chat_message(
                 connection_id,
-                ChatMessage::new(
-                    t("msg-username-info"),
-                    t_args("msg-topic-display", &[("topic", &topic)]),
-                ),
+                ChatMessage::info(t_args("msg-topic-display", &[("topic", &topic)])),
             );
         }
     }

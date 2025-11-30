@@ -289,9 +289,6 @@ impl NexusApp {
 
     /// Add an error message to the chat
     fn add_chat_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
-        self.add_chat_message(
-            connection_id,
-            ChatMessage::new(t("msg-username-error"), message),
-        )
+        self.add_chat_message(connection_id, ChatMessage::error(message))
     }
 }

@@ -3,7 +3,7 @@
 //! All font definitions and text sizes are defined here.
 
 use iced::Font;
-use iced::font::Family;
+use iced::font::{Family, Weight};
 
 // ============================================================================
 // Font Definitions
@@ -16,6 +16,12 @@ use iced::font::Family;
 pub const MONOSPACE_FONT: Font = Font {
     family: Family::Name("SauceCodePro Nerd Font Mono"),
     ..Font::MONOSPACE
+};
+
+/// Bold font for emphasis (unread indicators, etc.)
+pub const BOLD_FONT: Font = Font {
+    weight: Weight::Bold,
+    ..Font::DEFAULT
 };
 
 // ============================================================================
@@ -63,3 +69,10 @@ pub const USER_LIST_TEXT_SIZE: u16 = 12;
 
 /// User list small text size (empty states)
 pub const USER_LIST_SMALL_TEXT_SIZE: u16 = 11;
+
+// ============================================================================
+// Time Formats
+// ============================================================================
+
+/// Chat message timestamp format (short time only)
+pub const CHAT_TIME_FORMAT: &str = "%H:%M";

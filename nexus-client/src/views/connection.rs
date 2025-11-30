@@ -8,8 +8,12 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
-use iced::widget::{button, checkbox, column, container, text, text_input};
+use iced::widget::{Space, button, checkbox, column, container, text, text_input};
 use iced::{Center, Element, Fill};
+
+// ============================================================================
+// Connection Form View
+// ============================================================================
 
 /// Displays connection form with server details and credentials
 ///
@@ -22,7 +26,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         && !form.server_address.trim().is_empty()
         && !form.port.trim().is_empty();
 
-    // Helper for on_submit - avoid action when form is invalid
+    // Helper for on_submit - use no-op when form is invalid
     let submit_action = if can_connect {
         Message::ConnectPressed
     } else {
@@ -68,7 +72,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
 
     let password_input = text_input(&t("placeholder-password-optional"), &form.password)
         .on_input(Message::PasswordChanged)
-        .on_submit(submit_action.clone())
+        .on_submit(submit_action)
         .id(text_input::Id::from(InputId::Password))
         .secure(true)
         .padding(INPUT_PADDING)
@@ -86,7 +90,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
             .style(primary_button_style())
     };
 
-    let mut column_items = vec![title.into()];
+    let mut column_items: Vec<Element<'_, Message>> = vec![title.into()];
 
     // Show error if present (at top for visibility)
     if let Some(error) = &form.error {
@@ -100,25 +104,25 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
                 })
                 .into(),
         );
-        column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+        column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
     } else {
-        column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+        column_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
     }
 
-    column_items.extend(vec![
+    column_items.extend([
         server_name_input.into(),
         server_address_input.into(),
         port_input.into(),
         username_input.into(),
         password_input.into(),
-        shaped_text("").size(SPACER_SIZE_SMALL).into(),
+        Space::with_height(SPACER_SIZE_SMALL).into(),
         checkbox(t("label-add-bookmark"), form.add_bookmark)
             .on_toggle(Message::AddBookmarkToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
             .style(primary_checkbox_style())
             .into(),
-        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+        Space::with_height(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),
     ]);
 

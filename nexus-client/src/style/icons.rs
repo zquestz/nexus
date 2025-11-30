@@ -15,3 +15,10 @@ pub const TOOLBAR_ICON_SIZE: u16 = 20;
 
 /// Server list disconnect icon size (larger, more prominent)
 pub const SERVER_LIST_DISCONNECT_ICON_SIZE: u16 = 18;
+
+// ============================================================================
+// Sidebar Action Icons
+// ============================================================================
+
+/// Sidebar action icon size (for add bookmark, user actions, etc.)
+pub const SIDEBAR_ACTION_ICON_SIZE: f32 = 18.0;

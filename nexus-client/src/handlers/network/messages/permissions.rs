@@ -33,16 +33,13 @@ impl NexusApp {
             {
                 // Channel send failed - add error to chat
                 let error_msg = format!("{}: {}", t("err-userlist-failed"), e);
-                return self.add_chat_message(
-                    connection_id,
-                    ChatMessage::new(t("msg-username-error"), error_msg),
-                );
+                return self.add_chat_message(connection_id, ChatMessage::error(error_msg));
             }
 
             // Show notification message
             return self.add_chat_message(
                 connection_id,
-                ChatMessage::new(t("msg-username-system"), t("msg-permissions-updated")),
+                ChatMessage::system(t("msg-permissions-updated")),
             );
         }
         Task::none()

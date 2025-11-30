@@ -8,8 +8,12 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
-use iced::widget::{button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Space, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
+
+// ============================================================================
+// Bookmark Edit View
+// ============================================================================
 
 /// Displays form for adding or editing a server bookmark
 ///
@@ -36,7 +40,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         Message::BookmarkNameChanged(String::new())
     };
 
-    let mut column_items = vec![
+    let mut column_items: Vec<Element<'_, Message>> = vec![
         shaped_text(&dialog_title)
             .size(TITLE_SIZE)
             .width(Fill)
@@ -56,12 +60,12 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                 })
                 .into(),
         );
-        column_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+        column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
     } else {
-        column_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+        column_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
     }
 
-    column_items.extend(vec![
+    column_items.extend([
         text_input(&t("placeholder-server-name"), &state.bookmark.name)
             .on_input(Message::BookmarkNameChanged)
             .on_submit(submit_action.clone())
@@ -109,14 +113,14 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .size(TEXT_SIZE)
         .style(primary_text_input_style())
         .into(),
-        shaped_text("").size(SPACER_SIZE_SMALL).into(),
+        Space::with_height(SPACER_SIZE_SMALL).into(),
         checkbox(t("label-auto-connect"), state.bookmark.auto_connect)
             .on_toggle(Message::BookmarkAutoConnectToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
             .style(primary_checkbox_style())
             .into(),
-        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+        Space::with_height(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'_, Message>> = vec![
                 if can_save {

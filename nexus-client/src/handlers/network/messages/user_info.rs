@@ -25,10 +25,7 @@ impl NexusApp {
             let err = error.unwrap_or_default();
             return self.add_chat_message(
                 connection_id,
-                ChatMessage::new(
-                    t("msg-username-info"),
-                    t_args("user-info-error", &[("error", &err)]),
-                ),
+                ChatMessage::info(t_args("user-info-error", &[("error", &err)])),
             );
         }
 
@@ -133,7 +130,7 @@ impl NexusApp {
         for line in lines {
             task = self.add_chat_message(
                 connection_id,
-                ChatMessage::with_timestamp(t("msg-username-info"), line, timestamp),
+                ChatMessage::info_with_timestamp(line, timestamp),
             );
         }
         // Last add_chat_message will handle auto-scroll

@@ -1,7 +1,6 @@
 //! Error message handler
 
 use crate::NexusApp;
-use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, Message};
 use iced::Task;
 
@@ -26,10 +25,7 @@ impl NexusApp {
         }
 
         // For other errors (including UserDelete), show in chat
-        self.add_chat_message(
-            connection_id,
-            ChatMessage::new(t("msg-username-error"), message),
-        )
+        self.add_chat_message(connection_id, ChatMessage::error(message))
     }
 
     /// Check if error should be shown in user edit form

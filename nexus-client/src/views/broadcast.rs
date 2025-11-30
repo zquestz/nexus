@@ -8,8 +8,28 @@ use crate::style::{
     shaped_text_wrapped, sidebar_border,
 };
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::{button, column, container, row, text_input};
+use iced::widget::{Space, button, column, container, row, text_input};
 use iced::{Background, Center, Element, Fill};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Create a horizontal separator line
+fn separator<'a>() -> Element<'a, Message> {
+    container(Space::new(Fill, BORDER_WIDTH))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(sidebar_border(theme))),
+            ..Default::default()
+        })
+        .into()
+}
+
+// ============================================================================
+// Broadcast View
+// ============================================================================
 
 /// Render the broadcast panel
 ///
@@ -70,14 +90,14 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 })
                 .into(),
         );
-        form_items.push(shaped_text("").size(SPACER_SIZE_SMALL).into());
+        form_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
     } else {
-        form_items.push(shaped_text("").size(SPACER_SIZE_MEDIUM).into());
+        form_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
     }
 
     form_items.extend([
         message_input.into(),
-        shaped_text("").size(SPACER_SIZE_MEDIUM).into(),
+        Space::with_height(SPACER_SIZE_MEDIUM).into(),
         button_row.into(),
     ]);
 
@@ -86,26 +106,8 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    // Top border separator to match chat view
-    let top_separator = container(shaped_text(""))
-        .width(Fill)
-        .height(BORDER_WIDTH)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_border(theme))),
-            ..Default::default()
-        });
-
-    // Bottom border separator to match chat view
-    let bottom_separator = container(shaped_text(""))
-        .width(Fill)
-        .height(BORDER_WIDTH)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_border(theme))),
-            ..Default::default()
-        });
-
     column![
-        top_separator,
+        separator(),
         container(form)
             .width(Fill)
             .height(Fill)
@@ -114,7 +116,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 background: Some(Background::Color(content_background(theme))),
                 ..Default::default()
             }),
-        bottom_separator,
+        separator(),
     ]
     .width(Fill)
     .height(Fill)

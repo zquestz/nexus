@@ -3,40 +3,92 @@
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING_HORIZONTAL, ICON_BUTTON_PADDING_VERTICAL,
-    INPUT_PADDING, NO_SPACING, PANEL_SPACING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT,
-    SERVER_LIST_BUTTON_HEIGHT, SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING,
-    SERVER_LIST_PANEL_WIDTH, SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE,
-    SERVER_LIST_TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
+    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING,
+    SECTION_TITLE_SIZE, SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT,
+    SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
+    SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
+    SIDEBAR_ACTION_ICON_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
     TOOLTIP_TEXT_SIZE, alt_row_color, button_text_color, disconnect_icon_color,
     disconnect_icon_hover_color, error_color, interactive_hover_color, primary_scrollbar_style,
     section_title_color, separator_color, shaped_text, sidebar_background, sidebar_border,
     sidebar_empty_color, sidebar_icon_color, sidebar_icon_hover_color, tooltip_container_style,
 };
 use crate::types::{Message, ServerBookmark, ServerConnection};
-use iced::widget::{Column, button, column, container, row, scrollable, tooltip};
+use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
 use iced::{Background, Border, Element, Fill, alignment};
 use std::collections::HashMap;
 
-/// Displays connected servers and saved bookmarks
-///
-/// Shows two sections: connected servers (top) and bookmarks (bottom).
-/// Connected servers can be switched between or disconnected. Bookmarks can be
-/// connected to, edited, or deleted. A separator divides the two sections.
-pub fn server_list_panel<'a>(
-    bookmarks: &'a [ServerBookmark],
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Helper function to create transparent icon buttons with hover color change (disconnect style)
+fn transparent_icon_button(
+    icon: iced::widget::Text<'_>,
+    message: Message,
+) -> button::Button<'_, Message> {
+    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
+        .on_press(message)
+        .width(SERVER_LIST_BUTTON_HEIGHT)
+        .height(SERVER_LIST_BUTTON_HEIGHT)
+        .style(|theme, status| button::Style {
+            background: None,
+            text_color: match status {
+                button::Status::Hovered => disconnect_icon_hover_color(theme),
+                _ => disconnect_icon_color(theme),
+            },
+            border: Border::default(),
+            shadow: iced::Shadow::default(),
+        })
+}
+
+/// Helper function to create transparent edit/cog buttons with hover color change
+fn transparent_edit_button(
+    icon: iced::widget::Text<'_>,
+    message: Message,
+) -> button::Button<'_, Message> {
+    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
+        .on_press(message)
+        .width(SERVER_LIST_BUTTON_HEIGHT)
+        .height(SERVER_LIST_BUTTON_HEIGHT)
+        .style(|theme, status| button::Style {
+            background: None,
+            text_color: match status {
+                button::Status::Hovered => sidebar_icon_hover_color(theme),
+                _ => sidebar_icon_color(theme),
+            },
+            border: Border::default(),
+            shadow: iced::Shadow::default(),
+        })
+}
+
+/// Create a horizontal separator line
+fn separator<'a>() -> Element<'a, Message> {
+    container(Space::new(Fill, SEPARATOR_HEIGHT))
+        .width(Fill)
+        .height(SEPARATOR_HEIGHT)
+        .style(|theme| container::Style {
+            background: Some(Background::Color(separator_color(theme))),
+            ..Default::default()
+        })
+        .into()
+}
+
+// ============================================================================
+// Connected Servers Section
+// ============================================================================
+
+/// Build the connected servers section
+fn connected_servers_section<'a>(
     connections: &'a HashMap<usize, ServerConnection>,
     active_connection: Option<usize>,
-    bookmark_errors: &'a HashMap<usize, String>,
-) -> Element<'a, Message> {
-    let mut main_column = Column::new().spacing(PANEL_SPACING);
-
-    // === CONNECTED SERVERS SECTION ===
+) -> Column<'a, Message> {
     let connected_title = shaped_text(t("title-connected"))
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
         });
+
     let mut connected_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if connections.is_empty() {
@@ -105,28 +157,27 @@ pub fn server_list_panel<'a>(
         }
     }
 
-    let connected_section = column![connected_title, connected_column,]
+    column![connected_title, connected_column]
         .spacing(SERVER_LIST_SECTION_SPACING)
-        .padding(FORM_PADDING);
+        .padding(FORM_PADDING)
+}
 
-    main_column = main_column.push(connected_section);
+// ============================================================================
+// Bookmarks Section
+// ============================================================================
 
-    // Separator line
-    let separator = container(shaped_text(""))
-        .width(Fill)
-        .height(SEPARATOR_HEIGHT)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(separator_color(theme))),
-            ..Default::default()
-        });
-    main_column = main_column.push(separator);
-
-    // === BOOKMARKS SECTION ===
+/// Build the bookmarks section
+fn bookmarks_section<'a>(
+    bookmarks: &'a [ServerBookmark],
+    connections: &'a HashMap<usize, ServerConnection>,
+    bookmark_errors: &'a HashMap<usize, String>,
+) -> Column<'a, Message> {
     let bookmarks_title = shaped_text(t("title-bookmarks"))
         .size(SECTION_TITLE_SIZE)
         .style(|theme| iced::widget::text::Style {
             color: Some(section_title_color(theme)),
         });
+
     let mut bookmarks_column = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
 
     if bookmarks.is_empty() {
@@ -212,23 +263,17 @@ pub fn server_list_panel<'a>(
         }
     }
 
-    // Icon size matching user toolbar
-    let icon_size: f32 = 18.0;
-    let add_icon = container(icon::bookmark().size(icon_size))
-        .width(icon_size)
-        .height(icon_size)
+    // Add bookmark button
+    let add_icon = container(icon::bookmark().size(SIDEBAR_ACTION_ICON_SIZE))
+        .width(SIDEBAR_ACTION_ICON_SIZE)
+        .height(SIDEBAR_ACTION_ICON_SIZE)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center);
 
     let add_btn = tooltip(
         button(add_icon)
             .on_press(Message::ShowAddBookmark)
-            .padding(iced::Padding {
-                top: ICON_BUTTON_PADDING_VERTICAL as f32,
-                right: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-                bottom: ICON_BUTTON_PADDING_VERTICAL as f32,
-                left: ICON_BUTTON_PADDING_HORIZONTAL as f32,
-            })
+            .padding(ICON_BUTTON_PADDING)
             .style(|theme, status| button::Style {
                 background: None,
                 text_color: match status {
@@ -246,7 +291,7 @@ pub fn server_list_panel<'a>(
     .gap(TOOLTIP_GAP)
     .padding(TOOLTIP_PADDING);
 
-    let bookmarks_section = column![
+    column![
         bookmarks_title,
         scrollable(bookmarks_column)
             .height(Fill)
@@ -254,9 +299,30 @@ pub fn server_list_panel<'a>(
         Element::from(add_btn),
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)
-    .padding(FORM_PADDING);
+    .padding(FORM_PADDING)
+}
 
-    main_column = main_column.push(bookmarks_section);
+// ============================================================================
+// Main Panel View
+// ============================================================================
+
+/// Displays connected servers and saved bookmarks
+///
+/// Shows two sections: connected servers (top) and bookmarks (bottom).
+/// Connected servers can be switched between or disconnected. Bookmarks can be
+/// connected to, edited, or deleted. A separator divides the two sections.
+pub fn server_list_panel<'a>(
+    bookmarks: &'a [ServerBookmark],
+    connections: &'a HashMap<usize, ServerConnection>,
+    active_connection: Option<usize>,
+    bookmark_errors: &'a HashMap<usize, String>,
+) -> Element<'a, Message> {
+    let main_column = column![
+        connected_servers_section(connections, active_connection),
+        separator(),
+        bookmarks_section(bookmarks, connections, bookmark_errors),
+    ]
+    .spacing(PANEL_SPACING);
 
     // Wrap in container with styling
     container(main_column)
@@ -272,44 +338,4 @@ pub fn server_list_panel<'a>(
             ..Default::default()
         })
         .into()
-}
-
-/// Helper function to create transparent icon buttons with hover color change
-fn transparent_icon_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(|theme, status| button::Style {
-            background: None,
-            text_color: match status {
-                button::Status::Hovered => disconnect_icon_hover_color(theme),
-                _ => disconnect_icon_color(theme),
-            },
-            border: Border::default(),
-            shadow: iced::Shadow::default(),
-        })
-}
-
-/// Helper function to create transparent edit/cog buttons with hover color change
-fn transparent_edit_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(|theme, status| button::Style {
-            background: None,
-            text_color: match status {
-                button::Status::Hovered => sidebar_icon_hover_color(theme),
-                _ => sidebar_icon_color(theme),
-            },
-            border: Border::default(),
-            shadow: iced::Shadow::default(),
-        })
 }

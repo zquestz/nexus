@@ -116,10 +116,6 @@ chat-tab-server = #서버
 # System Message Usernames
 # =============================================================================
 
-msg-username-system = 시스템
-msg-username-error = 오류
-msg-username-info = 정보
-msg-username-broadcast-prefix = [브로드캐스트]
 
 # =============================================================================
 # Chat Message Prefixes
@@ -128,6 +124,7 @@ msg-username-broadcast-prefix = [브로드캐스트]
 chat-prefix-system = [시스템]
 chat-prefix-error = [오류]
 chat-prefix-info = [정보]
+chat-prefix-broadcast = [BROADCAST]
 
 # =============================================================================
 # Success Messages

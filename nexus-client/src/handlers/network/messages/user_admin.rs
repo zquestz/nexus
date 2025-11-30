@@ -34,10 +34,7 @@ impl NexusApp {
                 }
             }
 
-            self.add_chat_message(
-                connection_id,
-                ChatMessage::new(t("msg-username-system"), t("msg-user-created")),
-            )
+            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")))
         } else {
             // On error, keep panel open and show error in form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
@@ -65,10 +62,7 @@ impl NexusApp {
                 }
             }
 
-            self.add_chat_message(
-                connection_id,
-                ChatMessage::new(t("msg-username-system"), t("msg-user-deleted")),
-            )
+            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")))
         } else {
             // On error, keep panel open and show error in form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
@@ -122,10 +116,7 @@ impl NexusApp {
                 }
             }
 
-            self.add_chat_message(
-                connection_id,
-                ChatMessage::new(t("msg-username-system"), t("msg-user-updated")),
-            )
+            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")))
         } else {
             // On error, keep panel open and show error in form
             if let Some(conn) = self.connections.get_mut(&connection_id) {

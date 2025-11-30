@@ -117,10 +117,6 @@ chat-tab-server = #сервер
 # System Message Usernames
 # =============================================================================
 
-msg-username-system = Система
-msg-username-error = Ошибка
-msg-username-info = Инфо
-msg-username-broadcast-prefix = [РАССЫЛКА]
 
 # =============================================================================
 # Chat Message Prefixes
@@ -129,6 +125,7 @@ msg-username-broadcast-prefix = [РАССЫЛКА]
 chat-prefix-system = [СИС]
 chat-prefix-error = [ОШБ]
 chat-prefix-info = [ИНФ]
+chat-prefix-broadcast = [BROADCAST]
 
 # =============================================================================
 # Success Messages

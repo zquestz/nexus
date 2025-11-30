@@ -1,7 +1,7 @@
 //! User message (private message) handlers
 
 use crate::NexusApp;
-use crate::i18n::{t, t_args};
+use crate::i18n::t_args;
 use crate::types::{ChatMessage, ChatTab, Message, ScrollableId};
 use chrono::Local;
 use iced::Task;
@@ -62,13 +62,10 @@ impl NexusApp {
 
         self.add_chat_message(
             connection_id,
-            ChatMessage::new(
-                t("msg-username-error"),
-                t_args(
-                    "err-failed-send-message",
-                    &[("error", &error.unwrap_or_default())],
-                ),
-            ),
+            ChatMessage::error(t_args(
+                "err-failed-send-message",
+                &[("error", &error.unwrap_or_default())],
+            )),
         )
     }
 }

@@ -117,10 +117,6 @@ chat-tab-server = #服务器
 # System Message Usernames
 # =============================================================================
 
-msg-username-system = 系统
-msg-username-error = 错误
-msg-username-info = 信息
-msg-username-broadcast-prefix = [广播]
 
 # =============================================================================
 # Chat Message Prefixes
@@ -129,6 +125,7 @@ msg-username-broadcast-prefix = [广播]
 chat-prefix-system = [系统]
 chat-prefix-error = [错误]
 chat-prefix-info = [信息]
+chat-prefix-broadcast = [BROADCAST]
 
 # =============================================================================
 # Success Messages

@@ -2,7 +2,7 @@
 
 use crate::NexusApp;
 use crate::handlers::network::helpers::sort_user_list;
-use crate::i18n::{t, t_args};
+use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
 use iced::Task;
 use nexus_common::protocol::UserInfo as ProtocolUserInfo;
@@ -46,10 +46,10 @@ impl NexusApp {
         if is_new_user {
             self.add_chat_message(
                 connection_id,
-                ChatMessage::new(
-                    t("msg-username-system"),
-                    t_args("msg-user-connected", &[("username", &user.username)]),
-                ),
+                ChatMessage::system(t_args(
+                    "msg-user-connected",
+                    &[("username", &user.username)],
+                )),
             )
         } else {
             Task::none()
@@ -92,10 +92,7 @@ impl NexusApp {
         if is_last_session {
             self.add_chat_message(
                 connection_id,
-                ChatMessage::new(
-                    t("msg-username-system"),
-                    t_args("msg-user-disconnected", &[("username", &username)]),
-                ),
+                ChatMessage::system(t_args("msg-user-disconnected", &[("username", &username)])),
             )
         } else {
             Task::none()

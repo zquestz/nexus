@@ -24,13 +24,45 @@ pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
 pub const TOOLBAR_PADDING_VERTICAL: u16 = 8;
 
 /// Icon button padding (vertical)
-pub const ICON_BUTTON_PADDING_VERTICAL: u16 = 8;
+pub const ICON_BUTTON_PADDING_VERTICAL: f32 = 8.0;
 
 /// Icon button padding (horizontal)
-pub const ICON_BUTTON_PADDING_HORIZONTAL: u16 = 4;
+pub const ICON_BUTTON_PADDING_HORIZONTAL: f32 = 4.0;
+
+/// Icon button padding (combined for symmetric buttons)
+pub const ICON_BUTTON_PADDING: iced::Padding = iced::Padding {
+    top: ICON_BUTTON_PADDING_VERTICAL,
+    right: ICON_BUTTON_PADDING_HORIZONTAL,
+    bottom: ICON_BUTTON_PADDING_VERTICAL,
+    left: ICON_BUTTON_PADDING_HORIZONTAL,
+};
+
+/// Close button padding (left padding only, for close icon in tabs)
+pub const CLOSE_BUTTON_PADDING: iced::Padding = iced::Padding {
+    top: 0.0,
+    right: 0.0,
+    bottom: 0.0,
+    left: SMALL_PADDING as f32,
+};
+
+/// Tab content padding (standard padding with extra right space for close button)
+pub const TAB_CONTENT_PADDING: iced::Padding = iced::Padding {
+    top: INPUT_PADDING as f32,
+    right: SMALL_PADDING as f32,
+    bottom: INPUT_PADDING as f32,
+    left: INPUT_PADDING as f32,
+};
 
 /// Toolbar container padding (horizontal)
-pub const TOOLBAR_CONTAINER_PADDING_HORIZONTAL: u16 = 4;
+pub const TOOLBAR_CONTAINER_PADDING_HORIZONTAL: f32 = 4.0;
+
+/// Toolbar container padding (horizontal only, for flush top/bottom)
+pub const TOOLBAR_CONTAINER_PADDING: iced::Padding = iced::Padding {
+    top: 0.0,
+    right: TOOLBAR_CONTAINER_PADDING_HORIZONTAL,
+    bottom: 0.0,
+    left: TOOLBAR_CONTAINER_PADDING_HORIZONTAL,
+};
 
 /// Tooltip gap (distance between element and tooltip)
 pub const TOOLTIP_GAP: u16 = 5;
@@ -94,6 +126,9 @@ pub const USER_LIST_SPACING: u16 = 8;
 /// Maximum width for form dialogs
 pub const FORM_MAX_WIDTH: u16 = 400;
 
+/// Maximum width for fingerprint dialog (wider to show fingerprints)
+pub const FINGERPRINT_DIALOG_MAX_WIDTH: f32 = 600.0;
+
 /// Server list panel width
 pub const SERVER_LIST_PANEL_WIDTH: u16 = 220;
 
@@ -114,3 +149,25 @@ pub const WIDGET_BORDER_RADIUS: f32 = 2.0;
 
 /// User list panel width
 pub const USER_LIST_PANEL_WIDTH: u16 = 180;
+
+// ============================================================================
+// Fingerprint Dialog Spacing
+// ============================================================================
+
+/// Space after fingerprint dialog title
+pub const FINGERPRINT_SPACE_AFTER_TITLE: u16 = 10;
+
+/// Space after server info line in fingerprint dialog
+pub const FINGERPRINT_SPACE_AFTER_SERVER_INFO: u16 = 10;
+
+/// Space after warning text in fingerprint dialog
+pub const FINGERPRINT_SPACE_AFTER_WARNING: u16 = 10;
+
+/// Space after fingerprint labels (tight coupling with value)
+pub const FINGERPRINT_SPACE_AFTER_LABEL: u16 = 0;
+
+/// Space between fingerprint sections (expected vs received)
+pub const FINGERPRINT_SPACE_BETWEEN_SECTIONS: u16 = 8;
+
+/// Space before button row in fingerprint dialog
+pub const FINGERPRINT_SPACE_BEFORE_BUTTONS: u16 = 10;

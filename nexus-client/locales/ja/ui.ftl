@@ -116,10 +116,6 @@ chat-tab-server = #サーバー
 # System Message Usernames
 # =============================================================================
 
-msg-username-system = システム
-msg-username-error = エラー
-msg-username-info = 情報
-msg-username-broadcast-prefix = [ブロードキャスト]
 
 # =============================================================================
 # Chat Message Prefixes
@@ -128,6 +124,7 @@ msg-username-broadcast-prefix = [ブロードキャスト]
 chat-prefix-system = [システム]
 chat-prefix-error = [エラー]
 chat-prefix-info = [情報]
+chat-prefix-broadcast = [BROADCAST]
 
 # =============================================================================
 # Success Messages

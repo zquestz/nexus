@@ -472,7 +472,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             border: Border::default(),
                             shadow: iced::Shadow::default(),
                         }),
-                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-show-user-list")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,

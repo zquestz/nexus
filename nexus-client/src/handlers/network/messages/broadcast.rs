@@ -1,7 +1,6 @@
 //! Broadcast message handlers
 
 use crate::NexusApp;
-use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, Message};
 use iced::Task;
 
@@ -13,13 +12,7 @@ impl NexusApp {
         username: String,
         message: String,
     ) -> Task<Message> {
-        self.add_chat_message(
-            connection_id,
-            ChatMessage::new(
-                format!("{} {}", t("msg-username-broadcast-prefix"), username),
-                message,
-            ),
-        )
+        self.add_chat_message(connection_id, ChatMessage::broadcast(username, message))
     }
 
     /// Handle user broadcast response (success/failure of sending a broadcast)

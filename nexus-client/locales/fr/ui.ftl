@@ -117,10 +117,6 @@ chat-tab-server = #serveur
 # System Message Usernames
 # =============================================================================
 
-msg-username-system = Système
-msg-username-error = Erreur
-msg-username-info = Info
-msg-username-broadcast-prefix = [DIFFUSION]
 
 # =============================================================================
 # Chat Message Prefixes
@@ -129,6 +125,7 @@ msg-username-broadcast-prefix = [DIFFUSION]
 chat-prefix-system = [SYS]
 chat-prefix-error = [ERR]
 chat-prefix-info = [INFO]
+chat-prefix-broadcast = [BROADCAST]
 
 # =============================================================================
 # Success Messages
