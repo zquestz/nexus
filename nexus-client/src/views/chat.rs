@@ -2,13 +2,13 @@
 
 use super::constants::PERMISSION_CHAT_SEND;
 use super::style::{
-    BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_MESSAGE_SIZE, CHAT_SPACING, INPUT_PADDING, MONOSPACE_FONT,
-    SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, action_button_text, admin_user_text_color,
-    broadcast_message_color, chat_tab_active_style, chat_tab_inactive_style, chat_text_color,
-    chat_timestamp_color, error_message_color, info_text_color, primary_button_style,
-    primary_scrollbar_style, primary_text_input_style, shaped_text, sidebar_border,
-    system_text_color, tooltip_border, tooltip_text_color,
+    BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
+    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_COLOR,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    action_button_text, admin_user_text_color, broadcast_message_color, chat_tab_active_style,
+    chat_tab_inactive_style, chat_text_color, chat_timestamp_color, error_message_color,
+    info_text_color, primary_button_style, primary_scrollbar_style, primary_text_input_style,
+    shaped_text, sidebar_border, system_text_color, tooltip_border, tooltip_text_color,
 };
 use crate::handlers::network::{
     msg_username_broadcast_prefix, msg_username_error, msg_username_info, msg_username_system,
@@ -170,54 +170,59 @@ pub fn chat_view<'a>(
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
         for line in msg.message.split('\n') {
+            // Grey timestamp for all message types
+            let timestamp_color = chat_timestamp_color(&theme);
+
             let display: Element<'_, Message> = if msg.username == msg_username_system() {
-                // System messages: all in system color
+                // System messages: timestamp grey, rest in system color
                 let color = system_text_color(&theme);
                 rich_text![
-                    span(format!("[{}] ", time_str)).color(color),
-                    span("[SYS] ").color(color),
+                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("{} ", t("chat-prefix-system"))).color(color),
                     span(line).color(color),
                 ]
                 .size(CHAT_MESSAGE_SIZE)
+                .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
             } else if msg.username == msg_username_error() {
-                // Error messages: all in error color
+                // Error messages: timestamp grey, rest in error color
                 let color = error_message_color();
                 rich_text![
-                    span(format!("[{}] ", time_str)).color(color),
-                    span("[ERR] ").color(color),
+                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("{} ", t("chat-prefix-error"))).color(color),
                     span(line).color(color),
                 ]
                 .size(CHAT_MESSAGE_SIZE)
+                .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
             } else if msg.username == msg_username_info() {
-                // Info messages: all in info color
+                // Info messages: timestamp grey, rest in info color
                 let color = info_text_color(&theme);
                 rich_text![
-                    span(format!("[{}] ", time_str)).color(color),
-                    span("[INFO] ").color(color),
+                    span(format!("{} ", time_str)).color(timestamp_color),
+                    span(format!("{} ", t("chat-prefix-info"))).color(color),
                     span(line).color(color),
                 ]
                 .size(CHAT_MESSAGE_SIZE)
+                .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
             } else if msg.username.starts_with(&msg_username_broadcast_prefix()) {
-                // Broadcast messages: timestamp dimmed, rest in broadcast color
-                let timestamp_color = chat_timestamp_color(&theme);
+                // Broadcast messages: timestamp grey, rest in broadcast color
                 let broadcast_color = broadcast_message_color(&theme);
                 rich_text![
-                    span(format!("[{}] ", time_str)).color(timestamp_color),
+                    span(format!("{} ", time_str)).color(timestamp_color),
                     span(format!("{}: ", msg.username)).color(broadcast_color),
                     span(line).color(broadcast_color),
                 ]
                 .size(CHAT_MESSAGE_SIZE)
+                .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
             } else {
-                // Regular chat messages: timestamp dimmed, username colored by admin status, message normal
-                let timestamp_color = chat_timestamp_color(&theme);
+                // Regular chat messages: timestamp grey, username colored by admin status, message normal
                 let username_color = if is_admin_user(&msg.username) {
                     admin_user_text_color(&theme)
                 } else {
@@ -225,11 +230,12 @@ pub fn chat_view<'a>(
                 };
                 let text_color = chat_text_color(&theme);
                 rich_text![
-                    span(format!("[{}] ", time_str)).color(timestamp_color),
+                    span(format!("{} ", time_str)).color(timestamp_color),
                     span(format!("{}: ", msg.username)).color(username_color),
                     span(line).color(text_color),
                 ]
                 .size(CHAT_MESSAGE_SIZE)
+                .line_height(CHAT_LINE_HEIGHT)
                 .font(MONOSPACE_FONT)
                 .into()
             };

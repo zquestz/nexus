@@ -86,6 +86,9 @@ pub const SPACER_SIZE_SMALL: u16 = 5;
 /// Chat message text size
 pub const CHAT_MESSAGE_SIZE: u16 = 14;
 
+/// Chat message line height (1.6x for better readability)
+pub const CHAT_LINE_HEIGHT: f32 = 1.6;
+
 /// Chat input field size (slightly larger than messages)
 pub const CHAT_INPUT_SIZE: u16 = 16;
 
