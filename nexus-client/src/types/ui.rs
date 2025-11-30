@@ -17,7 +17,7 @@ pub enum ActivePanel {
 }
 
 /// UI visibility state for toggleable panels
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct UiState {
     /// Show bookmarks sidebar
     pub show_bookmarks: bool,
@@ -25,6 +25,16 @@ pub struct UiState {
     pub show_user_list: bool,
     /// Currently active panel in the main content area
     pub active_panel: ActivePanel,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            show_bookmarks: true,
+            show_user_list: true,
+            active_panel: ActivePanel::None,
+        }
+    }
 }
 
 /// Certificate fingerprint mismatch information

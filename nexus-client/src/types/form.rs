@@ -43,7 +43,7 @@ pub enum UserEditState {
 }
 
 /// Connection form state (not persisted)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConnectionFormState {
     /// Optional display name for connection
     pub server_name: String,
@@ -63,15 +63,22 @@ pub struct ConnectionFormState {
     pub add_bookmark: bool,
 }
 
-impl ConnectionFormState {
-    /// Create new form with default values
-    pub fn new() -> Self {
+impl Default for ConnectionFormState {
+    fn default() -> Self {
         Self {
+            server_name: String::new(),
+            server_address: String::new(),
             port: DEFAULT_PORT.to_string(),
-            ..Default::default()
+            username: String::new(),
+            password: String::new(),
+            error: None,
+            is_connecting: false,
+            add_bookmark: false,
         }
     }
+}
 
+impl ConnectionFormState {
     /// Clear all form fields
     pub fn clear(&mut self) {
         self.server_name.clear();

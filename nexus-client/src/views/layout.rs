@@ -24,7 +24,7 @@ use super::{
     bookmark::bookmark_edit_view,
     broadcast::broadcast_view,
     chat::chat_view,
-    connection::{ConnectionFormData, connection_form_view},
+    connection::connection_form_view,
     server_list::server_list_panel,
     user_list::user_list_panel,
     users::users_view,
@@ -58,9 +58,9 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
 
     // Top toolbar
     let toolbar = build_toolbar(ToolbarState {
-        show_bookmarks: config.show_bookmarks,
-        show_user_list: config.show_user_list,
-        active_panel: config.active_panel,
+        show_bookmarks: config.ui_state.show_bookmarks,
+        show_user_list: config.ui_state.show_user_list,
+        active_panel: config.ui_state.active_panel,
         is_connected: config.active_connection.is_some(),
         is_admin,
         permissions,
@@ -76,35 +76,28 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     );
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)
-    let main_content = if *config.bookmark_edit_mode != BookmarkEditMode::None {
-        bookmark_edit_view(config.bookmark_form_data())
-    } else if let Some(conn_id) = config.active_connection {
-        if let Some(conn) = config.connections.get(&conn_id) {
-            server_content_view(
-                conn,
-                config.message_input,
-                config.user_management,
-                config.active_panel,
-                config.theme.clone(),
-            )
-        } else {
-            empty_content_view()
-        }
+    let main_content = if config.bookmark_edit.mode != BookmarkEditMode::None {
+        bookmark_edit_view(config.bookmark_edit)
+    } else if let Some(conn_id) = config.active_connection
+        && let Some(conn) = config.connections.get(&conn_id)
+        && let Some(user_mgmt) = config.user_management
+    {
+        server_content_view(
+            conn,
+            config.message_input,
+            user_mgmt,
+            config.ui_state.active_panel,
+            config.theme.clone(),
+        )
+    } else if config.active_connection.is_some() {
+        // Connection exists but couldn't get all required state
+        empty_content_view()
     } else {
-        connection_form_view(ConnectionFormData {
-            server_name: config.server_name,
-            server_address: config.server_address,
-            port: config.port,
-            username: config.username,
-            password: config.password,
-            connection_error: config.connection_error,
-            is_connecting: config.is_connecting,
-            add_bookmark: config.add_bookmark,
-        })
+        connection_form_view(config.connection_form)
     };
 
     // Right panel: User list (only when connected, visible, and user has permission)
-    let user_list = if config.show_user_list && can_view_user_list {
+    let user_list = if config.ui_state.show_user_list && can_view_user_list {
         config
             .active_connection
             .and_then(|conn_id| config.connections.get(&conn_id))
@@ -115,7 +108,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     };
 
     // Three-panel layout with conditional panels
-    let content = if config.show_bookmarks {
+    let content = if config.ui_state.show_bookmarks {
         row![server_list, main_content, user_list]
             .spacing(PANEL_SPACING)
             .height(Fill)

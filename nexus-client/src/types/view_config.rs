@@ -1,86 +1,46 @@
 //! View configuration struct for passing state to view rendering
 
 use crate::types::{
-    ActivePanel, BookmarkEditMode, ServerBookmark, ServerConnection, UserManagementState,
+    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
+    UiState, UserManagementState,
 };
 use iced::Theme;
 use std::collections::HashMap;
 
 /// Configuration struct for view rendering
 ///
-/// Holds all the state needed to render the main layout, replacing the previous
-/// 25-parameter function signature with a single, well-organized struct.
+/// Holds all the state needed to render the main layout. Uses references to
+/// sub-structs for cleaner organization and simpler construction.
 pub struct ViewConfig<'a> {
-    // Theme for views that need concrete colors (e.g., rich_text spans)
-    // Owned rather than borrowed since Theme is Copy
+    /// Theme for views that need concrete colors (e.g., rich_text spans)
     pub theme: Theme,
 
-    // Connection state
+    /// Active server connections by connection_id
     pub connections: &'a HashMap<usize, ServerConnection>,
+
+    /// Currently displayed connection
     pub active_connection: Option<usize>,
 
-    // Bookmarks
+    /// Server bookmarks from config
     pub bookmarks: &'a [ServerBookmark],
-    pub bookmark_edit_mode: &'a BookmarkEditMode,
+
+    /// Per-bookmark connection errors (transient)
     pub bookmark_errors: &'a HashMap<usize, String>,
 
-    // Connection form
-    pub server_name: &'a str,
-    pub server_address: &'a str,
-    pub port: &'a str,
-    pub username: &'a str,
-    pub password: &'a str,
-    pub connection_error: &'a Option<String>,
-    pub is_connecting: bool,
-    pub add_bookmark: bool,
+    /// Connection form state
+    pub connection_form: &'a ConnectionFormState,
 
-    // Bookmark edit form
-    pub bookmark_name: &'a str,
-    pub bookmark_address: &'a str,
-    pub bookmark_port: &'a str,
-    pub bookmark_username: &'a str,
-    pub bookmark_password: &'a str,
-    pub bookmark_auto_connect: bool,
-    pub bookmark_error: &'a Option<String>,
+    /// Bookmark add/edit dialog state
+    pub bookmark_edit: &'a BookmarkEditState,
 
-    // Active connection state
+    /// Chat message input (from active connection or empty)
     pub message_input: &'a str,
-    pub user_management: &'a UserManagementState,
 
-    // UI panel visibility
-    pub show_bookmarks: bool,
-    pub show_user_list: bool,
-    pub active_panel: ActivePanel,
-}
+    /// User management state (only present when connected)
+    pub user_management: Option<&'a UserManagementState>,
 
-/// Bookmark form data for add/edit dialogs
-///
-/// Groups all bookmark form fields to simplify passing them to bookmark_edit_view.
-pub struct BookmarkFormData<'a> {
-    pub mode: &'a BookmarkEditMode,
-    pub name: &'a str,
-    pub address: &'a str,
-    pub port: &'a str,
-    pub username: &'a str,
-    pub password: &'a str,
-    pub auto_connect: bool,
-    pub error: &'a Option<String>,
-}
-
-impl<'a> ViewConfig<'a> {
-    /// Extract bookmark form data from the config
-    pub fn bookmark_form_data(&self) -> BookmarkFormData<'a> {
-        BookmarkFormData {
-            mode: self.bookmark_edit_mode,
-            name: self.bookmark_name,
-            address: self.bookmark_address,
-            port: self.bookmark_port,
-            username: self.bookmark_username,
-            password: self.bookmark_password,
-            auto_connect: self.bookmark_auto_connect,
-            error: self.bookmark_error,
-        }
-    }
+    /// UI panel visibility state
+    pub ui_state: &'a UiState,
 }
 
 /// Toolbar state configuration
