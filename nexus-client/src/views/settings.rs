@@ -1,5 +1,6 @@
 //! Settings panel view
 
+use crate::config::CHAT_FONT_SIZES;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
@@ -21,6 +22,7 @@ use iced::{Center, Element, Fill, Theme};
 pub fn settings_view(
     current_theme: Theme,
     show_connection_notifications: bool,
+    chat_font_size: u8,
 ) -> Element<'static, Message> {
     let title = shaped_text(t("title-settings"))
         .size(TITLE_SIZE)
@@ -32,6 +34,18 @@ pub fn settings_view(
     let theme_picker =
         pick_list(Theme::ALL, Some(current_theme), Message::ThemeSelected).text_size(TEXT_SIZE);
     let theme_row = row![theme_label, theme_picker]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+
+    // Chat font size picker row
+    let font_size_label = shaped_text(t("label-chat-font-size")).size(TEXT_SIZE);
+    let font_size_picker = pick_list(
+        CHAT_FONT_SIZES,
+        Some(chat_font_size),
+        Message::ChatFontSizeSelected,
+    )
+    .text_size(TEXT_SIZE);
+    let font_size_row = row![font_size_label, font_size_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
 
@@ -59,6 +73,7 @@ pub fn settings_view(
         title,
         Space::with_height(SPACER_SIZE_MEDIUM),
         theme_row,
+        font_size_row,
         notifications_checkbox,
         Space::with_height(SPACER_SIZE_MEDIUM),
         buttons,

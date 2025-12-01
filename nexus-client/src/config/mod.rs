@@ -41,7 +41,22 @@ pub struct Config {
     /// Show user connect/disconnect notifications in chat
     #[serde(default = "default_true")]
     pub show_connection_notifications: bool,
+    /// Font size for chat messages (9-16)
+    #[serde(default = "default_chat_font_size")]
+    pub chat_font_size: u8,
 }
+
+/// Minimum allowed chat font size
+pub const CHAT_FONT_SIZE_MIN: u8 = 9;
+
+/// Maximum allowed chat font size
+pub const CHAT_FONT_SIZE_MAX: u8 = 16;
+
+/// Default chat font size
+pub const CHAT_FONT_SIZE_DEFAULT: u8 = 14;
+
+/// All valid chat font sizes for the picker
+pub const CHAT_FONT_SIZES: &[u8] = &[9, 10, 11, 12, 13, 14, 15, 16];
 
 impl Default for Config {
     fn default() -> Self {
@@ -50,6 +65,7 @@ impl Default for Config {
             theme: ThemePreference::default(),
             locale: default_config_locale(),
             show_connection_notifications: default_true(),
+            chat_font_size: default_chat_font_size(),
         }
     }
 }
@@ -62,6 +78,11 @@ fn default_config_locale() -> String {
 /// Default true value for serde
 fn default_true() -> bool {
     true
+}
+
+/// Default chat font size for serde
+fn default_chat_font_size() -> u8 {
+    CHAT_FONT_SIZE_DEFAULT
 }
 
 // =============================================================================

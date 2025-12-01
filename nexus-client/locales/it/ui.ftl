@@ -60,6 +60,7 @@ label-permissions = Permessi:
 label-expected-fingerprint = Impronta prevista:
 label-received-fingerprint = Impronta ricevuta:
 label-theme = Tema
+label-chat-font-size = Dimensione carattere chat
 label-show-connection-notifications = Mostra notifiche di connessione
 
 # =============================================================================

@@ -61,6 +61,7 @@ label-permissions = 权限：
 label-expected-fingerprint = 预期指纹：
 label-received-fingerprint = 收到的指纹：
 label-theme = 主题
+label-chat-font-size = 聊天字体大小
 label-show-connection-notifications = 显示连接通知
 
 # =============================================================================

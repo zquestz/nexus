@@ -245,6 +245,7 @@ impl NexusApp {
 
             // Settings
             Message::CancelSettings => self.handle_cancel_settings(),
+            Message::ChatFontSizeSelected(size) => self.handle_chat_font_size_selected(size),
             Message::ConnectionNotificationsToggled(enabled) => {
                 self.handle_connection_notifications_toggled(enabled)
             }
@@ -301,6 +302,7 @@ impl NexusApp {
         let config = ViewConfig {
             theme: self.theme(),
             show_connection_notifications: self.config.show_connection_notifications,
+            chat_font_size: self.config.chat_font_size,
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,

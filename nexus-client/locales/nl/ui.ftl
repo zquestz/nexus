@@ -61,6 +61,7 @@ label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:
 label-theme = Thema
+label-chat-font-size = Chat lettergrootte
 label-show-connection-notifications = Verbindingsmeldingen weergeven
 
 # =============================================================================

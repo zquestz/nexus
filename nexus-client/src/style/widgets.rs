@@ -24,20 +24,6 @@ pub fn chat_tab_active_style() -> fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-/// Inactive chat tab style - no background, just text
-pub fn chat_tab_inactive_style() -> fn(&Theme, button::Status) -> button::Style {
-    |theme, status| match status {
-        button::Status::Hovered => button::primary(theme, status),
-        _ => {
-            let base = button::text(theme, status);
-            button::Style {
-                background: None,
-                ..base
-            }
-        }
-    }
-}
-
 /// Close button style for buttons that appear on primary-colored backgrounds
 ///
 /// Uses the default primary button style, but switches to danger color on hover

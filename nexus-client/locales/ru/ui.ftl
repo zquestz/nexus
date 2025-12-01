@@ -61,6 +61,7 @@ label-permissions = Разрешения:
 label-expected-fingerprint = Ожидаемый отпечаток:
 label-received-fingerprint = Полученный отпечаток:
 label-theme = Тема
+label-chat-font-size = Размер шрифта чата
 label-show-connection-notifications = Показывать уведомления о подключении
 
 # =============================================================================

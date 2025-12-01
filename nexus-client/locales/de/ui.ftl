@@ -60,6 +60,7 @@ label-permissions = Berechtigungen:
 label-expected-fingerprint = Erwarteter Fingerabdruck:
 label-received-fingerprint = Empfangener Fingerabdruck:
 label-theme = Design
+label-chat-font-size = Chat-Schriftgröße
 label-show-connection-notifications = Verbindungsbenachrichtigungen anzeigen
 
 # =============================================================================

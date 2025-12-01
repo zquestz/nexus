@@ -1,6 +1,7 @@
 //! UI panel toggles
 
 use crate::NexusApp;
+use crate::config::{CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
 use iced::Task;
@@ -145,6 +146,12 @@ impl NexusApp {
     /// Handle connection notifications toggle
     pub fn handle_connection_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
         self.config.show_connection_notifications = enabled;
+        Task::none()
+    }
+
+    /// Handle chat font size selection from the picker (live preview)
+    pub fn handle_chat_font_size_selected(&mut self, size: u8) -> Task<Message> {
+        self.config.chat_font_size = size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
         Task::none()
     }
 }

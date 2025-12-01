@@ -100,6 +100,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 config.ui_state.active_panel,
                 config.theme.clone(),
                 config.show_connection_notifications,
+                config.chat_font_size,
             )
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -110,7 +111,11 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             if config.ui_state.active_panel == ActivePanel::Settings {
                 stack![
                     conn_form,
-                    settings_view(config.theme.clone(), config.show_connection_notifications,)
+                    settings_view(
+                        config.theme.clone(),
+                        config.show_connection_notifications,
+                        config.chat_font_size,
+                    )
                 ]
                 .width(Fill)
                 .height(Fill)
@@ -394,9 +399,10 @@ fn server_content_view<'a>(
     active_panel: ActivePanel,
     theme: iced::Theme,
     show_connection_notifications: bool,
+    chat_font_size: u8,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
-    let chat = chat_view(conn, message_input, theme.clone());
+    let chat = chat_view(conn, message_input, theme.clone(), chat_font_size);
 
     // Overlay panels on top when active
     match active_panel {
@@ -412,7 +418,7 @@ fn server_content_view<'a>(
         }
         ActivePanel::Settings => stack![
             chat,
-            settings_view(theme.clone(), show_connection_notifications)
+            settings_view(theme.clone(), show_connection_notifications, chat_font_size)
         ]
         .width(Fill)
         .height(Fill)

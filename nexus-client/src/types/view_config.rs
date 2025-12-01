@@ -18,6 +18,9 @@ pub struct ViewConfig<'a> {
     /// Show user connect/disconnect notifications in chat
     pub show_connection_notifications: bool,
 
+    /// Font size for chat messages
+    pub chat_font_size: u8,
+
     /// Active server connections by connection_id
     pub connections: &'a HashMap<usize, ServerConnection>,
 

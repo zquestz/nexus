@@ -3,11 +3,11 @@
 use super::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::i18n::t;
 use crate::style::{
-    BOLD_FONT, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
-    CHAT_TIME_FORMAT, CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING,
-    SMALL_SPACING, TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, chat_tab_inactive_style,
-    close_button_on_primary_style, content_background_style, shaped_text, tooltip_container_style,
+    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CHAT_TIME_FORMAT,
+    CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING,
+    TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
+    TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, close_button_on_primary_style,
+    content_background_style, shaped_text, tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::{
@@ -27,13 +27,14 @@ fn styled_message<'a>(
     prefix_color: Color,
     content: &str,
     content_color: Color,
+    font_size: f32,
 ) -> Element<'a, Message> {
     rich_text![
         span(format!("[{}] ", time_str)).color(timestamp_color),
         span(prefix).color(prefix_color),
         span(content.to_string()).color(content_color),
     ]
-    .size(CHAT_MESSAGE_SIZE)
+    .size(font_size)
     .line_height(CHAT_LINE_HEIGHT)
     .font(MONOSPACE_FONT)
     .into()
@@ -123,7 +124,7 @@ fn create_inactive_tab_button(
 
     button(tab_text)
         .on_press(Message::SwitchChatTab(tab))
-        .style(chat_tab_inactive_style())
+        .style(iced::widget::button::secondary)
         .padding(INPUT_PADDING)
         .into()
 }
@@ -140,6 +141,7 @@ fn render_message_line<'a>(
     message_type: MessageType,
     theme: &Theme,
     username_is_admin: bool,
+    font_size: f32,
 ) -> Element<'a, Message> {
     let timestamp_color = chat::timestamp(theme);
 
@@ -153,6 +155,7 @@ fn render_message_line<'a>(
                 color,
                 line,
                 color,
+                font_size,
             )
         }
         MessageType::Error => {
@@ -164,6 +167,7 @@ fn render_message_line<'a>(
                 color,
                 line,
                 color,
+                font_size,
             )
         }
         MessageType::Info => {
@@ -175,6 +179,7 @@ fn render_message_line<'a>(
                 color,
                 line,
                 color,
+                font_size,
             )
         }
         MessageType::Broadcast => {
@@ -186,6 +191,7 @@ fn render_message_line<'a>(
                 color,
                 line,
                 color,
+                font_size,
             )
         }
         MessageType::Chat => {
@@ -202,6 +208,7 @@ fn render_message_line<'a>(
                 username_color,
                 line,
                 text_color,
+                font_size,
             )
         }
     }
@@ -212,7 +219,11 @@ fn render_message_line<'a>(
 // ============================================================================
 
 /// Build the message list column for the active chat tab
-fn build_message_list<'a>(conn: &'a ServerConnection, theme: &Theme) -> Column<'a, Message> {
+fn build_message_list<'a>(
+    conn: &'a ServerConnection,
+    theme: &Theme,
+    font_size: f32,
+) -> Column<'a, Message> {
     let messages = match &conn.active_chat_tab {
         ChatTab::Server => conn.chat_messages.as_slice(),
         ChatTab::UserMessage(username) => conn
@@ -238,6 +249,7 @@ fn build_message_list<'a>(conn: &'a ServerConnection, theme: &Theme) -> Column<'
                 msg.message_type,
                 theme,
                 username_is_admin,
+                font_size,
             );
             chat_column = chat_column.push(display);
         }
@@ -254,6 +266,7 @@ fn build_message_list<'a>(conn: &'a ServerConnection, theme: &Theme) -> Column<'
 fn build_input_row<'a>(
     message_input: &'a str,
     can_send_message: bool,
+    font_size: f32,
 ) -> iced::widget::Row<'a, Message> {
     let text_field = if can_send_message {
         text_input(&t("placeholder-message"), message_input)
@@ -261,24 +274,24 @@ fn build_input_row<'a>(
             .on_submit(Message::SendMessagePressed)
             .id(text_input::Id::from(InputId::ChatInput))
             .padding(INPUT_PADDING)
-            .size(CHAT_INPUT_SIZE)
+            .size(font_size)
             .font(MONOSPACE_FONT)
             .width(Fill)
     } else {
         text_input(&t("placeholder-no-permission"), message_input)
             .id(text_input::Id::from(InputId::ChatInput))
             .padding(INPUT_PADDING)
-            .size(CHAT_INPUT_SIZE)
+            .size(font_size)
             .font(MONOSPACE_FONT)
             .width(Fill)
     };
 
     let send_button = if can_send_message {
-        button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
+        button(shaped_text(t("button-send")).size(font_size))
             .on_press(Message::SendMessagePressed)
             .padding(INPUT_PADDING)
     } else {
-        button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE)).padding(INPUT_PADDING)
+        button(shaped_text(t("button-send")).size(font_size)).padding(INPUT_PADDING)
     };
 
     row![text_field, send_button]
@@ -340,13 +353,16 @@ pub fn chat_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
     theme: Theme,
+    chat_font_size: u8,
 ) -> Element<'a, Message> {
+    let font_size = chat_font_size as f32;
+
     // Build tab bar
     let (tab_row, has_pm_tabs) = build_tab_bar(conn);
     let tab_bar = tab_row.wrap();
 
     // Build message list
-    let chat_column = build_message_list(conn, &theme);
+    let chat_column = build_message_list(conn, &theme, font_size);
 
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages.into())
@@ -369,7 +385,7 @@ pub fn chat_view<'a>(
     };
 
     // Build input row
-    let input_row = build_input_row(message_input, can_send_message);
+    let input_row = build_input_row(message_input, can_send_message, font_size);
 
     // Chat content with background
     let chat_content = container(
