@@ -85,7 +85,9 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
         .padding(TOOLTIP_PADDING);
 
         let tab_content = row![
-            iced::widget::text(label).size(CHAT_MESSAGE_SIZE).shaping(iced::widget::text::Shaping::Advanced),
+            iced::widget::text(label)
+                .size(CHAT_MESSAGE_SIZE)
+                .shaping(iced::widget::text::Shaping::Advanced),
             close_button
         ]
         .spacing(SMALL_SPACING)
@@ -276,8 +278,7 @@ fn build_input_row<'a>(
             .on_press(Message::SendMessagePressed)
             .padding(INPUT_PADDING)
     } else {
-        button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
-            .padding(INPUT_PADDING)
+        button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE)).padding(INPUT_PADDING)
     };
 
     row![text_field, send_button]

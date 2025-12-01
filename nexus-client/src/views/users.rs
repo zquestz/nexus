@@ -174,8 +174,7 @@ fn add_user_view<'a>(
             .on_press(Message::CreateUserPressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
+        button(shaped_text(t("button-create")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -259,8 +258,7 @@ fn select_user_view<'a>(
             .on_press(Message::EditUserPressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-edit")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
+        button(shaped_text(t("button-edit")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let delete_button = if can_delete {
@@ -268,8 +266,7 @@ fn select_user_view<'a>(
             .on_press(Message::DeleteUserPressed(username.to_string()))
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -398,8 +395,7 @@ fn update_user_view<'a>(
             .on_press(Message::UpdateUserPressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-update")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
+        button(shaped_text(t("button-update")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))

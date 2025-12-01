@@ -17,7 +17,7 @@ use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
     ViewConfig,
 };
-use iced::widget::{button, column, container, row, stack, tooltip, Space};
+use iced::widget::{Space, button, column, container, row, stack, tooltip};
 use iced::{Center, Element, Fill};
 
 // ============================================================================

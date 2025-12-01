@@ -105,7 +105,7 @@ fn create_user_toolbar<'a>(
     let primary_color = theme.palette().primary;
     let icon_color = ui::icon_color(theme);
     let danger_color = theme.palette().danger;
-    
+
     let info_button = if has_user_info_permission {
         let username_for_info = username_owned.clone();
         enabled_icon_button(
@@ -200,7 +200,10 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
             .on_press(Message::UserListItemClicked(username_clone))
             .width(Fill)
             .padding(INPUT_PADDING)
-            .style(user_list_item_button_style(user_is_admin, chat::admin(theme)));
+            .style(user_list_item_button_style(
+                user_is_admin,
+                chat::admin(theme),
+            ));
 
             // Create item column (username + optional toolbar)
             let mut item_column = Column::new().spacing(NO_SPACING);
@@ -237,13 +240,10 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         }
     }
 
-    let panel = column![
-        title,
-        scrollable(users_column).height(Fill),
-    ]
-    .spacing(USER_LIST_SPACING)
-    .padding(FORM_PADDING)
-    .width(USER_LIST_PANEL_WIDTH);
+    let panel = column![title, scrollable(users_column).height(Fill),]
+        .spacing(USER_LIST_SPACING)
+        .padding(FORM_PADDING)
+        .width(USER_LIST_PANEL_WIDTH);
 
     container(panel)
         .height(Fill)

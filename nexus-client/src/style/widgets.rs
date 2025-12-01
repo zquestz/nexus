@@ -130,9 +130,7 @@ pub fn list_item_button_style_with_error(
 }
 
 /// Toolbar button style - handles active (selected) and inactive states
-pub fn toolbar_button_style(
-    is_active: bool,
-) -> impl Fn(&Theme, button::Status) -> button::Style {
+pub fn toolbar_button_style(is_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| {
         if is_active {
             // Active state - primary background (matches button::primary)

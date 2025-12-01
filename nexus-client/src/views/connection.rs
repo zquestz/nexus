@@ -78,8 +78,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-connect")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
+        button(shaped_text(t("button-connect")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let mut column_items: Vec<Element<'_, Message>> = vec![title.into()];

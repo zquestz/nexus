@@ -59,8 +59,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 .on_press(Message::SendBroadcastPressed)
                 .padding(BUTTON_PADDING)
         } else {
-            button(shaped_text(t("button-send")).size(TEXT_SIZE))
-                .padding(BUTTON_PADDING)
+            button(shaped_text(t("button-send")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
         },
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelBroadcast)

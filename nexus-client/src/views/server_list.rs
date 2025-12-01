@@ -8,9 +8,9 @@ use crate::style::{
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
     SIDEBAR_ACTION_ICON_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, alternating_row_style, danger_icon_button_style,
-    list_item_button_style, list_item_button_style_with_error, muted_text_style, separator_style,
-    shaped_text, sidebar_panel_style, tooltip_container_style, transparent_icon_button_style,
+    TOOLTIP_TEXT_SIZE, alternating_row_style, danger_icon_button_style, list_item_button_style,
+    list_item_button_style_with_error, muted_text_style, separator_style, shaped_text,
+    sidebar_panel_style, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{Message, ServerBookmark, ServerConnection};
 use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
