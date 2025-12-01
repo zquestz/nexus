@@ -94,4 +94,19 @@ mod tests {
         assert_eq!(CHAT_FONT_SIZES[0], CHAT_FONT_SIZE_MIN);
         assert_eq!(CHAT_FONT_SIZES[7], CHAT_FONT_SIZE_MAX);
     }
+
+    #[test]
+    fn test_settings_serialization_roundtrip() {
+        let settings = Settings::default();
+        let json = serde_json::to_string(&settings).expect("serialize");
+        let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(settings.theme.0, deserialized.theme.0);
+        assert_eq!(settings.locale, deserialized.locale);
+        assert_eq!(settings.chat_font_size, deserialized.chat_font_size);
+        assert_eq!(
+            settings.show_connection_notifications,
+            deserialized.show_connection_notifications
+        );
+    }
 }

@@ -25,7 +25,8 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - Multi-server bookmarks with auto-connect
 - Admin panel for user management (create/edit/delete)
 - SQLite database with Argon2id password hashing
-- Cross-platform GUI with light/dark themes (Iced framework)
+- Cross-platform GUI with 22 built-in themes (Iced framework)
+- Settings panel with theme picker, chat font size, and notification preferences
 - Universal IP binding (IPv4 and IPv6)
 
 ## Architecture
@@ -153,7 +154,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 **Test Coverage:**
 
 - 174+ server tests
-- 16 client tests
+- 30+ client tests
 - Integration tests (multi-session scenarios)
 
 ## Database & Configuration
@@ -164,8 +165,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 Platform paths:
 
 - Linux: `~/.local/share/nexusd/` and `~/.config/nexus/`
-- macOS: `~/Library/Application Support/nexus/`
-- Windows: `%APPDATA%\nexus\`
+- macOS: `~/Library/Application Support/nexusd/`
+- Windows: `%APPDATA%\nexusd\`
 
 ## Internationalization
 
