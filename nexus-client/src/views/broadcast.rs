@@ -2,14 +2,13 @@
 
 use crate::i18n::t;
 use crate::style::{
-    BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    content_background, error_color, primary_button_style, primary_text_input_style, shaped_text,
-    shaped_text_wrapped, sidebar_border,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
+    error_text_style, separator_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
 use iced::widget::{Space, button, column, container, row, text_input};
-use iced::{Background, Center, Element, Fill};
+use iced::{Center, Element, Fill};
 
 // ============================================================================
 // Helper Functions
@@ -17,13 +16,10 @@ use iced::{Background, Center, Element, Fill};
 
 /// Create a horizontal separator line
 fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, BORDER_WIDTH))
+    container(Space::new(Fill, 1.0))
         .width(Fill)
-        .height(BORDER_WIDTH)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_border(theme))),
-            ..Default::default()
-        })
+        .height(1.0)
+        .style(separator_style)
         .into()
 }
 
@@ -55,24 +51,20 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .on_submit(submit_action)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
-        .font(MONOSPACE_FONT)
-        .style(primary_text_input_style());
+        .font(MONOSPACE_FONT);
 
-    let button_row = row![
+    let buttons = row![
         if can_send {
             button(shaped_text(t("button-send")).size(TEXT_SIZE))
                 .on_press(Message::SendBroadcastPressed)
                 .padding(BUTTON_PADDING)
-                .style(primary_button_style())
         } else {
             button(shaped_text(t("button-send")).size(TEXT_SIZE))
                 .padding(BUTTON_PADDING)
-                .style(primary_button_style())
         },
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelBroadcast)
-            .padding(BUTTON_PADDING)
-            .style(primary_button_style()),
+            .padding(BUTTON_PADDING),
     ]
     .spacing(ELEMENT_SPACING);
 
@@ -85,9 +77,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         form_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
@@ -98,7 +88,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
     form_items.extend([
         message_input.into(),
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        button_row.into(),
+        buttons.into(),
     ]);
 
     let form = iced::widget::Column::with_children(form_items)
@@ -112,10 +102,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
             .width(Fill)
             .height(Fill)
             .center(Fill)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(content_background(theme))),
-                ..Default::default()
-            }),
+            .style(content_background_style),
         separator(),
     ]
     .width(Fill)

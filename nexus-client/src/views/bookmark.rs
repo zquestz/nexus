@@ -3,8 +3,7 @@
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
     shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
@@ -55,9 +54,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
@@ -72,7 +69,6 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             .id(text_input::Id::from(InputId::BookmarkName))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
-            .style(primary_text_input_style())
             .into(),
         text_input(&t("placeholder-server-address"), &state.bookmark.address)
             .on_input(Message::BookmarkAddressChanged)
@@ -80,7 +76,6 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             .id(text_input::Id::from(InputId::BookmarkAddress))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
-            .style(primary_text_input_style())
             .into(),
         text_input(&t("placeholder-port"), &state.bookmark.port)
             .on_input(Message::BookmarkPortChanged)
@@ -88,7 +83,6 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             .id(text_input::Id::from(InputId::BookmarkPort))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
-            .style(primary_text_input_style())
             .into(),
         text_input(
             &t("placeholder-username-optional"),
@@ -99,7 +93,6 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .id(text_input::Id::from(InputId::BookmarkUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
-        .style(primary_text_input_style())
         .into(),
         text_input(
             &t("placeholder-password-optional"),
@@ -111,14 +104,12 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .secure(true)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
-        .style(primary_text_input_style())
         .into(),
         Space::with_height(SPACER_SIZE_SMALL).into(),
         checkbox(t("label-auto-connect"), state.bookmark.auto_connect)
             .on_toggle(Message::BookmarkAutoConnectToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
             .into(),
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
         {
@@ -127,18 +118,15 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                     button(shaped_text(t("button-save")).size(TEXT_SIZE))
                         .on_press(Message::SaveBookmark)
                         .padding(BUTTON_PADDING)
-                        .style(primary_button_style())
                         .into()
                 } else {
                     button(shaped_text(t("button-save")).size(TEXT_SIZE))
                         .padding(BUTTON_PADDING)
-                        .style(primary_button_style())
                         .into()
                 },
                 button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
                     .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
-                    .style(primary_button_style())
                     .into(),
             ];
 
@@ -148,7 +136,6 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                     button(shaped_text(t("button-delete")).size(TEXT_SIZE))
                         .on_press(Message::DeleteBookmark(index))
                         .padding(BUTTON_PADDING)
-                        .style(primary_button_style())
                         .into(),
                 );
             }

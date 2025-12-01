@@ -192,7 +192,10 @@ impl NexusApp {
         let scroll_offset = if scroll_state.auto_scroll {
             scrollable::RelativeOffset::END
         } else {
-            scrollable::RelativeOffset { x: 0.0, y: scroll_state.offset }
+            scrollable::RelativeOffset {
+                x: 0.0,
+                y: scroll_state.offset,
+            }
         };
 
         Task::batch([

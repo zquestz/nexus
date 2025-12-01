@@ -1,7 +1,7 @@
 //! Broadcast message handlers
 
-use crate::types::{ChatMessage, Message};
 use crate::NexusApp;
+use crate::types::{ChatMessage, Message};
 use iced::Task;
 
 impl NexusApp {

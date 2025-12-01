@@ -3,16 +3,15 @@
 use super::constants::PERMISSION_USER_DELETE;
 use crate::i18n::{t, translate_permission};
 use crate::style::{
-    BORDER_WIDTH, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background, error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
-    shaped_text_wrapped, sidebar_border,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
+    error_text_style, separator_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{
     ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
 };
 use iced::widget::{Column, Space, button, checkbox, column, container, row, text, text_input};
-use iced::{Background, Center, Element, Fill};
+use iced::{Center, Element, Fill};
 
 // ============================================================================
 // Helper Functions
@@ -20,13 +19,10 @@ use iced::{Background, Center, Element, Fill};
 
 /// Create a horizontal separator line
 fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, BORDER_WIDTH))
+    container(Space::new(Fill, 1.0))
         .width(Fill)
-        .height(BORDER_WIDTH)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_border(theme))),
-            ..Default::default()
-        })
+        .height(1.0)
+        .style(separator_style)
         .into()
 }
 
@@ -44,10 +40,7 @@ fn empty_panel<'a>() -> Element<'a, Message> {
         container(Space::new(Fill, Fill))
             .width(Fill)
             .height(Fill)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(content_background(theme))),
-                ..Default::default()
-            })
+            .style(content_background_style)
             .into(),
     )
 }
@@ -59,10 +52,7 @@ fn wrap_form<'a>(form: Column<'a, Message>) -> Element<'a, Message> {
             .width(Fill)
             .height(Fill)
             .center(Fill)
-            .style(|theme| container::Style {
-                background: Some(Background::Color(content_background(theme))),
-                ..Default::default()
-            })
+            .style(content_background_style)
             .into(),
     )
 }
@@ -90,13 +80,11 @@ where
                 .on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
                 .size(TEXT_SIZE)
                 .text_shaping(text::Shaping::Advanced)
-                .style(primary_checkbox_style())
         } else {
             // Cannot toggle permissions they don't have
             checkbox(display_name, *enabled)
                 .size(TEXT_SIZE)
                 .text_shaping(text::Shaping::Advanced)
-                .style(primary_checkbox_style())
         };
 
         // Alternate between left and right columns
@@ -142,8 +130,7 @@ fn add_user_view<'a>(
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::AdminUsername))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password"), &user_management.password)
         .on_input(Message::AdminPasswordChanged)
@@ -151,20 +138,17 @@ fn add_user_view<'a>(
         .id(text_input::Id::from(InputId::AdminPassword))
         .secure(true)
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let admin_checkbox = if conn.is_admin {
         checkbox(t("label-admin"), user_management.is_admin)
             .on_toggle(Message::AdminIsAdminToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     } else {
         checkbox(t("label-admin"), user_management.is_admin)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     };
 
     let enabled_checkbox = if conn.is_admin {
@@ -172,12 +156,10 @@ fn add_user_view<'a>(
             .on_toggle(Message::AdminEnabledToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     } else {
         checkbox(t("label-enabled"), user_management.enabled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     };
 
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
@@ -191,17 +173,14 @@ fn add_user_view<'a>(
         button(shaped_text(t("button-create")).size(TEXT_SIZE))
             .on_press(Message::CreateUserPressed)
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-create")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelAddUser)
-        .padding(BUTTON_PADDING)
-        .style(primary_button_style());
+        .padding(BUTTON_PADDING);
 
     let mut create_items: Vec<Element<'a, Message>> = vec![create_title.into()];
 
@@ -212,9 +191,7 @@ fn add_user_view<'a>(
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         create_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
@@ -275,35 +252,29 @@ fn select_user_view<'a>(
         .on_submit(submit_action)
         .id(text_input::Id::from(InputId::EditUsername))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let edit_button = if can_edit {
         button(shaped_text(t("button-edit")).size(TEXT_SIZE))
             .on_press(Message::EditUserPressed)
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-edit")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     };
 
     let delete_button = if can_delete {
         button(shaped_text(t("button-delete")).size(TEXT_SIZE))
             .on_press(Message::DeleteUserPressed(username.to_string()))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-delete")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelEditUser)
-        .padding(BUTTON_PADDING)
-        .style(primary_button_style());
+        .padding(BUTTON_PADDING);
 
     let mut edit_items: Vec<Element<'a, Message>> = vec![edit_title.into()];
 
@@ -314,9 +285,7 @@ fn select_user_view<'a>(
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         edit_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
@@ -388,8 +357,7 @@ fn update_user_view<'a>(
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::EditNewUsername))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password-keep-current"), new_password)
         .on_input(Message::EditNewPasswordChanged)
@@ -397,20 +365,17 @@ fn update_user_view<'a>(
         .id(text_input::Id::from(InputId::EditNewPassword))
         .secure(true)
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let admin_checkbox = if conn.is_admin {
         checkbox(t("label-admin"), is_admin)
             .on_toggle(Message::EditIsAdminToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     } else {
         checkbox(t("label-admin"), is_admin)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     };
 
     let enabled_checkbox = if conn.is_admin {
@@ -418,12 +383,10 @@ fn update_user_view<'a>(
             .on_toggle(Message::EditEnabledToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     } else {
         checkbox(t("label-enabled"), enabled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
     };
 
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
@@ -434,17 +397,14 @@ fn update_user_view<'a>(
         button(shaped_text(t("button-update")).size(TEXT_SIZE))
             .on_press(Message::UpdateUserPressed)
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-update")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelEditUser)
-        .padding(BUTTON_PADDING)
-        .style(primary_button_style());
+        .padding(BUTTON_PADDING);
 
     let mut update_items: Vec<Element<'a, Message>> = vec![update_title.into()];
 
@@ -455,9 +415,7 @@ fn update_user_view<'a>(
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         update_items.push(Space::with_height(SPACER_SIZE_SMALL).into());

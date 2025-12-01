@@ -3,8 +3,7 @@
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_color,
-    primary_button_style, primary_checkbox_style, primary_text_input_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
@@ -43,32 +42,28 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerName))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let server_address_input = text_input(&t("placeholder-server-address"), &form.server_address)
         .on_input(Message::ServerAddressChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::ServerAddress))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let port_input = text_input(&t("placeholder-port"), &form.port)
         .on_input(Message::PortChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Port))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let username_input = text_input(&t("placeholder-username-optional"), &form.username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
         .id(text_input::Id::from(InputId::Username))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password-optional"), &form.password)
         .on_input(Message::PasswordChanged)
@@ -76,18 +71,15 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .id(text_input::Id::from(InputId::Password))
         .secure(true)
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .style(primary_text_input_style());
+        .size(TEXT_SIZE);
 
     let connect_button = if can_connect && !form.is_connecting {
         button(shaped_text(t("button-connect")).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-connect")).size(TEXT_SIZE))
             .padding(BUTTON_PADDING)
-            .style(primary_button_style())
     };
 
     let mut column_items: Vec<Element<'_, Message>> = vec![title.into()];
@@ -99,9 +91,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(error_color(theme)),
-                })
+                .style(error_text_style)
                 .into(),
         );
         column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
@@ -120,7 +110,6 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
             .on_toggle(Message::AddBookmarkToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
-            .style(primary_checkbox_style())
             .into(),
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
         connect_button.into(),

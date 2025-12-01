@@ -4,19 +4,17 @@ use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_US
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BORDER_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
+    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
     SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
     USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
-    admin_user_text_color, alt_row_color, button_text_color, disconnect_icon_color,
-    disconnect_icon_hover_color, interactive_hover_color, primary_scrollbar_style,
-    section_title_color, shaped_text, sidebar_background, sidebar_border, sidebar_empty_color,
-    sidebar_icon_color, sidebar_icon_disabled_color, sidebar_icon_hover_color,
-    tooltip_container_style,
+    alternating_row_style, chat, disabled_icon_button_style, icon_button_with_hover_style,
+    muted_text_style, primary_separator_style, shaped_text, sidebar_panel_style,
+    tooltip_container_style, ui, user_list_item_button_style,
 };
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Background, Border, Element, Fill};
+use iced::{Color, Element, Fill};
 
 // ============================================================================
 // Helper Functions
@@ -35,33 +33,20 @@ fn icon_container(icon: iced::widget::Text<'_>) -> iced::widget::Container<'_, M
 fn enabled_icon_button<'a>(
     icon: iced::widget::Container<'a, Message>,
     message: Message,
-    hover_color: impl Fn(&iced::Theme) -> iced::Color + 'static,
-    normal_color: impl Fn(&iced::Theme) -> iced::Color + 'static,
+    hover_color: Color,
+    normal_color: Color,
 ) -> button::Button<'a, Message> {
     button(icon)
         .on_press(message)
         .padding(ICON_BUTTON_PADDING)
-        .style(move |theme, status| button::Style {
-            background: None,
-            text_color: match status {
-                button::Status::Hovered => hover_color(theme),
-                _ => normal_color(theme),
-            },
-            border: Border::default(),
-            shadow: iced::Shadow::default(),
-        })
+        .style(icon_button_with_hover_style(hover_color, normal_color))
 }
 
 /// Create a disabled icon button (greyed out)
 fn disabled_icon_button(icon: iced::widget::Container<'_, Message>) -> button::Button<'_, Message> {
     button(icon)
         .padding(ICON_BUTTON_PADDING)
-        .style(|_theme, _status| button::Style {
-            background: None,
-            text_color: sidebar_icon_disabled_color(),
-            border: Border::default(),
-            shadow: iced::Shadow::default(),
-        })
+        .style(disabled_icon_button_style)
 }
 
 /// Wrap a button in a tooltip
@@ -80,15 +65,12 @@ fn with_tooltip<'a>(
     .padding(TOOLTIP_PADDING)
 }
 
-/// Create a horizontal separator line (soft blue)
+/// Create a horizontal separator line (primary color)
 fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
     container(Space::new(Fill, SEPARATOR_HEIGHT))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
-        .style(|_theme| container::Style {
-            background: Some(Background::Color(interactive_hover_color())),
-            ..Default::default()
-        })
+        .style(primary_separator_style)
 }
 
 // ============================================================================
@@ -119,13 +101,18 @@ fn create_user_toolbar<'a>(
 
     // Info button (always show, disabled if no permission)
     let info_icon = icon_container(icon::info());
+    let theme_for_colors = iced::Theme::default();
+    let primary_color = theme_for_colors.palette().primary;
+    let icon_color = ui::icon_color(&theme_for_colors);
+    let danger_color = theme_for_colors.palette().danger;
+    
     let info_button = if has_user_info_permission {
         let username_for_info = username_owned.clone();
         enabled_icon_button(
             info_icon,
             Message::UserInfoIconClicked(username_for_info),
-            sidebar_icon_hover_color,
-            sidebar_icon_color,
+            primary_color,
+            icon_color,
         )
     } else {
         disabled_icon_button(info_icon)
@@ -140,8 +127,8 @@ fn create_user_toolbar<'a>(
             enabled_icon_button(
                 message_icon,
                 Message::UserMessageIconClicked(username_for_message),
-                sidebar_icon_hover_color,
-                sidebar_icon_color,
+                primary_color,
+                icon_color,
             )
         } else {
             disabled_icon_button(message_icon)
@@ -158,8 +145,8 @@ fn create_user_toolbar<'a>(
         let kick_button = enabled_icon_button(
             kick_icon,
             Message::UserKickIconClicked(username_owned),
-            disconnect_icon_hover_color,
-            disconnect_icon_color,
+            danger_color,
+            icon_color,
         );
         toolbar_row = toolbar_row.push(with_tooltip(kick_button, t("tooltip-kick")));
     }
@@ -175,7 +162,7 @@ fn create_user_toolbar<'a>(
 ///
 /// Shows a list of currently connected users. Clicking a username expands it
 /// to show an action toolbar underneath. Only one user can be expanded at a time.
-/// Admin users are shown in red.
+/// Admin users are shown in red (using the chat admin color).
 ///
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
@@ -186,9 +173,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
     let title = shaped_text(t("title-users"))
         .size(USER_LIST_TITLE_SIZE)
-        .style(|theme| iced::widget::text::Style {
-            color: Some(section_title_color(theme)),
-        });
+        .style(muted_text_style);
 
     let mut users_column = Column::new().spacing(USER_LIST_ITEM_SPACING);
 
@@ -196,9 +181,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
         users_column = users_column.push(
             shaped_text(t("empty-no-users"))
                 .size(USER_LIST_SMALL_TEXT_SIZE)
-                .style(|theme| iced::widget::text::Style {
-                    color: Some(sidebar_empty_color(theme)),
-                }),
+                .style(muted_text_style),
         );
     } else {
         for (index, user) in conn.online_users.iter().enumerate() {
@@ -217,21 +200,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             .on_press(Message::UserListItemClicked(username_clone))
             .width(Fill)
             .padding(INPUT_PADDING)
-            .style(move |theme, status| button::Style {
-                background: None,
-                text_color: match status {
-                    button::Status::Hovered => interactive_hover_color(),
-                    _ => {
-                        if user_is_admin {
-                            admin_user_text_color(theme)
-                        } else {
-                            button_text_color(theme)
-                        }
-                    }
-                },
-                border: Border::default(),
-                shadow: iced::Shadow::default(),
-            });
+            .style(user_list_item_button_style(user_is_admin, chat::admin(&iced::Theme::default())));
 
             // Create item column (username + optional toolbar)
             let mut item_column = Column::new().spacing(NO_SPACING);
@@ -241,7 +210,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
             // Add toolbar if expanded
             if is_expanded {
-                // Soft blue separator line
+                // Primary color separator line
                 item_column = item_column.push(toolbar_separator());
 
                 // Toolbar
@@ -259,17 +228,9 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             }
 
             // Wrap entire item (username + toolbar) in container with alternating background
-            let item_container =
-                container(item_column)
-                    .width(Fill)
-                    .style(move |theme| container::Style {
-                        background: if is_even {
-                            Some(Background::Color(alt_row_color(theme)))
-                        } else {
-                            None
-                        },
-                        ..Default::default()
-                    });
+            let item_container = container(item_column)
+                .width(Fill)
+                .style(alternating_row_style(is_even));
 
             users_column = users_column.push(item_container);
         }
@@ -277,9 +238,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
     let panel = column![
         title,
-        scrollable(users_column)
-            .height(Fill)
-            .style(primary_scrollbar_style()),
+        scrollable(users_column).height(Fill),
     ]
     .spacing(USER_LIST_SPACING)
     .padding(FORM_PADDING)
@@ -287,14 +246,6 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
 
     container(panel)
         .height(Fill)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_background(theme))),
-            border: Border {
-                color: sidebar_border(theme),
-                width: BORDER_WIDTH,
-                ..Default::default()
-            },
-            ..Default::default()
-        })
+        .style(sidebar_panel_style)
         .into()
 }

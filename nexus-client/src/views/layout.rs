@@ -6,18 +6,32 @@ use super::constants::{
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
+    BORDER_WIDTH, EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
     TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    action_button_text, content_empty_color, interactive_hover_color, shaped_text,
-    toolbar_background, toolbar_icon_color, toolbar_icon_disabled_color, tooltip_container_style,
+    disabled_icon_button_style, muted_text_style, separator_style, shaped_text,
+    toolbar_background_style, toolbar_button_style, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
     ViewConfig,
 };
-use iced::widget::{button, column, container, row, stack, tooltip};
-use iced::{Background, Border, Center, Element, Fill};
+use iced::widget::{button, column, container, row, stack, tooltip, Space};
+use iced::{Center, Element, Fill};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Create a horizontal separator line
+fn separator<'a>() -> Element<'a, Message> {
+    container(Space::new(Fill, BORDER_WIDTH))
+        .width(Fill)
+        .height(BORDER_WIDTH)
+        .style(separator_style)
+        .into()
+}
 
 use super::{
     bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
@@ -71,24 +85,32 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     );
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)
-    let main_content = if config.bookmark_edit.mode != BookmarkEditMode::None {
-        bookmark_edit_view(config.bookmark_edit)
-    } else if let Some(conn_id) = config.active_connection
-        && let Some(conn) = config.connections.get(&conn_id)
-        && let Some(user_mgmt) = config.user_management
-    {
-        server_content_view(
-            conn,
-            config.message_input,
-            user_mgmt,
-            config.ui_state.active_panel,
-            config.theme.clone(),
-        )
-    } else if config.active_connection.is_some() {
-        // Connection exists but couldn't get all required state
-        empty_content_view()
-    } else {
-        connection_form_view(config.connection_form)
+    // Wrapped with separators for consistent appearance
+    let main_content: Element<'_, Message> = {
+        let content = if config.bookmark_edit.mode != BookmarkEditMode::None {
+            bookmark_edit_view(config.bookmark_edit)
+        } else if let Some(conn_id) = config.active_connection
+            && let Some(conn) = config.connections.get(&conn_id)
+            && let Some(user_mgmt) = config.user_management
+        {
+            server_content_view(
+                conn,
+                config.message_input,
+                user_mgmt,
+                config.ui_state.active_panel,
+                config.theme.clone(),
+            )
+        } else if config.active_connection.is_some() {
+            // Connection exists but couldn't get all required state
+            empty_content_view()
+        } else {
+            connection_form_view(config.connection_form)
+        };
+
+        column![separator(), content, separator()]
+            .width(Fill)
+            .height(Fill)
+            .into()
     };
 
     // Right panel: User list (only when connected, visible, and user has permission)
@@ -150,30 +172,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::chat().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ShowChatView)
-                            .style(move |theme, status| {
-                                if active_panel == ActivePanel::None {
-                                    // Active state (on chat view) - blue background
-                                    button::Style {
-                                        background: Some(Background::Color(
-                                            interactive_hover_color(),
-                                        )),
-                                        text_color: action_button_text(),
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                } else {
-                                    // Default state - transparent with hover
-                                    button::Style {
-                                        background: None,
-                                        text_color: match status {
-                                            button::Status::Hovered => interactive_hover_color(),
-                                            _ => toolbar_icon_color(theme),
-                                        },
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                }
-                            }),
+                            .style(toolbar_button_style(active_panel == ActivePanel::None)),
                         container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -183,14 +182,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .padding(TOOLTIP_PADDING)
                 } else {
                     tooltip(
-                        button(icon::chat().size(TOOLBAR_ICON_SIZE)).style(|theme, _status| {
-                            button::Style {
-                                background: None,
-                                text_color: toolbar_icon_disabled_color(theme),
-                                border: Border::default(),
-                                shadow: iced::Shadow::default(),
-                            }
-                        }),
+                        button(icon::chat().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-chat")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -204,30 +197,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleBroadcast)
-                            .style(move |theme, status| {
-                                if active_panel == ActivePanel::Broadcast {
-                                    // Active state - blue background
-                                    button::Style {
-                                        background: Some(Background::Color(
-                                            interactive_hover_color(),
-                                        )),
-                                        text_color: action_button_text(),
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                } else {
-                                    // Default state - transparent with hover
-                                    button::Style {
-                                        background: None,
-                                        text_color: match status {
-                                            button::Status::Hovered => interactive_hover_color(),
-                                            _ => toolbar_icon_color(theme),
-                                        },
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                }
-                            }),
+                            .style(toolbar_button_style(active_panel == ActivePanel::Broadcast)),
                         container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -237,14 +207,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .padding(TOOLTIP_PADDING)
                 } else {
                     tooltip(
-                        button(icon::megaphone().size(TOOLBAR_ICON_SIZE)).style(
-                            |theme, _status| button::Style {
-                                background: None,
-                                text_color: toolbar_icon_disabled_color(theme),
-                                border: Border::default(),
-                                shadow: iced::Shadow::default(),
-                            },
-                        ),
+                        button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -258,30 +222,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleAddUser)
-                            .style(move |theme, status| {
-                                if active_panel == ActivePanel::AddUser {
-                                    // Active state - blue background
-                                    button::Style {
-                                        background: Some(Background::Color(
-                                            interactive_hover_color(),
-                                        )),
-                                        text_color: action_button_text(),
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                } else {
-                                    // Default state - transparent with hover
-                                    button::Style {
-                                        background: None,
-                                        text_color: match status {
-                                            button::Status::Hovered => interactive_hover_color(),
-                                            _ => toolbar_icon_color(theme),
-                                        },
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                }
-                            }),
+                            .style(toolbar_button_style(active_panel == ActivePanel::AddUser)),
                         container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -291,14 +232,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .padding(TOOLTIP_PADDING)
                 } else {
                     tooltip(
-                        button(icon::user_plus().size(TOOLBAR_ICON_SIZE)).style(
-                            |theme, _status| button::Style {
-                                background: None,
-                                text_color: toolbar_icon_disabled_color(theme),
-                                border: Border::default(),
-                                shadow: iced::Shadow::default(),
-                            },
-                        ),
+                        button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -312,30 +247,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
                             .on_press(Message::ToggleEditUser)
-                            .style(move |theme, status| {
-                                if active_panel == ActivePanel::EditUser {
-                                    // Active state - blue background
-                                    button::Style {
-                                        background: Some(Background::Color(
-                                            interactive_hover_color(),
-                                        )),
-                                        text_color: action_button_text(),
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                } else {
-                                    // Default state - transparent with hover
-                                    button::Style {
-                                        background: None,
-                                        text_color: match status {
-                                            button::Status::Hovered => interactive_hover_color(),
-                                            _ => toolbar_icon_color(theme),
-                                        },
-                                        border: Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                }
-                            }),
+                            .style(toolbar_button_style(active_panel == ActivePanel::EditUser)),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -345,14 +257,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .padding(TOOLTIP_PADDING)
                 } else {
                     tooltip(
-                        button(icon::users().size(TOOLBAR_ICON_SIZE)).style(|theme, _status| {
-                            button::Style {
-                                background: None,
-                                text_color: toolbar_icon_disabled_color(theme),
-                                border: Border::default(),
-                                shadow: iced::Shadow::default(),
-                            }
-                        }),
+                        button(icon::users().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -371,15 +277,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                 tooltip(
                     button(icon::sun().size(TOOLBAR_ICON_SIZE))
                         .on_press(Message::ToggleTheme)
-                        .style(|theme, status| button::Style {
-                            background: None,
-                            text_color: match status {
-                                button::Status::Hovered => interactive_hover_color(),
-                                _ => toolbar_icon_color(theme),
-                            },
-                            border: Border::default(),
-                            shadow: iced::Shadow::default(),
-                        }),
+                        .style(transparent_icon_button_style),
                     container(shaped_text(t("tooltip-toggle-theme")).size(TOOLTIP_TEXT_SIZE))
                         .padding(TOOLTIP_BACKGROUND_PADDING)
                         .style(tooltip_container_style),
@@ -398,15 +296,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         .size(TOOLBAR_ICON_SIZE)
                     )
                     .on_press(Message::ToggleBookmarks)
-                    .style(|theme, status| button::Style {
-                        background: None,
-                        text_color: match status {
-                            button::Status::Hovered => interactive_hover_color(),
-                            _ => toolbar_icon_color(theme),
-                        },
-                        border: Border::default(),
-                        shadow: iced::Shadow::default(),
-                    }),
+                    .style(transparent_icon_button_style),
                     container(
                         shaped_text(if state.show_bookmarks {
                             t("tooltip-hide-bookmarks")
@@ -433,15 +323,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             .size(TOOLBAR_ICON_SIZE),
                         )
                         .on_press(Message::ToggleUserList)
-                        .style(|theme, status| button::Style {
-                            background: None,
-                            text_color: match status {
-                                button::Status::Hovered => interactive_hover_color(),
-                                _ => toolbar_icon_color(theme),
-                            },
-                            border: Border::default(),
-                            shadow: iced::Shadow::default(),
-                        }),
+                        .style(transparent_icon_button_style),
                         container(
                             shaped_text(if state.show_user_list {
                                 t("tooltip-hide-user-list")
@@ -466,12 +348,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             }
                             .size(TOOLBAR_ICON_SIZE),
                         )
-                        .style(|theme, _status| button::Style {
-                            background: None,
-                            text_color: toolbar_icon_disabled_color(theme),
-                            border: Border::default(),
-                            shadow: iced::Shadow::default(),
-                        }),
+                        .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-show-user-list")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
@@ -488,10 +365,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
         .align_y(Center),
     )
     .width(Fill)
-    .style(|theme| container::Style {
-        background: Some(Background::Color(toolbar_background(theme))),
-        ..Default::default()
-    });
+    .style(toolbar_background_style);
 
     toolbar.into()
 }
@@ -533,9 +407,7 @@ fn empty_content_view<'a>() -> Element<'a, Message> {
     container(
         shaped_text(t("empty-select-server"))
             .size(EMPTY_VIEW_SIZE)
-            .style(|theme| iced::widget::text::Style {
-                color: Some(content_empty_color(theme)),
-            }),
+            .style(muted_text_style),
     )
     .width(Fill)
     .height(Fill)

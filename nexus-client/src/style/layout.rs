@@ -141,12 +141,6 @@ pub const SEPARATOR_HEIGHT: u16 = 1;
 /// Border width (standard)
 pub const BORDER_WIDTH: f32 = 1.0;
 
-/// Border width when focused (thicker for visibility)
-pub const BORDER_WIDTH_FOCUSED: f32 = 2.0;
-
-/// Widget border radius (checkboxes, text inputs, scrollbars, tooltips)
-pub const WIDGET_BORDER_RADIUS: f32 = 2.0;
-
 /// User list panel width
 pub const USER_LIST_PANEL_WIDTH: u16 = 180;
 

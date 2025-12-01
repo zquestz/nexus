@@ -3,35 +3,21 @@
 use super::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::i18n::t;
 use crate::style::{
-    BOLD_FONT, BORDER_WIDTH, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
+    BOLD_FONT, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
     CHAT_TIME_FORMAT, CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING,
     SMALL_SPACING, TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, action_button_text, admin_user_text_color, broadcast_message_color,
-    chat_tab_active_style, chat_tab_inactive_style, chat_text_color, chat_timestamp_color,
-    content_background, error_color, info_text_color, primary_button_style,
-    primary_scrollbar_style, primary_text_input_style, shaped_text, sidebar_border,
-    system_text_color, tooltip_container_style,
+    TOOLTIP_TEXT_SIZE, chat, chat_tab_inactive_style, close_button_on_primary_style,
+    content_background_style, shaped_text, tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::{
-    Column, Space, button, column, container, rich_text, row, scrollable, span, text_input, tooltip,
+    Column, button, column, container, rich_text, row, scrollable, span, text_input, tooltip,
 };
-use iced::{Background, Color, Element, Fill, Theme};
+use iced::{Color, Element, Fill, Theme};
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Create a horizontal separator line matching sidebar borders
-fn separator<'a>() -> iced::widget::Container<'a, Message> {
-    container(Space::new(Fill, BORDER_WIDTH))
-        .width(Fill)
-        .height(BORDER_WIDTH)
-        .style(|theme| container::Style {
-            background: Some(Background::Color(sidebar_border(theme))),
-            ..Default::default()
-        })
-}
 
 /// Build a styled rich text message with consistent formatting
 fn styled_message<'a>(
@@ -87,15 +73,7 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
             button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
                 .on_press(Message::CloseUserMessageTab(username_clone))
                 .padding(CLOSE_BUTTON_PADDING)
-                .style(|theme, status| button::Style {
-                    background: None,
-                    text_color: match status {
-                        button::Status::Hovered => error_color(theme),
-                        _ => action_button_text(),
-                    },
-                    border: iced::Border::default(),
-                    shadow: iced::Shadow::default(),
-                }),
+                .style(close_button_on_primary_style()),
             container(
                 shaped_text(format!("{} {}", t("tooltip-close"), username)).size(TOOLTIP_TEXT_SIZE),
             )
@@ -106,18 +84,21 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
         .gap(TOOLTIP_GAP)
         .padding(TOOLTIP_PADDING);
 
-        let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
-            .spacing(SMALL_SPACING)
-            .align_y(iced::Alignment::Center);
+        let tab_content = row![
+            iced::widget::text(label).size(CHAT_MESSAGE_SIZE).shaping(iced::widget::text::Shaping::Advanced),
+            close_button
+        ]
+        .spacing(SMALL_SPACING)
+        .align_y(iced::Alignment::Center);
 
         button(tab_content)
-            .style(chat_tab_active_style())
+            .on_press(Message::SwitchChatTab(tab))
             .padding(TAB_CONTENT_PADDING)
             .into()
     } else {
         // Server tab (no close button)
         button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
-            .style(chat_tab_active_style())
+            .on_press(Message::SwitchChatTab(tab))
             .padding(INPUT_PADDING)
             .into()
     }
@@ -156,11 +137,11 @@ fn render_message_line<'a>(
     theme: &Theme,
     username_is_admin: bool,
 ) -> Element<'a, Message> {
-    let timestamp_color = chat_timestamp_color(theme);
+    let timestamp_color = chat::timestamp(theme);
 
     match message_type {
         MessageType::System => {
-            let color = system_text_color(theme);
+            let color = chat::system(theme);
             styled_message(
                 time_str,
                 timestamp_color,
@@ -171,7 +152,7 @@ fn render_message_line<'a>(
             )
         }
         MessageType::Error => {
-            let color = error_color(theme);
+            let color = chat::error(theme);
             styled_message(
                 time_str,
                 timestamp_color,
@@ -182,7 +163,7 @@ fn render_message_line<'a>(
             )
         }
         MessageType::Info => {
-            let color = info_text_color(theme);
+            let color = chat::info(theme);
             styled_message(
                 time_str,
                 timestamp_color,
@@ -193,7 +174,7 @@ fn render_message_line<'a>(
             )
         }
         MessageType::Broadcast => {
-            let color = broadcast_message_color(theme);
+            let color = chat::broadcast(theme);
             styled_message(
                 time_str,
                 timestamp_color,
@@ -205,11 +186,11 @@ fn render_message_line<'a>(
         }
         MessageType::Chat => {
             let username_color = if username_is_admin {
-                admin_user_text_color(theme)
+                chat::admin(theme)
             } else {
-                chat_text_color(theme)
+                chat::text(theme)
             };
-            let text_color = chat_text_color(theme);
+            let text_color = chat::text(theme);
             styled_message(
                 time_str,
                 timestamp_color,
@@ -278,7 +259,6 @@ fn build_input_row<'a>(
             .padding(INPUT_PADDING)
             .size(CHAT_INPUT_SIZE)
             .font(MONOSPACE_FONT)
-            .style(primary_text_input_style())
             .width(Fill)
     } else {
         text_input(&t("placeholder-no-permission"), message_input)
@@ -286,7 +266,6 @@ fn build_input_row<'a>(
             .padding(INPUT_PADDING)
             .size(CHAT_INPUT_SIZE)
             .font(MONOSPACE_FONT)
-            .style(primary_text_input_style())
             .width(Fill)
     };
 
@@ -294,11 +273,9 @@ fn build_input_row<'a>(
         button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
             .on_press(Message::SendMessagePressed)
             .padding(INPUT_PADDING)
-            .style(primary_button_style())
     } else {
         button(shaped_text(t("button-send")).size(CHAT_MESSAGE_SIZE))
             .padding(INPUT_PADDING)
-            .style(primary_button_style())
     };
 
     row![text_field, send_button]
@@ -372,8 +349,7 @@ pub fn chat_view<'a>(
         .id(ScrollableId::ChatMessages.into())
         .on_scroll(Message::ChatScrolled)
         .width(Fill)
-        .height(Fill)
-        .style(primary_scrollbar_style());
+        .height(Fill);
 
     // Determine if user can send messages
     let can_send_message = match &conn.active_chat_tab {
@@ -400,26 +376,18 @@ pub fn chat_view<'a>(
     )
     .width(Fill)
     .height(Fill)
-    .style(|theme| container::Style {
-        background: Some(Background::Color(content_background(theme))),
-        ..Default::default()
-    });
+    .style(content_background_style);
 
     // Only show tab bar if there are PM tabs (more than just #server)
     if has_pm_tabs {
         column![
-            separator(),
             container(tab_bar).padding(SMALL_PADDING).width(Fill),
             chat_content,
-            separator(),
         ]
         .width(Fill)
         .height(Fill)
         .into()
     } else {
-        column![separator(), chat_content, separator()]
-            .width(Fill)
-            .height(Fill)
-            .into()
+        chat_content.into()
     }
 }
