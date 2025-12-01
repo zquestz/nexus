@@ -141,4 +141,10 @@ impl NexusApp {
         self.config.theme = theme.into();
         Task::none()
     }
+
+    /// Handle connection notifications toggle
+    pub fn handle_connection_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.show_connection_notifications = enabled;
+        Task::none()
+    }
 }

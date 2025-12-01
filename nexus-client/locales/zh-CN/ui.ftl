@@ -61,6 +61,7 @@ label-permissions = 权限：
 label-expected-fingerprint = 预期指纹：
 label-received-fingerprint = 收到的指纹：
 label-theme = 主题
+label-show-connection-notifications = 显示连接通知
 
 # =============================================================================
 # Permission Display Names

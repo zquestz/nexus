@@ -127,6 +127,8 @@ pub enum Message {
     ToggleEditUser,
     /// Settings panel: Cancel button pressed (restore original settings)
     CancelSettings,
+    /// Settings panel: Connection notifications checkbox toggled
+    ConnectionNotificationsToggled(bool),
     /// Settings panel: Save button pressed (persist to disk)
     SaveSettings,
     /// Toolbar: Toggle Settings panel

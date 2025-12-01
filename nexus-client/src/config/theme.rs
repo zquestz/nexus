@@ -95,8 +95,10 @@ mod tests {
         // Verify the theme appears as a string in the full config JSON
         use crate::config::Config;
 
-        let mut config = Config::default();
-        config.theme = ThemePreference(Theme::Nord);
+        let config = Config {
+            theme: ThemePreference(Theme::Nord),
+            ..Default::default()
+        };
 
         let json = serde_json::to_string_pretty(&config).expect("serialize");
         assert!(

@@ -61,6 +61,7 @@ label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:
 label-theme = Thema
+label-show-connection-notifications = Verbindingsmeldingen weergeven
 
 # =============================================================================
 # Permission Display Names

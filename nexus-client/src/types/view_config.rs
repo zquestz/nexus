@@ -15,6 +15,9 @@ pub struct ViewConfig<'a> {
     /// Current theme for styling
     pub theme: Theme,
 
+    /// Show user connect/disconnect notifications in chat
+    pub show_connection_notifications: bool,
+
     /// Active server connections by connection_id
     pub connections: &'a HashMap<usize, ServerConnection>,
 

@@ -60,6 +60,7 @@ label-permissions = 権限:
 label-expected-fingerprint = 期待されるフィンガープリント:
 label-received-fingerprint = 受信したフィンガープリント:
 label-theme = テーマ
+label-show-connection-notifications = 接続通知を表示
 
 # =============================================================================
 # Permission Display Names

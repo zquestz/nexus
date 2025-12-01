@@ -60,6 +60,7 @@ label-permissions = 權限：
 label-expected-fingerprint = 預期指紋：
 label-received-fingerprint = 收到的指紋：
 label-theme = 主題
+label-show-connection-notifications = 顯示連線通知
 
 # =============================================================================
 # Permission Display Names

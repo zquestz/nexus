@@ -32,12 +32,15 @@ const CONFIG_FILE_MODE: u32 = 0o600;
 pub struct Config {
     /// Server bookmarks for quick connect
     pub bookmarks: Vec<ServerBookmark>,
-    /// UI theme preference (light or dark mode)
+    /// UI theme preference
     #[serde(default)]
     pub theme: ThemePreference,
     /// Application-wide locale setting (e.g., "en", "zh-CN")
     #[serde(default = "default_config_locale")]
     pub locale: String,
+    /// Show user connect/disconnect notifications in chat
+    #[serde(default = "default_true")]
+    pub show_connection_notifications: bool,
 }
 
 impl Default for Config {
@@ -46,6 +49,7 @@ impl Default for Config {
             bookmarks: Vec::new(),
             theme: ThemePreference::default(),
             locale: default_config_locale(),
+            show_connection_notifications: default_true(),
         }
     }
 }
@@ -53,6 +57,11 @@ impl Default for Config {
 /// Default locale value for Config (used by serde)
 fn default_config_locale() -> String {
     crate::i18n::DEFAULT_LOCALE.to_string()
+}
+
+/// Default true value for serde
+fn default_true() -> bool {
+    true
 }
 
 // =============================================================================

@@ -61,6 +61,7 @@ label-permissions = Permissions :
 label-expected-fingerprint = Empreinte attendue :
 label-received-fingerprint = Empreinte reçue :
 label-theme = Thème
+label-show-connection-notifications = Afficher les notifications de connexion
 
 # =============================================================================
 # Permission Display Names

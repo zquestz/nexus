@@ -245,6 +245,9 @@ impl NexusApp {
 
             // Settings
             Message::CancelSettings => self.handle_cancel_settings(),
+            Message::ConnectionNotificationsToggled(enabled) => {
+                self.handle_connection_notifications_toggled(enabled)
+            }
             Message::SaveSettings => self.handle_save_settings(),
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
             Message::ToggleSettings => self.handle_toggle_settings(),
@@ -297,6 +300,7 @@ impl NexusApp {
         // Build view configuration
         let config = ViewConfig {
             theme: self.theme(),
+            show_connection_notifications: self.config.show_connection_notifications,
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,

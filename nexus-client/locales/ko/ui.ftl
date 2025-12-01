@@ -60,6 +60,7 @@ label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
 label-received-fingerprint = 수신된 지문:
 label-theme = 테마
+label-show-connection-notifications = 연결 알림 표시
 
 # =============================================================================
 # Permission Display Names

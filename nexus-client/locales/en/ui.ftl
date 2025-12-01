@@ -60,6 +60,7 @@ label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
 label-theme = Theme
+label-show-connection-notifications = Show connect/disconnect notifications
 
 # =============================================================================
 # Permission Display Names

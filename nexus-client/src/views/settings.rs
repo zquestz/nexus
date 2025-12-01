@@ -7,7 +7,7 @@ use crate::style::{
 };
 use crate::types::Message;
 use iced::widget::button as btn;
-use iced::widget::{Space, button, column, container, pick_list, row};
+use iced::widget::{Space, button, checkbox, column, container, pick_list, row};
 use iced::{Center, Element, Fill, Theme};
 
 // ============================================================================
@@ -18,7 +18,10 @@ use iced::{Center, Element, Fill, Theme};
 ///
 /// Shows application settings that can be modified and saved to disk.
 /// Cancel restores original settings, Save persists changes.
-pub fn settings_view(current_theme: Theme) -> Element<'static, Message> {
+pub fn settings_view(
+    current_theme: Theme,
+    show_connection_notifications: bool,
+) -> Element<'static, Message> {
     let title = shaped_text(t("title-settings"))
         .size(TITLE_SIZE)
         .width(Fill)
@@ -26,14 +29,19 @@ pub fn settings_view(current_theme: Theme) -> Element<'static, Message> {
 
     // Theme picker row
     let theme_label = shaped_text(t("label-theme")).size(TEXT_SIZE);
-
-    let theme_picker = pick_list(Theme::ALL, Some(current_theme), Message::ThemeSelected)
-        .width(Fill)
-        .text_size(TEXT_SIZE);
-
+    let theme_picker =
+        pick_list(Theme::ALL, Some(current_theme), Message::ThemeSelected).text_size(TEXT_SIZE);
     let theme_row = row![theme_label, theme_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
+
+    // Connection notifications checkbox
+    let notifications_checkbox = checkbox(
+        t("label-show-connection-notifications"),
+        show_connection_notifications,
+    )
+    .on_toggle(Message::ConnectionNotificationsToggled)
+    .text_size(TEXT_SIZE);
 
     let buttons = row![
         Space::with_width(Fill),
@@ -51,6 +59,7 @@ pub fn settings_view(current_theme: Theme) -> Element<'static, Message> {
         title,
         Space::with_height(SPACER_SIZE_MEDIUM),
         theme_row,
+        notifications_checkbox,
         Space::with_height(SPACER_SIZE_MEDIUM),
         buttons,
     ]

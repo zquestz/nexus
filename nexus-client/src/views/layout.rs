@@ -99,6 +99,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 user_mgmt,
                 config.ui_state.active_panel,
                 config.theme.clone(),
+                config.show_connection_notifications,
             )
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -107,10 +108,13 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             // Not connected - show connection form, with Settings overlay if active
             let conn_form = connection_form_view(config.connection_form);
             if config.ui_state.active_panel == ActivePanel::Settings {
-                stack![conn_form, settings_view(config.theme.clone())]
-                    .width(Fill)
-                    .height(Fill)
-                    .into()
+                stack![
+                    conn_form,
+                    settings_view(config.theme.clone(), config.show_connection_notifications,)
+                ]
+                .width(Fill)
+                .height(Fill)
+                .into()
             } else {
                 conn_form
             }
@@ -389,6 +393,7 @@ fn server_content_view<'a>(
     user_management: &'a UserManagementState,
     active_panel: ActivePanel,
     theme: iced::Theme,
+    show_connection_notifications: bool,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
     let chat = chat_view(conn, message_input, theme.clone());
@@ -405,10 +410,13 @@ fn server_content_view<'a>(
                 .height(Fill)
                 .into()
         }
-        ActivePanel::Settings => stack![chat, settings_view(theme.clone())]
-            .width(Fill)
-            .height(Fill)
-            .into(),
+        ActivePanel::Settings => stack![
+            chat,
+            settings_view(theme.clone(), show_connection_notifications)
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
         ActivePanel::None => chat,
     }
 }

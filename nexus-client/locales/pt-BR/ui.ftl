@@ -60,6 +60,7 @@ label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
 label-received-fingerprint = Impressão digital recebida:
 label-theme = Tema
+label-show-connection-notifications = Mostrar notificações de conexão
 
 # =============================================================================
 # Permission Display Names
