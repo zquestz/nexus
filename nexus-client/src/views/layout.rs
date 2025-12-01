@@ -76,13 +76,17 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         can_view_user_list,
     });
 
-    // Left panel: Server list
-    let server_list = server_list_panel(
-        config.bookmarks,
-        config.connections,
-        config.active_connection,
-        config.bookmark_errors,
-    );
+    // Left panel: Server list (use hidden_panel when not visible to preserve layout stability)
+    let server_list = if config.ui_state.show_bookmarks {
+        server_list_panel(
+            config.bookmarks,
+            config.connections,
+            config.active_connection,
+            config.bookmark_errors,
+        )
+    } else {
+        hidden_panel()
+    };
 
     // Middle panel: Main content (bookmark editor, connection form, or active server view)
     // Wrapped with separators for consistent appearance
@@ -142,16 +146,10 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         hidden_panel()
     };
 
-    // Three-panel layout with conditional panels
-    let content = if config.ui_state.show_bookmarks {
-        row![server_list, main_content, user_list]
-            .spacing(PANEL_SPACING)
-            .height(Fill)
-    } else {
-        row![main_content, user_list]
-            .spacing(PANEL_SPACING)
-            .height(Fill)
-    };
+    // Three-panel layout (always same structure to preserve scroll state)
+    let content = row![server_list, main_content, user_list]
+        .spacing(PANEL_SPACING)
+        .height(Fill);
 
     column![toolbar, content].into()
 }
