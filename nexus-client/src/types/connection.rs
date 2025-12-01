@@ -36,6 +36,8 @@ pub struct ServerConnection {
     /// Stored for future use when Fluent translations are implemented.
     #[allow(dead_code)]
     pub locale: String,
+    /// Current chat topic (None if no topic set)
+    pub chat_topic: Option<String>,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -58,6 +60,8 @@ pub struct ServerConnection {
     pub broadcast_message: String,
     /// Scroll state per chat tab (offset and auto-scroll flag)
     pub scroll_states: HashMap<ChatTab, ScrollState>,
+    /// Pending tab switch after successful message delivery (from /msg command)
+    pub pending_message_tab: Option<String>,
     /// Error message for broadcast operations
     pub broadcast_error: Option<String>,
     /// User management panel state

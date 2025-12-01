@@ -267,3 +267,24 @@ time-seconds = { $count } { $count ->
     [one] segundo
    *[other] segundos
 }
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = Comando desconhecido: /{ $command }
+cmd-help-header = Comandos disponíveis:
+cmd-help-desc = Mostrar comandos disponíveis
+cmd-help-escape-hint = Dica: Use // para enviar uma mensagem que comece com /
+cmd-message-desc = Enviar uma mensagem a um utilizador
+cmd-message-usage = Uso: /{ $command } <utilizador> <mensagem>
+cmd-userinfo-desc = Mostrar informações sobre um utilizador
+cmd-userinfo-usage = Uso: /{ $command } <utilizador>
+cmd-kick-desc = Expulsar um utilizador do servidor
+cmd-kick-usage = Uso: /{ $command } <utilizador>
+cmd-topic-desc = Ver ou gerir o tópico do chat
+cmd-topic-usage = Uso: /{ $command } [set|clear] [tópico]
+cmd-topic-set-usage = Uso: /{ $command } set <tópico>
+cmd-topic-none = Nenhum tópico definido
+cmd-broadcast-desc = Enviar uma difusão para todos os utilizadores
+cmd-broadcast-usage = Uso: /{ $command } <mensagem>

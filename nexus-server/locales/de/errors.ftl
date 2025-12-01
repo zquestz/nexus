@@ -25,6 +25,7 @@ err-cannot-edit-self = Sie können sich nicht selbst bearbeiten
 err-cannot-create-admin = Nur Administratoren können Administrator-Benutzer erstellen
 err-cannot-kick-self = Sie können sich nicht selbst hinauswerfen
 err-cannot-kick-admin = Administrator-Benutzer können nicht hinausgeworfen werden
+err-cannot-message-self = Sie können sich nicht selbst eine Nachricht senden
 err-cannot-disable-last-admin = Der letzte Administrator kann nicht deaktiviert werden
 
 # Chat-Themenfehler

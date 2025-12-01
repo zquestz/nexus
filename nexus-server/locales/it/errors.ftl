@@ -25,6 +25,7 @@ err-cannot-edit-self = Non puoi modificare te stesso
 err-cannot-create-admin = Solo gli amministratori possono creare utenti amministratori
 err-cannot-kick-self = Non puoi espellere te stesso
 err-cannot-kick-admin = Impossibile espellere utenti amministratori
+err-cannot-message-self = Non puoi inviare messaggi a te stesso
 err-cannot-disable-last-admin = Impossibile disabilitare l'ultimo amministratore
 
 # Errori argomento chat

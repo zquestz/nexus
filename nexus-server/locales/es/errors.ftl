@@ -25,8 +25,9 @@ err-cannot-demote-last-admin = No se puede degradar al último administrador
 err-cannot-edit-self = No puedes editarte a ti mismo
 err-cannot-create-admin = Solo los administradores pueden crear usuarios administradores
 err-cannot-kick-self = No puedes expulsarte a ti mismo
-err-cannot-kick-admin = No se pueden expulsar usuarios administradores
-err-cannot-disable-last-admin = No se puede deshabilitar el último administrador
+err-cannot-kick-admin = No se puede expulsar a usuarios administradores
+err-cannot-message-self = No puedes enviarte mensajes a ti mismo
+err-cannot-disable-last-admin = No se puede deshabilitar al último administrador
 
 # Errores de tema de chat
 err-topic-contains-newlines = El tema no puede contener saltos de línea

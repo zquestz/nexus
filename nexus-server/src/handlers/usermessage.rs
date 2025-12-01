@@ -1,8 +1,9 @@
 //! Handler for UserMessage command
 
 use super::{
-    HandlerContext, err_authentication, err_chat_too_long, err_database, err_message_empty,
-    err_not_logged_in, err_permission_denied, err_user_not_found, err_user_not_online,
+    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long, err_database,
+    err_message_empty, err_not_logged_in, err_permission_denied, err_user_not_found,
+    err_user_not_online,
 };
 use crate::db::Permission;
 use nexus_common::protocol::ServerMessage;
@@ -57,7 +58,7 @@ pub async fn handle_usermessage(
     if to_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserMessageResponse {
             success: false,
-            error: Some(err_permission_denied(ctx.locale)),
+            error: Some(err_cannot_message_self(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }
@@ -324,8 +325,7 @@ mod tests {
         match response {
             ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
-                // We return "Permission denied" for self-messaging, so check for that
-                assert!(error.unwrap().to_lowercase().contains("permission"));
+                assert!(error.unwrap().to_lowercase().contains("yourself"));
             }
             _ => panic!("Expected UserMessageResponse"),
         }

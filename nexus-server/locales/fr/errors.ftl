@@ -25,6 +25,7 @@ err-cannot-edit-self = Vous ne pouvez pas vous modifier vous-même
 err-cannot-create-admin = Seuls les administrateurs peuvent créer des utilisateurs administrateurs
 err-cannot-kick-self = Vous ne pouvez pas vous expulser vous-même
 err-cannot-kick-admin = Impossible d'expulser les utilisateurs administrateurs
+err-cannot-message-self = Vous ne pouvez pas vous envoyer de message
 err-cannot-disable-last-admin = Impossible de désactiver le dernier administrateur
 
 # Erreurs de sujet de discussion

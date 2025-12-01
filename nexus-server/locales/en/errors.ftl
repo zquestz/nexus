@@ -25,6 +25,7 @@ err-cannot-edit-self = You cannot edit yourself
 err-cannot-create-admin = Only admins can create admin users
 err-cannot-kick-self = You cannot kick yourself
 err-cannot-kick-admin = Cannot kick admin users
+err-cannot-message-self = You cannot message yourself
 err-cannot-disable-last-admin = Cannot disable the last admin
 
 # Chat Topic Errors

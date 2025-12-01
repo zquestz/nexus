@@ -39,7 +39,7 @@ impl NexusApp {
         {
             let _ = self.add_chat_message(
                 connection_id,
-                ChatMessage::info(t_args("msg-topic-display", &[("topic", &topic)])),
+                ChatMessage::system(t_args("msg-topic-display", &[("topic", &topic)])),
             );
         }
     }

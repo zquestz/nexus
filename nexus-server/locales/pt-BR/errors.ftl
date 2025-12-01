@@ -25,7 +25,8 @@ err-cannot-edit-self = Você não pode editar a si mesmo
 err-cannot-create-admin = Apenas administradores podem criar usuários administradores
 err-cannot-kick-self = Você não pode expulsar a si mesmo
 err-cannot-kick-admin = Não é possível expulsar usuários administradores
-err-cannot-disable-last-admin = Não é possível desativar o último administrador
+err-cannot-message-self = Você não pode enviar mensagem para si mesmo
+err-cannot-disable-last-admin = Não é possível desabilitar o último administrador
 
 # Erros de tópico de chat
 err-topic-contains-newlines = O tópico não pode conter quebras de linha

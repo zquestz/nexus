@@ -22,9 +22,10 @@ err-cannot-delete-last-admin = 无法删除最后一个管理员
 err-cannot-delete-self = 您不能删除自己
 err-cannot-demote-last-admin = 无法降级最后一个管理员
 err-cannot-edit-self = 您不能编辑自己
-err-cannot-create-admin = 只有管理员可以创建管理员用户
-err-cannot-kick-self = 您不能踢出自己
+err-cannot-create-admin = 只有管理员才能创建管理员用户
+err-cannot-kick-self = 您无法踢出自己
 err-cannot-kick-admin = 无法踢出管理员用户
+err-cannot-message-self = 您无法给自己发消息
 err-cannot-disable-last-admin = 无法禁用最后一个管理员
 
 # 聊天主题错误

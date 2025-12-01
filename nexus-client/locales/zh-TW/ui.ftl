@@ -253,4 +253,25 @@ user-info-error = 錯誤：{ $error }
 time-days = { $count }天
 time-hours = { $count }小時
 time-minutes = { $count }分鐘
-time-seconds = { $count }秒
+time-seconds = { $count } 秒
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = 未知指令：/{ $command }
+cmd-help-header = 可用指令：
+cmd-help-desc = 顯示可用指令
+cmd-help-escape-hint = 提示：使用 // 發送以 / 開頭的訊息
+cmd-message-desc = 發送訊息給用戶
+cmd-message-usage = 用法：/{ $command } <用戶名> <訊息>
+cmd-userinfo-desc = 顯示用戶資訊
+cmd-userinfo-usage = 用法：/{ $command } <用戶名>
+cmd-kick-desc = 將用戶踢出伺服器
+cmd-kick-usage = 用法：/{ $command } <用戶名>
+cmd-topic-desc = 查看或管理聊天主題
+cmd-topic-usage = 用法：/{ $command } [set|clear] [主題]
+cmd-topic-set-usage = 用法：/{ $command } set <主題>
+cmd-topic-none = 未設定主題
+cmd-broadcast-desc = 向所有用戶發送廣播
+cmd-broadcast-usage = 用法：/{ $command } <訊息>

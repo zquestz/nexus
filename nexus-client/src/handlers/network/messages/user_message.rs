@@ -1,4 +1,4 @@
-//! User message (private message) handlers
+//! User message handlers
 
 use crate::NexusApp;
 use crate::i18n::t_args;
@@ -43,14 +43,24 @@ impl NexusApp {
         }
     }
 
-    /// Handle user message response (success/failure of sending a PM)
+    /// Handle user message response (success/failure of sending a message)
     pub fn handle_user_message_response(
         &mut self,
         connection_id: usize,
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
+        // Check for pending tab switch (from /msg command)
+        let pending_tab = self
+            .connections
+            .get_mut(&connection_id)
+            .and_then(|conn| conn.pending_message_tab.take());
+
         if success {
+            // Switch to tab if we had a pending switch
+            if let Some(username) = pending_tab {
+                return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(username)));
+            }
             return Task::none();
         }
 

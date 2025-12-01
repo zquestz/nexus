@@ -23,9 +23,10 @@ err-cannot-delete-self = 您不能刪除自己
 err-cannot-demote-last-admin = 無法降級最後一個管理員
 err-cannot-edit-self = 您不能編輯自己
 err-cannot-create-admin = 只有管理員可以建立管理員使用者
-err-cannot-kick-self = 您不能踢出自己
-err-cannot-kick-admin = 無法踢出管理員使用者
-err-cannot-disable-last-admin = 無法停用最後一個管理員
+err-cannot-kick-self = 您不能踢除自己
+err-cannot-kick-admin = 無法踢除管理員用戶
+err-cannot-message-self = 您不能給自己發送訊息
+err-cannot-disable-last-admin = 無法停用最後一位管理員
 
 # 聊天主題錯誤
 err-topic-contains-newlines = 主題不能包含換行符號

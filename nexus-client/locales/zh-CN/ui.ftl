@@ -255,3 +255,24 @@ time-days = { $count }天
 time-hours = { $count }小时
 time-minutes = { $count }分钟
 time-seconds = { $count }秒
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = 未知命令：/{ $command }
+cmd-help-header = 可用命令：
+cmd-help-desc = 显示可用命令
+cmd-help-escape-hint = 提示：使用 // 发送以 / 开头的消息
+cmd-message-desc = 向用户发送消息
+cmd-message-usage = 用法：/{ $command } <用户名> <消息>
+cmd-userinfo-desc = 显示用户信息
+cmd-userinfo-usage = 用法：/{ $command } <用户名>
+cmd-kick-desc = 将用户踢出服务器
+cmd-kick-usage = 用法：/{ $command } <用户名>
+cmd-topic-desc = 查看或管理聊天主题
+cmd-topic-usage = 用法：/{ $command } [set|clear] [主题]
+cmd-topic-set-usage = 用法：/{ $command } set <主题>
+cmd-topic-none = 未设置主题
+cmd-broadcast-desc = 向所有用户发送广播
+cmd-broadcast-usage = 用法：/{ $command } <消息>

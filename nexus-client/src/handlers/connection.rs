@@ -1,5 +1,6 @@
 //! Connection and chat message handlers
 
+use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::views::constants::{
@@ -276,43 +277,61 @@ impl NexusApp {
     }
 
     /// Handle send chat message button press
+    ///
+    /// This method intercepts the input and checks for commands:
+    /// - `/command` - Execute a client-side command
+    /// - `//text` - Escape sequence, sends `/text` as a regular message
+    /// - Regular text - Send as chat or private message
     pub fn handle_send_message_pressed(&mut self) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get(&conn_id)
         {
-            let message = &conn.message_input;
+            let input = conn.message_input.clone();
 
-            if message.trim().is_empty() {
-                return Task::none();
-            }
+            // Parse input for commands
+            match commands::parse_input(&input) {
+                ParseResult::Empty => {
+                    return Task::none();
+                }
+                ParseResult::Command(command) => {
+                    // Clear input and execute command
+                    if let Some(conn) = self.connections.get_mut(&conn_id) {
+                        conn.message_input.clear();
+                    }
+                    return commands::execute_command(self, conn_id, command);
+                }
+                ParseResult::Message(message) => {
+                    // Continue with normal message sending
+                    if message.len() > MAX_CHAT_LENGTH {
+                        let error_msg = format!(
+                            "{} ({} characters, max {})",
+                            t("err-message-too-long"),
+                            message.len(),
+                            MAX_CHAT_LENGTH
+                        );
+                        return self.add_chat_error(conn_id, error_msg);
+                    }
 
-            if message.len() > MAX_CHAT_LENGTH {
-                let error_msg = format!(
-                    "{} ({} characters, max {})",
-                    t("err-message-too-long"),
-                    message.len(),
-                    MAX_CHAT_LENGTH
-                );
-                return self.add_chat_error(conn_id, error_msg);
-            }
+                    // Re-borrow conn after potential mutable borrow above
+                    if let Some(conn) = self.connections.get(&conn_id) {
+                        let msg = match &conn.active_chat_tab {
+                            ChatTab::Server => ClientMessage::ChatSend { message },
+                            ChatTab::UserMessage(username) => ClientMessage::UserMessage {
+                                to_username: username.clone(),
+                                message,
+                            },
+                        };
 
-            let msg = match &conn.active_chat_tab {
-                ChatTab::Server => ClientMessage::ChatSend {
-                    message: message.clone(),
-                },
-                ChatTab::UserMessage(username) => ClientMessage::UserMessage {
-                    to_username: username.clone(),
-                    message: message.clone(),
-                },
-            };
+                        if let Err(e) = conn.tx.send(msg) {
+                            let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                            return self.add_chat_error(conn_id, error_msg);
+                        }
+                    }
 
-            if let Err(e) = conn.tx.send(msg) {
-                let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                return self.add_chat_error(conn_id, error_msg);
-            }
-
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.message_input.clear();
+                    if let Some(conn) = self.connections.get_mut(&conn_id) {
+                        conn.message_input.clear();
+                    }
+                }
             }
         }
         Task::none()

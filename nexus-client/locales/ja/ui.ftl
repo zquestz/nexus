@@ -254,3 +254,24 @@ time-days = { $count }日
 time-hours = { $count }時間
 time-minutes = { $count }分
 time-seconds = { $count }秒
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = 不明なコマンド: /{ $command }
+cmd-help-header = 利用可能なコマンド:
+cmd-help-desc = 利用可能なコマンドを表示
+cmd-help-escape-hint = ヒント: / で始まるメッセージを送信するには // を使用してください
+cmd-message-desc = ユーザーにメッセージを送信
+cmd-message-usage = 使用方法: /{ $command } <ユーザー名> <メッセージ>
+cmd-userinfo-desc = ユーザーの情報を表示
+cmd-userinfo-usage = 使用方法: /{ $command } <ユーザー名>
+cmd-kick-desc = ユーザーをサーバーからキック
+cmd-kick-usage = 使用方法: /{ $command } <ユーザー名>
+cmd-topic-desc = チャットトピックを表示または管理
+cmd-topic-usage = 使用方法: /{ $command } [set|clear] [トピック]
+cmd-topic-set-usage = 使用方法: /{ $command } set <トピック>
+cmd-topic-none = トピックが設定されていません
+cmd-broadcast-desc = 全ユーザーにブロードキャストを送信
+cmd-broadcast-usage = 使用方法: /{ $command } <メッセージ>

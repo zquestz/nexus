@@ -254,3 +254,24 @@ time-days = { $count }일
 time-hours = { $count }시간
 time-minutes = { $count }분
 time-seconds = { $count }초
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = 알 수 없는 명령어: /{ $command }
+cmd-help-header = 사용 가능한 명령어:
+cmd-help-desc = 사용 가능한 명령어 표시
+cmd-help-escape-hint = 팁: /로 시작하는 메시지를 보내려면 //를 사용하세요
+cmd-message-desc = 사용자에게 메시지 보내기
+cmd-message-usage = 사용법: /{ $command } <사용자명> <메시지>
+cmd-userinfo-desc = 사용자 정보 표시
+cmd-userinfo-usage = 사용법: /{ $command } <사용자명>
+cmd-kick-desc = 서버에서 사용자 추방
+cmd-kick-usage = 사용법: /{ $command } <사용자명>
+cmd-topic-desc = 채팅 주제 보기 또는 관리
+cmd-topic-usage = 사용법: /{ $command } [set|clear] [주제]
+cmd-topic-set-usage = 사용법: /{ $command } set <주제>
+cmd-topic-none = 설정된 주제가 없습니다
+cmd-broadcast-desc = 모든 사용자에게 공지 보내기
+cmd-broadcast-usage = 사용법: /{ $command } <메시지>

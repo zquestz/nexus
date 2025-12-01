@@ -25,6 +25,7 @@ err-cannot-edit-self = 自分自身を編集できません
 err-cannot-create-admin = 管理者ユーザーを作成できるのは管理者のみです
 err-cannot-kick-self = 自分自身をキックできません
 err-cannot-kick-admin = 管理者ユーザーをキックできません
+err-cannot-message-self = 自分自身にメッセージを送ることはできません
 err-cannot-disable-last-admin = 最後の管理者を無効化できません
 
 # チャットトピックのエラー

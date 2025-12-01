@@ -97,6 +97,11 @@ pub fn err_cannot_kick_admin(locale: &str) -> String {
     t(locale, "err-cannot-kick-admin")
 }
 
+/// Get translated "cannot message self" error
+pub fn err_cannot_message_self(locale: &str) -> String {
+    t(locale, "err-cannot-message-self")
+}
+
 /// Get translated "cannot disable last admin" error
 pub fn err_cannot_disable_last_admin(locale: &str) -> String {
     t(locale, "err-cannot-disable-last-admin")

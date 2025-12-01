@@ -25,6 +25,7 @@ err-cannot-edit-self = U kunt uzelf niet bewerken
 err-cannot-create-admin = Alleen beheerders kunnen beheerdergebruikers aanmaken
 err-cannot-kick-self = U kunt uzelf niet verwijderen
 err-cannot-kick-admin = Kan beheerdergebruikers niet verwijderen
+err-cannot-message-self = U kunt geen berichten naar uzelf sturen
 err-cannot-disable-last-admin = Kan de laatste beheerder niet uitschakelen
 
 # Chatonderwerpfouten

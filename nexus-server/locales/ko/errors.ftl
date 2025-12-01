@@ -22,9 +22,10 @@ err-cannot-delete-last-admin = 마지막 관리자를 삭제할 수 없습니다
 err-cannot-delete-self = 자신을 삭제할 수 없습니다
 err-cannot-demote-last-admin = 마지막 관리자를 강등할 수 없습니다
 err-cannot-edit-self = 자신을 편집할 수 없습니다
-err-cannot-create-admin = 관리자만 관리자 사용자를 생성할 수 있습니다
-err-cannot-kick-self = 자신을 추방할 수 없습니다
+err-cannot-create-admin = 관리자만 관리자 사용자를 만들 수 있습니다
+err-cannot-kick-self = 자기 자신을 추방할 수 없습니다
 err-cannot-kick-admin = 관리자 사용자를 추방할 수 없습니다
+err-cannot-message-self = 자기 자신에게 메시지를 보낼 수 없습니다
 err-cannot-disable-last-admin = 마지막 관리자를 비활성화할 수 없습니다
 
 # 채팅 주제 오류

@@ -1,6 +1,7 @@
 //! Nexus BBS Client - GUI Application
 
 mod autostart;
+mod commands;
 mod config;
 mod fonts;
 mod handlers;

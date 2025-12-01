@@ -246,7 +246,6 @@ user-info-address-item = - { $address }
 user-info-created = created: { $created }
 user-info-end = End of user info
 user-info-unknown = Unknown
-user-info-error = Error: { $error }
 
 # =============================================================================
 # Time Duration
@@ -268,3 +267,31 @@ time-seconds = { $count } { $count ->
     [one] second
    *[other] seconds
 }
+
+# =============================================================================
+# Command System
+# =============================================================================
+
+cmd-unknown = Unknown command: /{ $command }
+cmd-help-header = Available commands:
+cmd-help-desc = Show available commands
+cmd-help-escape-hint = Tip: Use // to send a message starting with /
+cmd-message-desc = Send a message to a user
+cmd-message-usage = Usage: /{ $command } <username> <message>
+cmd-userinfo-desc = Show information about a user
+cmd-userinfo-usage = Usage: /{ $command } <username>
+cmd-kick-desc = Kick a user from the server
+cmd-kick-usage = Usage: /{ $command } <username>
+cmd-topic-desc = View or manage the chat topic
+cmd-topic-usage = Usage: /{ $command } [set <topic> | clear]
+cmd-topic-set-usage = Usage: /{ $command } set <topic>
+cmd-topic-none = No topic is set
+cmd-broadcast-desc = Send a broadcast to all users
+cmd-broadcast-usage = Usage: /{ $command } <message>
+cmd-clear-desc = Clear chat history for current tab
+cmd-list-desc = Show connected users
+cmd-list-empty = No users connected
+cmd-list-output = Users online: { $users } ({ $count } { $count ->
+    [one] user
+   *[other] users
+})

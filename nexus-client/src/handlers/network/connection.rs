@@ -215,6 +215,7 @@ impl NexusApp {
             is_admin: conn.is_admin,
             permissions: conn.permissions,
             locale: conn.locale,
+            chat_topic: chat_topic.clone(),
             active_chat_tab: ChatTab::Server,
             chat_messages: Vec::new(),
             user_messages: HashMap::new(),
@@ -226,6 +227,7 @@ impl NexusApp {
             message_input: String::new(),
             broadcast_message: String::new(),
             scroll_states: HashMap::new(),
+            pending_message_tab: None,
             broadcast_error: None,
             user_management: UserManagementState::default(),
         };

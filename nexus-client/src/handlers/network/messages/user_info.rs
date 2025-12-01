@@ -22,11 +22,8 @@ impl NexusApp {
         user: Option<UserInfoDetailed>,
     ) -> Task<Message> {
         if !success {
-            let err = error.unwrap_or_default();
-            return self.add_chat_message(
-                connection_id,
-                ChatMessage::info(t_args("user-info-error", &[("error", &err)])),
-            );
+            return self
+                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
         }
 
         let Some(user) = user else {

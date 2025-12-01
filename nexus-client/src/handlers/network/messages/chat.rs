@@ -23,6 +23,15 @@ impl NexusApp {
         topic: String,
         username: String,
     ) -> Task<Message> {
+        // Store the topic
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
+            conn.chat_topic = if topic.is_empty() {
+                None
+            } else {
+                Some(topic.clone())
+            };
+        }
+
         let message = if topic.is_empty() {
             t_args("msg-topic-cleared", &[("username", &username)])
         } else {
@@ -31,7 +40,7 @@ impl NexusApp {
                 &[("username", &username), ("topic", &topic)],
             )
         };
-        self.add_chat_message(connection_id, ChatMessage::info(message))
+        self.add_chat_message(connection_id, ChatMessage::system(message))
     }
 
     /// Handle chat topic update response
@@ -42,7 +51,7 @@ impl NexusApp {
         error: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            ChatMessage::system(t("msg-topic-updated"))
+            ChatMessage::info(t("msg-topic-updated"))
         } else {
             ChatMessage::error(t_args(
                 "err-failed-update-topic",

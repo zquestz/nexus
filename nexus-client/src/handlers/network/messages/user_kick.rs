@@ -14,7 +14,7 @@ impl NexusApp {
         error: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            ChatMessage::system(t("msg-user-kicked-success"))
+            ChatMessage::info(t("msg-user-kicked-success"))
         } else {
             ChatMessage::error(t_args(
                 "err-failed-send-message",
