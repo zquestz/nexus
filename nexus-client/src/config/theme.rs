@@ -10,8 +10,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///
 /// Serializes as the theme's display name (e.g., "Catppuccin Frappé").
 /// Defaults to Dark theme if deserialization fails.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ThemePreference(pub Theme);
+
+impl Default for ThemePreference {
+    fn default() -> Self {
+        Self(Theme::Dark)
+    }
+}
 
 impl ThemePreference {
     /// Get the inner iced Theme
