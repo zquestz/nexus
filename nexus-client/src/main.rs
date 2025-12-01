@@ -301,8 +301,8 @@ impl NexusApp {
         // Build view configuration
         let config = ViewConfig {
             theme: self.theme(),
-            show_connection_notifications: self.config.show_connection_notifications,
-            chat_font_size: self.config.chat_font_size,
+            show_connection_notifications: self.config.settings.show_connection_notifications,
+            chat_font_size: self.config.settings.chat_font_size,
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,
@@ -326,6 +326,6 @@ impl NexusApp {
 
     /// Get the current theme based on configuration
     fn theme(&self) -> Theme {
-        self.config.theme.to_iced_theme()
+        self.config.settings.theme.to_iced_theme()
     }
 }

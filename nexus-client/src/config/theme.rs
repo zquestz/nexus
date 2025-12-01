@@ -93,10 +93,13 @@ mod tests {
     #[test]
     fn test_config_serialization_format() {
         // Verify the theme appears as a string in the full config JSON
-        use crate::config::Config;
+        use crate::config::{Config, Settings};
 
         let config = Config {
-            theme: ThemePreference(Theme::Nord),
+            settings: Settings {
+                theme: ThemePreference(Theme::Nord),
+                ..Default::default()
+            },
             ..Default::default()
         };
 

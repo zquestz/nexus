@@ -139,19 +139,19 @@ impl NexusApp {
     /// Updates the config theme immediately for live preview.
     /// The change is persisted when Save is clicked, or reverted on Cancel.
     pub fn handle_theme_selected(&mut self, theme: iced::Theme) -> Task<Message> {
-        self.config.theme = theme.into();
+        self.config.settings.theme = theme.into();
         Task::none()
     }
 
     /// Handle connection notifications toggle
     pub fn handle_connection_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
-        self.config.show_connection_notifications = enabled;
+        self.config.settings.show_connection_notifications = enabled;
         Task::none()
     }
 
     /// Handle chat font size selection from the picker (live preview)
     pub fn handle_chat_font_size_selected(&mut self, size: u8) -> Task<Message> {
-        self.config.chat_font_size = size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
+        self.config.settings.chat_font_size = size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
         Task::none()
     }
 }
