@@ -1,8 +1,10 @@
 //! Theme preference configuration
 //!
 //! Uses Iced's built-in Theme enum directly, with string-based serialization
-//! that matches Theme's Display implementation.
+//! that matches Theme's Display implementation. Also supports custom Celestial
+//! themes from the celestial module.
 
+use crate::style::celestial;
 use iced::Theme;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -43,7 +45,12 @@ impl<'de> Deserialize<'de> for ThemePreference {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let name = String::deserialize(deserializer)?;
 
-        // Find matching theme by display name
+        // First check for Celestial custom themes
+        if let Some(theme) = celestial::get_by_name(&name) {
+            return Ok(Self(theme));
+        }
+
+        // Then check built-in themes by display name
         let theme = Theme::ALL
             .iter()
             .find(|t| t.to_string() == name)
@@ -52,6 +59,17 @@ impl<'de> Deserialize<'de> for ThemePreference {
 
         Ok(Self(theme))
     }
+}
+
+// =============================================================================
+// All Available Themes
+// =============================================================================
+
+/// Get all available themes (built-in + Celestial custom themes)
+pub fn all_themes() -> Vec<Theme> {
+    let mut themes: Vec<Theme> = Theme::ALL.to_vec();
+    themes.extend(celestial::all());
+    themes
 }
 
 // =============================================================================
@@ -127,5 +145,40 @@ mod tests {
 
         let light: ThemePreference = serde_json::from_str("\"Light\"").expect("deserialize");
         assert_eq!(light.0, Theme::Light);
+    }
+
+    #[test]
+    fn test_celestial_theme_serialization_roundtrip() {
+        for theme in celestial::all() {
+            let pref = ThemePreference(theme.clone());
+            let serialized = serde_json::to_string(&pref).expect("serialize");
+            let deserialized: ThemePreference =
+                serde_json::from_str(&serialized).expect("deserialize");
+            // Custom themes use display name for comparison
+            assert_eq!(pref.0.to_string(), deserialized.0.to_string());
+        }
+    }
+
+    #[test]
+    fn test_celestial_theme_deserialize() {
+        let sea_dark: ThemePreference =
+            serde_json::from_str("\"Celestial Sea Dark\"").expect("deserialize");
+        assert_eq!(sea_dark.0.to_string(), "Celestial Sea Dark");
+
+        let azul_light: ThemePreference =
+            serde_json::from_str("\"Celestial Azul Light\"").expect("deserialize");
+        assert_eq!(azul_light.0.to_string(), "Celestial Azul Light");
+    }
+
+    #[test]
+    fn test_all_themes_includes_celestial() {
+        let themes = all_themes();
+        // Should have 22 built-in + 8 Celestial themes
+        assert_eq!(themes.len(), 30);
+
+        // Verify Celestial themes are included
+        let names: Vec<String> = themes.iter().map(|t| t.to_string()).collect();
+        assert!(names.contains(&"Celestial Sea Dark".to_string()));
+        assert!(names.contains(&"Celestial Pueril Light".to_string()));
     }
 }

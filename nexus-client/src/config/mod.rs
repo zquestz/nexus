@@ -12,7 +12,7 @@ mod theme;
 use crate::types::ServerBookmark;
 
 pub use settings::{CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZES, Settings};
-pub use theme::ThemePreference;
+pub use theme::{ThemePreference, all_themes};
 
 // =============================================================================
 // Config

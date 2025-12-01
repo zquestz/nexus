@@ -1,7 +1,7 @@
 //! Settings panel view
 
 use super::chat::TimestampSettings;
-use crate::config::CHAT_FONT_SIZES;
+use crate::config::{CHAT_FONT_SIZES, all_themes};
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
@@ -34,7 +34,7 @@ pub fn settings_view(
     // Theme picker row
     let theme_label = shaped_text(t("label-theme")).size(TEXT_SIZE);
     let theme_picker =
-        pick_list(Theme::ALL, Some(current_theme), Message::ThemeSelected).text_size(TEXT_SIZE);
+        pick_list(all_themes(), Some(current_theme), Message::ThemeSelected).text_size(TEXT_SIZE);
     let theme_row = row![theme_label, theme_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);

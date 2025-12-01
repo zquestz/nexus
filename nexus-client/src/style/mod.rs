@@ -32,6 +32,7 @@
 //! let color = chat::error(theme);  // Uses palette.danger
 //! ```
 
+pub mod celestial;
 pub mod chat;
 mod fonts;
 mod icons;
