@@ -40,7 +40,6 @@ pub struct Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i18n::DEFAULT_LOCALE;
     use settings::CHAT_FONT_SIZE_DEFAULT;
 
     #[test]
@@ -48,7 +47,6 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.bookmarks.len(), 0);
         assert_eq!(config.settings.theme.0, iced::Theme::Dark);
-        assert_eq!(config.settings.locale, DEFAULT_LOCALE);
         assert_eq!(config.settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
         assert!(config.settings.show_connection_notifications);
     }

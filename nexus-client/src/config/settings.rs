@@ -1,7 +1,5 @@
 //! User preference settings
 
-use crate::i18n::DEFAULT_LOCALE;
-
 use super::ThemePreference;
 
 // =============================================================================
@@ -31,10 +29,6 @@ pub struct Settings {
     #[serde(default)]
     pub theme: ThemePreference,
 
-    /// Application-wide locale setting (e.g., "en", "zh-CN")
-    #[serde(default = "default_locale")]
-    pub locale: String,
-
     /// Font size for chat messages (9-16)
     #[serde(default = "default_chat_font_size")]
     pub chat_font_size: u8,
@@ -48,7 +42,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: ThemePreference::default(),
-            locale: default_locale(),
             chat_font_size: default_chat_font_size(),
             show_connection_notifications: default_true(),
         }
@@ -58,10 +51,6 @@ impl Default for Settings {
 // =============================================================================
 // Default Functions (for serde)
 // =============================================================================
-
-fn default_locale() -> String {
-    DEFAULT_LOCALE.to_string()
-}
 
 fn default_chat_font_size() -> u8 {
     CHAT_FONT_SIZE_DEFAULT
@@ -83,7 +72,6 @@ mod tests {
     fn test_default_settings() {
         let settings = Settings::default();
         assert_eq!(settings.theme.0, iced::Theme::Dark);
-        assert_eq!(settings.locale, DEFAULT_LOCALE);
         assert_eq!(settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
         assert!(settings.show_connection_notifications);
     }
@@ -102,7 +90,6 @@ mod tests {
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(settings.theme.0, deserialized.theme.0);
-        assert_eq!(settings.locale, deserialized.locale);
         assert_eq!(settings.chat_font_size, deserialized.chat_font_size);
         assert_eq!(
             settings.show_connection_notifications,
