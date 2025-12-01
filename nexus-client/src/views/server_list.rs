@@ -9,8 +9,8 @@ use crate::style::{
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
     SIDEBAR_ACTION_ICON_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
     TOOLTIP_TEXT_SIZE, alternating_row_style, danger_icon_button_style, list_item_button_style,
-    list_item_button_style_with_error, muted_text_style, separator_style, shaped_text,
-    sidebar_panel_style, tooltip_container_style, transparent_icon_button_style,
+    muted_text_style, separator_style, shaped_text, sidebar_panel_style, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::types::{Message, ServerBookmark, ServerConnection};
 use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
@@ -89,7 +89,7 @@ fn connected_servers_section<'a>(
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
                 .on_press(Message::SwitchToConnection(**conn_id))
-                .style(list_item_button_style(is_active));
+                .style(list_item_button_style(is_active, false));
 
             // Disconnect button (transparent icon button with hover effect)
             let disconnect_btn = tooltip(
@@ -173,7 +173,7 @@ fn bookmarks_section<'a>(
                 .height(SERVER_LIST_BUTTON_HEIGHT)
                 .padding(INPUT_PADDING)
                 .on_press(bookmark_message)
-                .style(list_item_button_style_with_error(is_connected, has_error));
+                .style(list_item_button_style(is_connected, has_error));
 
             // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(

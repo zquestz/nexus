@@ -95,37 +95,24 @@ pub fn icon_button_with_hover_style(
     }
 }
 
-/// List item button style - transparent with optional highlight state
+/// List item button style - transparent with optional highlight and error states
 /// Used for server list and bookmark items
 pub fn list_item_button_style(
     is_highlighted: bool,
-) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| button::Style {
-        background: None,
-        text_color: match status {
-            button::Status::Hovered => theme.palette().primary,
-            _ if is_highlighted => theme.palette().primary,
-            _ => ui::text_color(theme),
-        },
-        ..Default::default()
-    }
-}
-
-/// List item button style with error state
-/// Used for bookmark items that have connection errors
-pub fn list_item_button_style_with_error(
-    is_highlighted: bool,
     has_error: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| button::Style {
-        background: None,
-        text_color: match status {
-            button::Status::Hovered => theme.palette().primary,
-            _ if has_error => theme.palette().danger,
-            _ if is_highlighted => theme.palette().primary,
-            _ => ui::text_color(theme),
-        },
-        ..Default::default()
+    move |theme, status| {
+        let color = theme.extended_palette().primary.base.color;
+        button::Style {
+            background: None,
+            text_color: match status {
+                button::Status::Hovered => color,
+                _ if has_error => theme.palette().danger,
+                _ if is_highlighted => color,
+                _ => ui::text_color(theme),
+            },
+            ..Default::default()
+        }
     }
 }
 
