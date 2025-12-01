@@ -2,10 +2,9 @@
 
 use crate::NexusApp;
 use crate::i18n::t_args;
-use crate::types::{ChatMessage, ChatTab, Message, ScrollableId};
+use crate::types::{ChatMessage, ChatTab, Message};
 use chrono::Local;
 use iced::Task;
-use iced::widget::scrollable;
 
 impl NexusApp {
     /// Handle incoming private message
@@ -38,15 +37,10 @@ impl NexusApp {
         let pm_tab = ChatTab::UserMessage(other_user);
         if conn.active_chat_tab != pm_tab {
             conn.unread_tabs.insert(pm_tab);
-        } else if conn.chat_auto_scroll {
-            // Auto-scroll if viewing this tab and at bottom
-            return scrollable::snap_to(
-                ScrollableId::ChatMessages.into(),
-                scrollable::RelativeOffset::END,
-            );
+            Task::none()
+        } else {
+            self.scroll_chat_if_visible()
         }
-
-        Task::none()
     }
 
     /// Handle user message response (success/failure of sending a PM)

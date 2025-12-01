@@ -42,11 +42,6 @@ impl NexusApp {
 
     // ==================== Panel Actions ====================
 
-    /// Close all panels (broadcast, add user, edit user)
-    pub fn close_all_panels(&mut self) {
-        self.ui_state.active_panel = ActivePanel::None;
-    }
-
     /// Show Add User panel (does nothing if already shown)
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
         if self.ui_state.active_panel == ActivePanel::AddUser {

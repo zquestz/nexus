@@ -225,7 +225,7 @@ impl NexusApp {
             shutdown_handle,
             message_input: String::new(),
             broadcast_message: String::new(),
-            chat_auto_scroll: true,
+            scroll_states: HashMap::new(),
             broadcast_error: None,
             user_management: UserManagementState::default(),
         };

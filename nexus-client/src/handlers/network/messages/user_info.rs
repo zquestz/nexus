@@ -213,16 +213,21 @@ impl NexusApp {
                 conn.user_messages.insert(new_username.clone(), messages);
             }
 
-            // Update unread_tabs if present
+            // Rename the scroll_states entry
             let old_tab = ChatTab::UserMessage(previous_username.clone());
+            let new_tab = ChatTab::UserMessage(new_username.clone());
+            if let Some(scroll_state) = conn.scroll_states.remove(&old_tab) {
+                conn.scroll_states.insert(new_tab.clone(), scroll_state);
+            }
+
+            // Update unread_tabs if present
             if conn.unread_tabs.remove(&old_tab) {
-                conn.unread_tabs
-                    .insert(ChatTab::UserMessage(new_username.clone()));
+                conn.unread_tabs.insert(new_tab.clone());
             }
 
             // Update active_chat_tab if it's for this user
             if conn.active_chat_tab == old_tab {
-                conn.active_chat_tab = ChatTab::UserMessage(new_username.clone());
+                conn.active_chat_tab = new_tab;
             }
 
             // Update expanded_user if it was set to the old username

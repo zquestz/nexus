@@ -2,9 +2,9 @@
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
+use crate::types::{ActivePanel, ChatMessage, InputId, Message};
 use iced::Task;
-use iced::widget::{scrollable, text_input};
+use iced::widget::text_input;
 use nexus_common::protocol::ClientMessage;
 
 /// Maximum length for broadcast messages
@@ -21,34 +21,16 @@ impl NexusApp {
             conn.broadcast_error = None;
         }
 
-        self.ui_state.active_panel = ActivePanel::None;
-        text_input::focus(text_input::Id::from(InputId::ChatInput))
+        self.handle_show_chat_view()
     }
 
-    /// Handle showing chat view - closes all panels, switches to Server tab, and focuses chat input
+    /// Handle showing chat view - closes all panels, scrolls to position, and focuses input.
+    ///
+    /// This is the single source of truth for returning to the chat view.
+    /// All code paths that close panels and return to chat should use this method.
     pub fn handle_show_chat_view(&mut self) -> Task<Message> {
-        self.close_all_panels();
-
-        let should_scroll = self
-            .active_connection
-            .and_then(|id| self.connections.get(&id))
-            .is_some_and(|conn| conn.chat_auto_scroll);
-
-        if should_scroll {
-            Task::batch([
-                Task::done(Message::SwitchChatTab(ChatTab::Server)),
-                scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                ),
-                text_input::focus(text_input::Id::from(InputId::ChatInput)),
-            ])
-        } else {
-            Task::batch([
-                Task::done(Message::SwitchChatTab(ChatTab::Server)),
-                text_input::focus(text_input::Id::from(InputId::ChatInput)),
-            ])
-        }
+        self.ui_state.active_panel = ActivePanel::None;
+        self.scroll_chat_if_visible()
     }
 
     /// Show broadcast panel (does nothing if already shown)
@@ -121,8 +103,7 @@ impl NexusApp {
                 conn.broadcast_message.clear();
             }
 
-            self.ui_state.active_panel = ActivePanel::None;
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            return self.handle_show_chat_view();
         }
         Task::none()
     }

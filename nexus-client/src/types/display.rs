@@ -3,12 +3,31 @@
 use chrono::{DateTime, Local};
 
 /// Chat tab type - represents different chat windows
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ChatTab {
     /// Server chat (main channel)
+    #[default]
     Server,
     /// User message conversation (1-on-1)
     UserMessage(String),
+}
+
+/// Scroll state for a chat tab
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollState {
+    /// Saved scroll position (relative offset 0.0-1.0)
+    pub offset: f32,
+    /// Whether to auto-scroll when new messages arrive
+    pub auto_scroll: bool,
+}
+
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self {
+            offset: 1.0,       // Start at bottom
+            auto_scroll: true, // Auto-scroll by default
+        }
+    }
 }
 
 /// Type of chat message (prevents username spoofing)

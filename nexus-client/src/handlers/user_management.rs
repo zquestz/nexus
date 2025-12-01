@@ -2,11 +2,9 @@
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId, UserEditState,
-};
+use crate::types::{ChatMessage, ChatTab, InputId, Message, UserEditState};
 use iced::Task;
-use iced::widget::scrollable;
+
 use nexus_common::protocol::ClientMessage;
 
 impl NexusApp {
@@ -368,8 +366,7 @@ impl NexusApp {
         {
             conn.user_management.clear_add_user();
         }
-        self.ui_state.active_panel = ActivePanel::None;
-        Task::none()
+        self.handle_show_chat_view()
     }
 
     /// Handle Cancel button press in edit user panel
@@ -379,8 +376,7 @@ impl NexusApp {
         {
             conn.user_management.clear_edit_user();
         }
-        self.ui_state.active_panel = ActivePanel::None;
-        Task::none()
+        self.handle_show_chat_view()
     }
 
     // ==================== Private Helpers ====================
@@ -398,9 +394,6 @@ impl NexusApp {
 
     /// Handle user message icon click (create/switch to PM tab)
     pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
-        // Close all panels to show chat
-        self.close_all_panels();
-
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -416,9 +409,6 @@ impl NexusApp {
 
     /// Handle user kick icon click (kick/disconnect user)
     pub fn handle_user_kick_icon_clicked(&mut self, username: String) -> Task<Message> {
-        // Close all panels to show chat
-        self.close_all_panels();
-
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -428,13 +418,7 @@ impl NexusApp {
                 return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
             }
 
-            // Auto-scroll to show kick response if at bottom
-            if conn.chat_auto_scroll {
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
-            }
+            return self.handle_show_chat_view();
         }
         Task::none()
     }
@@ -456,9 +440,6 @@ impl NexusApp {
 
     /// Handle info icon click on expanded user
     pub fn handle_user_info_icon_clicked(&mut self, username: String) -> Task<Message> {
-        // Close all panels to show chat
-        self.close_all_panels();
-
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -468,13 +449,7 @@ impl NexusApp {
                 return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
             }
 
-            // Auto-scroll to show info response if at bottom
-            if conn.chat_auto_scroll {
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
-            }
+            return self.handle_show_chat_view();
         }
         Task::none()
     }

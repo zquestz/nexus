@@ -4,7 +4,7 @@ use nexus_common::protocol::ClientMessage;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-use super::{ChatMessage, ChatTab, UserInfo, UserManagementState};
+use super::{ChatMessage, ChatTab, ScrollState, UserInfo, UserManagementState};
 
 /// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
 type WrappedShutdownHandle =
@@ -56,8 +56,8 @@ pub struct ServerConnection {
     pub message_input: String,
     /// Current broadcast message input
     pub broadcast_message: String,
-    /// Whether to auto-scroll chat when new messages arrive
-    pub chat_auto_scroll: bool,
+    /// Scroll state per chat tab (offset and auto-scroll flag)
+    pub scroll_states: HashMap<ChatTab, ScrollState>,
     /// Error message for broadcast operations
     pub broadcast_error: Option<String>,
     /// User management panel state

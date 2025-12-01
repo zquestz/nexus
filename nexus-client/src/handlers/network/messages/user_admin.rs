@@ -34,6 +34,7 @@ impl NexusApp {
                 }
             }
 
+            // add_chat_message handles scrolling when this is the active connection
             self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")))
         } else {
             // On error, keep panel open and show error in form
@@ -62,6 +63,7 @@ impl NexusApp {
                 }
             }
 
+            // add_chat_message handles scrolling when this is the active connection
             self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")))
         } else {
             // On error, keep panel open and show error in form
@@ -116,6 +118,7 @@ impl NexusApp {
                 }
             }
 
+            // add_chat_message handles scrolling when this is the active connection
             self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")))
         } else {
             // On error, keep panel open and show error in form

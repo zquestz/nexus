@@ -161,15 +161,44 @@ impl NexusApp {
                 _ => {}
             }
 
-            return Task::batch([
-                scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                ),
-                text_input::focus(text_input::Id::from(InputId::ChatInput)),
-            ]);
+            return self.handle_show_chat_view();
         }
         Task::none()
+    }
+
+    // ==================== Chat Helpers ====================
+
+    /// Scroll chat and focus input if chat view is visible (no panel overlay).
+    ///
+    /// Use this for background events (e.g., incoming messages) that shouldn't
+    /// close panels or steal focus from panel input fields.
+    pub fn scroll_chat_if_visible(&self) -> Task<Message> {
+        // Don't scroll or steal focus if a panel is open
+        if self.ui_state.active_panel != ActivePanel::None {
+            return Task::none();
+        }
+
+        let scroll_state = self
+            .active_connection
+            .and_then(|id| self.connections.get(&id))
+            .map(|conn| {
+                conn.scroll_states
+                    .get(&conn.active_chat_tab)
+                    .copied()
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        let scroll_offset = if scroll_state.auto_scroll {
+            scrollable::RelativeOffset::END
+        } else {
+            scrollable::RelativeOffset { x: 0.0, y: scroll_state.offset }
+        };
+
+        Task::batch([
+            scrollable::snap_to(ScrollableId::ChatMessages.into(), scroll_offset),
+            text_input::focus(text_input::Id::from(InputId::ChatInput)),
+        ])
     }
 
     // ==================== Chat Handlers ====================
@@ -179,12 +208,38 @@ impl NexusApp {
         &mut self,
         viewport: iced::widget::scrollable::Viewport,
     ) -> Task<Message> {
+        // Only track scroll when chat view is active (no panel overlay)
+        if self.ui_state.active_panel != ActivePanel::None {
+            return Task::none();
+        }
+
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(valid_offset) = Self::get_valid_scroll_offset(&viewport)
         {
-            conn.chat_auto_scroll = viewport.relative_offset().y >= SCROLL_BOTTOM_THRESHOLD;
+            let tab = conn.active_chat_tab.clone();
+            let scroll_state = conn.scroll_states.entry(tab).or_default();
+            scroll_state.offset = valid_offset;
+            scroll_state.auto_scroll = valid_offset >= SCROLL_BOTTOM_THRESHOLD;
         }
         Task::none()
+    }
+
+    /// Extract a valid scroll offset from a viewport, if applicable.
+    ///
+    /// Returns `None` when content fits in viewport (nothing to scroll).
+    /// Spurious scroll events from panel transitions are handled separately
+    /// via the panel check in `handle_chat_scrolled`.
+    fn get_valid_scroll_offset(viewport: &iced::widget::scrollable::Viewport) -> Option<f32> {
+        let bounds = viewport.bounds();
+        let content_bounds = viewport.content_bounds();
+
+        // Content fits in viewport - nothing to scroll, ignore event
+        if content_bounds.height <= bounds.height {
+            return None;
+        }
+
+        Some(viewport.relative_offset().y)
     }
 
     /// Close a user message tab
@@ -196,17 +251,11 @@ impl NexusApp {
 
             let tab = ChatTab::UserMessage(username);
             conn.unread_tabs.remove(&tab);
+            conn.scroll_states.remove(&tab);
 
             if conn.active_chat_tab == tab {
                 conn.active_chat_tab = ChatTab::Server;
-
-                return Task::batch([
-                    scrollable::snap_to(
-                        ScrollableId::ChatMessages.into(),
-                        scrollable::RelativeOffset::END,
-                    ),
-                    text_input::focus(text_input::Id::from(InputId::ChatInput)),
-                ]);
+                return self.handle_show_chat_view();
             }
         }
         Task::none()
@@ -274,13 +323,7 @@ impl NexusApp {
             conn.unread_tabs.remove(&tab);
             conn.active_chat_tab = tab;
 
-            return Task::batch([
-                scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                ),
-                text_input::focus(text_input::Id::from(InputId::ChatInput)),
-            ]);
+            return self.handle_show_chat_view();
         }
         Task::none()
     }

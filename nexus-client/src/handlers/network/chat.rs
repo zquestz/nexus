@@ -2,9 +2,8 @@
 
 use crate::NexusApp;
 use crate::i18n::t_args;
-use crate::types::{ChatMessage, ChatTab, Message, ScrollableId};
+use crate::types::{ChatMessage, ChatTab, Message};
 use iced::Task;
-use iced::widget::scrollable;
 
 impl NexusApp {
     /// Add chat message and auto-scroll if this is the active connection
@@ -26,11 +25,8 @@ impl NexusApp {
                 conn.unread_tabs.insert(ChatTab::Server);
             }
 
-            if self.active_connection == Some(connection_id) && conn.chat_auto_scroll {
-                return scrollable::snap_to(
-                    ScrollableId::ChatMessages.into(),
-                    scrollable::RelativeOffset::END,
-                );
+            if self.active_connection == Some(connection_id) {
+                return self.scroll_chat_if_visible();
             }
         }
         Task::none()

@@ -159,6 +159,10 @@ impl NexusApp {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
+        } else if self.active_connection.is_some() {
+            // In chat view, Tab refocuses the chat input
+            self.focused_field = InputId::ChatInput;
+            return text_input::focus(text_input::Id::from(InputId::ChatInput));
         } else if self.active_connection.is_none() {
             // On connection screen, cycle through fields
             let next_field = match self.focused_field {
