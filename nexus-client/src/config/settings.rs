@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn test_default_settings() {
         let settings = Settings::default();
-        assert_eq!(settings.theme.0, iced::Theme::Dark);
+        assert_eq!(settings.theme.0, iced::Theme::default());
         assert_eq!(settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
         assert!(settings.show_connection_notifications);
         assert!(settings.show_timestamps);

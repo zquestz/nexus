@@ -40,14 +40,11 @@ pub struct Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use settings::CHAT_FONT_SIZE_DEFAULT;
 
     #[test]
     fn test_default_config() {
         let config = Config::default();
+        // Only test Config-level defaults; Settings defaults are tested in settings.rs
         assert_eq!(config.bookmarks.len(), 0);
-        assert_eq!(config.settings.theme.0, iced::Theme::Dark);
-        assert_eq!(config.settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
-        assert!(config.settings.show_connection_notifications);
     }
 }
