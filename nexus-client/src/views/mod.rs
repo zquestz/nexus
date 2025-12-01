@@ -8,6 +8,7 @@ pub(crate) mod constants;
 mod fingerprint;
 mod layout;
 mod server_list;
+mod settings;
 mod user_list;
 mod users;
 

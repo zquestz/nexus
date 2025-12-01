@@ -101,6 +101,7 @@ impl NexusApp {
                     ActivePanel::AddUser => return self.update(Message::CancelAddUser),
                     ActivePanel::EditUser => return self.update(Message::CancelEditUser),
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
+                    ActivePanel::Settings => return self.update(Message::CancelSettings),
                     ActivePanel::None => {}
                 }
             }
@@ -159,6 +160,9 @@ impl NexusApp {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
+        } else if self.ui_state.active_panel == ActivePanel::Settings {
+            // Settings panel has no text inputs yet, just return
+            return Task::none();
         } else if self.active_connection.is_some() {
             // In chat view, Tab refocuses the chat input
             self.focused_field = InputId::ChatInput;

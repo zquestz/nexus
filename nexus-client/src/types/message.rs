@@ -1,5 +1,7 @@
 //! Message types for the Elm-style architecture
 
+use iced::Theme;
+
 use super::{ChatTab, NetworkConnection, ServerMessage};
 
 /// Messages that drive the application state machine
@@ -123,8 +125,14 @@ pub enum Message {
     ToggleBroadcast,
     /// Toolbar: Toggle Edit User panel
     ToggleEditUser,
-    /// Toolbar: Toggle light/dark theme
-    ToggleTheme,
+    /// Settings panel: Cancel button pressed (restore original settings)
+    CancelSettings,
+    /// Settings panel: Save button pressed (persist to disk)
+    SaveSettings,
+    /// Toolbar: Toggle Settings panel
+    ToggleSettings,
+    /// Settings panel: Theme selected from picker
+    ThemeSelected(Theme),
     /// Toolbar: Toggle user list sidebar
     ToggleUserList,
     /// User edit panel: Update button pressed (stage 2)

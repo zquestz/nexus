@@ -1,9 +1,8 @@
 //! UI panel toggles
 
 use crate::NexusApp;
-use crate::config::ThemePreference;
 use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, InputId, Message};
+use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
 use iced::Task;
 use iced::widget::text_input;
 
@@ -92,21 +91,54 @@ impl NexusApp {
         Task::none()
     }
 
-    // ==================== Theme ====================
+    // ==================== Settings ====================
 
-    /// Toggle between light and dark theme
-    pub fn handle_toggle_theme(&mut self) -> Task<Message> {
-        self.config.theme = match self.config.theme {
-            ThemePreference::Light => ThemePreference::Dark,
-            ThemePreference::Dark => ThemePreference::Light,
-        };
+    /// Show Settings panel (does nothing if already shown)
+    ///
+    /// Takes a snapshot of the current config so it can be restored on cancel.
+    pub fn handle_toggle_settings(&mut self) -> Task<Message> {
+        if self.ui_state.active_panel == ActivePanel::Settings {
+            return Task::none();
+        }
 
+        // Snapshot current config for potential cancel/restore
+        self.settings_form = Some(SettingsFormState::new(&self.config));
+        self.ui_state.active_panel = ActivePanel::Settings;
+        Task::none()
+    }
+
+    /// Cancel settings panel and restore original config
+    pub fn handle_cancel_settings(&mut self) -> Task<Message> {
+        // Restore original config from snapshot
+        if let Some(settings_form) = self.settings_form.take() {
+            self.config = settings_form.original_config;
+        }
+
+        self.handle_show_chat_view()
+    }
+
+    /// Save settings to disk and close panel
+    pub fn handle_save_settings(&mut self) -> Task<Message> {
+        // Clear the snapshot (no need to restore)
+        self.settings_form = None;
+
+        // Save config to disk
         if let Err(e) = self.config.save() {
             self.connection_form.error = Some(t_args(
-                "err-failed-save-theme",
+                "err-failed-save-settings",
                 &[("error", &e.to_string())],
             ));
         }
+
+        self.handle_show_chat_view()
+    }
+
+    /// Handle theme selection from the picker (live preview)
+    ///
+    /// Updates the config theme immediately for live preview.
+    /// The change is persisted when Save is clicked, or reverted on Cancel.
+    pub fn handle_theme_selected(&mut self, theme: iced::Theme) -> Task<Message> {
+        self.config.theme = theme.into();
         Task::none()
     }
 }

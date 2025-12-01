@@ -28,6 +28,7 @@ title-user-create = Gebruiker aanmaken
 title-user-edit = Gebruiker bewerken
 title-update-user = Gebruiker bijwerken
 title-connected = Verbonden
+title-settings = Instellingen
 title-bookmarks = Bladwijzers
 title-users = Gebruikers
 title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
@@ -59,6 +60,7 @@ label-enabled = Ingeschakeld
 label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:
+label-theme = Thema
 
 # =============================================================================
 # Permission Display Names
@@ -85,7 +87,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = Gebruiker aanmaken
 tooltip-user-edit = Gebruiker bewerken
-tooltip-toggle-theme = Thema wisselen
+tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen
 tooltip-hide-user-list = Gebruikerslijst verbergen
@@ -186,7 +188,7 @@ err-message-required = Bericht is vereist
 # =============================================================================
 
 err-failed-save-config = Kan configuratie niet opslaan: { $error }
-err-failed-save-theme = Kan themavoorkeur niet opslaan: { $error }
+err-failed-save-settings = Kan instellingen niet opslaan: { $error }
 err-invalid-port-bookmark = Ongeldige poort in bladwijzer: { $name }
 err-failed-send-broadcast = Kan broadcast niet verzenden: { $error }
 err-failed-send-message = Kan bericht niet verzenden: { $error }

@@ -28,6 +28,7 @@ title-user-create = Создать пользователя
 title-user-edit = Редактировать пользователя
 title-update-user = Обновить пользователя
 title-connected = Подключённые
+title-settings = Настройки
 title-bookmarks = Закладки
 title-users = Пользователи
 title-fingerprint-mismatch = Отпечаток сертификата не совпадает!
@@ -59,6 +60,7 @@ label-enabled = Включён
 label-permissions = Разрешения:
 label-expected-fingerprint = Ожидаемый отпечаток:
 label-received-fingerprint = Полученный отпечаток:
+label-theme = Тема
 
 # =============================================================================
 # Permission Display Names
@@ -85,7 +87,7 @@ tooltip-chat = Чат
 tooltip-broadcast = Рассылка
 tooltip-user-create = Создать пользователя
 tooltip-user-edit = Редактировать пользователя
-tooltip-toggle-theme = Переключить тему
+tooltip-settings = Настройки
 tooltip-hide-bookmarks = Скрыть закладки
 tooltip-show-bookmarks = Показать закладки
 tooltip-hide-user-list = Скрыть список пользователей
@@ -186,7 +188,7 @@ err-message-required = Требуется сообщение
 # =============================================================================
 
 err-failed-save-config = Не удалось сохранить конфигурацию: { $error }
-err-failed-save-theme = Не удалось сохранить настройку темы: { $error }
+err-failed-save-settings = Не удалось сохранить настройки: { $error }
 err-invalid-port-bookmark = Недопустимый порт в закладке: { $name }
 err-failed-send-broadcast = Не удалось отправить рассылку: { $error }
 err-failed-send-message = Не удалось отправить сообщение: { $error }

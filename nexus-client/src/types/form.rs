@@ -1,5 +1,6 @@
 //! Connection and user management form state
 
+use crate::config::Config;
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 /// User edit flow state (two-stage process)
@@ -165,5 +166,28 @@ impl UserManagementState {
             enabled,
             permissions: perm_map,
         };
+    }
+}
+
+// =============================================================================
+// Settings Form State
+// =============================================================================
+
+/// Settings panel form state
+///
+/// Stores a snapshot of the configuration when the settings panel is opened,
+/// allowing the user to cancel and restore the original settings.
+#[derive(Debug, Clone)]
+pub struct SettingsFormState {
+    /// Original config snapshot to restore on cancel
+    pub original_config: Config,
+}
+
+impl SettingsFormState {
+    /// Create a new settings form state with a snapshot of the current config
+    pub fn new(config: &Config) -> Self {
+        Self {
+            original_config: config.clone(),
+        }
     }
 }

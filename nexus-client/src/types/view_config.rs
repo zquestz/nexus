@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// Holds all the state needed to render the main layout. Uses references to
 /// sub-structs for cleaner organization and simpler construction.
 pub struct ViewConfig<'a> {
-    /// Theme for views that need concrete colors (e.g., rich_text spans)
+    /// Current theme for styling
     pub theme: Theme,
 
     /// Active server connections by connection_id

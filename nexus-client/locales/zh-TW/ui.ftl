@@ -27,6 +27,7 @@ title-user-create = 建立使用者
 title-user-edit = 編輯使用者
 title-update-user = 更新使用者
 title-connected = 已連線
+title-settings = 設定
 title-bookmarks = 書籤
 title-users = 使用者
 title-fingerprint-mismatch = 憑證指紋不符！
@@ -58,6 +59,7 @@ label-enabled = 啟用
 label-permissions = 權限：
 label-expected-fingerprint = 預期指紋：
 label-received-fingerprint = 收到的指紋：
+label-theme = 主題
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = 聊天
 tooltip-broadcast = 廣播
 tooltip-user-create = 建立使用者
 tooltip-user-edit = 編輯使用者
-tooltip-toggle-theme = 切換主題
+tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤
 tooltip-hide-user-list = 隱藏使用者清單
@@ -134,9 +136,9 @@ msg-user-kicked-success = 使用者已成功踢除
 msg-broadcast-sent = 廣播已成功傳送
 msg-user-created = 使用者已成功建立
 msg-user-deleted = 使用者已成功刪除
-msg-user-updated = 使用者已成功更新
+msg-user-updated = 使用者更新成功
 msg-permissions-updated = 您的權限已更新
-msg-topic-updated = 主題已成功更新
+msg-topic-updated = 主題更新成功
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -185,7 +187,7 @@ err-message-required = 訊息為必填
 # =============================================================================
 
 err-failed-save-config = 儲存設定失敗：{ $error }
-err-failed-save-theme = 儲存主題偏好失敗：{ $error }
+err-failed-save-settings = 儲存設定失敗：{ $error }
 err-invalid-port-bookmark = 書籤中的連接埠無效：{ $name }
 err-failed-send-broadcast = 傳送廣播失敗：{ $error }
 err-failed-send-message = 傳送訊息失敗：{ $error }

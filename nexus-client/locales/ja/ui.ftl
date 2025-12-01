@@ -27,6 +27,7 @@ title-user-create = ユーザー作成
 title-user-edit = ユーザー編集
 title-update-user = ユーザー更新
 title-connected = 接続中
+title-settings = 設定
 title-bookmarks = ブックマーク
 title-users = ユーザー
 title-fingerprint-mismatch = 証明書のフィンガープリントが一致しません！
@@ -58,6 +59,7 @@ label-enabled = 有効
 label-permissions = 権限:
 label-expected-fingerprint = 期待されるフィンガープリント:
 label-received-fingerprint = 受信したフィンガープリント:
+label-theme = テーマ
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = チャット
 tooltip-broadcast = ブロードキャスト
 tooltip-user-create = ユーザー作成
 tooltip-user-edit = ユーザー編集
-tooltip-toggle-theme = テーマ切替
+tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示
 tooltip-hide-user-list = ユーザーリストを隠す
@@ -136,7 +138,7 @@ msg-user-created = ユーザーを正常に作成しました
 msg-user-deleted = ユーザーを正常に削除しました
 msg-user-updated = ユーザーを正常に更新しました
 msg-permissions-updated = 権限が更新されました
-msg-topic-updated = トピックを正常に更新しました
+msg-topic-updated = トピックが正常に更新されました
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -185,7 +187,7 @@ err-message-required = メッセージは必須です
 # =============================================================================
 
 err-failed-save-config = 設定の保存に失敗しました: { $error }
-err-failed-save-theme = テーマ設定の保存に失敗しました: { $error }
+err-failed-save-settings = 設定の保存に失敗しました: { $error }
 err-invalid-port-bookmark = ブックマークのポートが無効です: { $name }
 err-failed-send-broadcast = ブロードキャストの送信に失敗しました: { $error }
 err-failed-send-message = メッセージの送信に失敗しました: { $error }

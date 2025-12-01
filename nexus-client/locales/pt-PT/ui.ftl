@@ -27,6 +27,7 @@ title-user-create = Criar Utilizador
 title-user-edit = Editar Utilizador
 title-update-user = Actualizar Utilizador
 title-connected = Ligados
+title-settings = Definições
 title-bookmarks = Marcadores
 title-users = Utilizadores
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
@@ -58,6 +59,7 @@ label-enabled = Activo
 label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
 label-received-fingerprint = Impressão digital recebida:
+label-theme = Tema
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Difusão
 tooltip-user-create = Criar Utilizador
 tooltip-user-edit = Editar Utilizador
-tooltip-toggle-theme = Alternar Tema
+tooltip-settings = Definições
 tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
 tooltip-hide-user-list = Ocultar Lista de Utilizadores
@@ -136,7 +138,8 @@ msg-user-created = Utilizador criado com sucesso
 msg-user-deleted = Utilizador eliminado com sucesso
 msg-user-updated = Utilizador actualizado com sucesso
 msg-permissions-updated = As suas permissões foram actualizadas
-msg-topic-updated = Tópico actualizado com sucesso
+msg-topic-updated = Tópico atualizado com sucesso
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -185,7 +188,7 @@ err-message-required = A mensagem é obrigatória
 # =============================================================================
 
 err-failed-save-config = Falha ao guardar configuração: { $error }
-err-failed-save-theme = Falha ao guardar preferência de tema: { $error }
+err-failed-save-settings = Falha ao guardar definições: { $error }
 err-invalid-port-bookmark = Porta inválida no marcador: { $name }
 err-failed-send-broadcast = Falha ao enviar difusão: { $error }
 err-failed-send-message = Falha ao enviar mensagem: { $error }

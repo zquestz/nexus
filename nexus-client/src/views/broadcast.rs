@@ -4,24 +4,12 @@ use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, separator_style, shaped_text, shaped_text_wrapped,
+    error_text_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::{Space, button, column, container, row, text_input};
+use iced::widget::button as btn;
+use iced::widget::{Space, button, container, row, text_input};
 use iced::{Center, Element, Fill};
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Create a horizontal separator line
-fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, 1.0))
-        .width(Fill)
-        .height(1.0)
-        .style(separator_style)
-        .into()
-}
 
 // ============================================================================
 // Broadcast View
@@ -54,6 +42,11 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .font(MONOSPACE_FONT);
 
     let buttons = row![
+        Space::with_width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::CancelBroadcast)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
         if can_send {
             button(shaped_text(t("button-send")).size(TEXT_SIZE))
                 .on_press(Message::SendBroadcastPressed)
@@ -61,9 +54,6 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         } else {
             button(shaped_text(t("button-send")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
         },
-        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
-            .on_press(Message::CancelBroadcast)
-            .padding(BUTTON_PADDING),
     ]
     .spacing(ELEMENT_SPACING);
 
@@ -95,16 +85,10 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    column![
-        separator(),
-        container(form)
-            .width(Fill)
-            .height(Fill)
-            .center(Fill)
-            .style(content_background_style),
-        separator(),
-    ]
-    .width(Fill)
-    .height(Fill)
-    .into()
+    container(form)
+        .width(Fill)
+        .height(Fill)
+        .center(Fill)
+        .style(content_background_style)
+        .into()
 }

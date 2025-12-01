@@ -28,6 +28,7 @@ title-user-create = Créer un utilisateur
 title-user-edit = Modifier l'utilisateur
 title-update-user = Mettre à jour l'utilisateur
 title-connected = Connectés
+title-settings = Paramètres
 title-bookmarks = Signets
 title-users = Utilisateurs
 title-fingerprint-mismatch = Empreinte du certificat non concordante !
@@ -59,6 +60,7 @@ label-enabled = Activé
 label-permissions = Permissions :
 label-expected-fingerprint = Empreinte attendue :
 label-received-fingerprint = Empreinte reçue :
+label-theme = Thème
 
 # =============================================================================
 # Permission Display Names
@@ -85,7 +87,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Diffusion
 tooltip-user-create = Créer un utilisateur
 tooltip-user-edit = Modifier l'utilisateur
-tooltip-toggle-theme = Changer le thème
+tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets
 tooltip-hide-user-list = Masquer la liste des utilisateurs
@@ -186,7 +188,7 @@ err-message-required = Le message est requis
 # =============================================================================
 
 err-failed-save-config = Échec de l'enregistrement de la configuration : { $error }
-err-failed-save-theme = Échec de l'enregistrement du thème : { $error }
+err-failed-save-settings = Échec de l'enregistrement des paramètres : { $error }
 err-invalid-port-bookmark = Port invalide dans le signet : { $name }
 err-failed-send-broadcast = Échec de l'envoi de la diffusion : { $error }
 err-failed-send-message = Échec de l'envoi du message : { $error }

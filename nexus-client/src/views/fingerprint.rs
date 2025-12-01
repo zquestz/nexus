@@ -9,6 +9,7 @@ use crate::style::{
     modal_overlay_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{FingerprintMismatch, Message};
+use iced::widget::button as btn;
 use iced::widget::{Space, button, column, container, row};
 use iced::{Element, Length};
 
@@ -59,7 +60,8 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
             .center(),
     )
     .on_press(Message::AcceptNewFingerprint)
-    .padding(BUTTON_PADDING);
+    .padding(BUTTON_PADDING)
+    .style(btn::danger);
 
     let cancel_button = button(
         shaped_text(t("button-cancel"))
@@ -68,9 +70,15 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
             .center(),
     )
     .on_press(Message::CancelFingerprintMismatch)
-    .padding(BUTTON_PADDING);
+    .padding(BUTTON_PADDING)
+    .style(btn::secondary);
 
-    let button_row = row![accept_button, cancel_button].spacing(ELEMENT_SPACING);
+    let button_row = row![
+        Space::with_width(Length::Fill),
+        cancel_button,
+        accept_button
+    ]
+    .spacing(ELEMENT_SPACING);
 
     let dialog = column![
         title,

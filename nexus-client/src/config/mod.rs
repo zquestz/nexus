@@ -198,7 +198,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.bookmarks.len(), 0);
-        assert_eq!(config.theme, ThemePreference::Dark);
+        assert_eq!(config.theme.0, iced::Theme::Dark);
         assert_eq!(config.locale, crate::i18n::DEFAULT_LOCALE);
     }
 

@@ -28,6 +28,7 @@ title-user-create = 创建用户
 title-user-edit = 编辑用户
 title-update-user = 更新用户
 title-connected = 已连接
+title-settings = 设置
 title-bookmarks = 书签
 title-users = 用户
 title-fingerprint-mismatch = 证书指纹不匹配！
@@ -59,6 +60,7 @@ label-enabled = 已启用
 label-permissions = 权限：
 label-expected-fingerprint = 预期指纹：
 label-received-fingerprint = 收到的指纹：
+label-theme = 主题
 
 # =============================================================================
 # Permission Display Names
@@ -85,7 +87,7 @@ tooltip-chat = 聊天
 tooltip-broadcast = 广播
 tooltip-user-create = 创建用户
 tooltip-user-edit = 编辑用户
-tooltip-toggle-theme = 切换主题
+tooltip-settings = 设置
 tooltip-hide-bookmarks = 隐藏书签
 tooltip-show-bookmarks = 显示书签
 tooltip-hide-user-list = 隐藏用户列表
@@ -137,7 +139,7 @@ msg-user-created = 用户已成功创建
 msg-user-deleted = 用户已成功删除
 msg-user-updated = 用户已成功更新
 msg-permissions-updated = 您的权限已更新
-msg-topic-updated = 主题已成功更新
+msg-topic-updated = 主题更新成功
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -186,7 +188,7 @@ err-message-required = 消息为必填项
 # =============================================================================
 
 err-failed-save-config = 保存配置失败：{ $error }
-err-failed-save-theme = 保存主题偏好失败：{ $error }
+err-failed-save-settings = 保存设置失败：{ $error }
 err-invalid-port-bookmark = 书签中的端口无效：{ $name }
 err-failed-send-broadcast = 发送广播失败：{ $error }
 err-failed-send-message = 发送消息失败：{ $error }

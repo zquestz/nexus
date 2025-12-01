@@ -27,6 +27,7 @@ title-user-create = User Create
 title-user-edit = User Edit
 title-update-user = Update User
 title-connected = Connected
+title-settings = Settings
 title-bookmarks = Bookmarks
 title-users = Users
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
@@ -58,6 +59,7 @@ label-enabled = Enabled
 label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
+label-theme = Theme
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = User Create
 tooltip-user-edit = User Edit
-tooltip-toggle-theme = Toggle Theme
+tooltip-settings = Settings
 tooltip-hide-bookmarks = Hide Bookmarks
 tooltip-show-bookmarks = Show Bookmarks
 tooltip-hide-user-list = Hide User List
@@ -138,6 +140,8 @@ msg-user-updated = User updated successfully
 msg-permissions-updated = Your permissions have been updated
 msg-topic-updated = Topic updated successfully
 
+
+
 # =============================================================================
 # Dynamic Messages (with parameters)
 # =============================================================================
@@ -185,7 +189,7 @@ err-message-required = Message is required
 # =============================================================================
 
 err-failed-save-config = Failed to save config: { $error }
-err-failed-save-theme = Failed to save theme preference: { $error }
+err-failed-save-settings = Failed to save settings: { $error }
 err-invalid-port-bookmark = Invalid port in bookmark: { $name }
 err-failed-send-broadcast = Failed to send broadcast: { $error }
 err-failed-send-message = Failed to send message: { $error }

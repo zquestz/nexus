@@ -7,6 +7,7 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
+use iced::widget::button as btn;
 use iced::widget::{Space, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
@@ -114,33 +115,41 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'_, Message>> = vec![
-                if can_save {
-                    button(shaped_text(t("button-save")).size(TEXT_SIZE))
-                        .on_press(Message::SaveBookmark)
-                        .padding(BUTTON_PADDING)
-                        .into()
-                } else {
-                    button(shaped_text(t("button-save")).size(TEXT_SIZE))
-                        .padding(BUTTON_PADDING)
-                        .into()
-                },
                 button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
                     .on_press(Message::CancelBookmarkEdit)
                     .padding(BUTTON_PADDING)
+                    .style(btn::secondary)
                     .into(),
             ];
 
-            // Add Delete button only when editing (not adding)
+            // Add Delete button in middle when editing (not adding)
             if let BookmarkEditMode::Edit(index) = state.mode {
                 buttons.push(
                     button(shaped_text(t("button-delete")).size(TEXT_SIZE))
                         .on_press(Message::DeleteBookmark(index))
                         .padding(BUTTON_PADDING)
+                        .style(btn::danger)
                         .into(),
                 );
             }
 
-            row(buttons).spacing(ELEMENT_SPACING).into()
+            // Save is the primary action, goes on the right
+            buttons.push(if can_save {
+                button(shaped_text(t("button-save")).size(TEXT_SIZE))
+                    .on_press(Message::SaveBookmark)
+                    .padding(BUTTON_PADDING)
+                    .into()
+            } else {
+                button(shaped_text(t("button-save")).size(TEXT_SIZE))
+                    .padding(BUTTON_PADDING)
+                    .into()
+            });
+
+            {
+                let mut row_items: Vec<Element<'_, Message>> = vec![Space::with_width(Fill).into()];
+                row_items.extend(buttons);
+                row(row_items).spacing(ELEMENT_SPACING).into()
+            }
         },
     ]);
 

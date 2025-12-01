@@ -14,6 +14,8 @@ pub enum ActivePanel {
     EditUser,
     /// Broadcast panel
     Broadcast,
+    /// Settings panel
+    Settings,
 }
 
 /// UI visibility state for toggleable panels

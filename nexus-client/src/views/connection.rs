@@ -7,7 +7,7 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
-use iced::widget::{Space, button, checkbox, column, container, text, text_input};
+use iced::widget::{Space, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -111,7 +111,9 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
             .text_shaping(text::Shaping::Advanced)
             .into(),
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        connect_button.into(),
+        row![Space::with_width(Fill), connect_button]
+            .spacing(ELEMENT_SPACING)
+            .into(),
     ]);
 
     let content = column(column_items)

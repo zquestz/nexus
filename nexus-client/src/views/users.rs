@@ -5,56 +5,36 @@ use crate::i18n::{t, translate_permission};
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, separator_style, shaped_text, shaped_text_wrapped,
+    error_text_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{
     ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
 };
-use iced::widget::{Column, Space, button, checkbox, column, container, row, text, text_input};
+use iced::widget::button as btn;
+use iced::widget::{Column, Space, button, checkbox, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/// Create a horizontal separator line
-fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, 1.0))
-        .width(Fill)
-        .height(1.0)
-        .style(separator_style)
-        .into()
-}
-
-/// Helper function to wrap content with top and bottom border separators
-fn wrap_with_borders<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
-    column![separator(), content, separator()]
-        .width(Fill)
-        .height(Fill)
-        .into()
-}
-
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
-    wrap_with_borders(
-        container(Space::new(Fill, Fill))
-            .width(Fill)
-            .height(Fill)
-            .style(content_background_style)
-            .into(),
-    )
+    container(Space::new(Fill, Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(content_background_style)
+        .into()
 }
 
 /// Wrap a form in a centered container with background styling
 fn wrap_form<'a>(form: Column<'a, Message>) -> Element<'a, Message> {
-    wrap_with_borders(
-        container(form)
-            .width(Fill)
-            .height(Fill)
-            .center(Fill)
-            .style(content_background_style)
-            .into(),
-    )
+    container(form)
+        .width(Fill)
+        .height(Fill)
+        .center(Fill)
+        .style(content_background_style)
+        .into()
 }
 
 /// Build permission checkboxes split into two columns
@@ -179,7 +159,8 @@ fn add_user_view<'a>(
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelAddUser)
-        .padding(BUTTON_PADDING);
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
 
     let mut create_items: Vec<Element<'a, Message>> = vec![create_title.into()];
 
@@ -207,7 +188,7 @@ fn add_user_view<'a>(
         permissions_title.into(),
         permissions_row,
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![create_button, cancel_button]
+        row![Space::with_width(Fill), cancel_button, create_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);
@@ -265,13 +246,17 @@ fn select_user_view<'a>(
         button(shaped_text(t("button-delete")).size(TEXT_SIZE))
             .on_press(Message::DeleteUserPressed(username.to_string()))
             .padding(BUTTON_PADDING)
+            .style(btn::danger)
     } else {
-        button(shaped_text(t("button-delete")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelEditUser)
-        .padding(BUTTON_PADDING);
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
 
     let mut edit_items: Vec<Element<'a, Message>> = vec![edit_title.into()];
 
@@ -293,9 +278,14 @@ fn select_user_view<'a>(
     edit_items.extend([
         username_input.into(),
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![edit_button, delete_button, cancel_button]
-            .spacing(ELEMENT_SPACING)
-            .into(),
+        row![
+            Space::with_width(Fill),
+            cancel_button,
+            delete_button,
+            edit_button
+        ]
+        .spacing(ELEMENT_SPACING)
+        .into(),
     ]);
 
     let edit_form = Column::with_children(edit_items)
@@ -400,7 +390,8 @@ fn update_user_view<'a>(
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::CancelEditUser)
-        .padding(BUTTON_PADDING);
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
 
     let mut update_items: Vec<Element<'a, Message>> = vec![update_title.into()];
 
@@ -428,7 +419,7 @@ fn update_user_view<'a>(
         permissions_title.into(),
         permissions_row,
         Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![update_button, cancel_button]
+        row![Space::with_width(Fill), cancel_button, update_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);

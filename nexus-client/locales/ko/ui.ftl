@@ -27,6 +27,7 @@ title-user-create = 사용자 생성
 title-user-edit = 사용자 편집
 title-update-user = 사용자 업데이트
 title-connected = 연결됨
+title-settings = 설정
 title-bookmarks = 북마크
 title-users = 사용자
 title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
@@ -58,6 +59,7 @@ label-enabled = 활성화
 label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
 label-received-fingerprint = 수신된 지문:
+label-theme = 테마
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = 채팅
 tooltip-broadcast = 브로드캐스트
 tooltip-user-create = 사용자 생성
 tooltip-user-edit = 사용자 편집
-tooltip-toggle-theme = 테마 전환
+tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
 tooltip-hide-user-list = 사용자 목록 숨기기
@@ -185,7 +187,7 @@ err-message-required = 메시지는 필수입니다
 # =============================================================================
 
 err-failed-save-config = 설정 저장 실패: { $error }
-err-failed-save-theme = 테마 설정 저장 실패: { $error }
+err-failed-save-settings = 설정 저장 실패: { $error }
 err-invalid-port-bookmark = 북마크의 포트가 잘못되었습니다: { $name }
 err-failed-send-broadcast = 브로드캐스트 전송 실패: { $error }
 err-failed-send-message = 메시지 전송 실패: { $error }

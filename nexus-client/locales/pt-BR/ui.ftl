@@ -27,6 +27,7 @@ title-user-create = Criar Usuário
 title-user-edit = Editar Usuário
 title-update-user = Atualizar Usuário
 title-connected = Conectados
+title-settings = Configurações
 title-bookmarks = Favoritos
 title-users = Usuários
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
@@ -58,6 +59,7 @@ label-enabled = Habilitado
 label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
 label-received-fingerprint = Impressão digital recebida:
+label-theme = Tema
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Difusão
 tooltip-user-create = Criar Usuário
 tooltip-user-edit = Editar Usuário
-tooltip-toggle-theme = Alternar Tema
+tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos
 tooltip-hide-user-list = Ocultar Lista de Usuários
@@ -185,7 +187,7 @@ err-message-required = A mensagem é obrigatória
 # =============================================================================
 
 err-failed-save-config = Falha ao salvar configuração: { $error }
-err-failed-save-theme = Falha ao salvar preferência de tema: { $error }
+err-failed-save-settings = Falha ao salvar configurações: { $error }
 err-invalid-port-bookmark = Porta inválida no favorito: { $name }
 err-failed-send-broadcast = Falha ao enviar difusão: { $error }
 err-failed-send-message = Falha ao enviar mensagem: { $error }

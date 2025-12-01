@@ -27,6 +27,7 @@ title-user-create = Crea utente
 title-user-edit = Modifica utente
 title-update-user = Aggiorna utente
 title-connected = Connessi
+title-settings = Impostazioni
 title-bookmarks = Segnalibri
 title-users = Utenti
 title-fingerprint-mismatch = Impronta del certificato non corrispondente!
@@ -58,6 +59,7 @@ label-enabled = Abilitato
 label-permissions = Permessi:
 label-expected-fingerprint = Impronta prevista:
 label-received-fingerprint = Impronta ricevuta:
+label-theme = Tema
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = Crea utente
 tooltip-user-edit = Modifica utente
-tooltip-toggle-theme = Cambia tema
+tooltip-settings = Impostazioni
 tooltip-hide-bookmarks = Nascondi segnalibri
 tooltip-show-bookmarks = Mostra segnalibri
 tooltip-hide-user-list = Nascondi lista utenti
@@ -138,6 +140,8 @@ msg-user-updated = Utente aggiornato con successo
 msg-permissions-updated = I tuoi permessi sono stati aggiornati
 msg-topic-updated = Argomento aggiornato con successo
 
+
+
 # =============================================================================
 # Dynamic Messages (with parameters)
 # =============================================================================
@@ -185,7 +189,7 @@ err-message-required = Il messaggio è obbligatorio
 # =============================================================================
 
 err-failed-save-config = Impossibile salvare la configurazione: { $error }
-err-failed-save-theme = Impossibile salvare la preferenza del tema: { $error }
+err-failed-save-settings = Impossibile salvare le impostazioni: { $error }
 err-invalid-port-bookmark = Porta non valida nel segnalibro: { $name }
 err-failed-send-broadcast = Impossibile inviare il broadcast: { $error }
 err-failed-send-message = Impossibile inviare il messaggio: { $error }

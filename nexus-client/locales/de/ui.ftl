@@ -27,6 +27,7 @@ title-user-create = Benutzer erstellen
 title-user-edit = Benutzer bearbeiten
 title-update-user = Benutzer aktualisieren
 title-connected = Verbunden
+title-settings = Einstellungen
 title-bookmarks = Lesezeichen
 title-users = Benutzer
 title-fingerprint-mismatch = Zertifikat-Fingerabdruck stimmt nicht überein!
@@ -58,6 +59,7 @@ label-enabled = Aktiviert
 label-permissions = Berechtigungen:
 label-expected-fingerprint = Erwarteter Fingerabdruck:
 label-received-fingerprint = Empfangener Fingerabdruck:
+label-theme = Design
 
 # =============================================================================
 # Permission Display Names
@@ -84,7 +86,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Rundnachricht
 tooltip-user-create = Benutzer erstellen
 tooltip-user-edit = Benutzer bearbeiten
-tooltip-toggle-theme = Design wechseln
+tooltip-settings = Einstellungen
 tooltip-hide-bookmarks = Lesezeichen ausblenden
 tooltip-show-bookmarks = Lesezeichen anzeigen
 tooltip-hide-user-list = Benutzerliste ausblenden
@@ -185,7 +187,7 @@ err-message-required = Nachricht ist erforderlich
 # =============================================================================
 
 err-failed-save-config = Konfiguration konnte nicht gespeichert werden: { $error }
-err-failed-save-theme = Design-Einstellung konnte nicht gespeichert werden: { $error }
+err-failed-save-settings = Einstellungen konnten nicht gespeichert werden: { $error }
 err-invalid-port-bookmark = Ungültiger Port im Lesezeichen: { $name }
 err-failed-send-broadcast = Rundnachricht konnte nicht gesendet werden: { $error }
 err-failed-send-message = Nachricht konnte nicht gesendet werden: { $error }

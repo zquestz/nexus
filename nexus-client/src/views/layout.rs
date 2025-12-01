@@ -35,8 +35,8 @@ fn separator<'a>() -> Element<'a, Message> {
 
 use super::{
     bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
-    connection::connection_form_view, server_list::server_list_panel, user_list::user_list_panel,
-    users::users_view,
+    connection::connection_form_view, server_list::server_list_panel, settings::settings_view,
+    user_list::user_list_panel, users::users_view,
 };
 
 /// Helper function to create an invisible/hidden panel
@@ -104,7 +104,16 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             // Connection exists but couldn't get all required state
             empty_content_view()
         } else {
-            connection_form_view(config.connection_form)
+            // Not connected - show connection form, with Settings overlay if active
+            let conn_form = connection_form_view(config.connection_form);
+            if config.ui_state.active_panel == ActivePanel::Settings {
+                stack![conn_form, settings_view(config.theme.clone())]
+                    .width(Fill)
+                    .height(Fill)
+                    .into()
+            } else {
+                conn_form
+            }
         };
 
         column![separator(), content, separator()]
@@ -273,12 +282,12 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
             container(shaped_text("")).width(Fill),
             // Collapse buttons group (with theme toggle)
             row![
-                // Theme toggle button
+                // Settings button
                 tooltip(
-                    button(icon::sun().size(TOOLBAR_ICON_SIZE))
-                        .on_press(Message::ToggleTheme)
-                        .style(transparent_icon_button_style),
-                    container(shaped_text(t("tooltip-toggle-theme")).size(TOOLTIP_TEXT_SIZE))
+                    button(icon::cog().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleSettings)
+                        .style(toolbar_button_style(active_panel == ActivePanel::Settings)),
+                    container(shaped_text(t("tooltip-settings")).size(TOOLTIP_TEXT_SIZE))
                         .padding(TOOLTIP_BACKGROUND_PADDING)
                         .style(tooltip_container_style),
                     tooltip::Position::Bottom,
@@ -382,7 +391,7 @@ fn server_content_view<'a>(
     theme: iced::Theme,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
-    let chat = chat_view(conn, message_input, theme);
+    let chat = chat_view(conn, message_input, theme.clone());
 
     // Overlay panels on top when active
     match active_panel {
@@ -396,6 +405,10 @@ fn server_content_view<'a>(
                 .height(Fill)
                 .into()
         }
+        ActivePanel::Settings => stack![chat, settings_view(theme.clone())]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::None => chat,
     }
 }

@@ -16,11 +16,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use iced::widget::text_input;
 use iced::{Element, Subscription, Task, Theme};
 
-use config::ThemePreference;
 use style::{WINDOW_HEIGHT, WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_WIDTH_MIN};
 use types::{
     BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
-    ServerConnection, UiState, ViewConfig,
+    ServerConnection, SettingsFormState, UiState, ViewConfig,
 };
 
 /// Application entry point
@@ -79,6 +78,8 @@ struct NexusApp {
     // -------------------------------------------------------------------------
     /// UI panel visibility toggles
     ui_state: UiState,
+    /// Settings panel form state (present when settings panel is open)
+    settings_form: Option<SettingsFormState>,
 
     // -------------------------------------------------------------------------
     // Async / Transient
@@ -106,6 +107,7 @@ impl Default for NexusApp {
             focused_field: InputId::ServerName,
             // UI State
             ui_state: UiState::default(),
+            settings_form: None,
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
             bookmark_errors: HashMap::new(),
@@ -239,8 +241,13 @@ impl NexusApp {
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
             Message::ToggleEditUser => self.handle_toggle_edit_user(),
-            Message::ToggleTheme => self.handle_toggle_theme(),
             Message::ToggleUserList => self.handle_toggle_user_list(),
+
+            // Settings
+            Message::CancelSettings => self.handle_cancel_settings(),
+            Message::SaveSettings => self.handle_save_settings(),
+            Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
+            Message::ToggleSettings => self.handle_toggle_settings(),
 
             // Network events (async results)
             Message::BookmarkConnectionResult {
@@ -313,9 +320,6 @@ impl NexusApp {
 
     /// Get the current theme based on configuration
     fn theme(&self) -> Theme {
-        match self.config.theme {
-            ThemePreference::Light => Theme::Light,
-            ThemePreference::Dark => Theme::Dark,
-        }
+        self.config.theme.to_iced_theme()
     }
 }
