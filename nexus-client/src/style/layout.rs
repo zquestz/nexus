@@ -2,7 +2,7 @@
 //!
 //! All numeric constants for dimensions, sizes, spacing, and padding are defined here.
 //! Window constants are in the `window` module. Font constants are in the `fonts` module.
-//! Color constants are in the `palette` module.
+//! Color functions are in the `ui` module. Widget styles are in the `widgets` module.
 
 // ============================================================================
 // Padding

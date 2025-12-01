@@ -33,12 +33,6 @@ pub fn adjust_brightness(color: Color, amount: f32, lighten: bool) -> Color {
 // Background Colors
 // ============================================================================
 
-/// Main content area background
-/// Same as sidebar (base background color)
-pub fn content_background(theme: &Theme) -> Color {
-    theme.palette().background
-}
-
 /// Toolbar background
 /// In dark mode: 5% lighter than base
 /// In light mode: 5% darker than base

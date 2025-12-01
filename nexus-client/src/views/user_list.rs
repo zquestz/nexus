@@ -9,12 +9,12 @@ use crate::style::{
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
     USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
     alternating_row_style, chat, disabled_icon_button_style, icon_button_with_hover_style,
-    muted_text_style, primary_separator_style, shaped_text, sidebar_panel_style,
-    tooltip_container_style, ui, user_list_item_button_style,
+    muted_text_style, shaped_text, sidebar_panel_style, tooltip_container_style, ui,
+    user_list_item_button_style, user_toolbar_separator_style,
 };
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Color, Element, Fill};
+use iced::{Color, Element, Fill, Theme};
 
 // ============================================================================
 // Helper Functions
@@ -70,7 +70,7 @@ fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
     container(Space::new(Fill, SEPARATOR_HEIGHT))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
-        .style(primary_separator_style)
+        .style(user_toolbar_separator_style)
 }
 
 // ============================================================================
@@ -84,6 +84,7 @@ fn create_user_toolbar<'a>(
     target_is_admin: bool,
     current_user_is_admin: bool,
     permissions: &[String],
+    theme: &Theme,
 ) -> Row<'a, Message> {
     let username_owned = username.to_string();
     let is_self = username == current_username;
@@ -101,10 +102,9 @@ fn create_user_toolbar<'a>(
 
     // Info button (always show, disabled if no permission)
     let info_icon = icon_container(icon::info());
-    let theme_for_colors = iced::Theme::default();
-    let primary_color = theme_for_colors.palette().primary;
-    let icon_color = ui::icon_color(&theme_for_colors);
-    let danger_color = theme_for_colors.palette().danger;
+    let primary_color = theme.palette().primary;
+    let icon_color = ui::icon_color(theme);
+    let danger_color = theme.palette().danger;
     
     let info_button = if has_user_info_permission {
         let username_for_info = username_owned.clone();
@@ -166,7 +166,7 @@ fn create_user_toolbar<'a>(
 ///
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
-pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
+pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element<'a, Message> {
     let current_username = &conn.username;
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
@@ -200,7 +200,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
             .on_press(Message::UserListItemClicked(username_clone))
             .width(Fill)
             .padding(INPUT_PADDING)
-            .style(user_list_item_button_style(user_is_admin, chat::admin(&iced::Theme::default())));
+            .style(user_list_item_button_style(user_is_admin, chat::admin(theme)));
 
             // Create item column (username + optional toolbar)
             let mut item_column = Column::new().spacing(NO_SPACING);
@@ -220,6 +220,7 @@ pub fn user_list_panel(conn: &ServerConnection) -> Element<'_, Message> {
                     user.is_admin,
                     is_admin,
                     permissions,
+                    theme,
                 );
                 let toolbar_row = container(toolbar)
                     .width(Fill)

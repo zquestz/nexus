@@ -118,7 +118,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         config
             .active_connection
             .and_then(|conn_id| config.connections.get(&conn_id))
-            .map(|conn| user_list_panel(conn))
+            .map(|conn| user_list_panel(conn, &config.theme))
             .unwrap_or_else(hidden_panel)
     } else {
         hidden_panel()

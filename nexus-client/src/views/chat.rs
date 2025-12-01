@@ -6,8 +6,8 @@ use crate::style::{
     BOLD_FONT, CHAT_INPUT_SIZE, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING,
     CHAT_TIME_FORMAT, CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING,
     SMALL_SPACING, TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, chat, chat_tab_inactive_style, close_button_on_primary_style,
-    content_background_style, shaped_text, tooltip_container_style,
+    TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, chat_tab_inactive_style,
+    close_button_on_primary_style, content_background_style, shaped_text, tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::{
@@ -94,12 +94,14 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
         button(tab_content)
             .on_press(Message::SwitchChatTab(tab))
             .padding(TAB_CONTENT_PADDING)
+            .style(chat_tab_active_style())
             .into()
     } else {
         // Server tab (no close button)
         button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
             .on_press(Message::SwitchChatTab(tab))
             .padding(INPUT_PADDING)
+            .style(chat_tab_active_style())
             .into()
     }
 }

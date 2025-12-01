@@ -17,7 +17,7 @@
 //!
 //! // ✅ GOOD - uses theme palette
 //! text("Hello").style(|theme| text::Style {
-//!     color: Some(ui::section_title_color(theme)),
+//!     color: Some(ui::muted_text_color(theme)),
 //! })
 //!
 //! // ❌ BAD - hardcoded color
@@ -47,12 +47,12 @@ pub use icons::*;
 pub use layout::*;
 pub use shaping::{shaped_text, shaped_text_wrapped};
 pub use widgets::{
-    alternating_row_style, chat_tab_inactive_style, close_button_on_primary_style,
-    content_background_style, danger_icon_button_style, disabled_icon_button_style,
-    error_text_style, icon_button_with_hover_style, list_item_button_style,
-    list_item_button_style_with_error, modal_overlay_style, muted_text_style,
-    primary_separator_style, separator_style, sidebar_panel_style, toolbar_background_style,
+    alternating_row_style, chat_tab_active_style, chat_tab_inactive_style,
+    close_button_on_primary_style, content_background_style, danger_icon_button_style,
+    disabled_icon_button_style, error_text_style, icon_button_with_hover_style,
+    list_item_button_style, list_item_button_style_with_error, modal_overlay_style,
+    muted_text_style, separator_style, sidebar_panel_style, toolbar_background_style,
     toolbar_button_style, tooltip_container_style, transparent_icon_button_style,
-    user_list_item_button_style,
+    user_list_item_button_style, user_toolbar_separator_style,
 };
 pub use window::*;
