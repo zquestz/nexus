@@ -40,8 +40,8 @@ impl TimestampSettings {
         let format = match (self.use_24_hour_time, self.show_seconds) {
             (true, true) => "%H:%M:%S",
             (true, false) => "%H:%M",
-            (false, true) => "%l:%M:%S",
-            (false, false) => "%l:%M",
+            (false, true) => "%I:%M:%S",
+            (false, false) => "%I:%M",
         };
 
         Some(timestamp.format(format).to_string())
