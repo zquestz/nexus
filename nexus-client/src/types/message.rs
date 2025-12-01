@@ -133,10 +133,16 @@ pub enum Message {
     ConnectionNotificationsToggled(bool),
     /// Settings panel: Save button pressed (persist to disk)
     SaveSettings,
+    /// Settings panel: Show seconds in timestamps toggled
+    ShowSecondsToggled(bool),
+    /// Settings panel: Show timestamps checkbox toggled
+    ShowTimestampsToggled(bool),
     /// Toolbar: Toggle Settings panel
     ToggleSettings,
     /// Settings panel: Theme selected from picker
     ThemeSelected(Theme),
+    /// Settings panel: Use 24-hour time format toggled
+    Use24HourTimeToggled(bool),
     /// Toolbar: Toggle user list sidebar
     ToggleUserList,
     /// User edit panel: Update button pressed (stage 2)

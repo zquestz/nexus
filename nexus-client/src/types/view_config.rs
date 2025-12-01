@@ -21,6 +21,15 @@ pub struct ViewConfig<'a> {
     /// Font size for chat messages
     pub chat_font_size: u8,
 
+    /// Show timestamps in chat messages
+    pub show_timestamps: bool,
+
+    /// Use 24-hour time format (false = 12-hour with AM/PM)
+    pub use_24_hour_time: bool,
+
+    /// Show seconds in timestamps
+    pub show_seconds: bool,
+
     /// Active server connections by connection_id
     pub connections: &'a HashMap<usize, ServerConnection>,
 

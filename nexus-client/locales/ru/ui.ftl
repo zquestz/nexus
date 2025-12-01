@@ -63,6 +63,9 @@ label-received-fingerprint = Полученный отпечаток:
 label-theme = Тема
 label-chat-font-size = Размер шрифта чата
 label-show-connection-notifications = Показывать уведомления о подключении
+label-show-timestamps = Показывать время
+label-use-24-hour-time = Использовать 24-часовой формат
+label-show-seconds = Показывать секунды
 
 # =============================================================================
 # Permission Display Names

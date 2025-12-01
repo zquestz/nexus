@@ -34,9 +34,14 @@ fn separator<'a>() -> Element<'a, Message> {
 }
 
 use super::{
-    bookmark::bookmark_edit_view, broadcast::broadcast_view, chat::chat_view,
-    connection::connection_form_view, server_list::server_list_panel, settings::settings_view,
-    user_list::user_list_panel, users::users_view,
+    bookmark::bookmark_edit_view,
+    broadcast::broadcast_view,
+    chat::{TimestampSettings, chat_view},
+    connection::connection_form_view,
+    server_list::server_list_panel,
+    settings::settings_view,
+    user_list::user_list_panel,
+    users::users_view,
 };
 
 /// Helper function to create an invisible/hidden panel
@@ -105,6 +110,11 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 config.theme.clone(),
                 config.show_connection_notifications,
                 config.chat_font_size,
+                TimestampSettings {
+                    show_timestamps: config.show_timestamps,
+                    use_24_hour_time: config.use_24_hour_time,
+                    show_seconds: config.show_seconds,
+                },
             )
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -119,6 +129,11 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         config.theme.clone(),
                         config.show_connection_notifications,
                         config.chat_font_size,
+                        TimestampSettings {
+                            show_timestamps: config.show_timestamps,
+                            use_24_hour_time: config.use_24_hour_time,
+                            show_seconds: config.show_seconds,
+                        },
                     )
                 ]
                 .width(Fill)
@@ -390,6 +405,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
 ///
 /// Always renders chat view at the bottom layer to preserve scroll position,
 /// then overlays broadcast or user management panels on top when active.
+#[allow(clippy::too_many_arguments)]
 fn server_content_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
@@ -398,9 +414,16 @@ fn server_content_view<'a>(
     theme: iced::Theme,
     show_connection_notifications: bool,
     chat_font_size: u8,
+    timestamp_settings: TimestampSettings,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
-    let chat = chat_view(conn, message_input, theme.clone(), chat_font_size);
+    let chat = chat_view(
+        conn,
+        message_input,
+        theme.clone(),
+        chat_font_size,
+        timestamp_settings,
+    );
 
     // Overlay panels on top when active
     match active_panel {
@@ -416,7 +439,12 @@ fn server_content_view<'a>(
         }
         ActivePanel::Settings => stack![
             chat,
-            settings_view(theme.clone(), show_connection_notifications, chat_font_size)
+            settings_view(
+                theme.clone(),
+                show_connection_notifications,
+                chat_font_size,
+                timestamp_settings,
+            )
         ]
         .width(Fill)
         .height(Fill)

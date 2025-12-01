@@ -3,11 +3,11 @@
 use super::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::i18n::t;
 use crate::style::{
-    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CHAT_TIME_FORMAT,
-    CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING,
-    TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, close_button_on_primary_style,
-    content_background_style, shaped_text, tooltip_container_style,
+    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CLOSE_BUTTON_PADDING,
+    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TAB_CONTENT_PADDING,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
+    chat_tab_active_style, close_button_on_primary_style, content_background_style, shaped_text,
+    tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::{
@@ -16,12 +16,45 @@ use iced::widget::{
 use iced::{Color, Element, Fill, Theme};
 
 // ============================================================================
+// Timestamp Settings
+// ============================================================================
+
+/// Settings for timestamp display in chat messages
+#[derive(Debug, Clone, Copy)]
+pub struct TimestampSettings {
+    /// Whether to show timestamps at all
+    pub show_timestamps: bool,
+    /// Use 24-hour format (false = 12-hour with AM/PM)
+    pub use_24_hour_time: bool,
+    /// Show seconds in the timestamp
+    pub show_seconds: bool,
+}
+
+impl TimestampSettings {
+    /// Format a timestamp according to the current settings
+    pub fn format(&self, timestamp: &chrono::DateTime<chrono::Local>) -> Option<String> {
+        if !self.show_timestamps {
+            return None;
+        }
+
+        let format = match (self.use_24_hour_time, self.show_seconds) {
+            (true, true) => "%H:%M:%S",
+            (true, false) => "%H:%M",
+            (false, true) => "%l:%M:%S",
+            (false, false) => "%l:%M",
+        };
+
+        Some(timestamp.format(format).to_string())
+    }
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
 /// Build a styled rich text message with consistent formatting
 fn styled_message<'a>(
-    time_str: &str,
+    time_str: Option<&str>,
     timestamp_color: Color,
     prefix: String,
     prefix_color: Color,
@@ -29,15 +62,26 @@ fn styled_message<'a>(
     content_color: Color,
     font_size: f32,
 ) -> Element<'a, Message> {
-    rich_text![
-        span(format!("[{}] ", time_str)).color(timestamp_color),
-        span(prefix).color(prefix_color),
-        span(content.to_string()).color(content_color),
-    ]
-    .size(font_size)
-    .line_height(CHAT_LINE_HEIGHT)
-    .font(MONOSPACE_FONT)
-    .into()
+    if let Some(ts) = time_str {
+        rich_text![
+            span(format!("[{}] ", ts)).color(timestamp_color),
+            span(prefix).color(prefix_color),
+            span(content.to_string()).color(content_color),
+        ]
+        .size(font_size)
+        .line_height(CHAT_LINE_HEIGHT)
+        .font(MONOSPACE_FONT)
+        .into()
+    } else {
+        rich_text![
+            span(prefix).color(prefix_color),
+            span(content.to_string()).color(content_color),
+        ]
+        .size(font_size)
+        .line_height(CHAT_LINE_HEIGHT)
+        .font(MONOSPACE_FONT)
+        .into()
+    }
 }
 
 /// Check if a username belongs to an admin in the online users list
@@ -135,7 +179,7 @@ fn create_inactive_tab_button(
 
 /// Build a rich text element for a single message line
 fn render_message_line<'a>(
-    time_str: &str,
+    time_str: Option<&str>,
     username: &str,
     line: &str,
     message_type: MessageType,
@@ -223,6 +267,7 @@ fn build_message_list<'a>(
     conn: &'a ServerConnection,
     theme: &Theme,
     font_size: f32,
+    timestamp_settings: TimestampSettings,
 ) -> Column<'a, Message> {
     let messages = match &conn.active_chat_tab {
         ChatTab::Server => conn.chat_messages.as_slice(),
@@ -236,14 +281,14 @@ fn build_message_list<'a>(
     let mut chat_column = Column::new().spacing(CHAT_SPACING).padding(INPUT_PADDING);
 
     for msg in messages {
-        let time_str = msg.get_timestamp().format(CHAT_TIME_FORMAT).to_string();
+        let time_str = timestamp_settings.format(&msg.get_timestamp());
         let username_is_admin = is_admin_username(conn, &msg.username);
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
         for line in msg.message.split('\n') {
             let display = render_message_line(
-                &time_str,
+                time_str.as_deref(),
                 &msg.username,
                 line,
                 msg.message_type,
@@ -354,6 +399,7 @@ pub fn chat_view<'a>(
     message_input: &'a str,
     theme: Theme,
     chat_font_size: u8,
+    timestamp_settings: TimestampSettings,
 ) -> Element<'a, Message> {
     let font_size = chat_font_size as f32;
 
@@ -362,7 +408,7 @@ pub fn chat_view<'a>(
     let tab_bar = tab_row.wrap();
 
     // Build message list
-    let chat_column = build_message_list(conn, &theme, font_size);
+    let chat_column = build_message_list(conn, &theme, font_size, timestamp_settings);
 
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages.into())

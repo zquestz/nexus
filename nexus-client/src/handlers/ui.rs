@@ -154,4 +154,22 @@ impl NexusApp {
         self.config.settings.chat_font_size = size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
         Task::none()
     }
+
+    /// Handle show timestamps toggle
+    pub fn handle_show_timestamps_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.show_timestamps = enabled;
+        Task::none()
+    }
+
+    /// Handle 24-hour time format toggle
+    pub fn handle_use_24_hour_time_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.use_24_hour_time = enabled;
+        Task::none()
+    }
+
+    /// Handle show seconds toggle
+    pub fn handle_show_seconds_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.show_seconds = enabled;
+        Task::none()
+    }
 }

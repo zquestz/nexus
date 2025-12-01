@@ -36,6 +36,18 @@ pub struct Settings {
     /// Show user connect/disconnect notifications in chat
     #[serde(default = "default_true")]
     pub show_connection_notifications: bool,
+
+    /// Show timestamps in chat messages
+    #[serde(default = "default_true")]
+    pub show_timestamps: bool,
+
+    /// Use 24-hour time format (false = 12-hour with AM/PM)
+    #[serde(default)]
+    pub use_24_hour_time: bool,
+
+    /// Show seconds in timestamps
+    #[serde(default = "default_true")]
+    pub show_seconds: bool,
 }
 
 impl Default for Settings {
@@ -44,6 +56,9 @@ impl Default for Settings {
             theme: ThemePreference::default(),
             chat_font_size: default_chat_font_size(),
             show_connection_notifications: default_true(),
+            show_timestamps: default_true(),
+            use_24_hour_time: false,
+            show_seconds: default_true(),
         }
     }
 }
@@ -74,6 +89,9 @@ mod tests {
         assert_eq!(settings.theme.0, iced::Theme::Dark);
         assert_eq!(settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
         assert!(settings.show_connection_notifications);
+        assert!(settings.show_timestamps);
+        assert!(!settings.use_24_hour_time);
+        assert!(settings.show_seconds);
     }
 
     #[test]
@@ -95,5 +113,8 @@ mod tests {
             settings.show_connection_notifications,
             deserialized.show_connection_notifications
         );
+        assert_eq!(settings.show_timestamps, deserialized.show_timestamps);
+        assert_eq!(settings.use_24_hour_time, deserialized.use_24_hour_time);
+        assert_eq!(settings.show_seconds, deserialized.show_seconds);
     }
 }

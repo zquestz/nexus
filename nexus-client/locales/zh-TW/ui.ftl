@@ -62,6 +62,9 @@ label-received-fingerprint = 收到的指紋：
 label-theme = 主題
 label-chat-font-size = 聊天字型大小
 label-show-connection-notifications = 顯示連線通知
+label-show-timestamps = 顯示時間戳記
+label-use-24-hour-time = 使用24小時制
+label-show-seconds = 顯示秒數
 
 # =============================================================================
 # Permission Display Names

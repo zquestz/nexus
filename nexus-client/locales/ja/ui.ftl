@@ -62,6 +62,9 @@ label-received-fingerprint = 受信したフィンガープリント:
 label-theme = テーマ
 label-chat-font-size = チャットフォントサイズ
 label-show-connection-notifications = 接続通知を表示
+label-show-timestamps = タイムスタンプを表示
+label-use-24-hour-time = 24時間形式を使用
+label-show-seconds = 秒を表示
 
 # =============================================================================
 # Permission Display Names

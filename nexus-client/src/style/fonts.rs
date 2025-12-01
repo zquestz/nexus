@@ -66,10 +66,3 @@ pub const USER_LIST_TEXT_SIZE: u16 = 12;
 
 /// User list small text size (empty states)
 pub const USER_LIST_SMALL_TEXT_SIZE: u16 = 11;
-
-// ============================================================================
-// Time Formats
-// ============================================================================
-
-/// Chat message timestamp format (hours:minutes:seconds)
-pub const CHAT_TIME_FORMAT: &str = "%H:%M:%S";

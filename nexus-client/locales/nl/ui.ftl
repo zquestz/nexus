@@ -63,6 +63,9 @@ label-received-fingerprint = Ontvangen vingerafdruk:
 label-theme = Thema
 label-chat-font-size = Chat lettergrootte
 label-show-connection-notifications = Verbindingsmeldingen weergeven
+label-show-timestamps = Tijdstempels weergeven
+label-use-24-hour-time = 24-uursformaat gebruiken
+label-show-seconds = Seconden weergeven
 
 # =============================================================================
 # Permission Display Names

@@ -250,8 +250,11 @@ impl NexusApp {
                 self.handle_connection_notifications_toggled(enabled)
             }
             Message::SaveSettings => self.handle_save_settings(),
+            Message::ShowSecondsToggled(enabled) => self.handle_show_seconds_toggled(enabled),
+            Message::ShowTimestampsToggled(enabled) => self.handle_show_timestamps_toggled(enabled),
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
             Message::ToggleSettings => self.handle_toggle_settings(),
+            Message::Use24HourTimeToggled(enabled) => self.handle_use_24_hour_time_toggled(enabled),
 
             // Network events (async results)
             Message::BookmarkConnectionResult {
@@ -303,6 +306,9 @@ impl NexusApp {
             theme: self.theme(),
             show_connection_notifications: self.config.settings.show_connection_notifications,
             chat_font_size: self.config.settings.chat_font_size,
+            show_timestamps: self.config.settings.show_timestamps,
+            use_24_hour_time: self.config.settings.use_24_hour_time,
+            show_seconds: self.config.settings.show_seconds,
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,

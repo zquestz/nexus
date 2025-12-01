@@ -62,6 +62,9 @@ label-received-fingerprint = Impressão digital recebida:
 label-theme = Tema
 label-chat-font-size = Tamanho da fonte do chat
 label-show-connection-notifications = Mostrar notificações de conexão
+label-show-timestamps = Mostrar horários
+label-use-24-hour-time = Usar formato de 24 horas
+label-show-seconds = Mostrar segundos
 
 # =============================================================================
 # Permission Display Names
