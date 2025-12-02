@@ -304,3 +304,11 @@ cmd-list-output = Usuarios en línea: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Uso: /{ $command } [comando]
 cmd-topic-permission-denied = No tienes permiso para editar el tema
+cmd-window-desc = Gestionar pestañas de chat
+cmd-window-usage = Uso: /{ $command } [next|prev|close [usuario]]
+cmd-window-list = Pestañas abiertas: { $tabs } ({ $count } { $count ->
+    [one] pestaña
+   *[other] pestañas
+})
+cmd-window-close-server = No se puede cerrar la pestaña del servidor
+cmd-window-not-found = Pestaña no encontrada: { $name }

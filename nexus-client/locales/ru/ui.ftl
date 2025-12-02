@@ -307,3 +307,12 @@ cmd-list-output = Пользователи онлайн: { $users } ({ $count } 
 })
 cmd-help-usage = Использование: /{ $command } [команда]
 cmd-topic-permission-denied = У вас нет разрешения на редактирование темы
+cmd-window-desc = Управление вкладками чата
+cmd-window-usage = Использование: /{ $command } [next|prev|close [имя_пользователя]]
+cmd-window-list = Открытые вкладки: { $tabs } ({ $count } { $count ->
+    [one] вкладка
+    [few] вкладки
+   *[other] вкладок
+})
+cmd-window-close-server = Невозможно закрыть вкладку сервера
+cmd-window-not-found = Вкладка не найдена: { $name }

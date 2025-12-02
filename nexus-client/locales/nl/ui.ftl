@@ -302,3 +302,11 @@ cmd-list-output = Gebruikers online: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Gebruik: /{ $command } [commando]
 cmd-topic-permission-denied = Je hebt geen toestemming om het onderwerp te bewerken
+cmd-window-desc = Beheer chat-tabbladen
+cmd-window-usage = Gebruik: /{ $command } [next|prev|close [gebruikersnaam]]
+cmd-window-list = Open tabbladen: { $tabs } ({ $count } { $count ->
+    [one] tabblad
+   *[other] tabbladen
+})
+cmd-window-close-server = Kan het server-tabblad niet sluiten
+cmd-window-not-found = Tabblad niet gevonden: { $name }

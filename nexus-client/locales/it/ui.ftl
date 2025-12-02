@@ -303,3 +303,11 @@ cmd-list-output = Utenti online: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Uso: /{ $command } [comando]
 cmd-topic-permission-denied = Non hai il permesso di modificare l'argomento
+cmd-window-desc = Gestisci le schede chat
+cmd-window-usage = Uso: /{ $command } [next|prev|close [utente]]
+cmd-window-list = Schede aperte: { $tabs } ({ $count } { $count ->
+    [one] scheda
+   *[other] schede
+})
+cmd-window-close-server = Impossibile chiudere la scheda server
+cmd-window-not-found = Scheda non trovata: { $name }

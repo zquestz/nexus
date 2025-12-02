@@ -9,35 +9,36 @@ use iced::{Event, Task};
 impl NexusApp {
     /// Handle keyboard events (Tab, Enter, Escape)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
-        // Handle Ctrl+Shift+Tab for previous chat tab (must be before plain Tab check)
+        // Handle Cmd/Ctrl+Shift+Tab for previous chat tab (must be before plain Tab check)
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
             modifiers,
             ..
         }) = event
-            && modifiers.control()
+            && modifiers.command()
             && modifiers.shift()
         {
             return self.update(Message::PrevChatTab);
         }
-        // Handle Ctrl+Tab for next chat tab (must be before plain Tab check)
+        // Handle Cmd/Ctrl+Tab for next chat tab (must be before plain Tab check)
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
             modifiers,
             ..
         }) = event
-            && modifiers.control()
+            && modifiers.command()
             && !modifiers.shift()
         {
             return self.update(Message::NextChatTab);
         }
+
         // Handle plain Tab key for field cycling
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
             modifiers,
             ..
         }) = event
-            && !modifiers.control()
+            && !modifiers.command()
             && !modifiers.shift()
         {
             return self.update(Message::TabPressed);

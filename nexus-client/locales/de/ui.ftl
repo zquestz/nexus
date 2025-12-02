@@ -289,6 +289,14 @@ cmd-broadcast-desc = Broadcast an alle Benutzer senden
 cmd-broadcast-usage = Verwendung: /{ $command } <nachricht>
 cmd-clear-desc = Chat-Verlauf für aktuellen Tab löschen
 cmd-clear-usage = Verwendung: /{ $command }
+cmd-window-desc = Chat-Tabs verwalten
+cmd-window-usage = Verwendung: /{ $command } [next|prev|close [benutzername]]
+cmd-window-list = Offene Tabs: { $tabs } ({ $count } { $count ->
+    [one] Tab
+   *[other] Tabs
+})
+cmd-window-close-server = Server-Tab kann nicht geschlossen werden
+cmd-window-not-found = Tab nicht gefunden: { $name }
 cmd-focus-desc = Server-Chat oder Nachrichtenfenster eines Benutzers fokussieren
 cmd-focus-usage = Verwendung: /{ $command } [benutzername]
 cmd-focus-not-found = Benutzer nicht gefunden: { $name }

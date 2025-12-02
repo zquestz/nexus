@@ -301,3 +301,11 @@ cmd-list-output = Usuários online: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Uso: /{ $command } [comando]
 cmd-topic-permission-denied = Você não tem permissão para editar o tópico
+cmd-window-desc = Gerenciar abas de chat
+cmd-window-usage = Uso: /{ $command } [next|prev|close [usuário]]
+cmd-window-list = Abas abertas: { $tabs } ({ $count } { $count ->
+    [one] aba
+   *[other] abas
+})
+cmd-window-close-server = Não é possível fechar a aba do servidor
+cmd-window-not-found = Aba não encontrada: { $name }

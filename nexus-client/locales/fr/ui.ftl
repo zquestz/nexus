@@ -302,3 +302,11 @@ cmd-list-output = Utilisateurs en ligne : { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Utilisation : /{ $command } [commande]
 cmd-topic-permission-denied = Vous n'avez pas la permission de modifier le sujet
+cmd-window-desc = Gérer les onglets de chat
+cmd-window-usage = Utilisation : /{ $command } [next|prev|close [utilisateur]]
+cmd-window-list = Onglets ouverts : { $tabs } ({ $count } { $count ->
+    [one] onglet
+   *[other] onglets
+})
+cmd-window-close-server = Impossible de fermer l'onglet serveur
+cmd-window-not-found = Onglet non trouvé : { $name }

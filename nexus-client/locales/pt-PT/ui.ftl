@@ -302,3 +302,11 @@ cmd-list-output = Utilizadores online: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Uso: /{ $command } [comando]
 cmd-topic-permission-denied = Não tem permissão para editar o tópico
+cmd-window-desc = Gerir separadores de chat
+cmd-window-usage = Uso: /{ $command } [next|prev|close [utilizador]]
+cmd-window-list = Separadores abertos: { $tabs } ({ $count } { $count ->
+    [one] separador
+   *[other] separadores
+})
+cmd-window-close-server = Não é possível fechar o separador do servidor
+cmd-window-not-found = Separador não encontrado: { $name }

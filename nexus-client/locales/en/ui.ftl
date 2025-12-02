@@ -303,3 +303,11 @@ cmd-list-output = Users online: { $users } ({ $count } { $count ->
     [one] user
    *[other] users
 })
+cmd-window-desc = Manage chat tabs
+cmd-window-usage = Usage: /{ $command } [next|prev|close [username]]
+cmd-window-list = Open tabs: { $tabs } ({ $count } { $count ->
+    [one] tab
+   *[other] tabs
+})
+cmd-window-close-server = Cannot close the server tab
+cmd-window-not-found = Tab not found: { $name }

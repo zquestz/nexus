@@ -15,6 +15,7 @@
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
+//! | `/window` | `/w` | *none* | Manage chat tabs (list, close) |
 //!
 //! ## Special Syntax
 //!
@@ -38,6 +39,7 @@ mod message;
 mod topic;
 mod userinfo;
 mod userkick;
+mod window;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -166,6 +168,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
         },
         handler: topic::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "window",
+            aliases: &["w"],
+            description_key: "cmd-window-desc",
+            usage_key: "cmd-window-usage",
+            permissions: &[],
+        },
+        handler: window::execute,
     },
 ];
 
