@@ -24,10 +24,6 @@ const ADMIN_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3); // Coral
 const BROADCAST_LIGHT: Color = Color::from_rgb(0.8, 0.0, 0.0); // Crimson
 const BROADCAST_DARK: Color = Color::from_rgb(1.0, 0.3, 0.3); // Coral
 
-// Info - informational blue
-const INFO_LIGHT: Color = Color::from_rgb(0.2, 0.5, 0.8); // Azure
-const INFO_DARK: Color = Color::from_rgb(0.5, 0.8, 1.0); // Sky blue
-
 // System - de-emphasized gray for system messages
 const SYSTEM_LIGHT: Color = Color::from_rgb(0.35, 0.35, 0.35); // Dark slate
 const SYSTEM_DARK: Color = Color::from_rgb(0.7, 0.7, 0.7); // Silver
@@ -88,9 +84,9 @@ pub fn system(theme: &Theme) -> Color {
 
 /// Info message color ([INFO])
 ///
-/// Blue for informational messages and command responses.
+/// Uses the theme's primary color for informational messages and command responses.
 pub fn info(theme: &Theme) -> Color {
-    for_theme(theme, INFO_LIGHT, INFO_DARK)
+    theme.palette().primary
 }
 
 /// Error message color ([ERR])

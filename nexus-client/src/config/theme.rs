@@ -65,10 +65,11 @@ impl<'de> Deserialize<'de> for ThemePreference {
 // All Available Themes
 // =============================================================================
 
-/// Get all available themes (built-in + Celestial custom themes)
+/// Get all available themes (built-in + Celestial custom themes), sorted alphabetically
 pub fn all_themes() -> Vec<Theme> {
     let mut themes: Vec<Theme> = Theme::ALL.to_vec();
     themes.extend(celestial::all());
+    themes.sort_by_key(|t| t.to_string());
     themes
 }
 
