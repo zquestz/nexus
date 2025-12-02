@@ -1,7 +1,8 @@
 //! /clear command implementation - clear chat history for current tab
 
 use crate::NexusApp;
-use crate::types::{ChatTab, Message};
+use crate::i18n::t_args;
+use crate::types::{ChatMessage, ChatTab, Message};
 use iced::Task;
 
 /// Execute the /clear command
@@ -11,9 +12,15 @@ use iced::Task;
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
-    _invoked_name: &str,
-    _args: &[String],
+    invoked_name: &str,
+    args: &[String],
 ) -> Task<Message> {
+    // /clear takes no arguments
+    if !args.is_empty() {
+        let error_msg = t_args("cmd-clear-usage", &[("command", invoked_name)]);
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
     let Some(conn) = app.connections.get_mut(&connection_id) else {
         return Task::none();
     };

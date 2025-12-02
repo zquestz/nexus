@@ -21,15 +21,16 @@ pub fn execute(
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
+    let Some(conn) = app.connections.get(&connection_id) else {
+        return Task::none();
+    };
+
     let message = args.join(" ");
+    let msg = ClientMessage::UserBroadcast { message };
 
-    if let Some(conn) = app.connections.get(&connection_id) {
-        let msg = ClientMessage::UserBroadcast { message };
-
-        if let Err(e) = conn.tx.send(msg) {
-            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-        }
+    if let Err(e) = conn.tx.send(msg) {
+        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

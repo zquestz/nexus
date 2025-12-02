@@ -2,18 +2,31 @@
 //!
 //! This module provides IRC-style `/command` parsing and execution for the chat input.
 //!
-//! ## Usage
+//! ## Available Commands
 //!
-//! Commands are parsed from chat input when the message starts with `/`:
-//! - `/help` - Show available commands
-//! - `//text` - Escape, sends `/text` as a regular chat message
+//! | Command | Aliases | Permission | Description |
+//! |---------|---------|------------|-------------|
+//! | `/broadcast` | `/b` | `user_broadcast` | Send a broadcast to all users |
+//! | `/clear` | | *none* | Clear chat history for current tab |
+//! | `/help` | `/h`, `/?` | *none* | Show available commands |
+//! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
+//! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
+//! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
+//! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
+//! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
 //!
-//! Unknown commands display an error in chat and are never sent to the server.
+//! ## Special Syntax
+//!
+//! - `/` alone is a shortcut for `/help`
+//! - `//text` - Escape sequence, sends `/text` as a regular message
+//! - ` /command` - Leading space prevents command parsing
 //!
 //! ## Permissions
 //!
 //! Commands may require permissions to execute. If a user doesn't have the required
 //! permission, the command is treated as unknown (same error as non-existent command).
+//!
+//! Unknown commands display an error in chat and are never sent to the server.
 
 mod broadcast;
 mod clear;
@@ -48,6 +61,8 @@ pub struct CommandInfo {
     pub aliases: &'static [&'static str],
     /// Translation key for the description
     pub description_key: &'static str,
+    /// Translation key for the usage
+    pub usage_key: &'static str,
     /// Required permissions (any of these grants access, empty = always available)
     pub permissions: &'static [&'static str],
 }
@@ -65,6 +80,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "broadcast",
             aliases: &["b"],
             description_key: "cmd-broadcast-desc",
+            usage_key: "cmd-broadcast-usage",
             permissions: &[PERMISSION_USER_BROADCAST],
         },
         handler: broadcast::execute,
@@ -74,6 +90,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "clear",
             aliases: &[],
             description_key: "cmd-clear-desc",
+            usage_key: "cmd-clear-usage",
             permissions: &[],
         },
         handler: clear::execute,
@@ -83,6 +100,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "help",
             aliases: &["h", "?"],
             description_key: "cmd-help-desc",
+            usage_key: "cmd-help-usage",
             permissions: &[],
         },
         handler: help::execute,
@@ -92,6 +110,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "info",
             aliases: &["i", "userinfo", "whois"],
             description_key: "cmd-userinfo-desc",
+            usage_key: "cmd-userinfo-usage",
             permissions: &[PERMISSION_USER_INFO],
         },
         handler: userinfo::execute,
@@ -101,6 +120,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "kick",
             aliases: &["k", "userkick"],
             description_key: "cmd-kick-desc",
+            usage_key: "cmd-kick-usage",
             permissions: &[PERMISSION_USER_KICK],
         },
         handler: userkick::execute,
@@ -110,6 +130,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "list",
             aliases: &["l", "userlist"],
             description_key: "cmd-list-desc",
+            usage_key: "cmd-list-usage",
             permissions: &[PERMISSION_USER_LIST],
         },
         handler: list::execute,
@@ -119,6 +140,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "message",
             aliases: &["m", "msg"],
             description_key: "cmd-message-desc",
+            usage_key: "cmd-message-usage",
             permissions: &[PERMISSION_USER_MESSAGE],
         },
         handler: message::execute,
@@ -128,6 +150,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "topic",
             aliases: &["t", "chattopic"],
             description_key: "cmd-topic-desc",
+            usage_key: "cmd-topic-usage",
             permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
         },
         handler: topic::execute,
@@ -164,6 +187,13 @@ fn has_permission(is_admin: bool, user_permissions: &[String], required: &[&str]
     required
         .iter()
         .any(|req| user_permissions.iter().any(|p| p == *req))
+}
+
+/// Get command info by name or alias (for /help <command>)
+pub fn get_command_info(name: &str) -> Option<&'static CommandInfo> {
+    COMMAND_MAP
+        .get(name.to_lowercase().as_str())
+        .map(|&index| &COMMANDS[index].info)
 }
 
 /// Get list of commands the user has permission to use (for /help display)
@@ -422,5 +452,61 @@ mod tests {
         let perms = vec!["chat_send".to_string()];
         assert!(!has_permission(false, &perms, &["user_list"]));
         assert!(!has_permission(false, &perms, &["user_list", "user_info"]));
+    }
+
+    #[test]
+    fn test_get_command_info_by_name() {
+        let info = get_command_info("help").expect("help command should exist");
+        assert_eq!(info.name, "help");
+    }
+
+    #[test]
+    fn test_get_command_info_by_alias() {
+        let info = get_command_info("h").expect("h alias should exist");
+        assert_eq!(info.name, "help");
+
+        let info = get_command_info("?").expect("? alias should exist");
+        assert_eq!(info.name, "help");
+    }
+
+    #[test]
+    fn test_get_command_info_case_insensitive() {
+        let info = get_command_info("HELP").expect("HELP should match help");
+        assert_eq!(info.name, "help");
+
+        let info = get_command_info("Help").expect("Help should match help");
+        assert_eq!(info.name, "help");
+    }
+
+    #[test]
+    fn test_get_command_info_unknown() {
+        assert!(get_command_info("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_command_list_for_user_admin_sees_all() {
+        let commands: Vec<_> = command_list_for_user(true, &[]).collect();
+        assert_eq!(commands.len(), COMMANDS.len());
+    }
+
+    #[test]
+    fn test_command_list_for_user_no_perms_sees_public() {
+        let commands: Vec<_> = command_list_for_user(false, &[]).collect();
+        // Should see help and clear (no permissions required)
+        assert!(commands.iter().any(|c| c.name == "help"));
+        assert!(commands.iter().any(|c| c.name == "clear"));
+        // Should not see permission-gated commands
+        assert!(!commands.iter().any(|c| c.name == "kick"));
+        assert!(!commands.iter().any(|c| c.name == "broadcast"));
+    }
+
+    #[test]
+    fn test_command_list_for_user_with_permission() {
+        let perms = vec!["user_list".to_string()];
+        let commands: Vec<_> = command_list_for_user(false, &perms).collect();
+        // Should see list command now
+        assert!(commands.iter().any(|c| c.name == "list"));
+        // Still shouldn't see kick
+        assert!(!commands.iter().any(|c| c.name == "kick"));
     }
 }

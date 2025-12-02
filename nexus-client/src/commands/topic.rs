@@ -28,8 +28,10 @@ pub fn execute(
         "set" => {
             // Check chat_topic_edit permission
             if !has_topic_edit_permission(app, connection_id) {
-                let error_msg = t_args("cmd-unknown", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+                return app.add_chat_message(
+                    connection_id,
+                    ChatMessage::error(t("cmd-topic-permission-denied")),
+                );
             }
 
             if args.len() < 2 {
@@ -40,10 +42,18 @@ pub fn execute(
             set_topic(app, connection_id, topic)
         }
         "clear" => {
+            // /topic clear takes no additional arguments
+            if args.len() > 1 {
+                let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
+                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            }
+
             // Check chat_topic_edit permission
             if !has_topic_edit_permission(app, connection_id) {
-                let error_msg = t_args("cmd-unknown", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+                return app.add_chat_message(
+                    connection_id,
+                    ChatMessage::error(t("cmd-topic-permission-denied")),
+                );
             }
 
             set_topic(app, connection_id, String::new())
@@ -65,33 +75,39 @@ fn has_topic_edit_permission(app: &NexusApp, connection_id: usize) -> bool {
 
 /// Show the current topic
 fn show_topic(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
-    if let Some(conn) = app.connections.get(&connection_id) {
-        let topic = conn.chat_topic.as_deref().unwrap_or("");
-        let set_by = conn.chat_topic_set_by.as_deref().unwrap_or("");
-        let message = if topic.is_empty() {
-            ChatMessage::info(t("cmd-topic-none"))
-        } else if !set_by.is_empty() {
-            ChatMessage::info(t_args(
-                "msg-topic-set",
-                &[("username", set_by), ("topic", topic)],
-            ))
-        } else {
-            ChatMessage::info(t_args("msg-topic-display", &[("topic", topic)]))
-        };
-        return app.add_chat_message(connection_id, message);
-    }
-    Task::none()
+    let Some(conn) = app.connections.get(&connection_id) else {
+        return Task::none();
+    };
+
+    let topic = conn.chat_topic.as_deref().unwrap_or("");
+    let set_by = conn.chat_topic_set_by.as_deref().unwrap_or("");
+
+    let message = if topic.is_empty() {
+        ChatMessage::info(t("cmd-topic-none"))
+    } else if !set_by.is_empty() {
+        ChatMessage::info(t_args(
+            "msg-topic-set",
+            &[("username", set_by), ("topic", topic)],
+        ))
+    } else {
+        ChatMessage::info(t_args("msg-topic-display", &[("topic", topic)]))
+    };
+
+    app.add_chat_message(connection_id, message)
 }
 
 /// Set or clear the topic
 fn set_topic(app: &mut NexusApp, connection_id: usize, topic: String) -> Task<Message> {
-    if let Some(conn) = app.connections.get(&connection_id) {
-        let msg = ClientMessage::ChatTopicUpdate { topic };
+    let Some(conn) = app.connections.get(&connection_id) else {
+        return Task::none();
+    };
 
-        if let Err(e) = conn.tx.send(msg) {
-            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-        }
+    let msg = ClientMessage::ChatTopicUpdate { topic };
+
+    if let Err(e) = conn.tx.send(msg) {
+        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
+
     Task::none()
 }

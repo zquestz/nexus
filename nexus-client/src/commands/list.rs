@@ -12,9 +12,15 @@ use iced::Task;
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
-    _invoked_name: &str,
-    _args: &[String],
+    invoked_name: &str,
+    args: &[String],
 ) -> Task<Message> {
+    // /list takes no arguments
+    if !args.is_empty() {
+        let error_msg = t_args("cmd-list-usage", &[("command", invoked_name)]);
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };

@@ -23,23 +23,24 @@ pub fn execute(
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
+    let Some(conn) = app.connections.get(&connection_id) else {
+        return Task::none();
+    };
+
     let username = &args[0];
     let message = args[1..].join(" ");
+    let msg = ClientMessage::UserMessage {
+        to_username: username.clone(),
+        message,
+    };
 
-    // Get connection and send message
-    if let Some(conn) = app.connections.get(&connection_id) {
-        let msg = ClientMessage::UserMessage {
-            to_username: username.clone(),
-            message,
-        };
-
-        if let Err(e) = conn.tx.send(msg) {
-            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-        }
+    if let Err(e) = conn.tx.send(msg) {
+        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Mark that we want to switch to this user's tab on successful delivery
+    // Need to re-borrow as mutable
     if let Some(conn) = app.connections.get_mut(&connection_id) {
         conn.pending_message_tab = Some(username.clone());
     }
