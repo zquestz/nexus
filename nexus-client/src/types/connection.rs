@@ -38,6 +38,8 @@ pub struct ServerConnection {
     pub locale: String,
     /// Current chat topic (None if no topic set)
     pub chat_topic: Option<String>,
+    /// Username who set the current chat topic
+    pub chat_topic_set_by: Option<String>,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -85,6 +87,8 @@ pub struct NetworkConnection {
     pub permissions: Vec<String>,
     /// Chat topic received on login (if user has ChatTopic permission)
     pub chat_topic: Option<String>,
+    /// Username who set the chat topic
+    pub chat_topic_set_by: Option<String>,
     /// Certificate fingerprint (SHA-256) for TOFU verification
     pub certificate_fingerprint: String,
     /// Locale accepted by the server

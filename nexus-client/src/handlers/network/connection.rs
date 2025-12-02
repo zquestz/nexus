@@ -13,6 +13,14 @@ use nexus_common::protocol::ClientMessage;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::UnboundedSender;
 
+/// Result of creating and registering a connection
+struct ConnectionRegistration {
+    tx: UnboundedSender<ClientMessage>,
+    chat_topic: Option<String>,
+    chat_topic_set_by: Option<String>,
+    should_request_userlist: bool,
+}
+
 impl NexusApp {
     // =========================================================================
     // Public Handlers
@@ -50,16 +58,16 @@ impl NexusApp {
                 let certificate_fingerprint = conn.certificate_fingerprint.clone();
 
                 // Create and register connection
-                let Some((conn_tx, chat_topic, should_request_userlist)) = self
+                let Some(reg) = self
                     .create_and_register_connection(conn, bookmark_index, username, display_name)
                 else {
                     self.connection_form.error = Some(t("err-no-shutdown-handle"));
                     return Task::none();
                 };
 
-                // Request initial user list
+                // Request user list if we have permission
                 if let Err(error_msg) =
-                    self.request_initial_userlist(&conn_tx, should_request_userlist)
+                    self.request_initial_userlist(&reg.tx, reg.should_request_userlist)
                 {
                     self.connection_form.error = Some(error_msg);
                     self.connections.remove(&connection_id);
@@ -68,7 +76,7 @@ impl NexusApp {
                 }
 
                 // Add chat topic message if present
-                self.add_topic_message(connection_id, chat_topic);
+                self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
 
                 // Save as bookmark if checkbox was enabled (and not already a bookmark)
                 if self.connection_form.add_bookmark && bookmark_index.is_none() {
@@ -120,7 +128,7 @@ impl NexusApp {
                     .unwrap_or_default();
 
                 // Create and register connection
-                let Some((conn_tx, chat_topic, should_request_userlist)) = self
+                let Some(reg) = self
                     .create_and_register_connection(conn, bookmark_index, username, display_name)
                 else {
                     if let Some(idx) = bookmark_index {
@@ -132,7 +140,7 @@ impl NexusApp {
 
                 // Request initial user list
                 if let Err(error_msg) =
-                    self.request_initial_userlist(&conn_tx, should_request_userlist)
+                    self.request_initial_userlist(&reg.tx, reg.should_request_userlist)
                 {
                     self.connections.remove(&connection_id);
                     self.active_connection = None;
@@ -143,7 +151,7 @@ impl NexusApp {
                 }
 
                 // Add chat topic message if present
-                self.add_topic_message(connection_id, chat_topic);
+                self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
 
                 text_input::focus(text_input::Id::from(InputId::ChatInput))
             }
@@ -191,18 +199,19 @@ impl NexusApp {
 
     /// Create a ServerConnection from NetworkConnection and register it
     ///
-    /// Returns `Some((tx, chat_topic, should_request_userlist))` on success,
-    /// or `None` if the connection has no shutdown handle.
+    /// Returns `Some(ConnectionRegistration)` on success, or `None` if the
+    /// connection has no shutdown handle.
     fn create_and_register_connection(
         &mut self,
         conn: NetworkConnection,
         bookmark_index: Option<usize>,
         username: String,
         display_name: String,
-    ) -> Option<(UnboundedSender<ClientMessage>, Option<String>, bool)> {
+    ) -> Option<ConnectionRegistration> {
         let shutdown_handle = conn.shutdown?;
         let conn_tx = conn.tx.clone();
         let chat_topic = conn.chat_topic.clone();
+        let chat_topic_set_by = conn.chat_topic_set_by.clone();
         let should_request_userlist =
             conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
@@ -216,6 +225,7 @@ impl NexusApp {
             permissions: conn.permissions,
             locale: conn.locale,
             chat_topic: chat_topic.clone(),
+            chat_topic_set_by: chat_topic_set_by.clone(),
             active_chat_tab: ChatTab::Server,
             chat_messages: Vec::new(),
             user_messages: HashMap::new(),
@@ -235,7 +245,12 @@ impl NexusApp {
         self.connections.insert(conn.connection_id, server_conn);
         self.active_connection = Some(conn.connection_id);
 
-        Some((conn_tx, chat_topic, should_request_userlist))
+        Some(ConnectionRegistration {
+            tx: conn_tx,
+            chat_topic,
+            chat_topic_set_by,
+            should_request_userlist,
+        })
     }
 
     /// Get display name from connection form or bookmark

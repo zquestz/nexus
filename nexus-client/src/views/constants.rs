@@ -35,3 +35,9 @@ pub(crate) const PERMISSION_USER_KICK: &str = "user_kick";
 
 /// Permission to send user messages (private messages)
 pub(crate) const PERMISSION_USER_MESSAGE: &str = "user_message";
+
+/// Permission to view chat topic
+pub(crate) const PERMISSION_CHAT_TOPIC: &str = "chat_topic";
+
+/// Permission to edit chat topic
+pub(crate) const PERMISSION_CHAT_TOPIC_EDIT: &str = "chat_topic_edit";

@@ -111,7 +111,8 @@ async fn perform_login(
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
-            chat_topic: server_info.map(|info| info.chat_topic),
+            chat_topic: server_info.as_ref().map(|info| info.chat_topic.clone()),
+            chat_topic_set_by: server_info.map(|info| info.chat_topic_set_by),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         Ok(ServerMessage::LoginResponse {

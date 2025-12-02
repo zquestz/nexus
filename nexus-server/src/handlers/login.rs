@@ -188,7 +188,10 @@ pub async fn handle_login(
     {
         // Fetch chat topic from database
         match ctx.db.config.get_topic().await {
-            Ok(chat_topic) => Some(ServerInfo { chat_topic }),
+            Ok(chat_topic) => Some(ServerInfo {
+                chat_topic: chat_topic.topic,
+                chat_topic_set_by: chat_topic.set_by,
+            }),
             Err(e) => {
                 eprintln!(
                     "Error fetching chat topic for {}: {}",
@@ -650,7 +653,7 @@ mod tests {
         test_ctx
             .db
             .config
-            .set_topic("Test server topic")
+            .set_topic("Test server topic", "admin")
             .await
             .unwrap();
 
@@ -711,7 +714,7 @@ mod tests {
             .unwrap();
 
         // Set a topic (user shouldn't see it)
-        test_ctx.db.config.set_topic("Secret topic").await.unwrap();
+        test_ctx.db.config.set_topic("Secret topic", "admin").await.unwrap();
 
         let mut session_id = None;
         let handshake_complete = true;
@@ -771,7 +774,7 @@ mod tests {
         test_ctx
             .db
             .config
-            .set_topic("Admin can see this")
+            .set_topic("Admin can see this", "admin")
             .await
             .unwrap();
 

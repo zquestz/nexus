@@ -70,6 +70,7 @@ pub(super) async fn setup_communication_channels(
         is_admin: login_info.is_admin,
         permissions: login_info.permissions,
         chat_topic: login_info.chat_topic,
+        chat_topic_set_by: login_info.chat_topic_set_by,
         certificate_fingerprint: fingerprint,
         locale: login_info.locale,
     })

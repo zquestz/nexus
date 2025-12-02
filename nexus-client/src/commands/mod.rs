@@ -9,6 +9,11 @@
 //! - `//text` - Escape, sends `/text` as a regular chat message
 //!
 //! Unknown commands display an error in chat and are never sent to the server.
+//!
+//! ## Permissions
+//!
+//! Commands may require permissions to execute. If a user doesn't have the required
+//! permission, the command is treated as unknown (same error as non-existent command).
 
 mod broadcast;
 mod clear;
@@ -25,6 +30,10 @@ use std::sync::LazyLock;
 use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
+use crate::views::constants::{
+    PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_USER_BROADCAST,
+    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
+};
 use iced::Task;
 
 /// Command handler function type
@@ -39,6 +48,8 @@ pub struct CommandInfo {
     pub aliases: &'static [&'static str],
     /// Translation key for the description
     pub description_key: &'static str,
+    /// Required permissions (any of these grants access, empty = always available)
+    pub permissions: &'static [&'static str],
 }
 
 /// Command registration entry - links metadata to handler
@@ -54,6 +65,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "broadcast",
             aliases: &["b"],
             description_key: "cmd-broadcast-desc",
+            permissions: &[PERMISSION_USER_BROADCAST],
         },
         handler: broadcast::execute,
     },
@@ -62,6 +74,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "clear",
             aliases: &[],
             description_key: "cmd-clear-desc",
+            permissions: &[],
         },
         handler: clear::execute,
     },
@@ -70,6 +83,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "help",
             aliases: &["h", "?"],
             description_key: "cmd-help-desc",
+            permissions: &[],
         },
         handler: help::execute,
     },
@@ -78,6 +92,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "info",
             aliases: &["i", "userinfo", "whois"],
             description_key: "cmd-userinfo-desc",
+            permissions: &[PERMISSION_USER_INFO],
         },
         handler: userinfo::execute,
     },
@@ -86,6 +101,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "kick",
             aliases: &["k", "userkick"],
             description_key: "cmd-kick-desc",
+            permissions: &[PERMISSION_USER_KICK],
         },
         handler: userkick::execute,
     },
@@ -94,6 +110,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "list",
             aliases: &["l", "userlist"],
             description_key: "cmd-list-desc",
+            permissions: &[PERMISSION_USER_LIST],
         },
         handler: list::execute,
     },
@@ -102,6 +119,7 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "message",
             aliases: &["m", "msg"],
             description_key: "cmd-message-desc",
+            permissions: &[PERMISSION_USER_MESSAGE],
         },
         handler: message::execute,
     },
@@ -110,28 +128,56 @@ static COMMANDS: &[CommandRegistration] = &[
             name: "topic",
             aliases: &["t", "chattopic"],
             description_key: "cmd-topic-desc",
+            permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
         },
         handler: topic::execute,
     },
 ];
 
-/// Command dispatch map - maps command names and aliases to their handlers
-static COMMAND_MAP: LazyLock<HashMap<&'static str, CommandHandler>> = LazyLock::new(|| {
+/// Command dispatch map - maps command names and aliases to registration index
+static COMMAND_MAP: LazyLock<HashMap<&'static str, usize>> = LazyLock::new(|| {
     let mut map = HashMap::new();
 
-    for reg in COMMANDS {
-        map.insert(reg.info.name, reg.handler);
+    for (index, reg) in COMMANDS.iter().enumerate() {
+        map.insert(reg.info.name, index);
         for alias in reg.info.aliases {
-            map.insert(alias, reg.handler);
+            map.insert(alias, index);
         }
     }
 
     map
 });
 
-/// Get list of all commands for /help display
-pub fn command_list() -> impl Iterator<Item = &'static CommandInfo> {
-    COMMANDS.iter().map(|reg| &reg.info)
+/// Check if user has any of the required permissions for a command
+fn has_permission(is_admin: bool, user_permissions: &[String], required: &[&str]) -> bool {
+    // Empty permissions = always allowed
+    if required.is_empty() {
+        return true;
+    }
+
+    // Admins have all permissions
+    if is_admin {
+        return true;
+    }
+
+    // Check if user has any of the required permissions
+    required
+        .iter()
+        .any(|req| user_permissions.iter().any(|p| p == *req))
+}
+
+/// Get list of commands the user has permission to use (for /help display)
+pub fn command_list_for_user(
+    is_admin: bool,
+    permissions: &[String],
+) -> impl Iterator<Item = &'static CommandInfo> {
+    COMMANDS.iter().filter_map(move |reg| {
+        if has_permission(is_admin, permissions, reg.info.permissions) {
+            Some(&reg.info)
+        } else {
+            None
+        }
+    })
 }
 
 /// Result of parsing chat input
@@ -198,18 +244,32 @@ pub fn parse_input(input: &str) -> ParseResult {
 /// - Add messages to the chat (info, error, etc.)
 /// - Trigger server requests
 /// - Modify client state
+///
+/// If the user doesn't have permission for the command, it's treated as unknown.
 pub fn execute_command(
     app: &mut NexusApp,
     connection_id: usize,
     command: CommandInvocation,
 ) -> Task<Message> {
-    if let Some(handler) = COMMAND_MAP.get(command.name.as_str()) {
-        handler(app, connection_id, &command.name, &command.args)
-    } else {
-        // Unknown command - show error
-        let error_msg = t_args("cmd-unknown", &[("command", &command.name)]);
-        app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+    // Look up command registration
+    if let Some(&index) = COMMAND_MAP.get(command.name.as_str()) {
+        let reg = &COMMANDS[index];
+
+        // Check permissions
+        let (is_admin, permissions) = app
+            .connections
+            .get(&connection_id)
+            .map(|conn| (conn.is_admin, conn.permissions.clone()))
+            .unwrap_or((false, Vec::new()));
+
+        if has_permission(is_admin, &permissions, reg.info.permissions) {
+            return (reg.handler)(app, connection_id, &command.name, &command.args);
+        }
     }
+
+    // Unknown command or no permission - show error
+    let error_msg = t_args("cmd-unknown", &[("command", &command.name)]);
+    app.add_chat_message(connection_id, ChatMessage::error(error_msg))
 }
 
 #[cfg(test)]
@@ -318,20 +378,49 @@ mod tests {
     #[test]
     fn test_command_map_contains_all_aliases() {
         // Verify all commands and aliases are in COMMAND_MAP
-        for info in command_list() {
-            assert!(
-                COMMAND_MAP.contains_key(info.name),
+        for (index, reg) in COMMANDS.iter().enumerate() {
+            assert_eq!(
+                COMMAND_MAP.get(reg.info.name),
+                Some(&index),
                 "Missing command: {}",
-                info.name
+                reg.info.name
             );
-            for alias in info.aliases {
-                assert!(
-                    COMMAND_MAP.contains_key(alias),
+            for alias in reg.info.aliases {
+                assert_eq!(
+                    COMMAND_MAP.get(alias),
+                    Some(&index),
                     "Missing alias: {} for command {}",
                     alias,
-                    info.name
+                    reg.info.name
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_has_permission_empty_always_allowed() {
+        assert!(has_permission(false, &[], &[]));
+        assert!(has_permission(true, &[], &[]));
+    }
+
+    #[test]
+    fn test_has_permission_admin_always_allowed() {
+        assert!(has_permission(true, &[], &["user_list"]));
+        assert!(has_permission(true, &[], &["user_list", "user_info"]));
+    }
+
+    #[test]
+    fn test_has_permission_user_with_permission() {
+        let perms = vec!["user_list".to_string(), "chat_send".to_string()];
+        assert!(has_permission(false, &perms, &["user_list"]));
+        assert!(has_permission(false, &perms, &["chat_send"]));
+        assert!(has_permission(false, &perms, &["user_list", "user_info"])); // any match
+    }
+
+    #[test]
+    fn test_has_permission_user_without_permission() {
+        let perms = vec!["chat_send".to_string()];
+        assert!(!has_permission(false, &perms, &["user_list"]));
+        assert!(!has_permission(false, &perms, &["user_list", "user_info"]));
     }
 }

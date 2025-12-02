@@ -23,12 +23,17 @@ impl NexusApp {
         topic: String,
         username: String,
     ) -> Task<Message> {
-        // Store the topic
+        // Store the topic and who set it
         if let Some(conn) = self.connections.get_mut(&connection_id) {
             conn.chat_topic = if topic.is_empty() {
                 None
             } else {
                 Some(topic.clone())
+            };
+            conn.chat_topic_set_by = if username.is_empty() {
+                None
+            } else {
+                Some(username.clone())
             };
         }
 

@@ -4,7 +4,8 @@ use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::views::constants::{
-    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
+    PERMISSION_CHAT_SEND, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
+    PERMISSION_USER_MESSAGE,
 };
 use crate::{NexusApp, network};
 use iced::Task;
@@ -301,6 +302,22 @@ impl NexusApp {
                     return commands::execute_command(self, conn_id, command);
                 }
                 ParseResult::Message(message) => {
+                    // Check permission before sending
+                    let has_permission = match &conn.active_chat_tab {
+                        ChatTab::Server => {
+                            conn.is_admin
+                                || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND)
+                        }
+                        ChatTab::UserMessage(_) => {
+                            conn.is_admin
+                                || conn.permissions.iter().any(|p| p == PERMISSION_USER_MESSAGE)
+                        }
+                    };
+
+                    if !has_permission {
+                        return self.add_chat_error(conn_id, t("err-no-chat-permission"));
+                    }
+
                     // Continue with normal message sending
                     if message.len() > MAX_CHAT_LENGTH {
                         let error_msg = format!(

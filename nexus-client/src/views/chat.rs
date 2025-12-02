@@ -1,6 +1,5 @@
 //! Chat interface for active server connections
 
-use super::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::i18n::t;
 use crate::style::{
     BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CLOSE_BUTTON_PADDING,
@@ -308,36 +307,19 @@ fn build_message_list<'a>(
 // ============================================================================
 
 /// Build the message input row with text field and send button
-fn build_input_row<'a>(
-    message_input: &'a str,
-    can_send_message: bool,
-    font_size: f32,
-) -> iced::widget::Row<'a, Message> {
-    let text_field = if can_send_message {
-        text_input(&t("placeholder-message"), message_input)
-            .on_input(Message::ChatInputChanged)
-            .on_submit(Message::SendMessagePressed)
-            .id(text_input::Id::from(InputId::ChatInput))
-            .padding(INPUT_PADDING)
-            .size(font_size)
-            .font(MONOSPACE_FONT)
-            .width(Fill)
-    } else {
-        text_input(&t("placeholder-no-permission"), message_input)
-            .id(text_input::Id::from(InputId::ChatInput))
-            .padding(INPUT_PADDING)
-            .size(font_size)
-            .font(MONOSPACE_FONT)
-            .width(Fill)
-    };
+fn build_input_row<'a>(message_input: &'a str, font_size: f32) -> iced::widget::Row<'a, Message> {
+    let text_field = text_input(&t("placeholder-message"), message_input)
+        .on_input(Message::ChatInputChanged)
+        .on_submit(Message::SendMessagePressed)
+        .id(text_input::Id::from(InputId::ChatInput))
+        .padding(INPUT_PADDING)
+        .size(font_size)
+        .font(MONOSPACE_FONT)
+        .width(Fill);
 
-    let send_button = if can_send_message {
-        button(shaped_text(t("button-send")).size(font_size))
-            .on_press(Message::SendMessagePressed)
-            .padding(INPUT_PADDING)
-    } else {
-        button(shaped_text(t("button-send")).size(font_size)).padding(INPUT_PADDING)
-    };
+    let send_button = button(shaped_text(t("button-send")).size(font_size))
+        .on_press(Message::SendMessagePressed)
+        .padding(INPUT_PADDING);
 
     row![text_field, send_button]
         .spacing(SMALL_SPACING)
@@ -416,22 +398,8 @@ pub fn chat_view<'a>(
         .width(Fill)
         .height(Fill);
 
-    // Determine if user can send messages
-    let can_send_message = match &conn.active_chat_tab {
-        ChatTab::Server => {
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND)
-        }
-        ChatTab::UserMessage(_) => {
-            conn.is_admin
-                || conn
-                    .permissions
-                    .iter()
-                    .any(|p| p == PERMISSION_USER_MESSAGE)
-        }
-    };
-
-    // Build input row
-    let input_row = build_input_row(message_input, can_send_message, font_size);
+    // Build input row (always enabled - permission checked on send)
+    let input_row = build_input_row(message_input, font_size);
 
     // Chat content with background
     let chat_content = container(

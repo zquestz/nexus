@@ -265,11 +265,21 @@ pub async fn handle_userupdate(
         return ctx.send_message(&response).await;
     }
 
-    // Get old username and admin status before update (to detect changes)
-    let old_account = match ctx.db.users.get_user_by_username(&request.username).await {
-        Ok(Some(acc)) => Some((acc.username.clone(), acc.is_admin)),
-        _ => None,
-    };
+    // Get old username, admin status, and permissions before update (to detect changes)
+    let (old_account, old_had_chat_topic) =
+        match ctx.db.users.get_user_by_username(&request.username).await {
+            Ok(Some(acc)) => {
+                let had_chat_topic = acc.is_admin
+                    || ctx
+                        .db
+                        .users
+                        .has_permission(acc.id, Permission::ChatTopic)
+                        .await
+                        .unwrap_or(false);
+                (Some((acc.username.clone(), acc.is_admin)), had_chat_topic)
+            }
+            _ => (None, false),
+        };
 
     // Attempt to update the user (with atomic last-admin protection in SQL)
     match ctx
@@ -326,6 +336,27 @@ pub async fn handle_userupdate(
                             &ctx.db.users,
                         )
                         .await;
+
+                    // If user just gained chat_topic permission, send them the current topic
+                    let now_has_chat_topic = updated_account.is_admin
+                        || final_permissions.permissions.contains(&Permission::ChatTopic);
+                    if !old_had_chat_topic
+                        && now_has_chat_topic
+                        && let Ok(chat_topic) = ctx.db.config.get_topic().await
+                    {
+                        // Send topic with the username who originally set it
+                        let topic_msg = ServerMessage::ChatTopic {
+                            topic: chat_topic.topic,
+                            username: chat_topic.set_by,
+                        };
+                        ctx.user_manager
+                            .broadcast_to_username(
+                                &updated_account.username,
+                                &topic_msg,
+                                &ctx.db.users,
+                            )
+                            .await;
+                    }
                 }
 
                 // If user was disabled, disconnect all their active sessions

@@ -180,6 +180,7 @@ err-connection-closed = Connection closed
 err-could-not-determine-config-dir = Could not determine config directory
 err-message-too-long = Chat message too long
 err-send-failed = Failed to send message
+err-no-chat-permission = You don't have permission to send messages
 err-broadcast-too-long = Broadcast message too long
 err-broadcast-send-failed = Failed to send broadcast
 err-name-required = Bookmark name is required

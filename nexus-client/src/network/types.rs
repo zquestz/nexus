@@ -18,5 +18,6 @@ pub struct LoginInfo {
     pub is_admin: bool,
     pub permissions: Vec<String>,
     pub chat_topic: Option<String>,
+    pub chat_topic_set_by: Option<String>,
     pub locale: String,
 }

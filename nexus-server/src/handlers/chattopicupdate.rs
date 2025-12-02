@@ -83,8 +83,8 @@ pub async fn handle_chattopicupdate(
             .await;
     }
 
-    // 6. Save topic to database
-    if let Err(e) = ctx.db.config.set_topic(&topic).await {
+    // 6. Save topic to database (with username who set it)
+    if let Err(e) = ctx.db.config.set_topic(&topic, &user.username).await {
         eprintln!("Database error setting topic: {}", e);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
@@ -253,7 +253,8 @@ mod tests {
 
         // Verify topic was saved
         let saved_topic = test_ctx.db.config.get_topic().await.unwrap();
-        assert_eq!(saved_topic, topic);
+        assert_eq!(saved_topic.topic, topic);
+        assert_eq!(saved_topic.set_by, "testuser");
     }
 
     #[tokio::test]
@@ -290,7 +291,8 @@ mod tests {
 
         // Verify empty topic was saved
         let saved_topic = test_ctx.db.config.get_topic().await.unwrap();
-        assert_eq!(saved_topic, "");
+        assert_eq!(saved_topic.topic, "");
+        assert_eq!(saved_topic.set_by, "testuser");
     }
 
     #[tokio::test]

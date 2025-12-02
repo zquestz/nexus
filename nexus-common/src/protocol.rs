@@ -222,6 +222,8 @@ pub enum ServerMessage {
 pub struct ServerInfo {
     /// Current chat topic (empty string if not set)
     pub chat_topic: String,
+    /// Username who set the current topic (empty string if never set)
+    pub chat_topic_set_by: String,
 }
 
 /// Information about a connected user (basic info for lists)

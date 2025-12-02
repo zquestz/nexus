@@ -3,15 +3,16 @@
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
+use crate::views::constants::PERMISSION_CHAT_TOPIC_EDIT;
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
 
 /// Execute the /topic command
 ///
 /// Subcommands:
-/// - `/topic` - Show current topic
-/// - `/topic set <topic>` - Set the topic
-/// - `/topic clear` - Clear the topic
+/// - `/topic` - Show current topic (requires chat_topic permission)
+/// - `/topic set <topic>` - Set the topic (requires chat_topic_edit permission)
+/// - `/topic clear` - Clear the topic (requires chat_topic_edit permission)
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
@@ -25,6 +26,12 @@ pub fn execute(
 
     match args[0].to_lowercase().as_str() {
         "set" => {
+            // Check chat_topic_edit permission
+            if !has_topic_edit_permission(app, connection_id) {
+                let error_msg = t_args("cmd-unknown", &[("command", invoked_name)]);
+                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            }
+
             if args.len() < 2 {
                 let error_msg = t_args("cmd-topic-set-usage", &[("command", invoked_name)]);
                 return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
@@ -32,7 +39,15 @@ pub fn execute(
             let topic = args[1..].join(" ");
             set_topic(app, connection_id, topic)
         }
-        "clear" => set_topic(app, connection_id, String::new()),
+        "clear" => {
+            // Check chat_topic_edit permission
+            if !has_topic_edit_permission(app, connection_id) {
+                let error_msg = t_args("cmd-unknown", &[("command", invoked_name)]);
+                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            }
+
+            set_topic(app, connection_id, String::new())
+        }
         _ => {
             // Unknown subcommand - show usage
             let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
@@ -41,12 +56,25 @@ pub fn execute(
     }
 }
 
+/// Check if user has chat_topic_edit permission
+fn has_topic_edit_permission(app: &NexusApp, connection_id: usize) -> bool {
+    app.connections
+        .get(&connection_id)
+        .is_some_and(|conn| conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_TOPIC_EDIT))
+}
+
 /// Show the current topic
 fn show_topic(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
     if let Some(conn) = app.connections.get(&connection_id) {
         let topic = conn.chat_topic.as_deref().unwrap_or("");
+        let set_by = conn.chat_topic_set_by.as_deref().unwrap_or("");
         let message = if topic.is_empty() {
             ChatMessage::info(t("cmd-topic-none"))
+        } else if !set_by.is_empty() {
+            ChatMessage::info(t_args(
+                "msg-topic-set",
+                &[("username", set_by), ("topic", topic)],
+            ))
         } else {
             ChatMessage::info(t_args("msg-topic-display", &[("topic", topic)]))
         };

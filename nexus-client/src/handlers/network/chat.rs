@@ -33,14 +33,23 @@ impl NexusApp {
     }
 
     /// Add chat topic message if present and not empty
-    pub fn add_topic_message(&mut self, connection_id: usize, chat_topic: Option<String>) {
+    pub fn add_topic_message(
+        &mut self,
+        connection_id: usize,
+        chat_topic: Option<String>,
+        chat_topic_set_by: Option<String>,
+    ) {
         if let Some(topic) = chat_topic
             && !topic.is_empty()
         {
-            let _ = self.add_chat_message(
-                connection_id,
-                ChatMessage::system(t_args("msg-topic-display", &[("topic", &topic)])),
-            );
+            let message = match chat_topic_set_by {
+                Some(ref username) if !username.is_empty() => t_args(
+                    "msg-topic-set",
+                    &[("username", username), ("topic", &topic)],
+                ),
+                _ => t_args("msg-topic-display", &[("topic", &topic)]),
+            };
+            let _ = self.add_chat_message(connection_id, ChatMessage::system(message));
         }
     }
 }

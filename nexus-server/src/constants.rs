@@ -16,6 +16,9 @@ pub const DATABASE_FILENAME: &str = "nexus.db";
 /// Database configuration key for chat topic
 pub const CONFIG_KEY_TOPIC: &str = "topic";
 
+/// Database configuration key for username who set the topic
+pub const CONFIG_KEY_TOPIC_SET_BY: &str = "topic_set_by";
+
 /// Maximum number of concurrent database connections in the pool
 ///
 /// This value (5) is chosen to balance:
