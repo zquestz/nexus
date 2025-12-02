@@ -55,8 +55,8 @@ pub async fn handle_userupdate(
         }
     };
 
-    // Prevent self-editing (cheap check before DB query)
-    if request.username == requesting_user.username {
+    // Prevent self-editing (cheap check before DB query, case-insensitive)
+    if request.username.to_lowercase() == requesting_user.username.to_lowercase() {
         eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
@@ -444,9 +444,10 @@ pub async fn handle_userupdate(
                     // Get earliest login time and locale from all sessions
                     let (login_time, locale) = if !session_ids.is_empty() {
                         let users = ctx.user_manager.get_all_users().await;
+                        let username_lower = updated_account.username.to_lowercase();
                         let user_sessions: Vec<_> = users
                             .iter()
-                            .filter(|u| u.username == updated_account.username)
+                            .filter(|u| u.username.to_lowercase() == username_lower)
                             .collect();
 
                         let login_time = user_sessions

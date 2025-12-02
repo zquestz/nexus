@@ -74,7 +74,7 @@ impl UserManager {
         self.remove_disconnected(disconnected, user_db).await;
     }
 
-    /// Broadcast a message to all sessions of a specific user (by username)
+    /// Broadcast a message to all sessions of a specific user (by username, case-insensitive)
     ///
     /// This is useful for multi-session scenarios where the same user is logged in
     /// from multiple devices/connections and all sessions need to be notified.
@@ -88,10 +88,14 @@ impl UserManager {
     ) {
         let mut disconnected = Vec::new();
 
+        let username_lower = username.to_lowercase();
+
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.username == username && user.tx.send(message.clone()).is_err() {
+                if user.username.to_lowercase() == username_lower
+                    && user.tx.send(message.clone()).is_err()
+                {
                     disconnected.push(user.session_id);
                 }
             }

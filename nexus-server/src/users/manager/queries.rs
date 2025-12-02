@@ -16,12 +16,13 @@ impl UserManager {
         users.get(&session_id).cloned()
     }
 
-    /// Get all session IDs for a given username
+    /// Get all session IDs for a given username (case-insensitive)
     pub async fn get_session_ids_for_user(&self, username: &str) -> Vec<u32> {
         let users = self.users.read().await;
+        let username_lower = username.to_lowercase();
         users
             .iter()
-            .filter(|(_, user)| user.username == username)
+            .filter(|(_, user)| user.username.to_lowercase() == username_lower)
             .map(|(session_id, _)| *session_id)
             .collect()
     }

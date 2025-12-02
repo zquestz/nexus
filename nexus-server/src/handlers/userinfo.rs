@@ -64,11 +64,12 @@ pub async fn handle_userinfo(
             .await;
     }
 
-    // Look up all sessions for target username
+    // Look up all sessions for target username (case-insensitive)
     let all_users = ctx.user_manager.get_all_users().await;
+    let requested_lower = requested_username.to_lowercase();
     let target_sessions: Vec<_> = all_users
         .into_iter()
-        .filter(|u| u.username == requested_username)
+        .filter(|u| u.username.to_lowercase() == requested_lower)
         .collect();
 
     if target_sessions.is_empty() {
@@ -130,11 +131,14 @@ pub async fn handle_userinfo(
         .map(|s| s.address.to_string())
         .collect();
 
+    // Use the actual username from the database (preserves original casing)
+    let actual_username = target_account.username.clone();
+
     // Build response with appropriate visibility level
     let user_info = if requesting_account.is_admin {
         // Admin gets all fields including target user's admin status and addresses
         UserInfoDetailed {
-            username: requested_username.clone(),
+            username: actual_username,
             login_time: earliest_login,
             session_ids: session_ids.clone(),
             features,
@@ -146,7 +150,7 @@ pub async fn handle_userinfo(
     } else {
         // Non-admin gets filtered fields
         UserInfoDetailed {
-            username: requested_username.clone(),
+            username: actual_username,
             login_time: earliest_login,
             session_ids,
             features,
@@ -171,7 +175,7 @@ pub async fn handle_userinfo(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
     use crate::users::user::NewUserParams;
     use tokio::io::AsyncReadExt;
 
@@ -627,6 +631,46 @@ mod tests {
                     user_info.addresses.is_some(),
                     "Admin should see address field"
                 );
+            }
+            _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_case_insensitive() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user with specific casing
+        let _target_id = login_user(&mut test_ctx, "Alice", "password", &[], false).await;
+
+        // Request user info with different casing
+        let result = handle_userinfo(
+            "alice".to_string(), // lowercase
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Read response
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse {
+                success,
+                error,
+                user,
+            } => {
+                assert!(success, "Case-insensitive lookup should succeed");
+                assert!(error.is_none(), "Should not have error");
+                assert!(user.is_some(), "Should return user info");
+
+                let user_info = user.unwrap();
+                // Username should be returned with original casing
+                assert_eq!(user_info.username, "Alice");
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
         }
