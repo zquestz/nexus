@@ -50,14 +50,16 @@ impl NexusApp {
 
         self.ui_state.active_panel = ActivePanel::AddUser;
 
-        if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.user_management.clear_add_user();
-            }
-            self.focused_field = InputId::AdminUsername;
-            return text_input::focus(text_input::Id::from(InputId::AdminUsername));
-        }
-        Task::none()
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.user_management.clear_add_user();
+        self.focused_field = InputId::AdminUsername;
+        text_input::focus(text_input::Id::from(InputId::AdminUsername))
     }
 
     /// Show Edit User panel (does nothing if already shown)
@@ -68,14 +70,16 @@ impl NexusApp {
 
         self.ui_state.active_panel = ActivePanel::EditUser;
 
-        if let Some(conn_id) = self.active_connection {
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.user_management.start_editing();
-            }
-            self.focused_field = InputId::EditUsername;
-            return text_input::focus(text_input::Id::from(InputId::EditUsername));
-        }
-        Task::none()
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.user_management.start_editing();
+        self.focused_field = InputId::EditUsername;
+        text_input::focus(text_input::Id::from(InputId::EditUsername))
     }
 
     // ==================== Sidebar Toggles ====================

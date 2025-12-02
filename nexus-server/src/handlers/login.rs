@@ -714,7 +714,12 @@ mod tests {
             .unwrap();
 
         // Set a topic (user shouldn't see it)
-        test_ctx.db.config.set_topic("Secret topic", "admin").await.unwrap();
+        test_ctx
+            .db
+            .config
+            .set_topic("Secret topic", "admin")
+            .await
+            .unwrap();
 
         let mut session_id = None;
         let handshake_complete = true;

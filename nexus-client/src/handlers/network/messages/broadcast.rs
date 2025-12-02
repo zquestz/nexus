@@ -22,14 +22,16 @@ impl NexusApp {
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            if success {
-                conn.broadcast_error = None;
-                return self.handle_show_chat_view();
-            } else {
-                conn.broadcast_error = Some(error.unwrap_or_default());
-            }
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        if success {
+            conn.broadcast_error = None;
+            return self.handle_show_chat_view();
         }
+
+        conn.broadcast_error = Some(error.unwrap_or_default());
         Task::none()
     }
 }

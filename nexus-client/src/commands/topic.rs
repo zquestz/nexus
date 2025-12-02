@@ -68,9 +68,13 @@ pub fn execute(
 
 /// Check if user has chat_topic_edit permission
 fn has_topic_edit_permission(app: &NexusApp, connection_id: usize) -> bool {
-    app.connections
-        .get(&connection_id)
-        .is_some_and(|conn| conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_TOPIC_EDIT))
+    app.connections.get(&connection_id).is_some_and(|conn| {
+        conn.is_admin
+            || conn
+                .permissions
+                .iter()
+                .any(|p| p == PERMISSION_CHAT_TOPIC_EDIT)
+    })
 }
 
 /// Show the current topic

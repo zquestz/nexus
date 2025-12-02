@@ -58,9 +58,12 @@ impl NexusApp {
                 let certificate_fingerprint = conn.certificate_fingerprint.clone();
 
                 // Create and register connection
-                let Some(reg) = self
-                    .create_and_register_connection(conn, bookmark_index, username, display_name)
-                else {
+                let Some(reg) = self.create_and_register_connection(
+                    conn,
+                    bookmark_index,
+                    username,
+                    display_name,
+                ) else {
                     self.connection_form.error = Some(t("err-no-shutdown-handle"));
                     return Task::none();
                 };
@@ -128,9 +131,12 @@ impl NexusApp {
                     .unwrap_or_default();
 
                 // Create and register connection
-                let Some(reg) = self
-                    .create_and_register_connection(conn, bookmark_index, username, display_name)
-                else {
+                let Some(reg) = self.create_and_register_connection(
+                    conn,
+                    bookmark_index,
+                    username,
+                    display_name,
+                ) else {
                     if let Some(idx) = bookmark_index {
                         self.bookmark_errors
                             .insert(idx, t("err-no-shutdown-handle"));

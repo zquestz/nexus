@@ -109,10 +109,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        config_db
-            .set_topic("Some topic", "alice")
-            .await
-            .unwrap();
+        config_db.set_topic("Some topic", "alice").await.unwrap();
         config_db.set_topic("", "bob").await.unwrap();
 
         let retrieved = config_db.get_topic().await.unwrap();

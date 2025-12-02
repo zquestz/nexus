@@ -339,7 +339,9 @@ pub async fn handle_userupdate(
 
                     // If user just gained chat_topic permission, send them the current topic
                     let now_has_chat_topic = updated_account.is_admin
-                        || final_permissions.permissions.contains(&Permission::ChatTopic);
+                        || final_permissions
+                            .permissions
+                            .contains(&Permission::ChatTopic);
                     if !old_had_chat_topic
                         && now_has_chat_topic
                         && let Ok(chat_topic) = ctx.db.config.get_topic().await

@@ -15,33 +15,33 @@ impl NexusApp {
         is_admin: bool,
         permissions: Vec<String>,
     ) -> Task<Message> {
-        // Update the connection's permissions and admin status
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            let had_user_list =
-                conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
 
-            let has_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+        let had_user_list =
+            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
-            conn.is_admin = is_admin;
-            conn.permissions = permissions;
+        let has_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
-            // If user just gained user_list permission, refresh the list
-            // (it may be stale from missed join/leave events while permission was revoked)
-            if !had_user_list
-                && has_user_list
-                && let Err(e) = conn.tx.send(ClientMessage::UserList)
-            {
-                // Channel send failed - add error to chat
-                let error_msg = format!("{}: {}", t("err-userlist-failed"), e);
-                return self.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
+        conn.is_admin = is_admin;
+        conn.permissions = permissions;
 
-            // Show notification message
-            return self.add_chat_message(
-                connection_id,
-                ChatMessage::system(t("msg-permissions-updated")),
-            );
+        // If user just gained user_list permission, refresh the list
+        // (it may be stale from missed join/leave events while permission was revoked)
+        if !had_user_list
+            && has_user_list
+            && let Err(e) = conn.tx.send(ClientMessage::UserList)
+        {
+            // Channel send failed - add error to chat
+            let error_msg = format!("{}: {}", t("err-userlist-failed"), e);
+            return self.add_chat_message(connection_id, ChatMessage::error(error_msg));
         }
-        Task::none()
+
+        // Show notification message
+        self.add_chat_message(
+            connection_id,
+            ChatMessage::system(t("msg-permissions-updated")),
+        )
     }
 }

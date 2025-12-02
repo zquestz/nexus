@@ -18,9 +18,10 @@ impl NexusApp {
     ) -> Task<Message> {
         // Show error in edit user form if it's for user management commands
         if self.is_user_edit_error(&command, connection_id) {
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.edit_error = Some(message);
-            }
+            let Some(conn) = self.connections.get_mut(&connection_id) else {
+                return Task::none();
+            };
+            conn.user_management.edit_error = Some(message);
             return Task::none();
         }
 

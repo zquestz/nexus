@@ -47,21 +47,28 @@ impl NexusApp {
 
     /// Handle broadcast message input change
     pub fn handle_broadcast_message_changed(&mut self, input: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            conn.broadcast_message = input;
-        }
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.broadcast_message = input;
         self.focused_field = InputId::BroadcastMessage;
         Task::none()
     }
 
     /// Handle validation of broadcast form (called on Enter when message empty)
     pub fn handle_validate_broadcast(&mut self) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-            && conn.broadcast_message.trim().is_empty()
-        {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        if conn.broadcast_message.trim().is_empty() {
             conn.broadcast_error = Some(t("err-message-required"));
         }
         Task::none()
@@ -71,41 +78,43 @@ impl NexusApp {
 
     /// Handle send broadcast button press
     pub fn handle_send_broadcast_pressed(&mut self) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get(&conn_id)
-        {
-            let message = conn.broadcast_message.trim();
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
 
-            if message.is_empty() {
-                return Task::none();
-            }
+        let message = conn.broadcast_message.trim();
 
-            if message.len() > MAX_BROADCAST_LENGTH {
-                let error_msg = format!(
-                    "{} ({} characters, max {})",
-                    t("err-broadcast-too-long"),
-                    message.len(),
-                    MAX_BROADCAST_LENGTH
-                );
-                return self.add_broadcast_error(conn_id, error_msg);
-            }
-
-            let msg = ClientMessage::UserBroadcast {
-                message: message.to_string(),
-            };
-
-            if let Err(e) = conn.tx.send(msg) {
-                let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);
-                return self.add_broadcast_error(conn_id, error_msg);
-            }
-
-            if let Some(conn) = self.connections.get_mut(&conn_id) {
-                conn.broadcast_message.clear();
-            }
-
-            return self.handle_show_chat_view();
+        if message.is_empty() {
+            return Task::none();
         }
-        Task::none()
+
+        if message.len() > MAX_BROADCAST_LENGTH {
+            let error_msg = format!(
+                "{} ({} characters, max {})",
+                t("err-broadcast-too-long"),
+                message.len(),
+                MAX_BROADCAST_LENGTH
+            );
+            return self.add_broadcast_error(conn_id, error_msg);
+        }
+
+        let msg = ClientMessage::UserBroadcast {
+            message: message.to_string(),
+        };
+
+        if let Err(e) = conn.tx.send(msg) {
+            let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);
+            return self.add_broadcast_error(conn_id, error_msg);
+        }
+
+        if let Some(conn) = self.connections.get_mut(&conn_id) {
+            conn.broadcast_message.clear();
+        }
+
+        self.handle_show_chat_view()
     }
 
     // ==================== Private Helpers ====================

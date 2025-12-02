@@ -17,18 +17,21 @@ impl NexusApp {
             message.timestamp = Some(chrono::Local::now());
         }
 
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            conn.chat_messages.push(message);
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
 
-            // Mark Server tab as unread if not currently viewing it
-            if conn.active_chat_tab != ChatTab::Server {
-                conn.unread_tabs.insert(ChatTab::Server);
-            }
+        conn.chat_messages.push(message);
 
-            if self.active_connection == Some(connection_id) {
-                return self.scroll_chat_if_visible();
-            }
+        // Mark Server tab as unread if not currently viewing it
+        if conn.active_chat_tab != ChatTab::Server {
+            conn.unread_tabs.insert(ChatTab::Server);
         }
+
+        if self.active_connection == Some(connection_id) {
+            return self.scroll_chat_if_visible();
+        }
+
         Task::none()
     }
 

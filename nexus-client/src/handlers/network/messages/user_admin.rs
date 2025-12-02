@@ -35,14 +35,16 @@ impl NexusApp {
             }
 
             // add_chat_message handles scrolling when this is the active connection
-            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")))
-        } else {
-            // On error, keep panel open and show error in form
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.create_error = Some(error.unwrap_or_default());
-            }
-            Task::none()
+            return self
+                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")));
         }
+
+        // On error, keep panel open and show error in form
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+        conn.user_management.create_error = Some(error.unwrap_or_default());
+        Task::none()
     }
 
     /// Handle user delete response
@@ -64,14 +66,16 @@ impl NexusApp {
             }
 
             // add_chat_message handles scrolling when this is the active connection
-            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")))
-        } else {
-            // On error, keep panel open and show error in form
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.edit_error = Some(error.unwrap_or_default());
-            }
-            Task::none()
+            return self
+                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")));
         }
+
+        // On error, keep panel open and show error in form
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+        conn.user_management.edit_error = Some(error.unwrap_or_default());
+        Task::none()
     }
 
     /// Handle user edit response (stage 2 - loading user details)
@@ -80,24 +84,24 @@ impl NexusApp {
         connection_id: usize,
         data: UserEditResponseData,
     ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
         if data.success {
             // Load the user details into edit form (stage 2)
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.load_user_for_editing(
-                    data.username.unwrap_or_default(),
-                    data.is_admin.unwrap_or(false),
-                    data.enabled.unwrap_or(true),
-                    data.permissions.unwrap_or_default(),
-                );
-            }
-            Task::none()
+            conn.user_management.load_user_for_editing(
+                data.username.unwrap_or_default(),
+                data.is_admin.unwrap_or(false),
+                data.enabled.unwrap_or(true),
+                data.permissions.unwrap_or_default(),
+            );
         } else {
             // On error, keep panel open and show error in form
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.edit_error = Some(data.error.unwrap_or_default());
-            }
-            Task::none()
+            conn.user_management.edit_error = Some(data.error.unwrap_or_default());
         }
+
+        Task::none()
     }
 
     /// Handle user update response
@@ -119,13 +123,15 @@ impl NexusApp {
             }
 
             // add_chat_message handles scrolling when this is the active connection
-            self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")))
-        } else {
-            // On error, keep panel open and show error in form
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.edit_error = Some(error.unwrap_or_default());
-            }
-            Task::none()
+            return self
+                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")));
         }
+
+        // On error, keep panel open and show error in form
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+        conn.user_management.edit_error = Some(error.unwrap_or_default());
+        Task::none()
     }
 }

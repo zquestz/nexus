@@ -137,35 +137,36 @@ impl NexusApp {
 
     /// Switch active view to a different connection
     pub fn handle_switch_to_connection(&mut self, connection_id: usize) -> Task<Message> {
-        if let Some(conn) = self.connections.get(&connection_id) {
-            self.active_connection = Some(connection_id);
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return Task::none();
+        };
 
-            let has_broadcast = conn.is_admin
-                || conn
-                    .permissions
-                    .iter()
-                    .any(|p| p == PERMISSION_USER_BROADCAST);
-            let has_user_create =
-                conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
-            let has_user_edit =
-                conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+        self.active_connection = Some(connection_id);
 
-            match self.ui_state.active_panel {
-                ActivePanel::Broadcast if !has_broadcast => {
-                    self.ui_state.active_panel = ActivePanel::None;
-                }
-                ActivePanel::AddUser if !has_user_create => {
-                    self.ui_state.active_panel = ActivePanel::None;
-                }
-                ActivePanel::EditUser if !has_user_edit => {
-                    self.ui_state.active_panel = ActivePanel::None;
-                }
-                _ => {}
+        let has_broadcast = conn.is_admin
+            || conn
+                .permissions
+                .iter()
+                .any(|p| p == PERMISSION_USER_BROADCAST);
+        let has_user_create =
+            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
+        let has_user_edit =
+            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+
+        match self.ui_state.active_panel {
+            ActivePanel::Broadcast if !has_broadcast => {
+                self.ui_state.active_panel = ActivePanel::None;
             }
-
-            return self.handle_show_chat_view();
+            ActivePanel::AddUser if !has_user_create => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            ActivePanel::EditUser if !has_user_edit => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            _ => {}
         }
-        Task::none()
+
+        self.handle_show_chat_view()
     }
 
     // ==================== Chat Helpers ====================
@@ -284,87 +285,95 @@ impl NexusApp {
     /// - `//text` - Escape sequence, sends `/text` as a regular message
     /// - Regular text - Send as chat or private message
     pub fn handle_send_message_pressed(&mut self) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get(&conn_id)
-        {
-            let input = conn.message_input.clone();
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
 
-            // Parse input for commands
-            match commands::parse_input(&input) {
-                ParseResult::Empty => {
+        let input = conn.message_input.clone();
+
+        // Parse input for commands
+        match commands::parse_input(&input) {
+            ParseResult::Empty => Task::none(),
+            ParseResult::Command(command) => {
+                // Clear input and execute command
+                if let Some(conn) = self.connections.get_mut(&conn_id) {
+                    conn.message_input.clear();
+                }
+                commands::execute_command(self, conn_id, command)
+            }
+            ParseResult::Message(message) => {
+                // Check permission before sending
+                let has_permission = match &conn.active_chat_tab {
+                    ChatTab::Server => {
+                        conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND)
+                    }
+                    ChatTab::UserMessage(_) => {
+                        conn.is_admin
+                            || conn
+                                .permissions
+                                .iter()
+                                .any(|p| p == PERMISSION_USER_MESSAGE)
+                    }
+                };
+
+                if !has_permission {
+                    return self.add_chat_error(conn_id, t("err-no-chat-permission"));
+                }
+
+                // Continue with normal message sending
+                if message.len() > MAX_CHAT_LENGTH {
+                    let error_msg = format!(
+                        "{} ({} characters, max {})",
+                        t("err-message-too-long"),
+                        message.len(),
+                        MAX_CHAT_LENGTH
+                    );
+                    return self.add_chat_error(conn_id, error_msg);
+                }
+
+                // Re-borrow conn after potential mutable borrow above
+                let Some(conn) = self.connections.get(&conn_id) else {
                     return Task::none();
+                };
+
+                let msg = match &conn.active_chat_tab {
+                    ChatTab::Server => ClientMessage::ChatSend { message },
+                    ChatTab::UserMessage(username) => ClientMessage::UserMessage {
+                        to_username: username.clone(),
+                        message,
+                    },
+                };
+
+                if let Err(e) = conn.tx.send(msg) {
+                    let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                    return self.add_chat_error(conn_id, error_msg);
                 }
-                ParseResult::Command(command) => {
-                    // Clear input and execute command
-                    if let Some(conn) = self.connections.get_mut(&conn_id) {
-                        conn.message_input.clear();
-                    }
-                    return commands::execute_command(self, conn_id, command);
+
+                if let Some(conn) = self.connections.get_mut(&conn_id) {
+                    conn.message_input.clear();
                 }
-                ParseResult::Message(message) => {
-                    // Check permission before sending
-                    let has_permission = match &conn.active_chat_tab {
-                        ChatTab::Server => {
-                            conn.is_admin
-                                || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND)
-                        }
-                        ChatTab::UserMessage(_) => {
-                            conn.is_admin
-                                || conn.permissions.iter().any(|p| p == PERMISSION_USER_MESSAGE)
-                        }
-                    };
 
-                    if !has_permission {
-                        return self.add_chat_error(conn_id, t("err-no-chat-permission"));
-                    }
-
-                    // Continue with normal message sending
-                    if message.len() > MAX_CHAT_LENGTH {
-                        let error_msg = format!(
-                            "{} ({} characters, max {})",
-                            t("err-message-too-long"),
-                            message.len(),
-                            MAX_CHAT_LENGTH
-                        );
-                        return self.add_chat_error(conn_id, error_msg);
-                    }
-
-                    // Re-borrow conn after potential mutable borrow above
-                    if let Some(conn) = self.connections.get(&conn_id) {
-                        let msg = match &conn.active_chat_tab {
-                            ChatTab::Server => ClientMessage::ChatSend { message },
-                            ChatTab::UserMessage(username) => ClientMessage::UserMessage {
-                                to_username: username.clone(),
-                                message,
-                            },
-                        };
-
-                        if let Err(e) = conn.tx.send(msg) {
-                            let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                            return self.add_chat_error(conn_id, error_msg);
-                        }
-                    }
-
-                    if let Some(conn) = self.connections.get_mut(&conn_id) {
-                        conn.message_input.clear();
-                    }
-                }
+                Task::none()
             }
         }
-        Task::none()
     }
 
     /// Switch to a different chat tab (Server or UserMessage)
     pub fn handle_switch_chat_tab(&mut self, tab: ChatTab) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            conn.unread_tabs.remove(&tab);
-            conn.active_chat_tab = tab;
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
 
-            return self.handle_show_chat_view();
-        }
-        Task::none()
+        conn.unread_tabs.remove(&tab);
+        conn.active_chat_tab = tab;
+
+        self.handle_show_chat_view()
     }
 
     // ==================== Private Helpers ====================
