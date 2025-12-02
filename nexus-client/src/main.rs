@@ -141,6 +141,8 @@ impl NexusApp {
         match message {
             // Keyboard and window events
             Message::Event(event) => self.handle_keyboard_event(event),
+            Message::NextChatTab => self.handle_next_chat_tab(),
+            Message::PrevChatTab => self.handle_prev_chat_tab(),
             Message::TabPressed => self.handle_tab_navigation(),
 
             // Connection management

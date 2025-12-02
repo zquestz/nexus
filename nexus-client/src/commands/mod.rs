@@ -8,6 +8,7 @@
 //! |---------|---------|------------|-------------|
 //! | `/broadcast` | `/b` | `user_broadcast` | Send a broadcast to all users |
 //! | `/clear` | | *none* | Clear chat history for current tab |
+//! | `/focus` | `/f` | *none* | Focus server chat or a user's PM tab |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
 //! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
 //! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
@@ -30,6 +31,7 @@
 
 mod broadcast;
 mod clear;
+mod focus;
 mod help;
 mod list;
 mod message;
@@ -94,6 +96,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[],
         },
         handler: clear::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "focus",
+            aliases: &["f"],
+            description_key: "cmd-focus-desc",
+            usage_key: "cmd-focus-usage",
+            permissions: &[],
+        },
+        handler: focus::execute,
     },
     CommandRegistration {
         info: CommandInfo {

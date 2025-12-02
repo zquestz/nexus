@@ -287,3 +287,17 @@ cmd-topic-set-usage = Uso: /{ $command } set <tópico>
 cmd-topic-none = Nenhum tópico definido
 cmd-broadcast-desc = Enviar uma mensagem para todos os usuários
 cmd-broadcast-usage = Uso: /{ $command } <mensagem>
+cmd-clear-desc = Limpar histórico de chat da aba atual
+cmd-clear-usage = Uso: /{ $command }
+cmd-focus-desc = Focar no chat do servidor ou janela de mensagens de um usuário
+cmd-focus-usage = Uso: /{ $command } [usuário]
+cmd-focus-not-found = Usuário não encontrado: { $name }
+cmd-list-desc = Mostrar usuários conectados
+cmd-list-usage = Uso: /{ $command }
+cmd-list-empty = Nenhum usuário conectado
+cmd-list-output = Usuários online: { $users } ({ $count } { $count ->
+    [one] usuário
+   *[other] usuários
+})
+cmd-help-usage = Uso: /{ $command } [comando]
+cmd-topic-permission-denied = Você não tem permissão para editar o tópico

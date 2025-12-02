@@ -87,12 +87,16 @@ pub enum Message {
     EditUserPressed,
     /// Keyboard or mouse event
     Event(iced::Event),
+    /// Keyboard: Navigate to next chat tab (Ctrl+Tab)
+    NextChatTab,
     /// Network: Error occurred on connection
     NetworkError(usize, String),
     /// Connection form: Password field changed
     PasswordChanged(String),
     /// Connection form: Port field changed
     PortChanged(String),
+    /// Keyboard: Navigate to previous chat tab (Ctrl+Shift+Tab)
+    PrevChatTab,
     /// Bookmark editor: Save button pressed
     SaveBookmark,
     /// Broadcast panel: Send button pressed

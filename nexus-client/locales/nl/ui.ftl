@@ -288,3 +288,17 @@ cmd-topic-set-usage = Gebruik: /{ $command } set <onderwerp>
 cmd-topic-none = Er is geen onderwerp ingesteld
 cmd-broadcast-desc = Stuur een broadcast naar alle gebruikers
 cmd-broadcast-usage = Gebruik: /{ $command } <bericht>
+cmd-clear-desc = Chatgeschiedenis van huidige tab wissen
+cmd-clear-usage = Gebruik: /{ $command }
+cmd-focus-desc = Focus op serverchat of berichtenvenster van een gebruiker
+cmd-focus-usage = Gebruik: /{ $command } [gebruikersnaam]
+cmd-focus-not-found = Gebruiker niet gevonden: { $name }
+cmd-list-desc = Verbonden gebruikers weergeven
+cmd-list-usage = Gebruik: /{ $command }
+cmd-list-empty = Geen gebruikers verbonden
+cmd-list-output = Gebruikers online: { $users } ({ $count } { $count ->
+    [one] gebruiker
+   *[other] gebruikers
+})
+cmd-help-usage = Gebruik: /{ $command } [commando]
+cmd-topic-permission-denied = Je hebt geen toestemming om het onderwerp te bewerken

@@ -292,3 +292,18 @@ cmd-topic-set-usage = Использование: /{ $command } set <тема>
 cmd-topic-none = Тема не установлена
 cmd-broadcast-desc = Отправить сообщение всем пользователям
 cmd-broadcast-usage = Использование: /{ $command } <сообщение>
+cmd-clear-desc = Очистить историю чата текущей вкладки
+cmd-clear-usage = Использование: /{ $command }
+cmd-focus-desc = Переключиться на чат сервера или окно сообщений пользователя
+cmd-focus-usage = Использование: /{ $command } [имя_пользователя]
+cmd-focus-not-found = Пользователь не найден: { $name }
+cmd-list-desc = Показать подключённых пользователей
+cmd-list-usage = Использование: /{ $command }
+cmd-list-empty = Нет подключённых пользователей
+cmd-list-output = Пользователи онлайн: { $users } ({ $count } { $count ->
+    [one] пользователь
+    [few] пользователя
+   *[other] пользователей
+})
+cmd-help-usage = Использование: /{ $command } [команда]
+cmd-topic-permission-denied = У вас нет разрешения на редактирование темы

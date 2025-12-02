@@ -1,7 +1,7 @@
 //! Keyboard navigation
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, BookmarkEditMode, InputId, Message, UserEditState};
+use crate::types::{ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, UserEditState};
 use iced::keyboard::{self, key};
 use iced::widget::text_input;
 use iced::{Event, Task};
@@ -9,12 +9,35 @@ use iced::{Event, Task};
 impl NexusApp {
     /// Handle keyboard events (Tab, Enter, Escape)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
-        // Handle Tab key
+        // Handle Ctrl+Shift+Tab for previous chat tab (must be before plain Tab check)
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
             modifiers,
             ..
         }) = event
+            && modifiers.control()
+            && modifiers.shift()
+        {
+            return self.update(Message::PrevChatTab);
+        }
+        // Handle Ctrl+Tab for next chat tab (must be before plain Tab check)
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(key::Named::Tab),
+            modifiers,
+            ..
+        }) = event
+            && modifiers.control()
+            && !modifiers.shift()
+        {
+            return self.update(Message::NextChatTab);
+        }
+        // Handle plain Tab key for field cycling
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(key::Named::Tab),
+            modifiers,
+            ..
+        }) = event
+            && !modifiers.control()
             && !modifiers.shift()
         {
             return self.update(Message::TabPressed);
@@ -107,6 +130,66 @@ impl NexusApp {
             }
         }
         Task::none()
+    }
+
+    /// Navigate to the next chat tab (wraps around)
+    pub fn handle_next_chat_tab(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Build ordered list of tabs: Server first, then PMs alphabetically
+        let mut tabs = vec![ChatTab::Server];
+        let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
+        pm_usernames.sort();
+        for username in pm_usernames {
+            tabs.push(ChatTab::UserMessage(username));
+        }
+
+        // Find current tab index and move to next (with wrap)
+        let current_index = tabs
+            .iter()
+            .position(|t| *t == conn.active_chat_tab)
+            .unwrap_or(0);
+        let next_index = (current_index + 1) % tabs.len();
+        let next_tab = tabs[next_index].clone();
+
+        self.update(Message::SwitchChatTab(next_tab))
+    }
+
+    /// Navigate to the previous chat tab (wraps around)
+    pub fn handle_prev_chat_tab(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Build ordered list of tabs: Server first, then PMs alphabetically
+        let mut tabs = vec![ChatTab::Server];
+        let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
+        pm_usernames.sort();
+        for username in pm_usernames {
+            tabs.push(ChatTab::UserMessage(username));
+        }
+
+        // Find current tab index and move to previous (with wrap)
+        let current_index = tabs
+            .iter()
+            .position(|t| *t == conn.active_chat_tab)
+            .unwrap_or(0);
+        let prev_index = if current_index == 0 {
+            tabs.len() - 1
+        } else {
+            current_index - 1
+        };
+        let prev_tab = tabs[prev_index].clone();
+
+        self.update(Message::SwitchChatTab(prev_tab))
     }
 
     /// Handle Tab key navigation across different screens
