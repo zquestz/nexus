@@ -58,15 +58,19 @@ impl UserManager {
                     continue;
                 }
 
-                // Check if user has user_list permission
-                let has_permission = match user_db
-                    .has_permission(user.db_user_id, Permission::UserList)
-                    .await
-                {
-                    Ok(has) => has,
-                    Err(e) => {
-                        eprintln!("{}{}: {}", ERR_CHECK_USER_LIST_PERMISSION, user.username, e);
-                        continue;
+                // Check if user has user_list permission (admin bypass)
+                let has_permission = if user.is_admin {
+                    true
+                } else {
+                    match user_db
+                        .has_permission(user.db_user_id, Permission::UserList)
+                        .await
+                    {
+                        Ok(has) => has,
+                        Err(e) => {
+                            eprintln!("{}{}: {}", ERR_CHECK_USER_LIST_PERMISSION, user.username, e);
+                            continue;
+                        }
                     }
                 };
 
