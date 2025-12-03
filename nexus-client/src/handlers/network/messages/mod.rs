@@ -131,9 +131,16 @@ impl NexusApp {
 
             ServerMessage::UserMessage {
                 from_username,
+                from_admin,
                 to_username,
                 message,
-            } => self.handle_user_message(connection_id, from_username, to_username, message),
+            } => self.handle_user_message(
+                connection_id,
+                from_username,
+                from_admin,
+                to_username,
+                message,
+            ),
 
             ServerMessage::UserMessageResponse { success, error } => {
                 self.handle_user_message_response(connection_id, success, error)

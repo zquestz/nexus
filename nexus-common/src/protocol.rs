@@ -195,6 +195,7 @@ pub enum ServerMessage {
     /// Private message (broadcast to all sessions of sender and receiver)
     UserMessage {
         from_username: String,
+        from_admin: bool,
         to_username: String,
         message: String,
     },

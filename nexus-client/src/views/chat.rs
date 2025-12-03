@@ -84,6 +84,9 @@ fn styled_message<'a>(
 }
 
 /// Check if a username belongs to an admin in the online users list
+///
+/// Used for server chat messages where admin status isn't embedded in the message.
+/// For private messages, use the `is_admin` field on `ChatMessage` instead.
 fn is_admin_username(conn: &ServerConnection, username: &str) -> bool {
     conn.online_users
         .iter()
@@ -281,7 +284,13 @@ fn build_message_list<'a>(
 
     for msg in messages {
         let time_str = timestamp_settings.format(&msg.get_timestamp());
-        let username_is_admin = is_admin_username(conn, &msg.username);
+        // For private messages, use the stored is_admin flag.
+        // For server chat, fall back to looking up in online users.
+        let username_is_admin = if msg.is_admin {
+            true
+        } else {
+            is_admin_username(conn, &msg.username)
+        };
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix

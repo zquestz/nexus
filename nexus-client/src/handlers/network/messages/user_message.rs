@@ -12,6 +12,7 @@ impl NexusApp {
         &mut self,
         connection_id: usize,
         from_username: String,
+        from_admin: bool,
         to_username: String,
         message: String,
     ) -> Task<Message> {
@@ -27,7 +28,8 @@ impl NexusApp {
         };
 
         // Add message to PM tab history (creates entry if doesn't exist)
-        let chat_msg = ChatMessage::with_timestamp(from_username, message, Local::now());
+        let chat_msg =
+            ChatMessage::with_timestamp_and_admin(from_username, message, Local::now(), from_admin);
         conn.user_messages
             .entry(other_user.clone())
             .or_default()

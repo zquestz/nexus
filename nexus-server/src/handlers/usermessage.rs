@@ -134,6 +134,7 @@ pub async fn handle_usermessage(
     // Broadcast message to all sessions of both sender and receiver
     let broadcast = ServerMessage::UserMessage {
         from_username: requesting_user_session.username.clone(),
+        from_admin: requesting_user_session.is_admin,
         to_username: target_user_db.username.clone(),
         message,
     };

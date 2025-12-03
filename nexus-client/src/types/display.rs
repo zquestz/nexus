@@ -57,6 +57,8 @@ pub struct ChatMessage {
     pub message_type: MessageType,
     /// When the message was received (defaults to now if not specified)
     pub timestamp: Option<DateTime<Local>>,
+    /// Whether the sender is an admin (for username coloring)
+    pub is_admin: bool,
 }
 
 impl ChatMessage {
@@ -67,20 +69,23 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::Chat,
             timestamp: None,
+            is_admin: false,
         }
     }
 
-    /// Create a new chat message with a specific timestamp
-    pub fn with_timestamp(
+    /// Create a new chat message with a specific timestamp and admin status
+    pub fn with_timestamp_and_admin(
         username: impl Into<String>,
         message: impl Into<String>,
         timestamp: DateTime<Local>,
+        is_admin: bool,
     ) -> Self {
         Self {
             username: username.into(),
             message: message.into(),
             message_type: MessageType::Chat,
             timestamp: Some(timestamp),
+            is_admin,
         }
     }
 
@@ -91,6 +96,7 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::System,
             timestamp: None,
+            is_admin: false,
         }
     }
 
@@ -101,6 +107,7 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::Error,
             timestamp: None,
+            is_admin: false,
         }
     }
 
@@ -111,6 +118,7 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::Info,
             timestamp: None,
+            is_admin: false,
         }
     }
 
@@ -121,6 +129,7 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::Info,
             timestamp: Some(timestamp),
+            is_admin: false,
         }
     }
 
@@ -131,6 +140,7 @@ impl ChatMessage {
             message: message.into(),
             message_type: MessageType::Broadcast,
             timestamp: None,
+            is_admin: false,
         }
     }
 
