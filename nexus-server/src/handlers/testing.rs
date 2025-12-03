@@ -3,14 +3,17 @@
 /// Default locale for tests
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
+use std::net::SocketAddr;
+
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
+
+use nexus_common::protocol::ServerMessage;
+
 use super::{HandlerContext, Writer};
 use crate::db::Database;
 use crate::users::UserManager;
 use crate::users::user::NewUserParams;
-use nexus_common::protocol::ServerMessage;
-use std::net::SocketAddr;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
@@ -128,6 +131,7 @@ pub async fn login_user_with_features(
             session_id: 0, // Will be assigned by add_user
             db_user_id: user.id,
             username: username.to_string(),
+            is_admin,
             address: test_ctx.peer_addr,
             created_at: user.created_at,
             tx: test_ctx.tx.clone(),

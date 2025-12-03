@@ -3,7 +3,6 @@
 use crate::constants::*;
 
 pub mod config;
-pub mod errors;
 pub mod password;
 pub mod permissions;
 pub mod sql;

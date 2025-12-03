@@ -1,8 +1,14 @@
 //! Handshake message handler
 
-use super::{HandlerContext, err_handshake_already_completed, err_version_mismatch};
-use nexus_common::protocol::ServerMessage;
 use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, VersionError};
+
+use super::{
+    HandlerContext, err_handshake_already_completed, err_version_empty,
+    err_version_invalid_characters, err_version_mismatch, err_version_too_long,
+};
 
 /// Handle a handshake request from the client
 pub async fn handle_handshake(
@@ -22,6 +28,24 @@ pub async fn handle_handshake(
         return Err(io::Error::other("Duplicate handshake"));
     }
 
+    // Validate version string
+    if let Err(e) = validators::validate_version(&version) {
+        let error_msg = match e {
+            VersionError::Empty => err_version_empty(ctx.locale),
+            VersionError::TooLong => {
+                err_version_too_long(ctx.locale, validators::MAX_VERSION_LENGTH)
+            }
+            VersionError::InvalidCharacters => err_version_invalid_characters(ctx.locale),
+        };
+        let response = ServerMessage::HandshakeResponse {
+            success: false,
+            version: Some(nexus_common::PROTOCOL_VERSION.to_string()),
+            error: Some(error_msg),
+        };
+        ctx.send_message(&response).await?;
+        return Err(io::Error::other("Invalid version string"));
+    }
+
     // Verify protocol version compatibility
     let server_version = nexus_common::PROTOCOL_VERSION;
 
@@ -36,13 +60,16 @@ pub async fn handle_handshake(
         ctx.send_message(&response).await?;
     } else {
         // Version mismatch - reject handshake
+        eprintln!(
+            "Handshake from {} failed: version mismatch (client: {}, server: {})",
+            ctx.peer_addr, version, server_version
+        );
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: Some(server_version.to_string()),
             error: Some(err_version_mismatch(ctx.locale, server_version, &version)),
         };
         ctx.send_message(&response).await?;
-        eprintln!("Handshake failed with {}: version mismatch", ctx.peer_addr);
         return Err(io::Error::other("Version mismatch"));
     }
 

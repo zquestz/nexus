@@ -11,6 +11,9 @@ err-account-disabled-by-admin = 管理者によってアカウントが無効化
 # 権限とアクセスのエラー
 err-permission-denied = 権限がありません
 
+# 機能エラー
+err-chat-feature-not-enabled = チャット機能が有効になっていません
+
 # データベースエラー
 err-database = データベースエラー
 
@@ -30,13 +33,38 @@ err-cannot-disable-last-admin = 最後の管理者を無効化できません
 
 # チャットトピックのエラー
 err-topic-contains-newlines = トピックに改行を含めることはできません
+err-topic-invalid-characters = トピックに無効な文字が含まれています
+
+# バージョン検証のエラー
+err-version-empty = バージョンを空にすることはできません
+err-version-too-long = バージョンが長すぎます（最大{ $max_length }文字）
+err-version-invalid-characters = バージョンに無効な文字が含まれています
+
+# パスワード検証のエラー
+err-password-empty = パスワードを空にすることはできません
+err-password-too-long = パスワードが長すぎます（最大{ $max_length }文字）
+
+# ロケール検証のエラー
+err-locale-too-long = ロケールが長すぎます（最大{ $max_length }文字）
+err-locale-invalid-characters = ロケールに無効な文字が含まれています
+
+# 機能検証のエラー
+err-features-too-many = 機能が多すぎます（最大{ $max_count }）
+err-features-empty-feature = 機能名を空にすることはできません
+err-features-feature-too-long = 機能名が長すぎます（最大{ $max_length }文字）
+err-features-invalid-characters = 機能名に無効な文字が含まれています
 
 # メッセージ検証のエラー
 err-message-empty = メッセージを空にすることはできません
+err-message-contains-newlines = メッセージに改行を含めることはできません
+err-message-invalid-characters = メッセージに無効な文字が含まれています
 
 # ユーザー名検証のエラー
 err-username-empty = ユーザー名を空にすることはできません
 err-username-invalid = ユーザー名に無効な文字が含まれています（文字、数字、記号のみ使用可能 - 空白文字や制御文字は不可）
+
+# 不明な権限エラー
+err-unknown-permission = 不明な権限: '{ $permission }'
 
 # 動的エラーメッセージ（パラメータ付き）
 err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }文字）
@@ -51,3 +79,9 @@ err-failed-to-create-user = ユーザー「{ $username }」の作成に失敗し
 err-account-disabled = アカウント「{ $username }」は無効化されています
 err-update-failed = ユーザー「{ $username }」の更新に失敗しました
 err-username-too-long = ユーザー名が長すぎます（最大{ $max_length }文字）
+# 権限バリデーションエラー
+err-permissions-too-many = 権限が多すぎます（最大{ $max_count }個）
+err-permissions-empty-permission = 権限名を空にすることはできません
+err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max_length }文字）
+err-permissions-contains-newlines = 権限名に改行を含めることはできません
+err-permissions-invalid-characters = 権限名に無効な文字が含まれています

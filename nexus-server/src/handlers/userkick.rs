@@ -1,12 +1,16 @@
 //! Handler for UserKick command
 
+use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, UsernameError};
+
 use super::{
     HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kicked_by, err_not_logged_in, err_permission_denied, err_user_not_online,
+    err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
-use std::io;
 
 /// Handle UserKick command
 pub async fn handle_userkick(
@@ -14,14 +18,31 @@ pub async fn handle_userkick(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Step 1: Verify authentication
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
+        eprintln!("UserKick request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserKick"))
             .await;
     };
 
-    // Step 2: Get requesting user from session
+    // Validate username format
+    if let Err(e) = validators::validate_username(&target_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserKickResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -31,8 +52,9 @@ pub async fn handle_userkick(
         }
     };
 
-    // Step 3: Prevent self-kick (cheap check before DB queries)
-    if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+    // Prevent self-kick (cheap check before DB queries)
+    let target_lower = target_username.to_lowercase();
+    if target_lower == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_cannot_kick_self(ctx.locale)),
@@ -40,33 +62,14 @@ pub async fn handle_userkick(
         return ctx.send_message(&response).await;
     }
 
-    // Step 4: Fetch requesting user account for permission check
-    let requesting_user = match ctx
-        .db
-        .users
-        .get_user_by_id(requesting_user_session.db_user_id)
-        .await
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserKick"))
-                .await;
-        }
-        Err(e) => {
-            eprintln!("Database error getting requesting user: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
-                .await;
-        }
-    };
-
-    // Step 5: Check UserKick permission
-    let has_permission = requesting_user.is_admin
-        || match ctx
+    // Check UserKick permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user_session.is_admin {
+        true
+    } else {
+        match ctx
             .db
             .users
-            .has_permission(requesting_user.id, Permission::UserKick)
+            .has_permission(requesting_user_session.db_user_id, Permission::UserKick)
             .await
         {
             Ok(has_perm) => has_perm,
@@ -76,9 +79,14 @@ pub async fn handle_userkick(
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
                     .await;
             }
-        };
+        }
+    };
 
     if !has_permission {
+        eprintln!(
+            "UserKick from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user_session.username
+        );
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -86,13 +94,9 @@ pub async fn handle_userkick(
         return ctx.send_message(&response).await;
     }
 
-    // Step 6: Look up target user in database to check admin status
+    // Look up target user in database to check admin status
     let target_user_db = match ctx.db.users.get_user_by_username(&target_username).await {
-        Ok(Some(user)) => Some(user),
-        Ok(None) => {
-            // User not in database, check if online anyway
-            None
-        }
+        Ok(user) => user,
         Err(e) => {
             eprintln!("Database error getting target user: {}", e);
             return ctx
@@ -101,8 +105,8 @@ pub async fn handle_userkick(
         }
     };
 
-    // Step 7: Prevent kicking admin users
-    if let Some(target_db) = target_user_db.as_ref()
+    // Prevent kicking admin users
+    if let Some(ref target_db) = target_user_db
         && target_db.is_admin
     {
         let response = ServerMessage::UserKickResponse {
@@ -112,11 +116,11 @@ pub async fn handle_userkick(
         return ctx.send_message(&response).await;
     }
 
-    // Step 8: Check if target user is online
+    // Check if target user is online (case-insensitive)
     let all_users = ctx.user_manager.get_all_users().await;
     let target_users: Vec<_> = all_users
-        .iter()
-        .filter(|u| u.username.to_lowercase() == target_username.to_lowercase())
+        .into_iter()
+        .filter(|u| u.username.to_lowercase() == target_lower)
         .collect();
 
     if target_users.is_empty() {
@@ -127,33 +131,33 @@ pub async fn handle_userkick(
         return ctx.send_message(&response).await;
     }
 
-    // Step 9: Kick all sessions of the target user
+    // Kick all sessions of the target user
     for user in target_users {
-        // Send kick message to the user before disconnecting
+        // Send kick message to the user in their locale before disconnecting
         let kick_msg = ServerMessage::Error {
-            message: err_kicked_by(ctx.locale, &requesting_user.username),
+            message: err_kicked_by(&user.locale, &requesting_user_session.username),
             command: None,
         };
         let _ = user.tx.send(kick_msg);
 
         // Remove user from UserManager (channel closes, connection breaks)
-        let session_id = user.session_id;
-        if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
+        let target_session_id = user.session_id;
+        if let Some(removed_user) = ctx.user_manager.remove_user(target_session_id).await {
             // Broadcast disconnection to users with user_list permission
             ctx.user_manager
                 .broadcast_user_event(
                     ServerMessage::UserDisconnected {
-                        session_id,
+                        session_id: target_session_id,
                         username: removed_user.username.clone(),
                     },
                     &ctx.db.users,
-                    Some(session_id), // Exclude the kicked user
+                    Some(target_session_id), // Exclude the kicked user
                 )
                 .await;
         }
     }
 
-    // Step 10: Send success response to requester
+    // Send success response to requester
     let response = ServerMessage::UserKickResponse {
         success: true,
         error: None,

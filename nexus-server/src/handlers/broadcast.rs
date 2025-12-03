@@ -1,16 +1,17 @@
 //! Broadcast message handler
 //! Handler for UserBroadcast command
 
+use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, MessageError};
+
 use super::{
-    HandlerContext, err_authentication, err_broadcast_too_long, err_database, err_message_empty,
+    HandlerContext, err_authentication, err_broadcast_too_long, err_database,
+    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
     err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
-use std::io;
-
-/// Maximum length for broadcast messages (in characters)
-const MAX_BROADCAST_LENGTH: usize = 1024;
 
 /// Handle a broadcast request from the client
 ///
@@ -21,38 +22,28 @@ pub async fn handle_user_broadcast(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Validate message content
-    if message.trim().is_empty() {
-        eprintln!("UserBroadcast from {} with empty message", ctx.peer_addr);
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(id) = session_id else {
+        eprintln!("UserBroadcast from {} without login", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(&err_message_empty(ctx.locale), Some("UserBroadcast"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserBroadcast"))
             .await;
-    }
-
-    if message.len() > MAX_BROADCAST_LENGTH {
-        eprintln!(
-            "UserBroadcast from {} exceeds length limit: {} chars",
-            ctx.peer_addr,
-            message.len()
-        );
-        return ctx
-            .send_error_and_disconnect(
-                &err_broadcast_too_long(ctx.locale, MAX_BROADCAST_LENGTH),
-                Some("UserBroadcast"),
-            )
-            .await;
-    }
-
-    // Verify user is logged in
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserBroadcast from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserBroadcast"))
-                .await;
-        }
     };
+
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => err_message_empty(ctx.locale),
+            MessageError::TooLong => {
+                err_broadcast_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH)
+            }
+            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
+            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("UserBroadcast"))
+            .await;
+    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
@@ -64,19 +55,23 @@ pub async fn handle_user_broadcast(
         }
     };
 
-    // Check permission
-    let has_perm = match ctx
-        .db
-        .users
-        .has_permission(user.db_user_id, Permission::UserBroadcast)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserBroadcast permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserBroadcast"))
-                .await;
+    // Check permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_perm = if user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(user.db_user_id, Permission::UserBroadcast)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserBroadcast permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserBroadcast"))
+                    .await;
+            }
         }
     };
 
@@ -96,7 +91,7 @@ pub async fn handle_user_broadcast(
             ServerMessage::ServerBroadcast {
                 session_id: id,
                 username: user.username.clone(),
-                message: message.clone(),
+                message,
             },
             &ctx.db.users,
         )
@@ -138,8 +133,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let session_id = Some(1); // Logged in
 
-        // Create message over 1024 characters
-        let long_message = "a".repeat(1025);
+        // Create message over MAX_MESSAGE_LENGTH characters
+        let long_message = "a".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
         // Try to send too-long message
         let result =
@@ -148,7 +143,7 @@ mod tests {
         // Should fail
         assert!(
             result.is_err(),
-            "Message over 1024 chars should be rejected"
+            "Message over MAX_MESSAGE_LENGTH should be rejected"
         );
     }
 
@@ -166,8 +161,8 @@ mod tests {
         )
         .await;
 
-        // Create message at exactly MAX_BROADCAST_LENGTH characters
-        let max_message = "a".repeat(MAX_BROADCAST_LENGTH);
+        // Create message at exactly MAX_MESSAGE_LENGTH characters
+        let max_message = "a".repeat(validators::MAX_MESSAGE_LENGTH);
 
         // Should succeed
         let result = handle_user_broadcast(
@@ -178,7 +173,7 @@ mod tests {
         .await;
         assert!(
             result.is_ok(),
-            "Message at MAX_BROADCAST_LENGTH chars should be accepted"
+            "Message at MAX_MESSAGE_LENGTH should be accepted"
         );
     }
 

@@ -1,15 +1,15 @@
 //! Handler for ChatTopicUpdate command
 
-use super::{
-    HandlerContext, err_database, err_not_logged_in, err_permission_denied,
-    err_topic_contains_newlines, err_topic_too_long,
-};
-use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Maximum topic length in characters
-const MAX_TOPIC_LENGTH: usize = 256;
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, ChatTopicError};
+
+use super::{
+    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
+    err_topic_contains_newlines, err_topic_invalid_characters, err_topic_too_long,
+};
+use crate::db::Permission;
 
 /// Handle ChatTopicUpdate command
 pub async fn handle_chattopicupdate(
@@ -17,73 +17,67 @@ pub async fn handle_chattopicupdate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // 1. Check if user is logged in (check authentication first)
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            return ctx
-                .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
-                .await;
-        }
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(id) = session_id else {
+        eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
+            .await;
     };
 
-    // 2. Validate topic length (before expensive user lookup)
-    if topic.len() > MAX_TOPIC_LENGTH {
-        return ctx
-            .send_error(
-                &err_topic_too_long(ctx.locale, MAX_TOPIC_LENGTH),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
+    // Validate topic format
+    if let Err(e) = validators::validate_chat_topic(&topic) {
+        let error_msg = match e {
+            ChatTopicError::TooLong => {
+                err_topic_too_long(ctx.locale, validators::MAX_CHAT_TOPIC_LENGTH)
+            }
+            ChatTopicError::ContainsNewlines => err_topic_contains_newlines(ctx.locale),
+            ChatTopicError::InvalidCharacters => err_topic_invalid_characters(ctx.locale),
+        };
+        return ctx.send_error(&error_msg, Some("ChatTopicUpdate")).await;
     }
 
-    // 3. Validate topic does not contain newlines
-    if topic.contains('\n') || topic.contains('\r') {
-        return ctx
-            .send_error(
-                &err_topic_contains_newlines(ctx.locale),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
-    }
-
-    // 4. Get user from session
+    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
             return ctx
-                .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
+                .send_error(&err_authentication(ctx.locale), Some("ChatTopicUpdate"))
                 .await;
         }
     };
 
-    // 5. Check if user has ChatTopicEdit permission
-    let has_permission = match ctx
-        .db
-        .users
-        .has_permission(user.db_user_id, Permission::ChatTopicEdit)
-        .await
-    {
-        Ok(has_perm) => has_perm,
-        Err(e) => {
-            eprintln!("Database error checking ChatTopicUpdate permission: {}", e);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
-                .await;
+    // Check ChatTopicEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(user.db_user_id, Permission::ChatTopicEdit)
+            .await
+        {
+            Ok(has_perm) => has_perm,
+            Err(e) => {
+                eprintln!("ChatTopicUpdate permission check error: {}", e);
+                return ctx
+                    .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
+                    .await;
+            }
         }
     };
 
     if !has_permission {
         eprintln!(
-            "Permission denied: User '{}' (IP: {}) attempted ChatTopicEdit without permission",
-            user.username, ctx.peer_addr
+            "ChatTopicUpdate from {} (user: {}) without permission",
+            ctx.peer_addr, user.username
         );
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("ChatTopicUpdate"))
             .await;
     }
 
-    // 6. Save topic to database (with username who set it)
+    // Save topic to database (with username who set it)
     if let Err(e) = ctx.db.config.set_topic(&topic, &user.username).await {
         eprintln!("Database error setting topic: {}", e);
         return ctx
@@ -91,11 +85,11 @@ pub async fn handle_chattopicupdate(
             .await;
     }
 
-    // 7. Broadcast ChatTopic to all users with ChatTopic permission
+    // Broadcast ChatTopic to all users with ChatTopic permission
     ctx.user_manager
         .broadcast_to_permission(
             ServerMessage::ChatTopic {
-                topic: topic.clone(),
+                topic,
                 username: user.username.clone(),
             },
             &ctx.db.users,
@@ -103,14 +97,12 @@ pub async fn handle_chattopicupdate(
         )
         .await;
 
-    // 8. Send success response to updater
+    // Send success response to updater
     ctx.send_message(&ServerMessage::ChatTopicUpdateResponse {
         success: true,
         error: None,
     })
-    .await?;
-
-    Ok(())
+    .await
 }
 
 #[cfg(test)]
@@ -120,7 +112,6 @@ mod tests {
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
     };
-    use nexus_common::protocol::ServerMessage;
 
     #[tokio::test]
     async fn test_chattopic_requires_login() {

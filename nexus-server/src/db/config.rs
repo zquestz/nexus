@@ -2,6 +2,7 @@
 
 use super::sql::*;
 use crate::constants::*;
+use nexus_common::validators;
 use sqlx::SqlitePool;
 use std::io;
 
@@ -45,6 +46,17 @@ impl ConfigDb {
 
     /// Set the server topic and record who set it
     pub async fn set_topic(&self, topic: &str, set_by: &str) -> io::Result<()> {
+        // Validate topic format (failsafe - handlers should also validate)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Err(e) = validators::validate_chat_topic(topic) {
+            return Err(io::Error::other(format!("{:?}", e)));
+        }
+
+        // Validate username format (failsafe - handlers should also validate)
+        if let Err(e) = validators::validate_username(set_by) {
+            return Err(io::Error::other(format!("{:?}", e)));
+        }
+
         sqlx::query(SQL_SET_CONFIG)
             .bind(CONFIG_KEY_TOPIC)
             .bind(topic)

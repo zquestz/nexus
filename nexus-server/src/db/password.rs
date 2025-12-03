@@ -4,6 +4,34 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use nexus_common::validators;
+use std::fmt;
+
+/// Error type for password operations
+#[derive(Debug)]
+pub enum PasswordError {
+    /// Password validation failed
+    Validation(validators::PasswordError),
+    /// Hashing or verification operation failed
+    Hash(argon2::password_hash::Error),
+}
+
+impl fmt::Display for PasswordError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PasswordError::Validation(e) => write!(f, "{:?}", e),
+            PasswordError::Hash(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for PasswordError {}
+
+impl From<argon2::password_hash::Error> for PasswordError {
+    fn from(err: argon2::password_hash::Error) -> Self {
+        PasswordError::Hash(err)
+    }
+}
 
 /// Hash a password using Argon2id with a random salt
 ///
@@ -20,7 +48,13 @@ use argon2::{
 /// * `Ok(String)` - The password hash in PHC string format (includes algorithm, salt, and hash)
 ///   - Format looks like: `$argon2id$v=19$m=19456,t=2,p=1$...`
 /// * `Err` - If the hashing operation fails (rare, typically memory allocation issues)
-pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
+pub fn hash_password(password: &str) -> Result<String, PasswordError> {
+    // Validate password format (failsafe - handlers should also validate)
+    // If this fails, it indicates a bug or attack bypassing handler validation
+    if let Err(e) = validators::validate_password(password) {
+        return Err(PasswordError::Validation(e));
+    }
+
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
@@ -47,17 +81,20 @@ pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Er
 ///
 /// This function uses constant-time comparison to prevent timing-based attacks
 /// that could reveal information about the password or hash.
-pub fn verify_password(
-    password: &str,
-    password_hash: &str,
-) -> Result<bool, argon2::password_hash::Error> {
+pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PasswordError> {
+    // Validate password format (failsafe - handlers should also validate)
+    // If this fails, it indicates a bug or attack bypassing handler validation
+    if let Err(e) = validators::validate_password(password) {
+        return Err(PasswordError::Validation(e));
+    }
+
     let parsed_hash = PasswordHash::new(password_hash)?;
     let argon2 = Argon2::default();
 
     match argon2.verify_password(password.as_bytes(), &parsed_hash) {
         Ok(()) => Ok(true),
         Err(argon2::password_hash::Error::Password) => Ok(false),
-        Err(e) => Err(e),
+        Err(e) => Err(PasswordError::Hash(e)),
     }
 }
 

@@ -11,6 +11,9 @@ err-account-disabled-by-admin = Account disabled by admin
 # Permission & Access Errors
 err-permission-denied = Permission denied
 
+# Feature Errors
+err-chat-feature-not-enabled = Chat feature not enabled
+
 # Database Errors
 err-database = Database error
 
@@ -30,13 +33,45 @@ err-cannot-disable-last-admin = Cannot disable the last admin
 
 # Chat Topic Errors
 err-topic-contains-newlines = Topic cannot contain newlines
+err-topic-invalid-characters = Topic contains invalid characters
+
+# Version Validation Errors
+err-version-empty = Version cannot be empty
+err-version-too-long = Version is too long (max { $max_length } characters)
+err-version-invalid-characters = Version contains invalid characters
+
+# Password Validation Errors
+err-password-empty = Password cannot be empty
+err-password-too-long = Password is too long (max { $max_length } characters)
+
+# Locale Validation Errors
+err-locale-too-long = Locale is too long (max { $max_length } characters)
+err-locale-invalid-characters = Locale contains invalid characters
+
+# Features Validation Errors
+err-features-too-many = Too many features (max { $max_count })
+err-features-empty-feature = Feature name cannot be empty
+err-features-feature-too-long = Feature name is too long (max { $max_length } characters)
+err-features-invalid-characters = Feature name contains invalid characters
+
+# Permissions Validation Errors
+err-permissions-too-many = Too many permissions (max { $max_count })
+err-permissions-empty-permission = Permission name cannot be empty
+err-permissions-permission-too-long = Permission name is too long (max { $max_length } characters)
+err-permissions-contains-newlines = Permission name cannot contain newlines
+err-permissions-invalid-characters = Permission name contains invalid characters
 
 # Message Validation Errors
 err-message-empty = Message cannot be empty
+err-message-contains-newlines = Message cannot contain newlines
+err-message-invalid-characters = Message contains invalid characters
 
 # Username Validation Errors
 err-username-empty = Username cannot be empty
 err-username-invalid = Username contains invalid characters (letters, numbers, and symbols allowed - no whitespace or control characters)
+
+# Unknown Permission Error
+err-unknown-permission = Unknown permission: '{ $permission }'
 
 # Dynamic Error Messages (with parameters)
 err-broadcast-too-long = Message too long (max { $max_length } characters)

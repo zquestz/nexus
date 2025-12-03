@@ -1,16 +1,17 @@
 //! Handler for UserMessage command
 
-use super::{
-    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long, err_database,
-    err_message_empty, err_not_logged_in, err_permission_denied, err_user_not_found,
-    err_user_not_online,
-};
-use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Maximum message length
-const MAX_MESSAGE_LENGTH: usize = 1024;
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, MessageError, UsernameError};
+
+use super::{
+    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long, err_database,
+    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
+    err_not_logged_in, err_permission_denied, err_user_not_found, err_user_not_online,
+    err_username_empty, err_username_invalid, err_username_too_long,
+};
+use crate::db::Permission;
 
 /// Handle UserMessage command
 pub async fn handle_usermessage(
@@ -19,32 +20,46 @@ pub async fn handle_usermessage(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Step 1: Verify authentication
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
+        eprintln!("UserMessage request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserMessage"))
             .await;
     };
 
-    // Step 2: Validate message is not empty (cheap check first)
-    if message.trim().is_empty() {
+    // Validate to_username format
+    if let Err(e) = validators::validate_username(&to_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
         let response = ServerMessage::UserMessageResponse {
             success: false,
-            error: Some(err_message_empty(ctx.locale)),
+            error: Some(error_msg),
         };
         return ctx.send_message(&response).await;
     }
 
-    // Step 3: Validate message length (cheap check)
-    if message.len() > MAX_MESSAGE_LENGTH {
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => err_message_empty(ctx.locale),
+            MessageError::TooLong => err_chat_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH),
+            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
+            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
+        };
         let response = ServerMessage::UserMessageResponse {
             success: false,
-            error: Some(err_chat_too_long(ctx.locale, MAX_MESSAGE_LENGTH)),
+            error: Some(error_msg),
         };
         return ctx.send_message(&response).await;
     }
 
-    // Step 4: Get requesting user from session
+    // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -54,8 +69,9 @@ pub async fn handle_usermessage(
         }
     };
 
-    // Step 5: Prevent self-messaging (cheap check before DB queries)
-    if to_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+    // Prevent self-messaging (cheap check before DB queries)
+    let to_username_lower = to_username.to_lowercase();
+    if to_username_lower == requesting_user_session.username.to_lowercase() {
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_cannot_message_self(ctx.locale)),
@@ -63,33 +79,14 @@ pub async fn handle_usermessage(
         return ctx.send_message(&response).await;
     }
 
-    // Step 6: Fetch requesting user account for permission check
-    let requesting_user = match ctx
-        .db
-        .users
-        .get_user_by_id(requesting_user_session.db_user_id)
-        .await
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
-                .await;
-        }
-        Err(e) => {
-            eprintln!("Database error getting requesting user: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
-                .await;
-        }
-    };
-
-    // Step 7: Check UserMessage permission
-    let has_permission = requesting_user.is_admin
-        || match ctx
+    // Check UserMessage permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user_session.is_admin {
+        true
+    } else {
+        match ctx
             .db
             .users
-            .has_permission(requesting_user.id, Permission::UserMessage)
+            .has_permission(requesting_user_session.db_user_id, Permission::UserMessage)
             .await
         {
             Ok(has_perm) => has_perm,
@@ -99,9 +96,14 @@ pub async fn handle_usermessage(
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
                     .await;
             }
-        };
+        }
+    };
 
     if !has_permission {
+        eprintln!(
+            "UserMessage from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user_session.username
+        );
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -109,7 +111,7 @@ pub async fn handle_usermessage(
         return ctx.send_message(&response).await;
     }
 
-    // Step 8: Look up target user in database
+    // Look up target user in database
     let target_user_db = match ctx.db.users.get_user_by_username(&to_username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
@@ -127,7 +129,7 @@ pub async fn handle_usermessage(
         }
     };
 
-    // Step 9: Check if target user is online
+    // Check if target user is online
     let target_sessions = ctx
         .user_manager
         .get_session_ids_for_user(&target_user_db.username)
@@ -141,23 +143,23 @@ pub async fn handle_usermessage(
         return ctx.send_message(&response).await;
     }
 
-    // Step 10: Send success response to sender
+    // Send success response to sender
     let response = ServerMessage::UserMessageResponse {
         success: true,
         error: None,
     };
     ctx.send_message(&response).await?;
 
-    // Step 11: Broadcast message to all sessions of both sender and receiver
+    // Broadcast message to all sessions of both sender and receiver
     let broadcast = ServerMessage::UserMessage {
-        from_username: requesting_user.username.clone(),
+        from_username: requesting_user_session.username.clone(),
         to_username: target_user_db.username.clone(),
-        message: message.clone(),
+        message,
     };
 
     // Send to all sender sessions
     ctx.user_manager
-        .broadcast_to_username(&requesting_user.username, &broadcast, &ctx.db.users)
+        .broadcast_to_username(&requesting_user_session.username, &broadcast, &ctx.db.users)
         .await;
 
     // Send to all receiver sessions
@@ -173,7 +175,6 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
-    use nexus_common::protocol::ServerMessage;
 
     #[tokio::test]
     async fn test_usermessage_requires_login() {
@@ -276,7 +277,7 @@ mod tests {
         )
         .await;
 
-        let long_message = "x".repeat(1025);
+        let long_message = "x".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
         let result = handle_usermessage(
             "target".to_string(),

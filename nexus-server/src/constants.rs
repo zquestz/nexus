@@ -16,6 +16,13 @@ pub const DATABASE_FILENAME: &str = "nexus.db";
 /// Database configuration key for chat topic
 pub const CONFIG_KEY_TOPIC: &str = "topic";
 
+// =============================================================================
+// Feature Names
+// =============================================================================
+
+/// Feature name for chat functionality
+pub const FEATURE_CHAT: &str = "chat";
+
 /// Database configuration key for username who set the topic
 pub const CONFIG_KEY_TOPIC_SET_BY: &str = "topic_set_by";
 
@@ -30,13 +37,6 @@ pub const CONFIG_KEY_TOPIC_SET_BY: &str = "topic_set_by";
 /// so 5 connections provides good throughput for read-heavy workloads while
 /// keeping resource usage reasonable.
 pub const MAX_DB_CONNECTIONS: u32 = 5;
-
-// =============================================================================
-// Username Validation
-// =============================================================================
-
-/// Maximum username length in characters
-pub const MAX_USERNAME_LENGTH: usize = 32;
 
 // =============================================================================
 // TLS Configuration

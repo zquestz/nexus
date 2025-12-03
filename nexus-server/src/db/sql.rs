@@ -54,6 +54,7 @@ pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_has
 /// 1. `user_id: i64` - User ID to look up
 ///
 /// **Returns:** `(id, username, password_hash, is_admin, enabled, created_at)`
+#[allow(dead_code)] // Used in tests
 pub const SQL_SELECT_USER_BY_ID: &str =
     "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
 

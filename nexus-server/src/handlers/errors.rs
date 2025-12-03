@@ -1,41 +1,18 @@
-//! Error message constants for handlers
+//! Error message functions for handlers
+//!
+//! All user-facing error messages are translated via the i18n system.
+//! Functions are organized alphabetically for easy lookup.
 
 use crate::i18n::{t, t_args};
-
-// Authentication & Session Errors
-/// Get translated "not logged in" error
-pub fn err_not_logged_in(locale: &str) -> String {
-    t(locale, "err-not-logged-in")
-}
-
-/// Get translated "authentication" error
-pub fn err_authentication(locale: &str) -> String {
-    t(locale, "err-authentication")
-}
-
-/// Get translated "invalid credentials" error
-pub fn err_invalid_credentials(locale: &str) -> String {
-    t(locale, "err-invalid-credentials")
-}
-
-/// Get translated "handshake required" error
-pub fn err_handshake_required(locale: &str) -> String {
-    t(locale, "err-handshake-required")
-}
-
-/// Get translated "already logged in" error
-pub fn err_already_logged_in(locale: &str) -> String {
-    t(locale, "err-already-logged-in")
-}
-
-/// Get translated "handshake already completed" error
-pub fn err_handshake_already_completed(locale: &str) -> String {
-    t(locale, "err-handshake-already-completed")
-}
 
 /// Get translated "account deleted" error
 pub fn err_account_deleted(locale: &str) -> String {
     t(locale, "err-account-deleted")
+}
+
+/// Get translated "account disabled" error
+pub fn err_account_disabled(locale: &str, username: &str) -> String {
+    t_args(locale, "err-account-disabled", &[("username", username)])
 }
 
 /// Get translated "account disabled by admin" error
@@ -43,25 +20,30 @@ pub fn err_account_disabled_by_admin(locale: &str) -> String {
     t(locale, "err-account-disabled-by-admin")
 }
 
-// Permission & Access Errors
-/// Get translated "permission denied" error
-pub fn err_permission_denied(locale: &str) -> String {
-    t(locale, "err-permission-denied")
+/// Get translated "already logged in" error
+pub fn err_already_logged_in(locale: &str) -> String {
+    t(locale, "err-already-logged-in")
 }
 
-// Database Errors
-/// Get translated "database" error
-pub fn err_database(locale: &str) -> String {
-    t(locale, "err-database")
+/// Get translated "authentication" error
+pub fn err_authentication(locale: &str) -> String {
+    t(locale, "err-authentication")
 }
 
-// Message Format Errors
-/// Get translated "invalid message format" error
-pub fn err_invalid_message_format(locale: &str) -> String {
-    t(locale, "err-invalid-message-format")
+/// Get translated "broadcast too long" error
+pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-broadcast-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
-// User Management Errors
+/// Get translated "cannot create admin" error
+pub fn err_cannot_create_admin(locale: &str) -> String {
+    t(locale, "err-cannot-create-admin")
+}
+
 /// Get translated "cannot delete last admin" error
 pub fn err_cannot_delete_last_admin(locale: &str) -> String {
     t(locale, "err-cannot-delete-last-admin")
@@ -77,19 +59,14 @@ pub fn err_cannot_demote_last_admin(locale: &str) -> String {
     t(locale, "err-cannot-demote-last-admin")
 }
 
+/// Get translated "cannot disable last admin" error
+pub fn err_cannot_disable_last_admin(locale: &str) -> String {
+    t(locale, "err-cannot-disable-last-admin")
+}
+
 /// Get translated "cannot edit self" error
 pub fn err_cannot_edit_self(locale: &str) -> String {
     t(locale, "err-cannot-edit-self")
-}
-
-/// Get translated "cannot create admin" error
-pub fn err_cannot_create_admin(locale: &str) -> String {
-    t(locale, "err-cannot-create-admin")
-}
-
-/// Get translated "cannot kick self" error
-pub fn err_cannot_kick_self(locale: &str) -> String {
-    t(locale, "err-cannot-kick-self")
 }
 
 /// Get translated "cannot kick admin" error
@@ -97,36 +74,19 @@ pub fn err_cannot_kick_admin(locale: &str) -> String {
     t(locale, "err-cannot-kick-admin")
 }
 
+/// Get translated "cannot kick self" error
+pub fn err_cannot_kick_self(locale: &str) -> String {
+    t(locale, "err-cannot-kick-self")
+}
+
 /// Get translated "cannot message self" error
 pub fn err_cannot_message_self(locale: &str) -> String {
     t(locale, "err-cannot-message-self")
 }
 
-/// Get translated "cannot disable last admin" error
-pub fn err_cannot_disable_last_admin(locale: &str) -> String {
-    t(locale, "err-cannot-disable-last-admin")
-}
-// Chat Topic Errors
-/// Get translated "topic contains newlines" error
-pub fn err_topic_contains_newlines(locale: &str) -> String {
-    t(locale, "err-topic-contains-newlines")
-}
-
-// Message Validation Errors
-/// Get translated "message empty" error
-pub fn err_message_empty(locale: &str) -> String {
-    t(locale, "err-message-empty")
-}
-
-// Dynamic error messages with parameters
-
-/// Get translated "broadcast too long" error
-pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
-    t_args(
-        locale,
-        "err-broadcast-too-long",
-        &[("max_length", &max_length.to_string())],
-    )
+/// Get translated "chat feature not enabled" error
+pub fn err_chat_feature_not_enabled(locale: &str) -> String {
+    t(locale, "err-chat-feature-not-enabled")
 }
 
 /// Get translated "chat too long" error
@@ -138,6 +98,169 @@ pub fn err_chat_too_long(locale: &str, max_length: usize) -> String {
     )
 }
 
+/// Get translated "database" error
+pub fn err_database(locale: &str) -> String {
+    t(locale, "err-database")
+}
+
+/// Get translated "failed to create user" error
+pub fn err_failed_to_create_user(locale: &str, username: &str) -> String {
+    t_args(
+        locale,
+        "err-failed-to-create-user",
+        &[("username", username)],
+    )
+}
+
+/// Get translated "features empty feature" error
+pub fn err_features_empty_feature(locale: &str) -> String {
+    t(locale, "err-features-empty-feature")
+}
+
+/// Get translated "features feature too long" error
+pub fn err_features_feature_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-features-feature-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "features invalid characters" error
+pub fn err_features_invalid_characters(locale: &str) -> String {
+    t(locale, "err-features-invalid-characters")
+}
+
+/// Get translated "features too many" error
+pub fn err_features_too_many(locale: &str, max_count: usize) -> String {
+    t_args(
+        locale,
+        "err-features-too-many",
+        &[("max_count", &max_count.to_string())],
+    )
+}
+
+/// Get translated "handshake already completed" error
+pub fn err_handshake_already_completed(locale: &str) -> String {
+    t(locale, "err-handshake-already-completed")
+}
+
+/// Get translated "handshake required" error
+pub fn err_handshake_required(locale: &str) -> String {
+    t(locale, "err-handshake-required")
+}
+
+/// Get translated "invalid credentials" error
+pub fn err_invalid_credentials(locale: &str) -> String {
+    t(locale, "err-invalid-credentials")
+}
+
+/// Get translated "invalid message format" error
+pub fn err_invalid_message_format(locale: &str) -> String {
+    t(locale, "err-invalid-message-format")
+}
+
+/// Get translated "kicked by" message
+pub fn err_kicked_by(locale: &str, username: &str) -> String {
+    t_args(locale, "err-kicked-by", &[("username", username)])
+}
+
+/// Get translated "locale invalid characters" error
+pub fn err_locale_invalid_characters(locale: &str) -> String {
+    t(locale, "err-locale-invalid-characters")
+}
+
+/// Get translated "locale too long" error
+pub fn err_locale_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-locale-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "message contains newlines" error
+pub fn err_message_contains_newlines(locale: &str) -> String {
+    t(locale, "err-message-contains-newlines")
+}
+
+/// Get translated "message empty" error
+pub fn err_message_empty(locale: &str) -> String {
+    t(locale, "err-message-empty")
+}
+
+/// Get translated "message invalid characters" error
+pub fn err_message_invalid_characters(locale: &str) -> String {
+    t(locale, "err-message-invalid-characters")
+}
+
+/// Get translated "not logged in" error
+pub fn err_not_logged_in(locale: &str) -> String {
+    t(locale, "err-not-logged-in")
+}
+
+/// Get translated "password empty" error
+pub fn err_password_empty(locale: &str) -> String {
+    t(locale, "err-password-empty")
+}
+
+/// Get translated "password too long" error
+pub fn err_password_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-password-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "permission denied" error
+pub fn err_permission_denied(locale: &str) -> String {
+    t(locale, "err-permission-denied")
+}
+
+/// Get translated "permissions contains newlines" error
+pub fn err_permissions_contains_newlines(locale: &str) -> String {
+    t(locale, "err-permissions-contains-newlines")
+}
+
+/// Get translated "permissions empty permission" error
+pub fn err_permissions_empty_permission(locale: &str) -> String {
+    t(locale, "err-permissions-empty-permission")
+}
+
+/// Get translated "permissions invalid characters" error
+pub fn err_permissions_invalid_characters(locale: &str) -> String {
+    t(locale, "err-permissions-invalid-characters")
+}
+
+/// Get translated "permissions permission too long" error
+pub fn err_permissions_permission_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-permissions-permission-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "permissions too many" error
+pub fn err_permissions_too_many(locale: &str, max_count: usize) -> String {
+    t_args(
+        locale,
+        "err-permissions-too-many",
+        &[("max_count", &max_count.to_string())],
+    )
+}
+
+/// Get translated "topic contains newlines" error
+pub fn err_topic_contains_newlines(locale: &str) -> String {
+    t(locale, "err-topic-contains-newlines")
+}
+
+/// Get translated "topic invalid characters" error
+pub fn err_topic_invalid_characters(locale: &str) -> String {
+    t(locale, "err-topic-invalid-characters")
+}
+
 /// Get translated "topic too long" error
 pub fn err_topic_too_long(locale: &str, max_length: usize) -> String {
     t_args(
@@ -145,6 +268,64 @@ pub fn err_topic_too_long(locale: &str, max_length: usize) -> String {
         "err-topic-too-long",
         &[("max_length", &max_length.to_string())],
     )
+}
+
+/// Get translated "unknown permission" error
+pub fn err_unknown_permission(locale: &str, permission: &str) -> String {
+    t_args(
+        locale,
+        "err-unknown-permission",
+        &[("permission", permission)],
+    )
+}
+
+/// Get translated "update failed" error
+pub fn err_update_failed(locale: &str, username: &str) -> String {
+    t_args(locale, "err-update-failed", &[("username", username)])
+}
+
+/// Get translated "user not found" error
+pub fn err_user_not_found(locale: &str, username: &str) -> String {
+    t_args(locale, "err-user-not-found", &[("username", username)])
+}
+
+/// Get translated "user not online" error
+pub fn err_user_not_online(locale: &str, username: &str) -> String {
+    t_args(locale, "err-user-not-online", &[("username", username)])
+}
+
+/// Get translated "username empty" error
+pub fn err_username_empty(locale: &str) -> String {
+    t(locale, "err-username-empty")
+}
+
+/// Get translated "username exists" error
+pub fn err_username_exists(locale: &str, username: &str) -> String {
+    t_args(locale, "err-username-exists", &[("username", username)])
+}
+
+/// Get translated "username invalid" error
+pub fn err_username_invalid(locale: &str) -> String {
+    t(locale, "err-username-invalid")
+}
+
+/// Get translated "username too long" error
+pub fn err_username_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-username-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "version empty" error
+pub fn err_version_empty(locale: &str) -> String {
+    t(locale, "err-version-empty")
+}
+
+/// Get translated "version invalid characters" error
+pub fn err_version_invalid_characters(locale: &str) -> String {
+    t(locale, "err-version-invalid-characters")
 }
 
 /// Get translated "version mismatch" error
@@ -159,41 +340,11 @@ pub fn err_version_mismatch(locale: &str, server_version: &str, client_version: 
     )
 }
 
-/// Get translated "kicked by" message
-pub fn err_kicked_by(locale: &str, username: &str) -> String {
-    t_args(locale, "err-kicked-by", &[("username", username)])
-}
-
-/// Get translated "username exists" error
-pub fn err_username_exists(locale: &str, username: &str) -> String {
-    t_args(locale, "err-username-exists", &[("username", username)])
-}
-
-/// Get translated "user not found" error
-pub fn err_user_not_found(locale: &str, username: &str) -> String {
-    t_args(locale, "err-user-not-found", &[("username", username)])
-}
-
-/// Get translated "user not online" error
-pub fn err_user_not_online(locale: &str, username: &str) -> String {
-    t_args(locale, "err-user-not-online", &[("username", username)])
-}
-
-/// Get translated "failed to create user" error
-pub fn err_failed_to_create_user(locale: &str, username: &str) -> String {
+/// Get translated "version too long" error
+pub fn err_version_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
-        "err-failed-to-create-user",
-        &[("username", username)],
+        "err-version-too-long",
+        &[("max_length", &max_length.to_string())],
     )
-}
-
-/// Get translated "account disabled" error
-pub fn err_account_disabled(locale: &str, username: &str) -> String {
-    t_args(locale, "err-account-disabled", &[("username", username)])
-}
-
-/// Get translated "update failed" error
-pub fn err_update_failed(locale: &str, username: &str) -> String {
-    t_args(locale, "err-update-failed", &[("username", username)])
 }

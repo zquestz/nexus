@@ -1,12 +1,18 @@
 //! UserEdit message handler - Returns user details for editing
 
+use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, UsernameError};
+
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_cannot_edit_self, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found,
+    HandlerContext, err_authentication, err_cannot_edit_self, err_database, err_not_logged_in,
+    err_permission_denied, err_user_not_found, err_username_empty, err_username_invalid,
+    err_username_too_long,
 };
 use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
-use std::io;
 
 /// Handle a user edit request (returns user details for editing)
 pub async fn handle_useredit(
@@ -14,16 +20,33 @@ pub async fn handle_useredit(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Verify authentication
-    let requesting_session_id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserEdit request from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserEdit"))
-                .await;
-        }
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(requesting_session_id) = session_id else {
+        eprintln!("UserEdit request from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserEdit"))
+            .await;
     };
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some(error_msg),
+            username: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Get requesting user from session
     let requesting_user = match ctx
@@ -33,19 +56,14 @@ pub async fn handle_useredit(
     {
         Some(u) => u,
         None => {
-            eprintln!("UserEdit request from unknown user {}", ctx.peer_addr);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserEdit"))
                 .await;
         }
     };
 
     // Prevent self-editing (cheap check before DB query)
     if requesting_user.username.eq_ignore_ascii_case(&username) {
-        eprintln!(
-            "UserEdit from {} (user: {}) attempting to edit themselves",
-            ctx.peer_addr, requesting_user.username
-        );
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_self(ctx.locale)),
@@ -57,19 +75,23 @@ pub async fn handle_useredit(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserEdit permission
-    let has_permission = match ctx
-        .db
-        .users
-        .has_permission(requesting_user.db_user_id, Permission::UserEdit)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserEdit permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
-                .await;
+    // Check UserEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(requesting_user.db_user_id, Permission::UserEdit)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserEdit permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
+                    .await;
+            }
         }
     };
 
@@ -93,7 +115,6 @@ pub async fn handle_useredit(
     let target_user = match ctx.db.users.get_user_by_username(&username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            eprintln!("UserEdit request for non-existent user: {}", username);
             let response = ServerMessage::UserEditResponse {
                 success: false,
                 error: Some(err_user_not_found(ctx.locale, &username)),
@@ -147,9 +168,7 @@ pub async fn handle_useredit(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
-    };
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
     async fn test_useredit_get_requires_login() {

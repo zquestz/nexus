@@ -9,6 +9,7 @@ pub struct NewUserParams {
     pub session_id: u32,
     pub db_user_id: i64,
     pub username: String,
+    pub is_admin: bool,
     pub address: SocketAddr,
     pub created_at: i64,
     pub tx: mpsc::UnboundedSender<ServerMessage>,
@@ -25,6 +26,8 @@ pub struct User {
     pub db_user_id: i64,
     /// Username
     pub username: String,
+    /// Whether the user is an admin
+    pub is_admin: bool,
     /// Remote address of the user's connection
     pub address: SocketAddr,
     /// When the user account was created (Unix timestamp from database)
@@ -50,6 +53,7 @@ impl User {
             session_id: params.session_id,
             db_user_id: params.db_user_id,
             username: params.username,
+            is_admin: params.is_admin,
             address: params.address,
             created_at: params.created_at,
             login_time: current_timestamp(),

@@ -40,4 +40,20 @@ impl UserManager {
 
         count
     }
+
+    /// Update admin status for a user by database user ID
+    /// Returns the number of sessions updated
+    pub async fn update_admin_status(&self, db_user_id: i64, is_admin: bool) -> usize {
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for user in users.values_mut() {
+            if user.db_user_id == db_user_id {
+                user.is_admin = is_admin;
+                count += 1;
+            }
+        }
+
+        count
+    }
 }

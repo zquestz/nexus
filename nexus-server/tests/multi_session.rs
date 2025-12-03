@@ -27,9 +27,9 @@ async fn test_multi_session_partial_disconnect() {
         .unwrap();
 
     // Alice logs in from 3 devices (3 sessions)
-    let (session_id1, mut rx1) = add_test_user(&user_manager, alice.id, "alice").await;
-    let (session_id2, mut rx2) = add_test_user(&user_manager, alice.id, "alice").await;
-    let (session_id3, mut rx3) = add_test_user(&user_manager, alice.id, "alice").await;
+    let (session_id1, mut rx1) = add_test_user(&user_manager, alice.id, "alice", false).await;
+    let (session_id2, mut rx2) = add_test_user(&user_manager, alice.id, "alice", false).await;
+    let (session_id3, mut rx3) = add_test_user(&user_manager, alice.id, "alice", false).await;
 
     // Verify all 3 sessions exist
     let all_users = user_manager.get_all_users().await;
@@ -146,10 +146,11 @@ async fn test_broadcast_respects_user_list_permission() {
         .unwrap();
 
     // Add all to UserManager
-    let (_sid_admin, mut rx_admin) = add_test_user(&user_manager, admin.id, "admin").await;
-    let (_sid_with, mut rx_with) = add_test_user(&user_manager, user_with.id, "user_with").await;
+    let (_sid_admin, mut rx_admin) = add_test_user(&user_manager, admin.id, "admin", true).await;
+    let (_sid_with, mut rx_with) =
+        add_test_user(&user_manager, user_with.id, "user_with", false).await;
     let (_sid_without, mut rx_without) =
-        add_test_user(&user_manager, user_without.id, "user_without").await;
+        add_test_user(&user_manager, user_without.id, "user_without", false).await;
 
     // Broadcast UserConnected event
     user_manager
@@ -211,8 +212,8 @@ async fn test_broadcast_excludes_specified_session() {
         .await
         .unwrap();
 
-    let (session_id1, mut rx1) = add_test_user(&user_manager, user1.id, "user1").await;
-    let (_session_id2, mut rx2) = add_test_user(&user_manager, user2.id, "user2").await;
+    let (session_id1, mut rx1) = add_test_user(&user_manager, user1.id, "user1", false).await;
+    let (_session_id2, mut rx2) = add_test_user(&user_manager, user2.id, "user2", false).await;
 
     // Broadcast with exclusion of session 1
     user_manager
@@ -273,8 +274,8 @@ async fn test_broadcast_detects_closed_channels() {
         .unwrap();
 
     // Add users to manager
-    let (session_id1, rx1) = add_test_user(&user_manager, user1.id, "user1").await;
-    let (session_id2, rx2) = add_test_user(&user_manager, user2.id, "user2").await;
+    let (session_id1, rx1) = add_test_user(&user_manager, user1.id, "user1", false).await;
+    let (session_id2, rx2) = add_test_user(&user_manager, user2.id, "user2", false).await;
 
     // Drop rx1 to close the channel (simulates dead connection)
     drop(rx1);

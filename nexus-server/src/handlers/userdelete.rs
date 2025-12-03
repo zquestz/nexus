@@ -1,15 +1,18 @@
 //! Handler for UserDelete command
 
+use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, UsernameError};
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_last_admin,
     err_cannot_delete_self, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found,
+    err_user_not_found, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
-use std::io;
 
 /// Handle UserDelete command
 pub async fn handle_userdelete(
@@ -17,12 +20,29 @@ pub async fn handle_userdelete(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Verify authentication
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
+        eprintln!("UserDelete request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserDelete"))
             .await;
     };
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&target_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -43,33 +63,14 @@ pub async fn handle_userdelete(
         return ctx.send_message(&response).await;
     }
 
-    // Fetch requesting user account for permission check
-    let requesting_user = match ctx
-        .db
-        .users
-        .get_user_by_id(requesting_user_session.db_user_id)
-        .await
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserDelete"))
-                .await;
-        }
-        Err(e) => {
-            eprintln!("Database error getting requesting user: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
-                .await;
-        }
-    };
-
-    // Check UserDelete permission
-    let has_permission = requesting_user.is_admin
-        || match ctx
+    // Check UserDelete permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user_session.is_admin {
+        true
+    } else {
+        match ctx
             .db
             .users
-            .has_permission(requesting_user.id, Permission::UserDelete)
+            .has_permission(requesting_user_session.db_user_id, Permission::UserDelete)
             .await
         {
             Ok(has_perm) => has_perm,
@@ -79,9 +80,14 @@ pub async fn handle_userdelete(
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                     .await;
             }
-        };
+        }
+    };
 
     if !has_permission {
+        eprintln!(
+            "UserDelete from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user_session.username
+        );
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -112,9 +118,9 @@ pub async fn handle_userdelete(
     let online_user = all_users.iter().find(|u| u.db_user_id == target_user.id);
 
     if let Some(online_user) = online_user {
-        // Send error message to the user being deleted
+        // Send error message to the user being deleted (in their locale)
         let disconnect_msg = ServerMessage::Error {
-            message: err_account_deleted(ctx.locale),
+            message: err_account_deleted(&online_user.locale),
             command: None,
         };
         let _ = online_user.tx.send(disconnect_msg);
@@ -434,6 +440,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: online_user.id,
                 username: "online_user".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: online_user.created_at,
                 tx: online_tx,

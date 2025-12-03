@@ -1,6 +1,5 @@
 //! Message handlers for client commands
 
-// Handler modules (alphabetically ordered)
 mod broadcast;
 mod chat;
 mod chattopicupdate;
@@ -19,7 +18,6 @@ mod userupdate;
 #[cfg(test)]
 pub mod testing;
 
-// Public exports
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
 pub use chattopicupdate::handle_chattopicupdate;
@@ -35,15 +33,18 @@ pub use userlist::handle_userlist;
 pub use usermessage::handle_usermessage;
 pub use userupdate::{UserUpdateRequest, handle_userupdate};
 
-use crate::db::Database;
-use crate::users::UserManager;
-use nexus_common::io::send_server_message;
-use nexus_common::protocol::ServerMessage;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
+
+use nexus_common::io::send_server_message;
+use nexus_common::protocol::ServerMessage;
+
+use crate::db::Database;
+use crate::users::UserManager;
 
 /// Type alias for a pinned boxed writer (supports any AsyncWrite stream)
 pub type Writer = Pin<Box<dyn AsyncWrite + Send>>;

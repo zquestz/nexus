@@ -12,6 +12,9 @@ err-account-disabled-by-admin = Cuenta deshabilitada por el administrador
 # Errores de permisos y acceso
 err-permission-denied = Permiso denegado
 
+# Errores de características
+err-chat-feature-not-enabled = La función de chat no está habilitada
+
 # Errores de base de datos
 err-database = Error de base de datos
 
@@ -31,13 +34,38 @@ err-cannot-disable-last-admin = No se puede deshabilitar al último administrado
 
 # Errores de tema de chat
 err-topic-contains-newlines = El tema no puede contener saltos de línea
+err-topic-invalid-characters = El tema contiene caracteres inválidos
+
+# Errores de validación de versión
+err-version-empty = La versión no puede estar vacía
+err-version-too-long = La versión es demasiado larga (máx. { $max_length } caracteres)
+err-version-invalid-characters = La versión contiene caracteres inválidos
+
+# Errores de validación de contraseña
+err-password-empty = La contraseña no puede estar vacía
+err-password-too-long = La contraseña es demasiado larga (máx. { $max_length } caracteres)
+
+# Errores de validación de configuración regional
+err-locale-too-long = La configuración regional es demasiado larga (máx. { $max_length } caracteres)
+err-locale-invalid-characters = La configuración regional contiene caracteres inválidos
+
+# Errores de validación de características
+err-features-too-many = Demasiadas características (máx. { $max_count })
+err-features-empty-feature = El nombre de la característica no puede estar vacío
+err-features-feature-too-long = El nombre de la característica es demasiado largo (máx. { $max_length } caracteres)
+err-features-invalid-characters = El nombre de la característica contiene caracteres inválidos
 
 # Errores de validación de mensajes
 err-message-empty = El mensaje no puede estar vacío
+err-message-contains-newlines = El mensaje no puede contener saltos de línea
+err-message-invalid-characters = El mensaje contiene caracteres inválidos
 
 # Errores de validación de nombre de usuario
 err-username-empty = El nombre de usuario no puede estar vacío
 err-username-invalid = El nombre de usuario contiene caracteres inválidos (se permiten letras, números y símbolos - sin espacios ni caracteres de control)
+
+# Error de permiso desconocido
+err-unknown-permission = Permiso desconocido: '{ $permission }'
 
 # Mensajes de error dinámicos (con parámetros)
 err-broadcast-too-long = Mensaje demasiado largo (máx. { $max_length } caracteres)
@@ -52,3 +80,9 @@ err-failed-to-create-user = Error al crear usuario '{ $username }'
 err-account-disabled = La cuenta '{ $username }' está deshabilitada
 err-update-failed = Error al actualizar usuario '{ $username }'
 err-username-too-long = El nombre de usuario es demasiado largo (máx. { $max_length } caracteres)
+# Errores de validación de permisos
+err-permissions-too-many = Demasiados permisos (máx. { $max_count })
+err-permissions-empty-permission = El nombre del permiso no puede estar vacío
+err-permissions-permission-too-long = El nombre del permiso es demasiado largo (máx. { $max_length } caracteres)
+err-permissions-contains-newlines = El nombre del permiso no puede contener saltos de línea
+err-permissions-invalid-characters = El nombre del permiso contiene caracteres inválidos

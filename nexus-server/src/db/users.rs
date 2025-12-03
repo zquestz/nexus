@@ -1,8 +1,8 @@
 //! User account database operations
 
-use super::errors::validate_username;
 use super::permissions::{Permission, Permissions};
 use super::sql::*;
+use nexus_common::validators;
 use sqlx::SqlitePool;
 
 /// User account stored in database
@@ -73,6 +73,7 @@ impl UserDb {
     // ========================================================================
 
     /// Get a user by ID
+    #[allow(dead_code)] // Used in tests
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
         let user: Option<(i64, String, String, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_USER_BY_ID)
@@ -97,6 +98,12 @@ impl UserDb {
         &self,
         username: &str,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
+        // Validate username format (failsafe - handlers should also validate)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Err(e) = validators::validate_username(username) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
         let user: Option<(i64, String, String, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
                 .bind(username)
@@ -214,8 +221,8 @@ impl UserDb {
     ) -> Result<UserAccount, sqlx::Error> {
         // Validate username format (failsafe - handlers should also validate)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Err(e) = validate_username(username, "en") {
-            return Err(sqlx::Error::Protocol(e.to_string()));
+        if let Err(e) = validators::validate_username(username) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
         let created_at = chrono::Utc::now().timestamp();
@@ -262,6 +269,12 @@ impl UserDb {
         username: &str,
         hashed_password: &str,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
+        // Validate username format (failsafe - handlers should also validate)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Err(e) = validators::validate_username(username) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
         // Start a transaction for atomicity
         let mut tx = self.pool.begin().await?;
 
@@ -387,9 +400,9 @@ impl UserDb {
         // Validate username format if it's being changed (failsafe)
         // If this fails, it indicates a bug or attack bypassing handler validation
         if let Some(new_username) = requested_username
-            && let Err(e) = validate_username(new_username, "en")
+            && let Err(e) = validators::validate_username(new_username)
         {
-            return Err(sqlx::Error::Protocol(e.to_string()));
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
         let final_password = requested_password_hash.unwrap_or(&user.hashed_password);

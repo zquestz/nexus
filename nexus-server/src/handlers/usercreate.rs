@@ -1,15 +1,21 @@
 //! UserCreate message handler
 
+use std::io;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_message_empty,
-    err_not_logged_in, err_permission_denied, err_username_exists,
+    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_not_logged_in,
+    err_password_empty, err_password_too_long, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_permissions_invalid_characters, err_permissions_permission_too_long,
+    err_permissions_too_many, err_unknown_permission, err_username_empty, err_username_exists,
+    err_username_invalid, err_username_too_long,
 };
-use crate::db::errors::validate_username;
 use crate::db::{Permission, Permissions, hash_password};
-use nexus_common::protocol::ServerMessage;
-use std::io;
 
 /// Handle a user creation request from the client
 pub async fn handle_usercreate(
@@ -21,40 +27,64 @@ pub async fn handle_usercreate(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Validate username format
-    if let Err(e) = validate_username(&username, ctx.locale) {
-        eprintln!(
-            "UserCreate from {} with invalid username: {}",
-            ctx.peer_addr, e
-        );
-        let error_msg = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(e.to_string()),
-        };
-        ctx.send_message(&error_msg).await?;
-        return Ok(());
-    }
-
-    if password.trim().is_empty() {
-        eprintln!("UserCreate from {} with empty password", ctx.peer_addr);
-        let error_msg = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_message_empty(ctx.locale)),
-        };
-        ctx.send_message(&error_msg).await?;
-        return Ok(());
-    }
-
-    // Verify authentication
-    let requesting_session_id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserCreate request from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
-                .await;
-        }
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(requesting_session_id) = session_id else {
+        eprintln!("UserCreate request from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
+            .await;
     };
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate password
+    if let Err(e) = validators::validate_password(&password) {
+        let error_msg = match e {
+            PasswordError::Empty => err_password_empty(ctx.locale),
+            PasswordError::TooLong => {
+                err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+            }
+        };
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate permissions format
+    if let Err(e) = validators::validate_permissions(&permissions) {
+        let error_msg = match e {
+            PermissionsError::TooMany => {
+                err_permissions_too_many(ctx.locale, validators::MAX_PERMISSIONS_COUNT)
+            }
+            PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
+            PermissionsError::PermissionTooLong => {
+                err_permissions_permission_too_long(ctx.locale, validators::MAX_PERMISSION_LENGTH)
+            }
+            PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
+            PermissionsError::InvalidCharacters => err_permissions_invalid_characters(ctx.locale),
+        };
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Get requesting user from session
     let requesting_user = match ctx
@@ -64,26 +94,29 @@ pub async fn handle_usercreate(
     {
         Some(u) => u,
         None => {
-            eprintln!("UserCreate request from unknown user {}", ctx.peer_addr);
             return ctx
                 .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserCreate"))
                 .await;
         }
     };
 
-    // Check UserCreate permission
-    let has_permission = match ctx
-        .db
-        .users
-        .has_permission(requesting_user.db_user_id, Permission::UserCreate)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserCreate permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
-                .await;
+    // Check UserCreate permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(requesting_user.db_user_id, Permission::UserCreate)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserCreate permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                    .await;
+            }
         }
     };
 
@@ -97,88 +130,57 @@ pub async fn handle_usercreate(
             .await;
     }
 
-    // Verify admin creation privilege
-    if is_admin {
-        let requesting_account = match ctx
-            .db
-            .users
-            .get_user_by_username(&requesting_user.username)
-            .await
-        {
-            Ok(Some(acc)) => acc,
-            _ => {
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
-                    .await;
-            }
-        };
-
-        if !requesting_account.is_admin {
-            eprintln!(
-                "UserCreate request from {} to create admin without being admin",
-                ctx.peer_addr
-            );
-            return ctx
-                .send_error_and_disconnect(&err_cannot_create_admin(ctx.locale), Some("UserCreate"))
-                .await;
-        }
+    // Verify admin creation privilege (use is_admin from UserManager)
+    if is_admin && !requesting_user.is_admin {
+        return ctx
+            .send_error_and_disconnect(&err_cannot_create_admin(ctx.locale), Some("UserCreate"))
+            .await;
     }
-
-    // Fetch requesting user's account for permission validation
-    let requesting_account = match ctx
-        .db
-        .users
-        .get_user_by_username(&requesting_user.username)
-        .await
-    {
-        Ok(Some(acc)) => acc,
-        _ => {
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
-                .await;
-        }
-    };
 
     // Parse and validate requested permissions
     let mut perms = Permissions::new();
-    for perm_str in permissions {
-        if let Some(perm) = Permission::parse(&perm_str) {
-            // Non-admins can only grant permissions they have
-            if !requesting_account.is_admin {
-                let has_perm = match ctx
-                    .db
-                    .users
-                    .has_permission(requesting_user.db_user_id, perm)
-                    .await
-                {
-                    Ok(has) => has,
-                    Err(e) => {
-                        eprintln!("Permission check error: {}", e);
-                        return ctx
-                            .send_error_and_disconnect(
-                                &err_database(ctx.locale),
-                                Some("UserCreate"),
-                            )
-                            .await;
-                    }
+    for perm_str in &permissions {
+        let perm = match Permission::parse(perm_str) {
+            Some(p) => p,
+            None => {
+                // Unknown permission - return error to client
+                let response = ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_unknown_permission(ctx.locale, perm_str)),
                 };
+                return ctx.send_message(&response).await;
+            }
+        };
 
-                if !has_perm {
-                    eprintln!(
-                        "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
-                        ctx.peer_addr, requesting_user.username, perm_str
-                    );
+        // Non-admins can only grant permissions they have
+        if !requesting_user.is_admin {
+            let has_perm = match ctx
+                .db
+                .users
+                .has_permission(requesting_user.db_user_id, perm)
+                .await
+            {
+                Ok(has) => has,
+                Err(e) => {
+                    eprintln!("Permission check error: {}", e);
                     return ctx
-                        .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                         .await;
                 }
-            }
+            };
 
-            perms.permissions.insert(perm);
-        } else {
-            eprintln!("Warning: unknown permission '{}'", perm_str);
-            // We could return an error here, but for now just skip invalid permissions
+            if !has_perm {
+                eprintln!(
+                    "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
+                    ctx.peer_addr, requesting_user.username, perm_str
+                );
+                return ctx
+                    .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+                    .await;
+            }
         }
+
+        perms.permissions.insert(perm);
     }
 
     // Check for duplicate username
@@ -371,6 +373,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin.id,
                 username: "admin".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
                 tx: test_ctx.tx.clone(),
@@ -674,6 +677,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: creator.id,
                 username: "creator".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
                 tx: test_ctx.tx.clone(),
@@ -738,6 +742,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: creator.id,
                 username: "creator".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
                 tx: test_ctx.tx.clone(),

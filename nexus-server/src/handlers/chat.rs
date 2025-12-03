@@ -1,16 +1,18 @@
 //! Chat message handler
 //! Handler for ChatSend command
 
-use super::{
-    HandlerContext, err_authentication, err_chat_too_long, err_database, err_message_empty,
-    err_not_logged_in, err_permission_denied,
-};
-use crate::db::Permission;
-use nexus_common::protocol::ServerMessage;
 use std::io;
 
-/// Maximum length for chat messages (in characters)
-const MAX_CHAT_LENGTH: usize = 1024;
+use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, MessageError};
+
+use super::{
+    HandlerContext, err_authentication, err_chat_feature_not_enabled, err_chat_too_long,
+    err_database, err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
+    err_not_logged_in, err_permission_denied,
+};
+use crate::constants::FEATURE_CHAT;
+use crate::db::Permission;
 
 /// Handle a chat send request from the client
 pub async fn handle_chat_send(
@@ -18,37 +20,26 @@ pub async fn handle_chat_send(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Validate message content
-    if message.trim().is_empty() {
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(id) = session_id else {
+        eprintln!("ChatSend from {} without login", ctx.peer_addr);
         return ctx
-            .send_error_and_disconnect(&err_message_empty(ctx.locale), Some("ChatSend"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
             .await;
-    }
-
-    if message.len() > MAX_CHAT_LENGTH {
-        eprintln!(
-            "ChatSend from {} exceeds length limit: {} chars",
-            ctx.peer_addr,
-            message.len()
-        );
-        return ctx
-            .send_error_and_disconnect(
-                &err_chat_too_long(ctx.locale, MAX_CHAT_LENGTH),
-                Some("ChatSend"),
-            )
-            .await;
-    }
-
-    // Verify user is logged in
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("ChatSend from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
-                .await;
-        }
     };
+
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => err_message_empty(ctx.locale),
+            MessageError::TooLong => err_chat_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH),
+            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
+            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("ChatSend"))
+            .await;
+    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
@@ -61,29 +52,29 @@ pub async fn handle_chat_send(
     };
 
     // Check chat feature
-    if !user.has_feature("chat") {
-        eprintln!(
-            "ChatSend from {} without chat feature enabled",
-            ctx.peer_addr
-        );
+    if !user.has_feature(FEATURE_CHAT) {
         return ctx
-            .send_error_and_disconnect("Chat feature not enabled", Some("ChatSend"))
+            .send_error_and_disconnect(&err_chat_feature_not_enabled(ctx.locale), Some("ChatSend"))
             .await;
     }
 
-    // Check permission
-    let has_perm = match ctx
-        .db
-        .users
-        .has_permission(user.db_user_id, Permission::ChatSend)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("ChatSend permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("ChatSend"))
-                .await;
+    // Check permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_perm = if user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(user.db_user_id, Permission::ChatSend)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("ChatSend permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("ChatSend"))
+                    .await;
+            }
         }
     };
 
@@ -100,11 +91,11 @@ pub async fn handle_chat_send(
     // Broadcast to all users with chat feature and ChatReceive permission
     ctx.user_manager
         .broadcast_to_feature(
-            "chat",
+            FEATURE_CHAT,
             ServerMessage::ChatMessage {
                 session_id: id,
                 username: user.username.clone(),
-                message: message.clone(),
+                message,
             },
             &ctx.db.users,
             Permission::ChatReceive,
@@ -142,8 +133,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let session_id = Some(1); // Fake session (length check happens first)
 
-        // Create message over MAX_CHAT_LENGTH characters
-        let long_message = "a".repeat(MAX_CHAT_LENGTH + 1);
+        // Create message over MAX_MESSAGE_LENGTH characters
+        let long_message = "a".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
         // Try to send too-long message
         let result =
@@ -152,7 +143,7 @@ mod tests {
         // Should fail
         assert!(
             result.is_err(),
-            "Message over MAX_CHAT_LENGTH should be rejected"
+            "Message over MAX_MESSAGE_LENGTH should be rejected"
         );
     }
 
@@ -167,12 +158,12 @@ mod tests {
             "password",
             &[db::Permission::ChatSend],
             false,
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Create message at exactly MAX_CHAT_LENGTH characters
-        let max_message = "a".repeat(MAX_CHAT_LENGTH);
+        // Create message at exactly MAX_MESSAGE_LENGTH characters
+        let max_message = "a".repeat(validators::MAX_MESSAGE_LENGTH);
 
         // Should succeed
         let result = handle_chat_send(
@@ -183,7 +174,7 @@ mod tests {
         .await;
         assert!(
             result.is_ok(),
-            "Message at MAX_CHAT_LENGTH should be accepted"
+            "Message at MAX_MESSAGE_LENGTH should be accepted"
         );
     }
 
@@ -198,7 +189,7 @@ mod tests {
             "password",
             &[db::Permission::ChatSend],
             false,
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -229,6 +220,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_chat_message_with_newlines() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Try to send message with \n
+        let result = handle_chat_send(
+            "Hello\nWorld".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(result.is_err(), "Message with newline should be rejected");
+
+        // Try to send message with \r
+        let result = handle_chat_send(
+            "Hello\rWorld".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(
+            result.is_err(),
+            "Message with carriage return should be rejected"
+        );
+
+        // Try to send message with \r\n
+        let result = handle_chat_send(
+            "Hello\r\nWorld".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should fail
+        assert!(result.is_err(), "Message with CRLF should be rejected");
+    }
+
+    #[tokio::test]
     async fn test_chat_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
@@ -239,7 +282,7 @@ mod tests {
             "password",
             &[],
             false,
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -296,7 +339,7 @@ mod tests {
             "password",
             &[db::Permission::ChatSend],
             false,
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -346,7 +389,7 @@ mod tests {
             "password",
             &[],
             true,
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 

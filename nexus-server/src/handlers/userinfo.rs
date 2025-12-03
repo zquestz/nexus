@@ -1,14 +1,19 @@
 //! UserInfo message handler
 
+use std::io;
+
+use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
+use nexus_common::validators::{self, UsernameError};
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found,
+    err_user_not_found, err_username_empty, err_username_invalid, err_username_too_long,
 };
+#[cfg(test)]
+use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
-use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
-use std::io;
 
 /// Handle a userinfo request from the client
 pub async fn handle_userinfo(
@@ -16,41 +21,58 @@ pub async fn handle_userinfo(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Verify authentication
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserInfo request from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
-                .await;
-        }
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(id) = session_id else {
+        eprintln!("UserInfo request from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
+            .await;
     };
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&requested_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserInfoResponse {
+            success: false,
+            error: Some(error_msg),
+            user: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            eprintln!("UserInfo request from unknown user {}", ctx.peer_addr);
             return ctx
                 .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserInfo"))
                 .await;
         }
     };
 
-    // Check UserInfo permission
-    let has_perm = match ctx
-        .db
-        .users
-        .has_permission(requesting_user.db_user_id, Permission::UserInfo)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserInfo permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
-                .await;
+    // Check UserInfo permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_perm = if requesting_user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(requesting_user.db_user_id, Permission::UserInfo)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserInfo permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
+                    .await;
+            }
         }
     };
 
@@ -79,24 +101,8 @@ pub async fn handle_userinfo(
             error: Some(err_user_not_found(ctx.locale, &requested_username)),
             user: None,
         };
-        ctx.send_message(&response).await?;
-        return Ok(());
+        return ctx.send_message(&response).await;
     }
-
-    // Fetch requesting user account to check admin status
-    let requesting_account = match ctx
-        .db
-        .users
-        .get_user_by_username(&requesting_user.username)
-        .await
-    {
-        Ok(Some(acc)) => acc,
-        _ => {
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
-                .await;
-        }
-    };
 
     // Fetch target user account for admin status and created_at
     let target_account = match ctx.db.users.get_user_by_username(&requested_username).await {
@@ -135,7 +141,7 @@ pub async fn handle_userinfo(
     let actual_username = target_account.username.clone();
 
     // Build response with appropriate visibility level
-    let user_info = if requesting_account.is_admin {
+    let user_info = if requesting_user.is_admin {
         // Admin gets all fields including target user's admin status and addresses
         UserInfoDetailed {
             username: actual_username,
@@ -166,9 +172,7 @@ pub async fn handle_userinfo(
         error: None,
         user: Some(user_info),
     };
-    ctx.send_message(&response).await?;
-
-    Ok(())
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]
@@ -212,6 +216,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: user.id,
                 username: "alice".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
                 tx: test_ctx.tx.clone(),
@@ -263,6 +268,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: user.id,
                 username: "alice".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
                 tx: test_ctx.tx.clone(),
@@ -349,10 +355,11 @@ mod tests {
                 session_id: 0,
                 db_user_id: requester.id,
                 username: "requester".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: requester.created_at,
                 tx: test_ctx.tx.clone(),
-                features: vec!["chat".to_string()],
+                features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
             })
             .await;
@@ -364,10 +371,11 @@ mod tests {
                 session_id: 0,
                 db_user_id: target.id,
                 username: "target".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
                 tx: test_ctx.tx.clone(),
-                features: vec!["chat".to_string()],
+                features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
             })
             .await;
@@ -405,7 +413,7 @@ mod tests {
                 assert_eq!(user_info.username, "target");
                 assert_eq!(user_info.session_ids.len(), 1);
                 assert_eq!(user_info.session_ids[0], target_id);
-                assert_eq!(user_info.features, vec!["chat".to_string()]);
+                assert_eq!(user_info.features, vec![FEATURE_CHAT.to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
                 // Verify admin-only fields are NOT present (None)
@@ -452,10 +460,11 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin.id,
                 username: "admin".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
                 tx: test_ctx.tx.clone(),
-                features: vec!["chat".to_string()],
+                features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
             })
             .await;
@@ -467,10 +476,11 @@ mod tests {
                 session_id: 0,
                 db_user_id: target.id,
                 username: "target".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
                 tx: test_ctx.tx.clone(),
-                features: vec!["chat".to_string()],
+                features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
             })
             .await;
@@ -508,7 +518,7 @@ mod tests {
                 assert_eq!(user_info.username, "target");
                 assert_eq!(user_info.session_ids.len(), 1);
                 assert_eq!(user_info.session_ids[0], target_id);
-                assert_eq!(user_info.features, vec!["chat".to_string()]);
+                assert_eq!(user_info.features, vec![FEATURE_CHAT.to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
                 // Verify admin-only fields ARE present
@@ -563,6 +573,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
                 tx: test_ctx.tx.clone(),
@@ -578,6 +589,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
                 tx: test_ctx.tx.clone(),

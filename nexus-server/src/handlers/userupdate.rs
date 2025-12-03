@@ -1,17 +1,22 @@
 //! UserUpdate message handler
 
+use std::io;
+
+use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_disabled_by_admin, err_authentication,
     err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_self,
-    err_database, err_not_logged_in, err_permission_denied, err_update_failed, err_user_not_found,
-    err_username_exists,
+    err_database, err_not_logged_in, err_password_empty, err_password_too_long,
+    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_permissions_invalid_characters, err_permissions_permission_too_long,
+    err_permissions_too_many, err_update_failed, err_user_not_found, err_username_empty,
+    err_username_exists, err_username_invalid, err_username_too_long,
 };
-use crate::db::errors::{err_username_empty, validate_username};
 use crate::db::{Permission, Permissions, hash_password};
-use nexus_common::protocol::{ServerMessage, UserInfo};
-use std::io;
 
 /// User update request parameters
 pub struct UserUpdateRequest {
@@ -29,16 +34,29 @@ pub async fn handle_userupdate(
     request: UserUpdateRequest,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Verify authentication
-    let requesting_session_id = match request.session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
-                .await;
-        }
+    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    let Some(requesting_session_id) = request.session_id else {
+        eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
+            .await;
     };
+
+    // Validate target username format
+    if let Err(e) = validators::validate_username(&request.username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Get requesting user from session
     let requesting_user = match ctx
@@ -48,7 +66,6 @@ pub async fn handle_userupdate(
     {
         Some(u) => u,
         None => {
-            eprintln!("UserUpdate request from unknown user {}", ctx.peer_addr);
             return ctx
                 .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserUpdate"))
                 .await;
@@ -57,7 +74,6 @@ pub async fn handle_userupdate(
 
     // Prevent self-editing (cheap check before DB query, case-insensitive)
     if request.username.to_lowercase() == requesting_user.username.to_lowercase() {
-        eprintln!("UserUpdate from {} attempting to edit self", ctx.peer_addr);
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(err_cannot_edit_self(ctx.locale)),
@@ -65,19 +81,23 @@ pub async fn handle_userupdate(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserEdit permission
-    let has_permission = match ctx
-        .db
-        .users
-        .has_permission(requesting_user.db_user_id, Permission::UserEdit)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserUpdate permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
-                .await;
+    // Check UserEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(requesting_user.db_user_id, Permission::UserEdit)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserUpdate permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                    .await;
+            }
         }
     };
 
@@ -93,15 +113,18 @@ pub async fn handle_userupdate(
 
     // Validate new username format if it's being changed
     if let Some(ref new_username) = request.requested_username
-        && let Err(e) = validate_username(new_username, ctx.locale)
+        && let Err(e) = validators::validate_username(new_username)
     {
-        eprintln!(
-            "UserUpdate from {} with invalid username: {}",
-            ctx.peer_addr, e
-        );
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
         let response = ServerMessage::UserUpdateResponse {
             success: false,
-            error: Some(e.to_string()),
+            error: Some(error_msg),
         };
         return ctx.send_message(&response).await;
     }
@@ -109,39 +132,43 @@ pub async fn handle_userupdate(
     // Note: Last admin protection is now handled atomically at the database level
     // in update_user() SQL query to prevent race conditions
 
-    // Fetch requesting user account to check admin status
-    let requesting_account = match ctx
-        .db
-        .users
-        .get_user_by_username(&requesting_user.username)
-        .await
-    {
-        Ok(Some(acc)) => acc,
-        _ => {
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
-                .await;
-        }
-    };
-
-    // Verify admin flag modification privilege
-    if request.requested_is_admin.is_some() && !requesting_account.is_admin {
-        eprintln!(
-            "UserUpdate from {} (non-admin) trying to change admin status",
-            ctx.peer_addr
-        );
+    // Verify admin flag modification privilege (use is_admin from UserManager)
+    if request.requested_is_admin.is_some() && !requesting_user.is_admin {
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
             .await;
     }
 
-    // Parse and validate requested permissions
+    // Validate and parse requested permissions
     let parsed_permissions = if let Some(ref perm_strings) = request.requested_permissions {
+        // Validate permissions format first
+        if let Err(e) = validators::validate_permissions(perm_strings) {
+            let error_msg = match e {
+                PermissionsError::TooMany => {
+                    err_permissions_too_many(ctx.locale, validators::MAX_PERMISSIONS_COUNT)
+                }
+                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
+                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
+                    ctx.locale,
+                    validators::MAX_PERMISSION_LENGTH,
+                ),
+                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
+                PermissionsError::InvalidCharacters => {
+                    err_permissions_invalid_characters(ctx.locale)
+                }
+            };
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(error_msg),
+            };
+            return ctx.send_message(&response).await;
+        }
+
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
             if let Some(perm) = Permission::parse(perm_str) {
-                // Check permission delegation authority
-                if !requesting_account.is_admin {
+                // Check permission delegation authority (use is_admin from UserManager)
+                if !requesting_user.is_admin {
                     let has_perm = match ctx
                         .db
                         .users
@@ -178,7 +205,7 @@ pub async fn handle_userupdate(
         }
 
         // Apply permission merge logic for non-admins
-        if !requesting_account.is_admin {
+        if !requesting_user.is_admin {
             // Get target user's account
             if let Ok(Some(target_account)) =
                 ctx.db.users.get_user_by_username(&request.username).await
@@ -235,10 +262,24 @@ pub async fn handle_userupdate(
 
     // Process password change request
     let requested_password_hash = if let Some(ref password) = request.requested_password {
+        // Empty/whitespace password = no change
         if password.trim().is_empty() {
-            // Empty password = no change
             None
         } else {
+            // Validate password format
+            if let Err(e) = validators::validate_password(password) {
+                let error_msg = match e {
+                    PasswordError::Empty => err_password_empty(ctx.locale),
+                    PasswordError::TooLong => {
+                        err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+                    }
+                };
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(error_msg),
+                };
+                return ctx.send_message(&response).await;
+            }
             match hash_password(password) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
@@ -253,17 +294,7 @@ pub async fn handle_userupdate(
         None
     };
 
-    // Validate new username if provided
-    if let Some(ref new_name) = request.requested_username
-        && new_name.trim().is_empty()
-    {
-        eprintln!("UserUpdate from {} with empty username", ctx.peer_addr);
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_username_empty(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
+    // Note: Username validation is already done earlier, so no need to check for empty here
 
     // Get old username, admin status, and permissions before update (to detect changes)
     let (old_account, old_had_chat_topic) =
@@ -387,15 +418,14 @@ pub async fn handle_userupdate(
 
                     // Disconnect each session
                     for session_id in session_ids {
-                        // Send disconnect message to inform the user why they're being disconnected
-                        let disconnect_msg = ServerMessage::Error {
-                            message: err_account_disabled_by_admin(ctx.locale),
-                            command: None,
-                        };
-
+                        // Send disconnect message to inform the user in their locale
                         if let Some(user) =
                             ctx.user_manager.get_user_by_session_id(session_id).await
                         {
+                            let disconnect_msg = ServerMessage::Error {
+                                message: err_account_disabled_by_admin(&user.locale),
+                                command: None,
+                            };
                             let _ = user.tx.send(disconnect_msg);
                         }
 
@@ -431,6 +461,13 @@ pub async fn handle_userupdate(
                 if username_changed {
                     ctx.user_manager
                         .update_username(updated_account.id, updated_account.username.clone())
+                        .await;
+                }
+
+                // If admin status changed, update UserManager
+                if admin_status_changed {
+                    ctx.user_manager
+                        .update_admin_status(updated_account.id, updated_account.is_admin)
                         .await;
                 }
 
@@ -1192,6 +1229,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: editor.id,
                 username: "editor".to_string(),
+                is_admin: false,
                 address: test_ctx.peer_addr,
                 created_at: editor.created_at,
                 tx: test_ctx.tx.clone(),
@@ -1377,6 +1415,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
                 tx: test_ctx.tx.clone(),
@@ -1391,6 +1430,7 @@ mod tests {
                 session_id: 0,
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
+                is_admin: true,
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
                 tx: test_ctx.tx.clone(),

@@ -4,6 +4,7 @@
 
 pub mod io;
 pub mod protocol;
+pub mod validators;
 
 /// Version information for the Nexus protocol
 pub const PROTOCOL_VERSION: &str = "0.3.0";

@@ -1,14 +1,22 @@
 //! Login message handler
 
-use super::{HandlerContext, current_timestamp};
+use std::io;
+
+use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
+use nexus_common::validators::{self, FeaturesError, LocaleError, PasswordError, UsernameError};
+
 use super::{
-    err_account_disabled, err_already_logged_in, err_authentication, err_database,
-    err_failed_to_create_user, err_handshake_required, err_invalid_credentials,
+    HandlerContext, current_timestamp, err_account_disabled, err_already_logged_in,
+    err_authentication, err_database, err_failed_to_create_user, err_features_empty_feature,
+    err_features_feature_too_long, err_features_invalid_characters, err_features_too_many,
+    err_handshake_required, err_invalid_credentials, err_locale_invalid_characters,
+    err_locale_too_long, err_password_empty, err_password_too_long, err_username_empty,
+    err_username_invalid, err_username_too_long,
 };
+#[cfg(test)]
+use crate::constants::FEATURE_CHAT;
 use crate::db::{self, Permission};
 use crate::users::user::NewUserParams;
-use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
-use std::io;
 
 /// Handle a login request from the client
 pub async fn handle_login(
@@ -36,6 +44,61 @@ pub async fn handle_login(
             .await;
     }
 
+    // Validate username
+    if let Err(e) = validators::validate_username(&username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(&locale),
+            UsernameError::TooLong => {
+                err_username_too_long(&locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(&locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .await;
+    }
+
+    // Validate password
+    if let Err(e) = validators::validate_password(&password) {
+        let error_msg = match e {
+            PasswordError::Empty => err_password_empty(&locale),
+            PasswordError::TooLong => {
+                err_password_too_long(&locale, validators::MAX_PASSWORD_LENGTH)
+            }
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .await;
+    }
+
+    // Validate locale
+    if let Err(e) = validators::validate_locale(&locale) {
+        let error_msg = match e {
+            LocaleError::TooLong => err_locale_too_long(&locale, validators::MAX_LOCALE_LENGTH),
+            LocaleError::InvalidCharacters => err_locale_invalid_characters(&locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .await;
+    }
+
+    // Validate features
+    if let Err(e) = validators::validate_features(&features) {
+        let error_msg = match e {
+            FeaturesError::TooMany => {
+                err_features_too_many(&locale, validators::MAX_FEATURES_COUNT)
+            }
+            FeaturesError::EmptyFeature => err_features_empty_feature(&locale),
+            FeaturesError::FeatureTooLong => {
+                err_features_feature_too_long(&locale, validators::MAX_FEATURE_LENGTH)
+            }
+            FeaturesError::InvalidCharacters => err_features_invalid_characters(&locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .await;
+    }
+
     // Look up user account in database
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
@@ -55,8 +118,8 @@ pub async fn handle_login(
                 // Password is correct - check if account is enabled
                 if !account.enabled {
                     eprintln!(
-                        "Login attempt for disabled account {} from {}",
-                        username, ctx.peer_addr
+                        "Login from {} for disabled account: {}",
+                        ctx.peer_addr, username
                     );
                     return ctx
                         .send_error_and_disconnect(
@@ -69,8 +132,8 @@ pub async fn handle_login(
             }
             Ok(false) => {
                 eprintln!(
-                    "Invalid password for user {} from {}",
-                    username, ctx.peer_addr
+                    "Login from {} failed: invalid credentials for {}",
+                    ctx.peer_addr, username
                 );
                 return ctx
                     .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
@@ -113,8 +176,8 @@ pub async fn handle_login(
                 account
             }
             Ok(None) => {
-                // Another connection created the first user already
-                eprintln!("User {} does not exist and not first user", username);
+                // User doesn't exist and not first user - use same error as invalid password
+                // to avoid revealing whether username exists
                 return ctx
                     .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
                     .await;
@@ -140,6 +203,7 @@ pub async fn handle_login(
             session_id: 0, // Will be assigned by add_user
             db_user_id: authenticated_account.id,
             username: authenticated_account.username.clone(),
+            is_admin: authenticated_account.is_admin,
             address: ctx.peer_addr,
             created_at: authenticated_account.created_at,
             tx: ctx.tx.clone(),
@@ -277,7 +341,7 @@ mod tests {
         let result = handle_login(
             "alice".to_string(),
             "password123".to_string(),
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
             DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,
@@ -523,7 +587,7 @@ mod tests {
         let result = handle_login(
             "alice".to_string(),
             password.to_string(),
-            vec!["chat".to_string()],
+            vec![FEATURE_CHAT.to_string()],
             DEFAULT_TEST_LOCALE.to_string(),
             handshake_complete,
             &mut session_id,

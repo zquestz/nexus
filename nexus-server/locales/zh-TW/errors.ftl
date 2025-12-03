@@ -11,6 +11,9 @@ err-account-disabled-by-admin = 帳戶已被管理員停用
 # 權限和存取錯誤
 err-permission-denied = 權限被拒絕
 
+# 功能錯誤
+err-chat-feature-not-enabled = 聊天功能未啟用
+
 # 資料庫錯誤
 err-database = 資料庫錯誤
 
@@ -30,13 +33,38 @@ err-cannot-disable-last-admin = 無法停用最後一位管理員
 
 # 聊天主題錯誤
 err-topic-contains-newlines = 主題不能包含換行符號
+err-topic-invalid-characters = 主題包含無效字元
+
+# 版本驗證錯誤
+err-version-empty = 版本不能為空
+err-version-too-long = 版本太長（最多{ $max_length }個字元）
+err-version-invalid-characters = 版本包含無效字元
+
+# 密碼驗證錯誤
+err-password-empty = 密碼不能為空
+err-password-too-long = 密碼太長（最多{ $max_length }個字元）
+
+# 地區設定驗證錯誤
+err-locale-too-long = 地區設定太長（最多{ $max_length }個字元）
+err-locale-invalid-characters = 地區設定包含無效字元
+
+# 功能驗證錯誤
+err-features-too-many = 功能太多（最多{ $max_count }個）
+err-features-empty-feature = 功能名稱不能為空
+err-features-feature-too-long = 功能名稱太長（最多{ $max_length }個字元）
+err-features-invalid-characters = 功能名稱包含無效字元
 
 # 訊息驗證錯誤
 err-message-empty = 訊息不能為空
+err-message-contains-newlines = 訊息不能包含換行符號
+err-message-invalid-characters = 訊息包含無效字元
 
 # 使用者名稱驗證錯誤
 err-username-empty = 使用者名稱不能為空
 err-username-invalid = 使用者名稱包含無效字元（允許字母、數字和符號 - 不允許空格或控制字元）
+
+# 未知權限錯誤
+err-unknown-permission = 未知權限: '{ $permission }'
 
 # 動態錯誤訊息（帶參數）
 err-broadcast-too-long = 訊息太長（最多{ $max_length }個字元）
@@ -51,3 +79,9 @@ err-failed-to-create-user = 建立使用者「{ $username }」失敗
 err-account-disabled = 帳戶「{ $username }」已被停用
 err-update-failed = 更新使用者「{ $username }」失敗
 err-username-too-long = 使用者名稱太長（最多{ $max_length }個字元）
+# 權限驗證錯誤
+err-permissions-too-many = 權限太多（最多{ $max_count }個）
+err-permissions-empty-permission = 權限名稱不能為空
+err-permissions-permission-too-long = 權限名稱太長（最多{ $max_length }個字元）
+err-permissions-contains-newlines = 權限名稱不能包含換行符
+err-permissions-invalid-characters = 權限名稱包含無效字元

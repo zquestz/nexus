@@ -11,6 +11,9 @@ err-account-disabled-by-admin = 账户已被管理员禁用
 # 权限和访问错误
 err-permission-denied = 权限被拒绝
 
+# 功能错误
+err-chat-feature-not-enabled = 聊天功能未启用
+
 # 数据库错误
 err-database = 数据库错误
 
@@ -30,13 +33,38 @@ err-cannot-disable-last-admin = 无法禁用最后一个管理员
 
 # 聊天主题错误
 err-topic-contains-newlines = 主题不能包含换行符
+err-topic-invalid-characters = 主题包含无效字符
+
+# 版本验证错误
+err-version-empty = 版本不能为空
+err-version-too-long = 版本太长（最多{ $max_length }个字符）
+err-version-invalid-characters = 版本包含无效字符
+
+# 密码验证错误
+err-password-empty = 密码不能为空
+err-password-too-long = 密码太长（最多{ $max_length }个字符）
+
+# 区域设置验证错误
+err-locale-too-long = 区域设置太长（最多{ $max_length }个字符）
+err-locale-invalid-characters = 区域设置包含无效字符
+
+# 功能验证错误
+err-features-too-many = 功能太多（最多{ $max_count }个）
+err-features-empty-feature = 功能名称不能为空
+err-features-feature-too-long = 功能名称太长（最多{ $max_length }个字符）
+err-features-invalid-characters = 功能名称包含无效字符
 
 # 消息验证错误
 err-message-empty = 消息不能为空
+err-message-contains-newlines = 消息不能包含换行符
+err-message-invalid-characters = 消息包含无效字符
 
 # 用户名验证错误
 err-username-empty = 用户名不能为空
 err-username-invalid = 用户名包含无效字符（允许字母、数字和符号 - 不允许空格或控制字符）
+
+# 未知权限错误
+err-unknown-permission = 未知权限: '{ $permission }'
 
 # 动态错误消息（带参数）
 err-broadcast-too-long = 消息太长（最多{ $max_length }个字符）
@@ -51,3 +79,9 @@ err-failed-to-create-user = 创建用户"{ $username }"失败
 err-account-disabled = 账户"{ $username }"已被禁用
 err-update-failed = 更新用户"{ $username }"失败
 err-username-too-long = 用户名太长（最多{ $max_length }个字符）
+# 权限验证错误
+err-permissions-too-many = 权限太多（最多{ $max_count }个）
+err-permissions-empty-permission = 权限名称不能为空
+err-permissions-permission-too-long = 权限名称太长（最多{ $max_length }个字符）
+err-permissions-contains-newlines = 权限名称不能包含换行符
+err-permissions-invalid-characters = 权限名称包含无效字符

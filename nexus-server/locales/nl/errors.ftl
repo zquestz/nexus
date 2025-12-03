@@ -11,6 +11,9 @@ err-account-disabled-by-admin = Account uitgeschakeld door beheerder
 # Permissie- en toegangsfouten
 err-permission-denied = Toestemming geweigerd
 
+# Functiefouten
+err-chat-feature-not-enabled = Chatfunctie niet ingeschakeld
+
 # Databasefouten
 err-database = Databasefout
 
@@ -30,13 +33,38 @@ err-cannot-disable-last-admin = Kan de laatste beheerder niet uitschakelen
 
 # Chatonderwerpfouten
 err-topic-contains-newlines = Het onderwerp mag geen regeleinden bevatten
+err-topic-invalid-characters = Het onderwerp bevat ongeldige tekens
+
+# Versievalidatiefouten
+err-version-empty = De versie mag niet leeg zijn
+err-version-too-long = De versie is te lang (maximaal { $max_length } tekens)
+err-version-invalid-characters = De versie bevat ongeldige tekens
+
+# Wachtwoordvalidatiefouten
+err-password-empty = Het wachtwoord mag niet leeg zijn
+err-password-too-long = Het wachtwoord is te lang (maximaal { $max_length } tekens)
+
+# Taalvalidatiefouten
+err-locale-too-long = De taal is te lang (maximaal { $max_length } tekens)
+err-locale-invalid-characters = De taal bevat ongeldige tekens
+
+# Functievalidatiefouten
+err-features-too-many = Te veel functies (maximaal { $max_count })
+err-features-empty-feature = De functienaam mag niet leeg zijn
+err-features-feature-too-long = De functienaam is te lang (maximaal { $max_length } tekens)
+err-features-invalid-characters = De functienaam bevat ongeldige tekens
 
 # Berichtvalidatiefouten
 err-message-empty = Het bericht mag niet leeg zijn
+err-message-contains-newlines = Het bericht mag geen regeleinden bevatten
+err-message-invalid-characters = Het bericht bevat ongeldige tekens
 
 # Gebruikersnaamvalidatiefouten
 err-username-empty = De gebruikersnaam mag niet leeg zijn
 err-username-invalid = De gebruikersnaam bevat ongeldige tekens (letters, cijfers en symbolen toegestaan - geen spaties of controletekens)
+
+# Onbekende machtiging
+err-unknown-permission = Onbekende machtiging: '{ $permission }'
 
 # Dynamische foutmeldingen (met parameters)
 err-broadcast-too-long = Bericht te lang (maximaal { $max_length } tekens)
@@ -51,3 +79,9 @@ err-failed-to-create-user = Kan gebruiker "{ $username }" niet aanmaken
 err-account-disabled = Account "{ $username }" is uitgeschakeld
 err-update-failed = Kan gebruiker "{ $username }" niet bijwerken
 err-username-too-long = De gebruikersnaam is te lang (maximaal { $max_length } tekens)
+# Machtigingsvalidatiefouten
+err-permissions-too-many = Te veel machtigingen (maximaal { $max_count })
+err-permissions-empty-permission = De machtigingsnaam mag niet leeg zijn
+err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { $max_length } tekens)
+err-permissions-contains-newlines = De machtigingsnaam mag geen regelafbrekingen bevatten
+err-permissions-invalid-characters = De machtigingsnaam bevat ongeldige tekens

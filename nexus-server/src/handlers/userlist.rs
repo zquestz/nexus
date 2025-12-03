@@ -1,59 +1,62 @@
 //! UserList message handler
 
+use std::collections::HashMap;
+use std::io;
+
+use nexus_common::protocol::{ServerMessage, UserInfo};
+
 use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
-use nexus_common::protocol::{ServerMessage, UserInfo};
-use std::io;
 
 /// Handle a userlist request from the client
 pub async fn handle_userlist(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
-    // Verify authentication
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            eprintln!("UserList request from {} without login", ctx.peer_addr);
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserList"))
-                .await;
-        }
+    // Verify authentication first
+    let Some(id) = session_id else {
+        eprintln!("UserList request from {} without login", ctx.peer_addr);
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserList"))
+            .await;
     };
 
     // Get requesting user from session
-    let user = match ctx.user_manager.get_user_by_session_id(id).await {
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            eprintln!("UserList request from unknown user {}", ctx.peer_addr);
             return ctx
                 .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserList"))
                 .await;
         }
     };
 
-    // Check UserList permission
-    let has_perm = match ctx
-        .db
-        .users
-        .has_permission(user.db_user_id, Permission::UserList)
-        .await
-    {
-        Ok(has) => has,
-        Err(e) => {
-            eprintln!("UserList permission check error: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserList"))
-                .await;
+    // Check UserList permission (use is_admin from UserManager to avoid DB lookup for admins)
+    let has_permission = if requesting_user.is_admin {
+        true
+    } else {
+        match ctx
+            .db
+            .users
+            .has_permission(requesting_user.db_user_id, Permission::UserList)
+            .await
+        {
+            Ok(has) => has,
+            Err(e) => {
+                eprintln!("UserList permission check error: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserList"))
+                    .await;
+            }
         }
     };
 
-    if !has_perm {
+    if !has_permission {
         eprintln!(
             "UserList from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
+            ctx.peer_addr, requesting_user.username
         );
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
@@ -64,16 +67,10 @@ pub async fn handle_userlist(
     let all_users = ctx.user_manager.get_all_users().await;
 
     // Deduplicate by username and aggregate sessions
-    use std::collections::HashMap;
-    let mut user_map: HashMap<String, (i64, bool, Vec<u32>, String)> = HashMap::new(); // (earliest_login, is_admin, session_ids, locale)
+    // Use is_admin from UserManager instead of querying DB for each user
+    let mut user_map: HashMap<String, (i64, bool, Vec<u32>, String)> = HashMap::new();
 
     for user in all_users {
-        // Get user account to check admin status
-        let is_admin = match ctx.db.users.get_user_by_id(user.db_user_id).await {
-            Ok(Some(account)) => account.is_admin,
-            _ => false, // Default to non-admin if lookup fails
-        };
-
         user_map
             .entry(user.username.clone())
             .and_modify(|(login_time, _, session_ids, _)| {
@@ -84,7 +81,7 @@ pub async fn handle_userlist(
             })
             .or_insert((
                 user.login_time,
-                is_admin,
+                user.is_admin, // Use is_admin from UserManager
                 vec![user.session_id],
                 user.locale.clone(),
             ));
@@ -113,9 +110,7 @@ pub async fn handle_userlist(
         error: None,
         users: Some(user_infos),
     };
-    ctx.send_message(&response).await?;
-
-    Ok(())
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]

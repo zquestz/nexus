@@ -33,6 +33,7 @@ pub async fn add_test_user(
     user_manager: &UserManager,
     db_user_id: i64,
     username: &str,
+    is_admin: bool,
 ) -> (u32, mpsc::UnboundedReceiver<ServerMessage>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
@@ -44,6 +45,7 @@ pub async fn add_test_user(
             session_id: 0, // Will be assigned by add_user
             db_user_id,
             username: username.to_string(),
+            is_admin,
             address: addr,
             created_at,
             tx,
