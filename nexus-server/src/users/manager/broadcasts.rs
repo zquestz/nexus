@@ -1,7 +1,6 @@
 //! Broadcast methods for UserManager
 
 use super::UserManager;
-use crate::constants::*;
 use crate::db::{Permission, UserDb};
 use nexus_common::protocol::ServerMessage;
 
@@ -48,23 +47,8 @@ impl UserManager {
                     continue;
                 }
 
-                // Check if user has the required permission (admin bypass)
-                let has_perm = if user.is_admin {
-                    true
-                } else {
-                    match user_db
-                        .has_permission(user.db_user_id, required_permission)
-                        .await
-                    {
-                        Ok(has) => has,
-                        Err(e) => {
-                            eprintln!("{}{}: {}", ERR_CHECK_PERMISSION, user.username, e);
-                            continue;
-                        }
-                    }
-                };
-
-                if !has_perm {
+                // Check if user has the required permission (uses cached permissions, admin bypass)
+                if !user.has_permission(required_permission) {
                     continue;
                 }
 
@@ -125,23 +109,8 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                // Check if user has the required permission (admin bypass)
-                let has_perm = if user.is_admin {
-                    true
-                } else {
-                    match user_db
-                        .has_permission(user.db_user_id, required_permission)
-                        .await
-                    {
-                        Ok(has) => has,
-                        Err(e) => {
-                            eprintln!("{}{}: {}", ERR_CHECK_PERMISSION, user.username, e);
-                            continue;
-                        }
-                    }
-                };
-
-                if !has_perm {
+                // Check if user has the required permission (uses cached permissions, admin bypass)
+                if !user.has_permission(required_permission) {
                     continue;
                 }
 
@@ -181,23 +150,8 @@ impl UserManager {
                     continue;
                 }
 
-                // Check if user has user_list permission (admin bypass)
-                let has_permission = if user.is_admin {
-                    true
-                } else {
-                    match user_db
-                        .has_permission(user.db_user_id, Permission::UserList)
-                        .await
-                    {
-                        Ok(has) => has,
-                        Err(e) => {
-                            eprintln!("{}{}: {}", ERR_CHECK_USER_LIST_PERMISSION, user.username, e);
-                            continue;
-                        }
-                    }
-                };
-
-                if !has_permission {
+                // Check if user has user_list permission (uses cached permissions, admin bypass)
+                if !user.has_permission(Permission::UserList) {
                     continue;
                 }
 

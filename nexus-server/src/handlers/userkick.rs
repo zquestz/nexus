@@ -62,27 +62,8 @@ pub async fn handle_userkick(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserKick permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user_session.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user_session.db_user_id, Permission::UserKick)
-            .await
-        {
-            Ok(has_perm) => has_perm,
-            Err(e) => {
-                eprintln!("Database error checking permissions: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserKick permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user_session.has_permission(Permission::UserKick) {
         eprintln!(
             "UserKick from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user_session.username
@@ -117,11 +98,10 @@ pub async fn handle_userkick(
     }
 
     // Check if target user is online (case-insensitive)
-    let all_users = ctx.user_manager.get_all_users().await;
-    let target_users: Vec<_> = all_users
-        .into_iter()
-        .filter(|u| u.username.to_lowercase() == target_lower)
-        .collect();
+    let target_users = ctx
+        .user_manager
+        .get_sessions_by_username(&target_username)
+        .await;
 
     if target_users.is_empty() {
         let response = ServerMessage::UserKickResponse {

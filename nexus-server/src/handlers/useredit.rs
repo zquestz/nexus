@@ -75,27 +75,8 @@ pub async fn handle_useredit(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user.db_user_id, Permission::UserEdit)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserEdit permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserEdit permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserEdit) {
         eprintln!(
             "UserEdit from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username

@@ -1,15 +1,20 @@
-//! User representation for logged-in users
+//! User session representation for logged-in users
+
+use std::collections::HashSet;
+use std::net::SocketAddr;
 
 use nexus_common::protocol::ServerMessage;
-use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
-/// Parameters for creating a new user
-pub struct NewUserParams {
+use crate::db::Permission;
+
+/// Parameters for creating a new user session
+pub struct NewSessionParams {
     pub session_id: u32,
     pub db_user_id: i64,
     pub username: String,
     pub is_admin: bool,
+    pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     pub created_at: i64,
     pub tx: mpsc::UnboundedSender<ServerMessage>,
@@ -17,9 +22,9 @@ pub struct NewUserParams {
     pub locale: String,
 }
 
-/// Represents a logged-in user
+/// Represents a logged-in user session
 #[derive(Debug, Clone)]
-pub struct User {
+pub struct UserSession {
     /// Session ID (unique identifier for this connection)
     pub session_id: u32,
     /// Database user ID
@@ -28,6 +33,8 @@ pub struct User {
     pub username: String,
     /// Whether the user is an admin
     pub is_admin: bool,
+    /// Cached permissions for this user (admins bypass this check)
+    pub permissions: HashSet<Permission>,
     /// Remote address of the user's connection
     pub address: SocketAddr,
     /// When the user account was created (Unix timestamp from database)
@@ -46,14 +53,15 @@ pub struct User {
     pub locale: String,
 }
 
-impl User {
-    /// Create a new user
-    pub fn new(params: NewUserParams) -> Self {
+impl UserSession {
+    /// Create a new user session
+    pub fn new(params: NewSessionParams) -> Self {
         Self {
             session_id: params.session_id,
             db_user_id: params.db_user_id,
             username: params.username,
             is_admin: params.is_admin,
+            permissions: params.permissions,
             address: params.address,
             created_at: params.created_at,
             login_time: current_timestamp(),
@@ -66,6 +74,15 @@ impl User {
     /// Check if user has a specific feature enabled
     pub fn has_feature(&self, feature: &str) -> bool {
         self.features.iter().any(|f| f == feature)
+    }
+
+    /// Check if user has a specific permission (admins have all permissions)
+    pub fn has_permission(&self, permission: Permission) -> bool {
+        if self.is_admin {
+            true
+        } else {
+            self.permissions.contains(&permission)
+        }
     }
 }
 

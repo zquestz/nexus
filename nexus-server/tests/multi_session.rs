@@ -2,6 +2,8 @@
 
 mod common;
 
+use std::collections::HashSet;
+
 use common::{add_test_user, create_test_db};
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_server::db::{self, Permission, Permissions};
@@ -26,10 +28,26 @@ async fn test_multi_session_partial_disconnect() {
         .await
         .unwrap();
 
-    // Alice logs in from 3 devices (3 sessions)
-    let (session_id1, mut rx1) = add_test_user(&user_manager, alice.id, "alice", false).await;
-    let (session_id2, mut rx2) = add_test_user(&user_manager, alice.id, "alice", false).await;
-    let (session_id3, mut rx3) = add_test_user(&user_manager, alice.id, "alice", false).await;
+    // Alice logs in from 3 devices (3 sessions) - pass cached permissions
+    let cached_perms: HashSet<Permission> = [Permission::UserList].into_iter().collect();
+    let (session_id1, mut rx1) = add_test_user(
+        &user_manager,
+        alice.id,
+        "alice",
+        false,
+        cached_perms.clone(),
+    )
+    .await;
+    let (session_id2, mut rx2) = add_test_user(
+        &user_manager,
+        alice.id,
+        "alice",
+        false,
+        cached_perms.clone(),
+    )
+    .await;
+    let (session_id3, mut rx3) =
+        add_test_user(&user_manager, alice.id, "alice", false, cached_perms).await;
 
     // Verify all 3 sessions exist
     let all_users = user_manager.get_all_users().await;
@@ -145,12 +163,26 @@ async fn test_broadcast_respects_user_list_permission() {
         .await
         .unwrap();
 
-    // Add all to UserManager
-    let (_sid_admin, mut rx_admin) = add_test_user(&user_manager, admin.id, "admin", true).await;
-    let (_sid_with, mut rx_with) =
-        add_test_user(&user_manager, user_with.id, "user_with", false).await;
-    let (_sid_without, mut rx_without) =
-        add_test_user(&user_manager, user_without.id, "user_without", false).await;
+    // Add all to UserManager with cached permissions
+    let (_sid_admin, mut rx_admin) =
+        add_test_user(&user_manager, admin.id, "admin", true, HashSet::new()).await;
+    let cached_user_list: HashSet<Permission> = [Permission::UserList].into_iter().collect();
+    let (_sid_with, mut rx_with) = add_test_user(
+        &user_manager,
+        user_with.id,
+        "user_with",
+        false,
+        cached_user_list,
+    )
+    .await;
+    let (_sid_without, mut rx_without) = add_test_user(
+        &user_manager,
+        user_without.id,
+        "user_without",
+        false,
+        HashSet::new(),
+    )
+    .await;
 
     // Broadcast UserConnected event
     user_manager
@@ -212,8 +244,18 @@ async fn test_broadcast_excludes_specified_session() {
         .await
         .unwrap();
 
-    let (session_id1, mut rx1) = add_test_user(&user_manager, user1.id, "user1", false).await;
-    let (_session_id2, mut rx2) = add_test_user(&user_manager, user2.id, "user2", false).await;
+    // Add users with cached permissions
+    let cached_perms: HashSet<Permission> = [Permission::UserList].into_iter().collect();
+    let (session_id1, mut rx1) = add_test_user(
+        &user_manager,
+        user1.id,
+        "user1",
+        false,
+        cached_perms.clone(),
+    )
+    .await;
+    let (_session_id2, mut rx2) =
+        add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
 
     // Broadcast with exclusion of session 1
     user_manager
@@ -273,9 +315,18 @@ async fn test_broadcast_detects_closed_channels() {
         .await
         .unwrap();
 
-    // Add users to manager
-    let (session_id1, rx1) = add_test_user(&user_manager, user1.id, "user1", false).await;
-    let (session_id2, rx2) = add_test_user(&user_manager, user2.id, "user2", false).await;
+    // Add users to manager with cached permissions
+    let cached_perms: HashSet<Permission> = [Permission::ChatReceive].into_iter().collect();
+    let (session_id1, rx1) = add_test_user(
+        &user_manager,
+        user1.id,
+        "user1",
+        false,
+        cached_perms.clone(),
+    )
+    .await;
+    let (session_id2, rx2) =
+        add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
 
     // Drop rx1 to close the channel (simulates dead connection)
     drop(rx1);

@@ -7,9 +7,8 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError};
 
 use super::{
-    HandlerContext, err_authentication, err_broadcast_too_long, err_database,
-    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
-    err_not_logged_in, err_permission_denied,
+    HandlerContext, err_authentication, err_broadcast_too_long, err_message_contains_newlines,
+    err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 
@@ -55,27 +54,8 @@ pub async fn handle_user_broadcast(
         }
     };
 
-    // Check permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_perm = if user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(user.db_user_id, Permission::UserBroadcast)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserBroadcast permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserBroadcast"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_perm {
+    // Check permission (uses cached permissions, admin bypass built-in)
+    if !user.has_permission(Permission::UserBroadcast) {
         eprintln!(
             "UserBroadcast from {} (user: {}) without permission",
             ctx.peer_addr, user.username

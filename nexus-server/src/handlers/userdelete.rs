@@ -63,27 +63,8 @@ pub async fn handle_userdelete(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserDelete permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user_session.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user_session.db_user_id, Permission::UserDelete)
-            .await
-        {
-            Ok(has_perm) => has_perm,
-            Err(e) => {
-                eprintln!("Database error checking permissions: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserDelete permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user_session.has_permission(Permission::UserDelete) {
         eprintln!(
             "UserDelete from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user_session.username
@@ -113,11 +94,13 @@ pub async fn handle_userdelete(
         }
     };
 
-    // Handle online user disconnection
-    let all_users = ctx.user_manager.get_all_users().await;
-    let online_user = all_users.iter().find(|u| u.db_user_id == target_user.id);
+    // Handle online user disconnection (all sessions)
+    let online_users = ctx
+        .user_manager
+        .get_sessions_by_username(&target_user.username)
+        .await;
 
-    if let Some(online_user) = online_user {
+    for online_user in online_users {
         // Send error message to the user being deleted (in their locale)
         let disconnect_msg = ServerMessage::Error {
             message: err_account_deleted(&online_user.locale),
@@ -174,7 +157,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user};
-    use crate::users::user::NewUserParams;
+    use crate::users::user::NewSessionParams;
     use tokio::io::AsyncReadExt;
     use tokio::sync::mpsc;
 
@@ -436,11 +419,12 @@ mod tests {
         let (online_tx, _online_rx) = mpsc::unbounded_channel();
         let online_session_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: online_user.id,
                 username: "online_user".to_string(),
                 is_admin: false,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: online_user.created_at,
                 tx: online_tx,

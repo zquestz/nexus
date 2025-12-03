@@ -56,27 +56,8 @@ pub async fn handle_userinfo(
         }
     };
 
-    // Check UserInfo permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_perm = if requesting_user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user.db_user_id, Permission::UserInfo)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserInfo permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_perm {
+    // Check UserInfo permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserInfo) {
         eprintln!(
             "UserInfo from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
@@ -87,12 +68,10 @@ pub async fn handle_userinfo(
     }
 
     // Look up all sessions for target username (case-insensitive)
-    let all_users = ctx.user_manager.get_all_users().await;
-    let requested_lower = requested_username.to_lowercase();
-    let target_sessions: Vec<_> = all_users
-        .into_iter()
-        .filter(|u| u.username.to_lowercase() == requested_lower)
-        .collect();
+    let target_sessions = ctx
+        .user_manager
+        .get_sessions_by_username(&requested_username)
+        .await;
 
     if target_sessions.is_empty() {
         // User not found - send response with error
@@ -180,7 +159,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
-    use crate::users::user::NewUserParams;
+    use crate::users::user::NewSessionParams;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -212,11 +191,12 @@ mod tests {
         // Add user to UserManager
         let user_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
                 tx: test_ctx.tx.clone(),
@@ -264,11 +244,12 @@ mod tests {
         // Add user to UserManager
         let user_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
+                permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
                 tx: test_ctx.tx.clone(),
@@ -351,11 +332,12 @@ mod tests {
         // Add requester to UserManager
         let requester_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: requester.id,
                 username: "requester".to_string(),
                 is_admin: false,
+                permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: requester.created_at,
                 tx: test_ctx.tx.clone(),
@@ -367,11 +349,12 @@ mod tests {
         // Add target to UserManager
         let target_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
                 tx: test_ctx.tx.clone(),
@@ -456,11 +439,12 @@ mod tests {
         // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
                 tx: test_ctx.tx.clone(),
@@ -472,11 +456,12 @@ mod tests {
         // Add target to UserManager
         let target_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
                 tx: test_ctx.tx.clone(),
@@ -569,11 +554,12 @@ mod tests {
         // Add admin1 to UserManager
         let admin1_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
                 tx: test_ctx.tx.clone(),
@@ -585,11 +571,12 @@ mod tests {
         // Add admin2 to UserManager
         let admin2_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
                 tx: test_ctx.tx.clone(),

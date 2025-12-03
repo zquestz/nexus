@@ -1,7 +1,6 @@
 //! Helper methods for UserManager
 
 use super::UserManager;
-use crate::constants::*;
 use crate::db::{Permission, UserDb};
 use nexus_common::protocol::ServerMessage;
 
@@ -15,7 +14,7 @@ impl UserManager {
     /// This method broadcasts UserDisconnected messages to all remaining clients
     /// who have the user_list permission so their user lists stay in sync.
     /// We send messages directly to avoid infinite recursion (since broadcast() calls remove_disconnected()).
-    pub(super) async fn remove_disconnected(&self, session_ids: Vec<u32>, user_db: &UserDb) {
+    pub(super) async fn remove_disconnected(&self, session_ids: Vec<u32>, _user_db: &UserDb) {
         if session_ids.is_empty() {
             return;
         }
@@ -58,23 +57,8 @@ impl UserManager {
                     continue;
                 }
 
-                // Check if user has user_list permission (admin bypass)
-                let has_permission = if user.is_admin {
-                    true
-                } else {
-                    match user_db
-                        .has_permission(user.db_user_id, Permission::UserList)
-                        .await
-                    {
-                        Ok(has) => has,
-                        Err(e) => {
-                            eprintln!("{}{}: {}", ERR_CHECK_USER_LIST_PERMISSION, user.username, e);
-                            continue;
-                        }
-                    }
-                };
-
-                if has_permission {
+                // Check if user has user_list permission (uses cached permissions, admin bypass)
+                if user.has_permission(Permission::UserList) {
                     let _ = user.tx.send(message.clone());
                 }
             }

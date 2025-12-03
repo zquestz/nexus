@@ -284,16 +284,6 @@ pub const ERR_UPNP_IPV6_EXPECTED_IPV4: &str = "Local address is IPv6, expected I
 pub const ERR_UPNP_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
 
 // =============================================================================
-// User Manager Error Messages (operator-facing)
-// =============================================================================
-
-/// Permission check error prefix
-pub const ERR_CHECK_PERMISSION: &str = "Error checking permission for ";
-
-/// User list permission check error prefix
-pub const ERR_CHECK_USER_LIST_PERMISSION: &str = "Error checking user_list permission for ";
-
-// =============================================================================
 // Internationalization Configuration and Error Messages (operator-facing)
 // =============================================================================
 

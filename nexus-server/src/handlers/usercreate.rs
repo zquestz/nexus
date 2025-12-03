@@ -100,27 +100,8 @@ pub async fn handle_usercreate(
         }
     };
 
-    // Check UserCreate permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user.db_user_id, Permission::UserCreate)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserCreate permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserCreate permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserCreate) {
         eprintln!(
             "UserCreate from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
@@ -153,31 +134,15 @@ pub async fn handle_usercreate(
         };
 
         // Non-admins can only grant permissions they have
-        if !requesting_user.is_admin {
-            let has_perm = match ctx
-                .db
-                .users
-                .has_permission(requesting_user.db_user_id, perm)
-                .await
-            {
-                Ok(has) => has,
-                Err(e) => {
-                    eprintln!("Permission check error: {}", e);
-                    return ctx
-                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
-                        .await;
-                }
-            };
-
-            if !has_perm {
-                eprintln!(
-                    "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
-                    ctx.peer_addr, requesting_user.username, perm_str
-                );
-                return ctx
-                    .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-                    .await;
-            }
+        // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+        if !requesting_user.has_permission(perm) {
+            eprintln!(
+                "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
+                ctx.peer_addr, requesting_user.username, perm_str
+            );
+            return ctx
+                .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+                .await;
         }
 
         perms.permissions.insert(perm);
@@ -244,7 +209,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user};
-    use crate::users::user::NewUserParams;
+    use crate::users::user::NewSessionParams;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -369,11 +334,12 @@ mod tests {
         // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
                 tx: test_ctx.tx.clone(),
@@ -673,11 +639,12 @@ mod tests {
         // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
+                permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
                 tx: test_ctx.tx.clone(),
@@ -738,11 +705,12 @@ mod tests {
         // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
+                permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
                 tx: test_ctx.tx.clone(),

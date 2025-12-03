@@ -5,7 +5,7 @@ mod helpers;
 mod mutations;
 mod queries;
 
-use crate::users::user::User;
+use crate::users::user::UserSession;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 /// Manages all connected users
 #[derive(Debug, Clone)]
 pub struct UserManager {
-    pub(super) users: Arc<RwLock<HashMap<u32, User>>>,
+    pub(super) users: Arc<RwLock<HashMap<u32, UserSession>>>,
     pub(super) next_id: Arc<RwLock<u32>>,
 }
 

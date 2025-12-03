@@ -13,7 +13,7 @@ use nexus_common::protocol::ServerMessage;
 use super::{HandlerContext, Writer};
 use crate::db::Database;
 use crate::users::UserManager;
-use crate::users::user::NewUserParams;
+use crate::users::user::NewSessionParams;
 
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
@@ -127,11 +127,12 @@ pub async fn login_user_with_features(
     // Add user to UserManager
     test_ctx
         .user_manager
-        .add_user(NewUserParams {
+        .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
             db_user_id: user.id,
             username: username.to_string(),
             is_admin,
+            permissions: perms.permissions.clone(),
             address: test_ctx.peer_addr,
             created_at: user.created_at,
             tx: test_ctx.tx.clone(),

@@ -1,10 +1,12 @@
 //! Common test helpers for integration tests
 
-use nexus_common::protocol::ServerMessage;
-use nexus_server::db::Database;
-use nexus_server::users::UserManager;
-use nexus_server::users::user::NewUserParams;
+use std::collections::HashSet;
 use std::net::SocketAddr;
+
+use nexus_common::protocol::ServerMessage;
+use nexus_server::db::{Database, Permission};
+use nexus_server::users::UserManager;
+use nexus_server::users::user::NewSessionParams;
 use tokio::sync::mpsc;
 
 /// Default locale for integration tests
@@ -29,11 +31,19 @@ pub async fn create_test_db() -> Database {
 ///
 /// This helper simulates a user logging in by adding them to the UserManager
 /// with a mock TCP connection.
+///
+/// # Arguments
+/// * `user_manager` - The UserManager to add the user to
+/// * `db_user_id` - The database ID of the user
+/// * `username` - The username
+/// * `is_admin` - Whether the user is an admin (admins bypass permission checks)
+/// * `permissions` - Cached permissions for non-admin users
 pub async fn add_test_user(
     user_manager: &UserManager,
     db_user_id: i64,
     username: &str,
     is_admin: bool,
+    permissions: HashSet<Permission>,
 ) -> (u32, mpsc::UnboundedReceiver<ServerMessage>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
@@ -41,11 +51,12 @@ pub async fn add_test_user(
 
     // Use the public add_user API
     let session_id = user_manager
-        .add_user(NewUserParams {
+        .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
             db_user_id,
             username: username.to_string(),
             is_admin,
+            permissions,
             address: addr,
             created_at,
             tx,

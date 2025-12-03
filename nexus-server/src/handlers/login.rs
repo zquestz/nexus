@@ -16,7 +16,7 @@ use super::{
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
 use crate::db::{self, Permission};
-use crate::users::user::NewUserParams;
+use crate::users::user::NewSessionParams;
 
 /// Handle a login request from the client
 pub async fn handle_login(
@@ -194,16 +194,39 @@ pub async fn handle_login(
         }
     };
 
-    // Create session in UserManager
+    // Fetch user permissions from database (used for both caching and LoginResponse)
+    let cached_permissions = if authenticated_account.is_admin {
+        // Admins bypass permission checks, so we can use an empty set
+        std::collections::HashSet::new()
+    } else {
+        match ctx
+            .db
+            .users
+            .get_user_permissions(authenticated_account.id)
+            .await
+        {
+            Ok(perms) => perms.permissions,
+            Err(e) => {
+                eprintln!(
+                    "Error fetching permissions for {}: {}",
+                    authenticated_account.username, e
+                );
+                std::collections::HashSet::new()
+            }
+        }
+    };
+
+    // Create session in UserManager with cached permissions
     // Note: Features are client preferences (what they want to subscribe to)
-    // Permissions are checked when executing commands, not at login
+    // Permissions are now cached in the User struct to avoid DB lookups during broadcasts
     let id = ctx
         .user_manager
-        .add_user(NewUserParams {
+        .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
             db_user_id: authenticated_account.id,
             username: authenticated_account.username.clone(),
             is_admin: authenticated_account.is_admin,
+            permissions: cached_permissions.clone(),
             address: ctx.peer_addr,
             created_at: authenticated_account.created_at,
             tx: ctx.tx.clone(),
@@ -213,60 +236,38 @@ pub async fn handle_login(
         .await;
     *session_id = Some(id);
 
-    // Fetch user permissions for LoginResponse
-    let user_permissions = if authenticated_account.is_admin {
+    // Convert cached permissions to strings for LoginResponse
+    let user_permissions: Vec<String> = if authenticated_account.is_admin {
         // Admins get all permissions automatically - return empty list
         // Client checks is_admin flag to know they have all permissions
         vec![]
     } else {
-        // Fetch permissions from database for non-admin users
-        match ctx
-            .db
-            .users
-            .get_user_permissions(authenticated_account.id)
-            .await
-        {
-            Ok(perms) => perms
-                .to_vec()
-                .iter()
-                .map(|p| p.as_str().to_string())
-                .collect(),
-            Err(e) => {
-                eprintln!(
-                    "Error fetching permissions for {}: {}",
-                    authenticated_account.username, e
-                );
-                vec![]
-            }
-        }
+        cached_permissions
+            .iter()
+            .map(|p| p.as_str().to_string())
+            .collect()
     };
 
-    // Fetch server info if user has ChatTopic permission
-    let server_info = if authenticated_account.is_admin
-        || ctx
-            .db
-            .users
-            .has_permission(authenticated_account.id, Permission::ChatTopic)
-            .await
-            .unwrap_or(false)
-    {
-        // Fetch chat topic from database
-        match ctx.db.config.get_topic().await {
-            Ok(chat_topic) => Some(ServerInfo {
-                chat_topic: chat_topic.topic,
-                chat_topic_set_by: chat_topic.set_by,
-            }),
-            Err(e) => {
-                eprintln!(
-                    "Error fetching chat topic for {}: {}",
-                    authenticated_account.username, e
-                );
-                None
+    // Fetch server info if user has ChatTopic permission (use cached permissions)
+    let server_info =
+        if authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatTopic) {
+            // Fetch chat topic from database
+            match ctx.db.config.get_topic().await {
+                Ok(chat_topic) => Some(ServerInfo {
+                    chat_topic: chat_topic.topic,
+                    chat_topic_set_by: chat_topic.set_by,
+                }),
+                Err(e) => {
+                    eprintln!(
+                        "Error fetching chat topic for {}: {}",
+                        authenticated_account.username, e
+                    );
+                    None
+                }
             }
-        }
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     let response = ServerMessage::LoginResponse {
         success: true,

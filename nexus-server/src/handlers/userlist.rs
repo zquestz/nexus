@@ -5,9 +5,7 @@ use std::io;
 
 use nexus_common::protocol::{ServerMessage, UserInfo};
 
-use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-};
+use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 /// Handle a userlist request from the client
@@ -33,27 +31,8 @@ pub async fn handle_userlist(
         }
     };
 
-    // Check UserList permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user.db_user_id, Permission::UserList)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserList permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserList"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserList permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserList) {
         eprintln!(
             "UserList from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username

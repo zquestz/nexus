@@ -47,27 +47,8 @@ pub async fn handle_chattopicupdate(
         }
     };
 
-    // Check ChatTopicEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(user.db_user_id, Permission::ChatTopicEdit)
-            .await
-        {
-            Ok(has_perm) => has_perm,
-            Err(e) => {
-                eprintln!("ChatTopicUpdate permission check error: {}", e);
-                return ctx
-                    .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check ChatTopicEdit permission (uses cached permissions, admin bypass built-in)
+    if !user.has_permission(Permission::ChatTopicEdit) {
         eprintln!(
             "ChatTopicUpdate from {} (user: {}) without permission",
             ctx.peer_addr, user.username

@@ -81,27 +81,8 @@ pub async fn handle_userupdate(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserEdit permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user.db_user_id, Permission::UserEdit)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("UserUpdate permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserEdit permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserEdit) {
         eprintln!(
             "UserUpdate from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
@@ -167,35 +148,15 @@ pub async fn handle_userupdate(
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
             if let Some(perm) = Permission::parse(perm_str) {
-                // Check permission delegation authority (use is_admin from UserManager)
-                if !requesting_user.is_admin {
-                    let has_perm = match ctx
-                        .db
-                        .users
-                        .has_permission(requesting_user.db_user_id, perm)
-                        .await
-                    {
-                        Ok(has) => has,
-                        Err(e) => {
-                            eprintln!("Permission check error: {}", e);
-                            return ctx
-                                .send_error_and_disconnect(
-                                    &err_database(ctx.locale),
-                                    Some("UserUpdate"),
-                                )
-                                .await;
-                        }
-                    };
-
-                    if !has_perm {
-                        eprintln!(
-                            "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
-                            ctx.peer_addr, requesting_user.username, perm_str
-                        );
-                        return ctx
-                            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-                            .await;
-                    }
+                // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+                if !requesting_user.has_permission(perm) {
+                    eprintln!(
+                        "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
+                        ctx.peer_addr, requesting_user.username, perm_str
+                    );
+                    return ctx
+                        .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
+                        .await;
                 }
 
                 perms.permissions.insert(perm);
@@ -219,25 +180,7 @@ pub async fn handle_userupdate(
                     // Add all permissions from target that requesting user DOESN'T have
                     // (these are preserved and cannot be modified)
                     for target_perm in &target_perms.permissions {
-                        let requester_has_perm = match ctx
-                            .db
-                            .users
-                            .has_permission(requesting_user.db_user_id, *target_perm)
-                            .await
-                        {
-                            Ok(has) => has,
-                            Err(e) => {
-                                eprintln!("Permission check error: {}", e);
-                                return ctx
-                                    .send_error_and_disconnect(
-                                        &err_database(ctx.locale),
-                                        Some("UserUpdate"),
-                                    )
-                                    .await;
-                            }
-                        };
-
-                        if !requester_has_perm {
+                        if !requesting_user.has_permission(*target_perm) {
                             // Preserve this permission - requester can't modify it
                             final_perms.permissions.insert(*target_perm);
                         }
@@ -297,20 +240,35 @@ pub async fn handle_userupdate(
     // Note: Username validation is already done earlier, so no need to check for empty here
 
     // Get old username, admin status, and permissions before update (to detect changes)
-    let (old_account, old_had_chat_topic) =
+    // Check if target user is online to use cached permissions, otherwise fall back to DB
+    let (old_account, old_had_chat_topic) = if let Some(online_user) = ctx
+        .user_manager
+        .get_session_by_username(&request.username)
+        .await
+    {
+        // User is online - use cached permissions
+        let had_chat_topic = online_user.has_permission(Permission::ChatTopic);
+        (
+            Some((online_user.username.clone(), online_user.is_admin)),
+            had_chat_topic,
+        )
+    } else {
+        // User is offline - must check DB
         match ctx.db.users.get_user_by_username(&request.username).await {
             Ok(Some(acc)) => {
                 let had_chat_topic = acc.is_admin
                     || ctx
                         .db
                         .users
-                        .has_permission(acc.id, Permission::ChatTopic)
+                        .get_user_permissions(acc.id)
                         .await
+                        .map(|perms| perms.permissions.contains(&Permission::ChatTopic))
                         .unwrap_or(false);
                 (Some((acc.username.clone(), acc.is_admin)), had_chat_topic)
             }
             _ => (None, false),
-        };
+        }
+    };
 
     // Attempt to update the user (with atomic last-admin protection in SQL)
     match ctx
@@ -348,6 +306,14 @@ pub async fn handle_userupdate(
                 if let Ok(final_permissions) =
                     ctx.db.users.get_user_permissions(updated_account.id).await
                 {
+                    // Update cached permissions in UserManager for all sessions of this user
+                    ctx.user_manager
+                        .update_permissions(
+                            updated_account.id,
+                            final_permissions.permissions.clone(),
+                        )
+                        .await;
+
                     let permission_strings: Vec<String> = final_permissions
                         .permissions
                         .iter()
@@ -480,12 +446,10 @@ pub async fn handle_userupdate(
 
                     // Get earliest login time and locale from all sessions
                     let (login_time, locale) = if !session_ids.is_empty() {
-                        let users = ctx.user_manager.get_all_users().await;
-                        let username_lower = updated_account.username.to_lowercase();
-                        let user_sessions: Vec<_> = users
-                            .iter()
-                            .filter(|u| u.username.to_lowercase() == username_lower)
-                            .collect();
+                        let user_sessions = ctx
+                            .user_manager
+                            .get_sessions_by_username(&updated_account.username)
+                            .await;
 
                         let login_time = user_sessions
                             .iter()
@@ -583,7 +547,7 @@ pub async fn handle_userupdate(
 mod tests {
     use super::*;
     use crate::handlers::testing::*;
-    use crate::users::user::NewUserParams;
+    use crate::users::user::NewSessionParams;
 
     #[tokio::test]
     async fn test_userupdate_requires_login() {
@@ -1225,11 +1189,12 @@ mod tests {
         // Add editor to UserManager
         let editor_session = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: editor.id,
                 username: "editor".to_string(),
                 is_admin: false,
+                permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: editor.created_at,
                 tx: test_ctx.tx.clone(),
@@ -1411,11 +1376,12 @@ mod tests {
         // Login both admins
         let admin1_session = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
                 tx: test_ctx.tx.clone(),
@@ -1426,11 +1392,12 @@ mod tests {
 
         let _admin2_session = test_ctx
             .user_manager
-            .add_user(NewUserParams {
+            .add_user(NewSessionParams {
                 session_id: 0,
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
+                permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
                 tx: test_ctx.tx.clone(),

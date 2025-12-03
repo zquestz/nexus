@@ -64,6 +64,9 @@ pub const SQL_SELECT_USER_BY_ID: &str =
 /// 1. `user_id: i64` - User ID to check
 ///
 /// **Returns:** `(is_admin: bool)`
+///
+/// Note: Only used in tests. Production code uses cached permissions.
+#[cfg(test)]
 pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 
 // ========================================================================
@@ -77,6 +80,9 @@ pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 /// 2. `permission: &str` - Permission name (snake_case)
 ///
 /// **Returns:** `(count: i64)` - Number of matching permissions (0 or 1)
+///
+/// Note: Only used in tests. Production code uses cached permissions.
+#[cfg(test)]
 pub const SQL_COUNT_PERMISSION: &str =
     "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
 

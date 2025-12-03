@@ -144,6 +144,10 @@ impl UserDb {
     }
 
     /// Check if user has a specific permission (with admin override)
+    ///
+    /// Note: This method is only used in tests. Production code uses cached
+    /// permissions in the User struct via `User::has_permission()`.
+    #[cfg(test)]
     pub async fn has_permission(
         &self,
         user_id: i64,

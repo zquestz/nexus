@@ -8,7 +8,7 @@ use nexus_common::validators::{self, MessageError};
 
 use super::{
     HandlerContext, err_authentication, err_chat_feature_not_enabled, err_chat_too_long,
-    err_database, err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
+    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
     err_not_logged_in, err_permission_denied,
 };
 use crate::constants::FEATURE_CHAT;
@@ -58,27 +58,8 @@ pub async fn handle_chat_send(
             .await;
     }
 
-    // Check permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_perm = if user.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(user.db_user_id, Permission::ChatSend)
-            .await
-        {
-            Ok(has) => has,
-            Err(e) => {
-                eprintln!("ChatSend permission check error: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("ChatSend"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_perm {
+    // Check permission (uses cached permissions, admin bypass built-in)
+    if !user.has_permission(Permission::ChatSend) {
         eprintln!(
             "ChatSend from {} (user: {}) without permission",
             ctx.peer_addr, user.username

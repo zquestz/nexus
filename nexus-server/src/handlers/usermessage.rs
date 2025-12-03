@@ -79,27 +79,8 @@ pub async fn handle_usermessage(
         return ctx.send_message(&response).await;
     }
 
-    // Check UserMessage permission (use is_admin from UserManager to avoid DB lookup for admins)
-    let has_permission = if requesting_user_session.is_admin {
-        true
-    } else {
-        match ctx
-            .db
-            .users
-            .has_permission(requesting_user_session.db_user_id, Permission::UserMessage)
-            .await
-        {
-            Ok(has_perm) => has_perm,
-            Err(e) => {
-                eprintln!("Database error checking permissions: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
-                    .await;
-            }
-        }
-    };
-
-    if !has_permission {
+    // Check UserMessage permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user_session.has_permission(Permission::UserMessage) {
         eprintln!(
             "UserMessage from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user_session.username
