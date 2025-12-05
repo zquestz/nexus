@@ -177,9 +177,10 @@ err-login-failed = 登录失败
 err-unexpected-login-response = 意外的登录响应
 err-connection-closed = 连接已关闭
 err-could-not-determine-config-dir = 无法确定配置目录
-err-message-too-long = 消息过长
+err-message-too-long = 消息过长（{ $length }个字符，最多{ $max }个字符）
 err-send-failed = 发送消息失败
-err-broadcast-too-long = 广播消息过长
+err-no-chat-permission = 您没有发送消息的权限
+err-broadcast-too-long = 广播过长（{ $length }个字符，最多{ $max }个字符）
 err-broadcast-send-failed = 发送广播失败
 err-name-required = 书签名称为必填项
 err-address-required = 服务器地址为必填项
@@ -187,6 +188,16 @@ err-port-required = 端口为必填项
 err-username-required = 用户名为必填项
 err-password-required = 密码为必填项
 err-message-required = 消息为必填项
+
+# Validation errors
+err-message-empty = 消息不能为空
+err-message-contains-newlines = 消息不能包含换行符
+err-message-invalid-characters = 消息包含无效字符
+err-username-empty = 用户名不能为空
+err-username-too-long = 用户名过长（最多{ $max }个字符）
+err-username-invalid = 用户名包含无效字符
+err-password-too-long = 密码过长（最多{ $max }个字符）
+err-topic-too-long = 主题过长（{ $length }个字符，最多{ $max }个字符）
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

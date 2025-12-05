@@ -1,7 +1,7 @@
 //! Connection and chat message handlers
 
 use crate::commands::{self, ParseResult};
-use crate::i18n::{get_locale, t};
+use crate::i18n::{get_locale, t, t_args};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::views::constants::{
     PERMISSION_CHAT_SEND, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
@@ -11,9 +11,7 @@ use crate::{NexusApp, network};
 use iced::Task;
 use iced::widget::{scrollable, text_input};
 use nexus_common::protocol::ClientMessage;
-
-/// Maximum length for chat messages
-const MAX_CHAT_LENGTH: usize = 1024;
+use nexus_common::validators::{self, MessageError};
 
 /// Threshold for considering scroll position "at bottom" (0.0 = top, 1.0 = bottom)
 const SCROLL_BOTTOM_THRESHOLD: f32 = 0.99;
@@ -323,14 +321,20 @@ impl NexusApp {
                     return self.add_chat_error(conn_id, t("err-no-chat-permission"));
                 }
 
-                // Continue with normal message sending
-                if message.len() > MAX_CHAT_LENGTH {
-                    let error_msg = format!(
-                        "{} ({} characters, max {})",
-                        t("err-message-too-long"),
-                        message.len(),
-                        MAX_CHAT_LENGTH
-                    );
+                // Validate message content using shared validators
+                if let Err(e) = validators::validate_message(&message) {
+                    let error_msg = match e {
+                        MessageError::Empty => t("err-message-empty"),
+                        MessageError::TooLong => t_args(
+                            "err-message-too-long",
+                            &[
+                                ("length", &message.len().to_string()),
+                                ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
+                            ],
+                        ),
+                        MessageError::ContainsNewlines => t("err-message-contains-newlines"),
+                        MessageError::InvalidCharacters => t("err-message-invalid-characters"),
+                    };
                     return self.add_chat_error(conn_id, error_msg);
                 }
 

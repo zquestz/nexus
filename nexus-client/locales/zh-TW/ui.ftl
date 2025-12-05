@@ -176,9 +176,10 @@ err-login-failed = 登入失敗
 err-unexpected-login-response = 意外的登入回應
 err-connection-closed = 連線已關閉
 err-could-not-determine-config-dir = 無法確定設定目錄
-err-message-too-long = 訊息過長
+err-message-too-long = 訊息過長（{ $length }個字元，最多{ $max }個字元）
 err-send-failed = 傳送訊息失敗
-err-broadcast-too-long = 廣播訊息過長
+err-no-chat-permission = 您沒有傳送訊息的權限
+err-broadcast-too-long = 廣播過長（{ $length }個字元，最多{ $max }個字元）
 err-broadcast-send-failed = 傳送廣播失敗
 err-name-required = 書籤名稱為必填
 err-address-required = 伺服器位址為必填
@@ -186,6 +187,16 @@ err-port-required = 連接埠為必填
 err-username-required = 使用者名稱為必填
 err-password-required = 密碼為必填
 err-message-required = 訊息為必填
+
+# Validation errors
+err-message-empty = 訊息不能為空
+err-message-contains-newlines = 訊息不能包含換行符
+err-message-invalid-characters = 訊息包含無效字元
+err-username-empty = 使用者名稱不能為空
+err-username-too-long = 使用者名稱過長（最多{ $max }個字元）
+err-username-invalid = 使用者名稱包含無效字元
+err-password-too-long = 密碼過長（最多{ $max }個字元）
+err-topic-too-long = 主題過長（{ $length }個字元，最多{ $max }個字元）
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

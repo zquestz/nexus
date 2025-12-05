@@ -176,9 +176,10 @@ err-login-failed = 로그인 실패
 err-unexpected-login-response = 예기치 않은 로그인 응답
 err-connection-closed = 연결이 종료되었습니다
 err-could-not-determine-config-dir = 설정 디렉토리를 확인할 수 없습니다
-err-message-too-long = 메시지가 너무 깁니다
+err-message-too-long = 메시지가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-send-failed = 메시지 전송 실패
-err-broadcast-too-long = 브로드캐스트 메시지가 너무 깁니다
+err-no-chat-permission = 메시지를 보낼 권한이 없습니다
+err-broadcast-too-long = 브로드캐스트가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-broadcast-send-failed = 브로드캐스트 전송 실패
 err-name-required = 북마크 이름은 필수입니다
 err-address-required = 서버 주소는 필수입니다
@@ -186,6 +187,16 @@ err-port-required = 포트는 필수입니다
 err-username-required = 사용자 이름은 필수입니다
 err-password-required = 비밀번호는 필수입니다
 err-message-required = 메시지는 필수입니다
+
+# Validation errors
+err-message-empty = 메시지는 비워둘 수 없습니다
+err-message-contains-newlines = 메시지에 줄바꿈을 포함할 수 없습니다
+err-message-invalid-characters = 메시지에 잘못된 문자가 포함되어 있습니다
+err-username-empty = 사용자 이름은 비워둘 수 없습니다
+err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max }자)
+err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있습니다
+err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
+err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

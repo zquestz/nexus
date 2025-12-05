@@ -1,10 +1,11 @@
 //! /message command implementation - send messages to users
 
 use crate::NexusApp;
-use crate::i18n::t_args;
+use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, MessageError, UsernameError};
 
 /// Execute the /message command
 ///
@@ -29,6 +30,37 @@ pub fn execute(
 
     let username = &args[0];
     let message = args[1..].join(" ");
+
+    // Validate username
+    if let Err(e) = validators::validate_username(username) {
+        let error_msg = match e {
+            UsernameError::Empty => t("err-username-empty"),
+            UsernameError::TooLong => t_args(
+                "err-username-too-long",
+                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+            ),
+            UsernameError::InvalidCharacters => t("err-username-invalid"),
+        };
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => t("err-message-empty"),
+            MessageError::TooLong => t_args(
+                "err-message-too-long",
+                &[
+                    ("length", &message.len().to_string()),
+                    ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
+                ],
+            ),
+            MessageError::ContainsNewlines => t("err-message-contains-newlines"),
+            MessageError::InvalidCharacters => t("err-message-invalid-characters"),
+        };
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
     let msg = ClientMessage::UserMessage {
         to_username: username.clone(),
         message,

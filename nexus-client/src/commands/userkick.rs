@@ -1,10 +1,11 @@
 //! /kick command implementation - kick users from server
 
 use crate::NexusApp;
-use crate::i18n::t_args;
+use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, UsernameError};
 
 /// Execute the /kick command
 ///
@@ -27,6 +28,20 @@ pub fn execute(
     };
 
     let username = &args[0];
+
+    // Validate username
+    if let Err(e) = validators::validate_username(username) {
+        let error_msg = match e {
+            UsernameError::Empty => t("err-username-empty"),
+            UsernameError::TooLong => t_args(
+                "err-username-too-long",
+                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+            ),
+            UsernameError::InvalidCharacters => t("err-username-invalid"),
+        };
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
     let msg = ClientMessage::UserKick {
         username: username.clone(),
     };

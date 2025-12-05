@@ -1,14 +1,12 @@
 //! Broadcast message handlers
 
 use crate::NexusApp;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatMessage, InputId, Message};
 use iced::Task;
 use iced::widget::text_input;
 use nexus_common::protocol::ClientMessage;
-
-/// Maximum length for broadcast messages
-const MAX_BROADCAST_LENGTH: usize = 1024;
+use nexus_common::validators::{self, MessageError};
 
 impl NexusApp {
     // ==================== Panel Actions ====================
@@ -68,7 +66,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        if conn.broadcast_message.trim().is_empty() {
+        if let Err(MessageError::Empty) = validators::validate_message(&conn.broadcast_message) {
             conn.broadcast_error = Some(t("err-message-required"));
         }
         Task::none()
@@ -85,25 +83,26 @@ impl NexusApp {
             return Task::none();
         };
 
-        let message = conn.broadcast_message.trim();
+        let message = conn.broadcast_message.trim().to_string();
 
-        if message.is_empty() {
-            return Task::none();
-        }
-
-        if message.len() > MAX_BROADCAST_LENGTH {
-            let error_msg = format!(
-                "{} ({} characters, max {})",
-                t("err-broadcast-too-long"),
-                message.len(),
-                MAX_BROADCAST_LENGTH
-            );
+        // Validate message content using shared validators
+        if let Err(e) = validators::validate_message(&message) {
+            let error_msg = match e {
+                MessageError::Empty => return Task::none(),
+                MessageError::TooLong => t_args(
+                    "err-broadcast-too-long",
+                    &[
+                        ("length", &message.len().to_string()),
+                        ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
+                    ],
+                ),
+                MessageError::ContainsNewlines => t("err-message-contains-newlines"),
+                MessageError::InvalidCharacters => t("err-message-invalid-characters"),
+            };
             return self.add_broadcast_error(conn_id, error_msg);
         }
 
-        let msg = ClientMessage::UserBroadcast {
-            message: message.to_string(),
-        };
+        let msg = ClientMessage::UserBroadcast { message };
 
         if let Err(e) = conn.tx.send(msg) {
             let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);

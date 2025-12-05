@@ -178,10 +178,10 @@ err-login-failed = Login failed
 err-unexpected-login-response = Unexpected login response
 err-connection-closed = Connection closed
 err-could-not-determine-config-dir = Could not determine config directory
-err-message-too-long = Chat message too long
+err-message-too-long = Message is too long ({ $length } characters, max { $max })
 err-send-failed = Failed to send message
 err-no-chat-permission = You don't have permission to send messages
-err-broadcast-too-long = Broadcast message too long
+err-broadcast-too-long = Broadcast is too long ({ $length } characters, max { $max })
 err-broadcast-send-failed = Failed to send broadcast
 err-name-required = Bookmark name is required
 err-address-required = Server address is required
@@ -189,6 +189,16 @@ err-port-required = Port is required
 err-username-required = Username is required
 err-password-required = Password is required
 err-message-required = Message is required
+
+# Validation errors
+err-message-empty = Message cannot be empty
+err-message-contains-newlines = Message cannot contain newlines
+err-message-invalid-characters = Message contains invalid characters
+err-username-empty = Username cannot be empty
+err-username-too-long = Username is too long (max { $max } characters)
+err-username-invalid = Username contains invalid characters
+err-password-too-long = Password is too long (max { $max } characters)
+err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

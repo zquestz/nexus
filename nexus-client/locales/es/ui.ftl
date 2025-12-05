@@ -179,9 +179,9 @@ err-login-failed = Error de inicio de sesión
 err-unexpected-login-response = Respuesta de inicio de sesión inesperada
 err-connection-closed = Conexión cerrada
 err-could-not-determine-config-dir = No se pudo determinar el directorio de configuración
-err-message-too-long = Mensaje demasiado largo
+err-message-too-long = El mensaje es demasiado largo ({ $length } caracteres, máx { $max })
 err-send-failed = Error al enviar mensaje
-err-broadcast-too-long = Mensaje de difusión demasiado largo
+err-broadcast-too-long = La difusión es demasiado larga ({ $length } caracteres, máx { $max })
 err-broadcast-send-failed = Error al enviar difusión
 err-name-required = El nombre del marcador es requerido
 err-address-required = La dirección del servidor es requerida
@@ -189,6 +189,16 @@ err-port-required = El puerto es requerido
 err-username-required = El nombre de usuario es requerido
 err-password-required = La contraseña es requerida
 err-message-required = El mensaje es requerido
+
+# Validation errors
+err-message-empty = El mensaje no puede estar vacío
+err-message-contains-newlines = El mensaje no puede contener saltos de línea
+err-message-invalid-characters = El mensaje contiene caracteres inválidos
+err-username-empty = El nombre de usuario no puede estar vacío
+err-username-too-long = El nombre de usuario es demasiado largo (máx { $max } caracteres)
+err-username-invalid = El nombre de usuario contiene caracteres inválidos
+err-password-too-long = La contraseña es demasiado larga (máx { $max } caracteres)
+err-topic-too-long = El tema es demasiado largo ({ $length } caracteres, máx { $max })
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

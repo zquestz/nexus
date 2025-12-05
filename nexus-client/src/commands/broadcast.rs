@@ -1,10 +1,11 @@
 //! /broadcast command implementation - send broadcast to all users
 
 use crate::NexusApp;
-use crate::i18n::t_args;
+use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, MessageError};
 
 /// Execute the /broadcast command
 ///
@@ -26,6 +27,24 @@ pub fn execute(
     };
 
     let message = args.join(" ");
+
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => t("err-message-empty"),
+            MessageError::TooLong => t_args(
+                "err-message-too-long",
+                &[
+                    ("length", &message.len().to_string()),
+                    ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
+                ],
+            ),
+            MessageError::ContainsNewlines => t("err-message-contains-newlines"),
+            MessageError::InvalidCharacters => t("err-message-invalid-characters"),
+        };
+        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    }
+
     let msg = ClientMessage::UserBroadcast { message };
 
     if let Err(e) = conn.tx.send(msg) {

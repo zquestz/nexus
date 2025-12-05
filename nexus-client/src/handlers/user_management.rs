@@ -1,11 +1,12 @@
 //! User management
 
 use crate::NexusApp;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, InputId, Message, UserEditState};
 use iced::Task;
 
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, PasswordError, UsernameError};
 
 impl NexusApp {
     // ==================== Add User Form Handlers ====================
@@ -78,6 +79,33 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
+            // Validate username
+            let username = &conn.user_management.username;
+            if let Err(e) = validators::validate_username(username) {
+                conn.user_management.create_error = Some(match e {
+                    UsernameError::Empty => t("err-username-empty"),
+                    UsernameError::TooLong => t_args(
+                        "err-username-too-long",
+                        &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                    ),
+                    UsernameError::InvalidCharacters => t("err-username-invalid"),
+                });
+                return Task::none();
+            }
+
+            // Validate password
+            let password = &conn.user_management.password;
+            if let Err(e) = validators::validate_password(password) {
+                conn.user_management.create_error = Some(match e {
+                    PasswordError::Empty => t("err-password-required"),
+                    PasswordError::TooLong => t_args(
+                        "err-password-too-long",
+                        &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                });
+                return Task::none();
+            }
+
             // Only send admin flag if current user is admin
             let is_admin = if conn.is_admin {
                 conn.user_management.is_admin
@@ -125,10 +153,25 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            if conn.user_management.username.trim().is_empty() {
-                conn.user_management.create_error = Some(t("err-username-required"));
-            } else if conn.user_management.password.trim().is_empty() {
-                conn.user_management.create_error = Some(t("err-password-required"));
+            // Validate username first
+            if let Err(e) = validators::validate_username(&conn.user_management.username) {
+                conn.user_management.create_error = Some(match e {
+                    UsernameError::Empty => t("err-username-required"),
+                    UsernameError::TooLong => t_args(
+                        "err-username-too-long",
+                        &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                    ),
+                    UsernameError::InvalidCharacters => t("err-username-invalid"),
+                });
+            } else if let Err(e) = validators::validate_password(&conn.user_management.password) {
+                // Username is valid, check password
+                conn.user_management.create_error = Some(match e {
+                    PasswordError::Empty => t("err-password-required"),
+                    PasswordError::TooLong => t_args(
+                        "err-password-too-long",
+                        &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                });
             }
         }
         Task::none()
@@ -143,13 +186,27 @@ impl NexusApp {
         {
             match &conn.user_management.edit_state {
                 UserEditState::SelectingUser { username } => {
-                    if username.trim().is_empty() {
-                        conn.user_management.edit_error = Some(t("err-username-required"));
+                    if let Err(e) = validators::validate_username(username) {
+                        conn.user_management.edit_error = Some(match e {
+                            UsernameError::Empty => t("err-username-required"),
+                            UsernameError::TooLong => t_args(
+                                "err-username-too-long",
+                                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                            ),
+                            UsernameError::InvalidCharacters => t("err-username-invalid"),
+                        });
                     }
                 }
                 UserEditState::EditingUser { new_username, .. } => {
-                    if new_username.trim().is_empty() {
-                        conn.user_management.edit_error = Some(t("err-username-required"));
+                    if let Err(e) = validators::validate_username(new_username) {
+                        conn.user_management.edit_error = Some(match e {
+                            UsernameError::Empty => t("err-username-required"),
+                            UsernameError::TooLong => t_args(
+                                "err-username-too-long",
+                                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                            ),
+                            UsernameError::InvalidCharacters => t("err-username-invalid"),
+                        });
                     }
                 }
                 UserEditState::None => {}
@@ -165,6 +222,19 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
+            // Validate username
+            if let Err(e) = validators::validate_username(&username) {
+                conn.user_management.edit_error = Some(match e {
+                    UsernameError::Empty => t("err-username-empty"),
+                    UsernameError::TooLong => t_args(
+                        "err-username-too-long",
+                        &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                    ),
+                    UsernameError::InvalidCharacters => t("err-username-invalid"),
+                });
+                return Task::none();
+            }
+
             let msg = ClientMessage::UserDelete { username };
 
             // Send message and handle errors
@@ -276,6 +346,19 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
             && let UserEditState::SelectingUser { username } = &conn.user_management.edit_state
         {
+            // Validate username
+            if let Err(e) = validators::validate_username(username) {
+                conn.user_management.edit_error = Some(match e {
+                    UsernameError::Empty => t("err-username-empty"),
+                    UsernameError::TooLong => t_args(
+                        "err-username-too-long",
+                        &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                    ),
+                    UsernameError::InvalidCharacters => t("err-username-invalid"),
+                });
+                return Task::none();
+            }
+
             let msg = ClientMessage::UserEdit {
                 username: username.clone(),
             };
@@ -306,13 +389,40 @@ impl NexusApp {
                 permissions,
             } = &conn.user_management.edit_state
         {
+            // Validate new username
+            if let Err(e) = validators::validate_username(new_username) {
+                conn.user_management.edit_error = Some(match e {
+                    UsernameError::Empty => t("err-username-empty"),
+                    UsernameError::TooLong => t_args(
+                        "err-username-too-long",
+                        &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+                    ),
+                    UsernameError::InvalidCharacters => t("err-username-invalid"),
+                });
+                return Task::none();
+            }
+
+            // Validate new password if provided
+            if !new_password.is_empty()
+                && let Err(e) = validators::validate_password(new_password)
+            {
+                conn.user_management.edit_error = Some(match e {
+                    PasswordError::Empty => t("err-password-required"),
+                    PasswordError::TooLong => t_args(
+                        "err-password-too-long",
+                        &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                });
+                return Task::none();
+            }
+
             let requested_username = if new_username != original_username {
                 Some(new_username.clone())
             } else {
                 None
             };
 
-            let requested_password = if !new_password.trim().is_empty() {
+            let requested_password = if !new_password.is_empty() {
                 Some(new_password.clone())
             } else {
                 None

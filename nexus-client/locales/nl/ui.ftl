@@ -177,9 +177,10 @@ err-login-failed = Aanmelding mislukt
 err-unexpected-login-response = Onverwachte aanmeldrespons
 err-connection-closed = Verbinding gesloten
 err-could-not-determine-config-dir = Kan configuratiemap niet bepalen
-err-message-too-long = Bericht te lang
+err-message-too-long = Bericht is te lang ({ $length } tekens, max { $max })
 err-send-failed = Kan bericht niet verzenden
-err-broadcast-too-long = Broadcastbericht te lang
+err-no-chat-permission = Je hebt geen toestemming om berichten te verzenden
+err-broadcast-too-long = Broadcast is te lang ({ $length } tekens, max { $max })
 err-broadcast-send-failed = Kan broadcast niet verzenden
 err-name-required = Bladwijzernaam is vereist
 err-address-required = Serveradres is vereist
@@ -187,6 +188,16 @@ err-port-required = Poort is vereist
 err-username-required = Gebruikersnaam is vereist
 err-password-required = Wachtwoord is vereist
 err-message-required = Bericht is vereist
+
+# Validation errors
+err-message-empty = Bericht mag niet leeg zijn
+err-message-contains-newlines = Bericht mag geen regeleinden bevatten
+err-message-invalid-characters = Bericht bevat ongeldige tekens
+err-username-empty = Gebruikersnaam mag niet leeg zijn
+err-username-too-long = Gebruikersnaam is te lang (max { $max } tekens)
+err-username-invalid = Gebruikersnaam bevat ongeldige tekens
+err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
+err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

@@ -176,9 +176,10 @@ err-login-failed = Falha no login
 err-unexpected-login-response = Resposta de login inesperada
 err-connection-closed = Conexão fechada
 err-could-not-determine-config-dir = Não foi possível determinar o diretório de configuração
-err-message-too-long = Mensagem muito longa
+err-message-too-long = A mensagem é muito longa ({ $length } caracteres, máx { $max })
 err-send-failed = Falha ao enviar mensagem
-err-broadcast-too-long = Mensagem de difusão muito longa
+err-no-chat-permission = Você não tem permissão para enviar mensagens
+err-broadcast-too-long = A difusão é muito longa ({ $length } caracteres, máx { $max })
 err-broadcast-send-failed = Falha ao enviar difusão
 err-name-required = O nome do favorito é obrigatório
 err-address-required = O endereço do servidor é obrigatório
@@ -186,6 +187,16 @@ err-port-required = A porta é obrigatória
 err-username-required = O nome de usuário é obrigatório
 err-password-required = A senha é obrigatória
 err-message-required = A mensagem é obrigatória
+
+# Validation errors
+err-message-empty = A mensagem não pode estar vazia
+err-message-contains-newlines = A mensagem não pode conter quebras de linha
+err-message-invalid-characters = A mensagem contém caracteres inválidos
+err-username-empty = O nome de usuário não pode estar vazio
+err-username-too-long = O nome de usuário é muito longo (máx { $max } caracteres)
+err-username-invalid = O nome de usuário contém caracteres inválidos
+err-password-too-long = A senha é muito longa (máx { $max } caracteres)
+err-topic-too-long = O tópico é muito longo ({ $length } caracteres, máx { $max })
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

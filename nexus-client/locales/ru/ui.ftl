@@ -177,9 +177,10 @@ err-login-failed = Ошибка входа
 err-unexpected-login-response = Неожиданный ответ при входе
 err-connection-closed = Соединение закрыто
 err-could-not-determine-config-dir = Не удалось определить каталог конфигурации
-err-message-too-long = Сообщение слишком длинное
+err-message-too-long = Сообщение слишком длинное ({ $length } символов, макс { $max })
 err-send-failed = Не удалось отправить сообщение
-err-broadcast-too-long = Сообщение рассылки слишком длинное
+err-no-chat-permission = У вас нет разрешения на отправку сообщений
+err-broadcast-too-long = Рассылка слишком длинная ({ $length } символов, макс { $max })
 err-broadcast-send-failed = Не удалось отправить рассылку
 err-name-required = Требуется имя закладки
 err-address-required = Требуется адрес сервера
@@ -187,6 +188,16 @@ err-port-required = Требуется порт
 err-username-required = Требуется имя пользователя
 err-password-required = Требуется пароль
 err-message-required = Требуется сообщение
+
+# Validation errors
+err-message-empty = Сообщение не может быть пустым
+err-message-contains-newlines = Сообщение не может содержать переносы строк
+err-message-invalid-characters = Сообщение содержит недопустимые символы
+err-username-empty = Имя пользователя не может быть пустым
+err-username-too-long = Имя пользователя слишком длинное (макс { $max } символов)
+err-username-invalid = Имя пользователя содержит недопустимые символы
+err-password-too-long = Пароль слишком длинный (макс { $max } символов)
+err-topic-too-long = Тема слишком длинная ({ $length } символов, макс { $max })
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

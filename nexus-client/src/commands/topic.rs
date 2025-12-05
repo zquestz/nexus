@@ -6,6 +6,7 @@ use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_CHAT_TOPIC_EDIT;
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, ChatTopicError};
 
 /// Execute the /topic command
 ///
@@ -39,6 +40,23 @@ pub fn execute(
                 return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
             }
             let topic = args[1..].join(" ");
+
+            // Validate topic content
+            if let Err(e) = validators::validate_chat_topic(&topic) {
+                let error_msg = match e {
+                    ChatTopicError::TooLong => t_args(
+                        "err-topic-too-long",
+                        &[
+                            ("length", &topic.len().to_string()),
+                            ("max", &validators::MAX_CHAT_TOPIC_LENGTH.to_string()),
+                        ],
+                    ),
+                    ChatTopicError::ContainsNewlines => t("err-message-contains-newlines"),
+                    ChatTopicError::InvalidCharacters => t("err-message-invalid-characters"),
+                };
+                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            }
+
             set_topic(app, connection_id, topic)
         }
         "clear" => {

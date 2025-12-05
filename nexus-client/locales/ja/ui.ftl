@@ -176,9 +176,10 @@ err-login-failed = ログインに失敗しました
 err-unexpected-login-response = 予期しないログイン応答
 err-connection-closed = 接続が閉じられました
 err-could-not-determine-config-dir = 設定ディレクトリを特定できませんでした
-err-message-too-long = メッセージが長すぎます
+err-message-too-long = メッセージが長すぎます（{ $length }文字、最大{ $max }文字）
 err-send-failed = メッセージの送信に失敗しました
-err-broadcast-too-long = ブロードキャストメッセージが長すぎます
+err-no-chat-permission = メッセージを送信する権限がありません
+err-broadcast-too-long = ブロードキャストが長すぎます（{ $length }文字、最大{ $max }文字）
 err-broadcast-send-failed = ブロードキャストの送信に失敗しました
 err-name-required = ブックマーク名は必須です
 err-address-required = サーバーアドレスは必須です
@@ -186,6 +187,16 @@ err-port-required = ポートは必須です
 err-username-required = ユーザー名は必須です
 err-password-required = パスワードは必須です
 err-message-required = メッセージは必須です
+
+# Validation errors
+err-message-empty = メッセージは空にできません
+err-message-contains-newlines = メッセージに改行を含めることはできません
+err-message-invalid-characters = メッセージに無効な文字が含まれています
+err-username-empty = ユーザー名は空にできません
+err-username-too-long = ユーザー名が長すぎます（最大{ $max }文字）
+err-username-invalid = ユーザー名に無効な文字が含まれています
+err-password-too-long = パスワードが長すぎます（最大{ $max }文字）
+err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)
