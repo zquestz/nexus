@@ -20,6 +20,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - **SemVer protocol versioning** - backward-compatible version negotiation during handshake
 - **UPnP port forwarding** for automatic NAT traversal (optional)
 - **Internationalization (i18n)** - 12 languages supported (auto-detects system locale)
+- **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (12 permissions)
@@ -154,10 +155,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 **Test Coverage:**
 
-- 186 server tests (182 unit + 4 integration)
+- 187 server tests (183 unit + 4 integration)
 - 57 client tests
-- 143 common tests
-- Total: 386 tests
+- 147 common tests
+- Total: 395 tests
 
 ## Database & Configuration
 

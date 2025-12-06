@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{read_client_message, send_server_message_with_id};
+use nexus_common::io::{read_client_message_with_timeout, send_server_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::constants::*;
@@ -78,8 +78,8 @@ where
     // Uses tokio::select! to handle both reading from client and sending to client concurrently
     loop {
         tokio::select! {
-            // Handle incoming client messages
-            result = read_client_message(&mut frame_reader) => {
+            // Handle incoming client messages (with 60s timeout for DoS protection)
+            result = read_client_message_with_timeout(&mut frame_reader) => {
                 match result {
                     Ok(Some(received)) => {
                         // Handle the message

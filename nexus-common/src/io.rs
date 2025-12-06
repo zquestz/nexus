@@ -7,7 +7,9 @@ use std::io;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::framing::{FrameError, FrameReader, FrameWriter, MessageId, RawFrame};
+use crate::framing::{
+    DEFAULT_FRAME_TIMEOUT, FrameError, FrameReader, FrameWriter, MessageId, RawFrame,
+};
 use crate::protocol::{ClientMessage, ServerMessage};
 
 // =============================================================================
@@ -125,6 +127,11 @@ pub struct ReceivedServerMessage {
 /// Read a `ClientMessage` from the stream
 ///
 /// Returns `Ok(None)` if the connection was cleanly closed.
+///
+/// # Note
+///
+/// This method has no timeout - it will wait indefinitely for data.
+/// For production use, prefer [`read_client_message_with_timeout`].
 pub async fn read_client_message<R>(
     reader: &mut FrameReader<R>,
 ) -> io::Result<Option<ReceivedClientMessage>>
@@ -137,6 +144,34 @@ where
         Err(e) => return Err(e.into()),
     };
 
+    parse_client_frame(frame)
+}
+
+/// Read a `ClientMessage` from the stream with a timeout
+///
+/// This method waits indefinitely for the first byte (allowing idle connections),
+/// but once the first byte is received, the entire frame must complete within
+/// 60 seconds. This protects against slowloris-style attacks while still
+/// allowing users to idle.
+///
+/// Returns `Ok(None)` if the connection was cleanly closed.
+pub async fn read_client_message_with_timeout<R>(
+    reader: &mut FrameReader<R>,
+) -> io::Result<Option<ReceivedClientMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let frame = match reader.read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT).await {
+        Ok(Some(frame)) => frame,
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+
+    parse_client_frame(frame)
+}
+
+/// Parse a raw frame into a `ReceivedClientMessage`
+fn parse_client_frame(frame: RawFrame) -> io::Result<Option<ReceivedClientMessage>> {
     // Parse the JSON payload
     let message: ClientMessage = serde_json::from_slice(&frame.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {e}")))?;

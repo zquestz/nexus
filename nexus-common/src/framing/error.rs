@@ -44,6 +44,8 @@ pub enum FrameError {
     Io(String),
     /// Connection closed
     ConnectionClosed,
+    /// Frame read timeout (frame started but not completed in time)
+    FrameTimeout,
 }
 
 impl fmt::Display for FrameError {
@@ -89,6 +91,7 @@ impl fmt::Display for FrameError {
             FrameError::InvalidJson(e) => write!(f, "invalid JSON payload: {e}"),
             FrameError::Io(e) => write!(f, "I/O error: {e}"),
             FrameError::ConnectionClosed => write!(f, "connection closed"),
+            FrameError::FrameTimeout => write!(f, "frame read timeout"),
         }
     }
 }
@@ -165,6 +168,7 @@ mod tests {
                 "I/O error: connection reset",
             ),
             (FrameError::ConnectionClosed, "connection closed"),
+            (FrameError::FrameTimeout, "frame read timeout"),
         ];
 
         for (error, expected) in cases {

@@ -3,6 +3,7 @@
 mod args;
 mod connection;
 mod constants;
+mod contracker;
 mod db;
 mod handlers;
 mod i18n;
@@ -12,6 +13,7 @@ mod users;
 use args::Args;
 use clap::Parser;
 use constants::*;
+use contracker::ConnectionTracker;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::BufReader;
@@ -39,6 +41,9 @@ async fn main() {
     // Setup UPnP port forwarding if requested
     let upnp_handle = setup_upnp(args.upnp, args.bind, args.port).await;
 
+    // Setup connection tracking for DoS protection
+    let connection_tracker = ConnectionTracker::new(MAX_CONNECTIONS_PER_IP);
+
     // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
 
@@ -62,12 +67,26 @@ async fn main() {
             loop {
                 match listener.accept().await {
                     Ok((socket, peer_addr)) => {
+                        // Check connection limit before accepting
+                        let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
+                            Some(guard) => guard,
+                            None => {
+                                if debug {
+                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
+                                }
+                                // Just drop the socket - client will see connection reset
+                                continue;
+                            }
+                        };
+
                         let user_manager = user_manager.clone();
                         let database = database.clone();
                         let tls_acceptor = tls_acceptor.clone();
 
                         // Spawn a new task to handle this connection
                         tokio::spawn(async move {
+                            // Hold guard until connection ends to track active connections
+                            let _guard = connection_guard;
                             if let Err(e) = connection::handle_connection(
                                 socket,
                                 peer_addr,

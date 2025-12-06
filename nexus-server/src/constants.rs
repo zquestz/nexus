@@ -4,6 +4,13 @@
 //! This file contains only server operator messages (logs, startup, diagnostics)
 
 // =============================================================================
+// Connection Limits
+// =============================================================================
+
+/// Maximum connections allowed per IP address (DoS protection)
+pub const MAX_CONNECTIONS_PER_IP: usize = 5;
+
+// =============================================================================
 // Database Configuration
 // =============================================================================
 
@@ -127,6 +134,9 @@ pub const ERR_HANDLING_MESSAGE: &str = "Error handling message: ";
 
 /// Message parsing error
 pub const ERR_PARSE_MESSAGE: &str = "Failed to parse message from ";
+
+/// Connection limit exceeded error (debug only)
+pub const ERR_CONNECTION_LIMIT: &str = "Connection limit exceeded for IP: ";
 
 /// File permissions error
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";
