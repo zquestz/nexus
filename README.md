@@ -155,10 +155,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 **Test Coverage:**
 
-- 187 server tests (183 unit + 4 integration)
+- 189 server tests (185 unit + 4 integration)
 - 57 client tests
 - 147 common tests
-- Total: 395 tests
+- Total: 393 tests
 
 ## Database & Configuration
 

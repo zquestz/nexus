@@ -1,9 +1,14 @@
 //! /serverinfo command implementation - display server information
 
+use chrono::Local;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
+
+/// Indentation for server info display lines (matching user info style)
+const INFO_INDENT: &str = "  ";
 
 /// Execute the /serverinfo command
 ///
@@ -33,59 +38,66 @@ pub fn execute(
     let chat_topic_set_by = conn.chat_topic_set_by.clone();
     let max_connections_per_ip = conn.max_connections_per_ip;
 
-    // Now build all the messages
-    let mut tasks = Vec::new();
+    // Build multi-line output similar to user info
+    let mut lines = Vec::new();
 
-    // Header
-    tasks.push(app.add_chat_message(connection_id, ChatMessage::info(t("cmd-serverinfo-header"))));
+    // Header - [server]
+    lines.push(t("cmd-serverinfo-header"));
 
     // Server name
     if let Some(name) = server_name {
-        let line = t_args("cmd-serverinfo-name", &[("name", &name)]);
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        let label = t("label-server-name").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {name}"));
     }
 
     // Server description (only if non-empty)
     if let Some(description) = server_description
         && !description.is_empty()
     {
-        let line = t_args(
-            "cmd-serverinfo-description",
-            &[("description", &description)],
-        );
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        let label = t("label-server-description").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {description}"));
     }
 
     // Server version
     if let Some(version) = server_version {
-        let line = t_args("cmd-serverinfo-version", &[("version", &version)]);
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        let label = t("label-server-version").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {version}"));
     }
 
     // Chat topic (only if set)
     if let Some(topic) = chat_topic
         && !topic.is_empty()
     {
-        let line = t_args("cmd-serverinfo-topic", &[("topic", &topic)]);
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        let label = t("label-chat-topic").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {topic}"));
 
         // Topic set by
         if let Some(set_by) = chat_topic_set_by
             && !set_by.is_empty()
         {
-            let line = t_args("cmd-serverinfo-topic-set-by", &[("username", &set_by)]);
-            tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+            let label = t("label-chat-topic-set-by").to_lowercase();
+            lines.push(format!("{INFO_INDENT}{label} {set_by}"));
         }
     }
 
     // Max connections per IP (admin only)
     if let Some(max_conn) = max_connections_per_ip {
-        let line = t_args(
-            "cmd-serverinfo-max-connections",
-            &[("count", &max_conn.to_string())],
-        );
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        let label = t("label-max-connections-per-ip").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {max_conn}"));
     }
 
-    Task::batch(tasks)
+    // End line
+    lines.push(format!("{INFO_INDENT}{}", t("cmd-serverinfo-end")));
+
+    // Add each line as a separate chat message with shared timestamp
+    let timestamp = Local::now();
+    let mut task = Task::none();
+    for line in lines {
+        task = app.add_chat_message(
+            connection_id,
+            ChatMessage::info_with_timestamp(line, timestamp),
+        );
+    }
+    // Last add_chat_message will handle auto-scroll
+    task
 }
