@@ -35,35 +35,34 @@ pub use userupdate::{UserUpdateRequest, handle_userupdate};
 
 use std::io;
 use std::net::SocketAddr;
-use std::pin::Pin;
 
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 
-use nexus_common::io::send_server_message;
+use nexus_common::framing::{FrameWriter, MessageId};
+use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
 use crate::db::Database;
 use crate::users::UserManager;
 
-/// Type alias for a pinned boxed writer (supports any AsyncWrite stream)
-pub type Writer = Pin<Box<dyn AsyncWrite + Send>>;
-
 /// Context passed to all handlers with shared resources
-pub struct HandlerContext<'a> {
-    pub writer: &'a mut Writer,
+pub struct HandlerContext<'a, W> {
+    pub writer: &'a mut FrameWriter<W>,
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
-    pub tx: &'a mpsc::UnboundedSender<ServerMessage>,
+    pub tx: &'a mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub debug: bool,
     pub locale: &'a str,
+    /// Message ID from the incoming request (for response correlation)
+    pub message_id: MessageId,
 }
 
-impl<'a> HandlerContext<'a> {
-    /// Send a message to the client
+impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
+    /// Send a message to the client, echoing the request's message ID
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
-        send_server_message(self.writer, message).await
+        send_server_message_with_id(self.writer, message, self.message_id).await
     }
 
     /// Send an error message without disconnecting

@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
@@ -18,15 +20,18 @@ use super::{
 use crate::db::{Permission, Permissions, hash_password};
 
 /// Handle a user creation request from the client
-pub async fn handle_usercreate(
+pub async fn handle_usercreate<W>(
     username: String,
     password: String,
     is_admin: bool,
     enabled: bool,
     permissions: Vec<String>,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(requesting_session_id) = session_id else {
         eprintln!("UserCreate request from {} without login", ctx.peer_addr);
@@ -208,9 +213,8 @@ pub async fn handle_usercreate(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user};
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
     use crate::users::user::NewSessionParams;
-    use tokio::io::AsyncReadExt;
 
     #[tokio::test]
     async fn test_usercreate_requires_login() {
@@ -282,12 +286,9 @@ mod tests {
         assert!(result.is_ok(), "Admin should be able to create users");
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(success, "Response should indicate success");
@@ -367,12 +368,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -411,12 +409,9 @@ mod tests {
         assert!(result.is_ok(), "Admin should be able to create admin users");
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(success, "Response should indicate success");
@@ -471,12 +466,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(success, "Response should indicate success");
@@ -535,12 +527,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(success, "Response should indicate success");
@@ -819,12 +808,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error } => {
                 assert!(success, "Response should indicate success");

@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, FeaturesError, LocaleError, PasswordError, UsernameError};
 
@@ -19,15 +21,18 @@ use crate::db::{self, Permission};
 use crate::users::user::NewSessionParams;
 
 /// Handle a login request from the client
-pub async fn handle_login(
+pub async fn handle_login<W>(
     username: String,
     password: String,
     features: Vec<String>,
     locale: String,
     handshake_complete: bool,
     session_id: &mut Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify handshake completed
     if !handshake_complete {
         eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
@@ -306,8 +311,7 @@ pub async fn handle_login(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::testing::{DEFAULT_TEST_LOCALE, create_test_context};
-    use tokio::io::AsyncReadExt;
+    use crate::handlers::testing::{DEFAULT_TEST_LOCALE, create_test_context, read_server_message};
 
     #[tokio::test]
     async fn test_login_requires_handshake() {
@@ -355,11 +359,8 @@ mod tests {
         assert!(session_id.is_some(), "Session ID should be set");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify successful login response with admin flag and empty permissions
         match response_msg {
@@ -438,11 +439,8 @@ mod tests {
         assert!(session_id.is_some(), "Session ID should be set");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify successful login response with is_admin and permissions
         match response_msg {
@@ -599,11 +597,8 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify response includes correct permissions
         match response_msg {
@@ -739,11 +734,8 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify LoginResponse includes server_info with chat_topic
         match response_msg {
@@ -803,11 +795,8 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify LoginResponse excludes server_info
         match response_msg {
@@ -865,11 +854,8 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         // Read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify admin receives server_info
         match response_msg {
@@ -933,15 +919,19 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent
-        let mut buf = vec![0u8; 1024];
-        let n = test_ctx.client.read(&mut buf).await.unwrap();
-        let response = String::from_utf8_lossy(&buf[..n]);
-        assert!(
-            response.contains("Account")
-                && response.contains("bob")
-                && response.contains("disabled"),
-            "Should receive account disabled error with username"
-        );
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert!(
+                    message.contains("Account")
+                        && message.contains("bob")
+                        && message.contains("disabled"),
+                    "Should receive account disabled error with username, got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
     }
 
     #[tokio::test]
@@ -978,16 +968,18 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent in Spanish
-        let mut buf = vec![0u8; 1024];
-        let n = test_ctx.client.read(&mut buf).await.unwrap();
-        let response = String::from_utf8_lossy(&buf[..n]);
-
-        // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
-        assert!(
-            response.contains("Usuario") || response.contains("contraseña"),
-            "Error message should be in Spanish, got: {}",
-            response
-        );
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
+                assert!(
+                    message.contains("Usuario") || message.contains("contraseña"),
+                    "Error message should be in Spanish, got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
     }
 
     #[tokio::test]
@@ -1024,15 +1016,17 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent in English (default)
-        let mut buf = vec![0u8; 1024];
-        let n = test_ctx.client.read(&mut buf).await.unwrap();
-        let response = String::from_utf8_lossy(&buf[..n]);
-
-        // English error message should contain "Invalid username or password"
-        assert!(
-            response.contains("Invalid") && response.contains("username"),
-            "Error message should be in English (default), got: {}",
-            response
-        );
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                // Should be English (contains "Invalid" or "username")
+                assert!(
+                    message.contains("Invalid") || message.contains("username"),
+                    "Error message should be in English (default), got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
     }
 }

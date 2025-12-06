@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, UsernameError};
 
@@ -15,11 +17,14 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserDelete command
-pub async fn handle_userdelete(
+pub async fn handle_userdelete<W>(
     target_username: String,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
         eprintln!("UserDelete request from {} without login", ctx.peer_addr);
@@ -106,7 +111,7 @@ pub async fn handle_userdelete(
             message: err_account_deleted(&online_user.locale),
             command: None,
         };
-        let _ = online_user.tx.send(disconnect_msg);
+        let _ = online_user.tx.send((disconnect_msg, None));
 
         // Remove them from UserManager
         let session_id = online_user.session_id;
@@ -156,9 +161,9 @@ pub async fn handle_userdelete(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user};
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
     use crate::users::user::NewSessionParams;
-    use tokio::io::AsyncReadExt;
+
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -200,12 +205,9 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -249,12 +251,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -291,12 +290,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -363,12 +359,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(!success, "Response should indicate failure");
@@ -529,12 +522,9 @@ mod tests {
         );
 
         // Close writer and read response
-        drop(test_ctx.write_half);
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
 
         // Parse and verify response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error } => {
                 assert!(success, "Response should indicate success");

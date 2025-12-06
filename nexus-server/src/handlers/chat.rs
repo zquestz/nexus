@@ -3,6 +3,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -15,11 +17,14 @@ use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
 /// Handle a chat send request from the client
-pub async fn handle_chat_send(
+pub async fn handle_chat_send<W>(
     message: String,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(id) = session_id else {
         eprintln!("ChatSend from {} without login", ctx.peer_addr);

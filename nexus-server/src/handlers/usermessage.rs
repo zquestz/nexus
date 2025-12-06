@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError, UsernameError};
 
@@ -14,12 +16,15 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserMessage command
-pub async fn handle_usermessage(
+pub async fn handle_usermessage<W>(
     to_username: String,
     message: String,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
         eprintln!("UserMessage request from {} without login", ctx.peer_addr);

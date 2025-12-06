@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, VersionError};
 use nexus_common::version::{self, CompatibilityResult};
@@ -12,11 +14,14 @@ use super::{
 };
 
 /// Handle a handshake request from the client
-pub async fn handle_handshake(
+pub async fn handle_handshake<W>(
     version: String,
     handshake_complete: &mut bool,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     let server_version_str = nexus_common::PROTOCOL_VERSION;
 
     // Check for duplicate handshake
@@ -110,9 +115,8 @@ pub async fn handle_handshake(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::testing::create_test_context;
+    use crate::handlers::testing::{create_test_context, read_server_message};
     use nexus_common::version;
-    use tokio::io::AsyncReadExt;
 
     #[tokio::test]
     async fn test_successful_handshake() {
@@ -135,15 +139,8 @@ mod tests {
         );
         assert!(handshake_complete, "Handshake flag should be set to true");
 
-        // Close writer so client can read complete response
-        drop(test_ctx.write_half);
-
-        // Read response from client side
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
-
-        // Parse JSON response
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        // Read response from client side using new framing format
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         // Verify response
         match response_msg {
@@ -233,14 +230,8 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::Other);
         assert!(err.to_string().contains("Major version mismatch"));
 
-        // Close writer so client can read response
-        drop(test_ctx.write_half);
-
-        // Read and verify JSON response
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
-
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        // Read and verify response using new framing format
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {
@@ -277,14 +268,8 @@ mod tests {
         );
         assert!(!handshake_complete, "Handshake flag should remain false");
 
-        // Close writer so client can read response
-        drop(test_ctx.write_half);
-
-        // Read and verify JSON response
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
-
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        // Read and verify response using new framing format
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {
@@ -319,14 +304,8 @@ mod tests {
         );
         assert!(!handshake_complete, "Handshake flag should remain false");
 
-        // Close writer so client can read response
-        drop(test_ctx.write_half);
-
-        // Read and verify JSON response
-        let mut response = String::new();
-        test_ctx.client.read_to_string(&mut response).await.unwrap();
-
-        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+        // Read and verify response using new framing format
+        let response_msg = read_server_message(&mut test_ctx.client).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {

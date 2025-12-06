@@ -3,16 +3,21 @@
 use std::collections::HashMap;
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::{ServerMessage, UserInfo};
 
 use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 /// Handle a userlist request from the client
-pub async fn handle_userlist(
+pub async fn handle_userlist<W>(
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first
     let Some(id) = session_id else {
         eprintln!("UserList request from {} without login", ctx.peer_addr);

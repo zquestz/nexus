@@ -1,9 +1,10 @@
 //! Server connection, handshake, and login
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 
 use nexus_common::PROTOCOL_VERSION;
-use nexus_common::io::send_client_message;
+use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::i18n::{DEFAULT_LOCALE, t, t_args};
@@ -30,15 +31,31 @@ pub async fn connect_to_server(
     // Establish TCP connection and get certificate fingerprint
     let (tls_stream, fingerprint) = establish_connection(&server_address, port).await?;
 
-    let (reader, mut writer) = tokio::io::split(tls_stream);
-    let mut reader = BufReader::new(reader);
+    let (reader, writer) = tokio::io::split(tls_stream);
+    let buf_reader = BufReader::new(reader);
+    let mut frame_reader = FrameReader::new(buf_reader);
+    let mut frame_writer = FrameWriter::new(writer);
 
     // Perform handshake and login
-    perform_handshake(&mut reader, &mut writer).await?;
-    let login_info = perform_login(&mut reader, &mut writer, username, password, locale).await?;
+    perform_handshake(&mut frame_reader, &mut frame_writer).await?;
+    let login_info = perform_login(
+        &mut frame_reader,
+        &mut frame_writer,
+        username,
+        password,
+        locale,
+    )
+    .await?;
 
     // Set up bidirectional communication
-    setup_communication_channels(reader, writer, login_info, connection_id, fingerprint).await
+    setup_communication_channels(
+        frame_reader,
+        frame_writer,
+        login_info,
+        connection_id,
+        fingerprint,
+    )
+    .await
 }
 
 /// Perform protocol handshake with the server
@@ -50,27 +67,22 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
         .await
         .map_err(|e| t_args("err-failed-send-handshake", &[("error", &e.to_string())]))?;
 
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
+    let received = read_server_message(reader)
         .await
-        .map_err(|e| t_args("err-failed-read-handshake", &[("error", &e.to_string())]))?;
+        .map_err(|e| t_args("err-failed-read-handshake", &[("error", &e.to_string())]))?
+        .ok_or_else(|| t("err-connection-closed"))?;
 
-    match serde_json::from_str::<ServerMessage>(line.trim()) {
-        Ok(ServerMessage::HandshakeResponse { success: true, .. }) => Ok(()),
-        Ok(ServerMessage::HandshakeResponse {
+    match received.message {
+        ServerMessage::HandshakeResponse { success: true, .. } => Ok(()),
+        ServerMessage::HandshakeResponse {
             success: false,
             error,
             ..
-        }) => Err(t_args(
+        } => Err(t_args(
             "err-handshake-failed",
             &[("error", &error.unwrap_or_default())],
         )),
-        Ok(_) => Err(t("err-unexpected-handshake-response")),
-        Err(e) => Err(t_args(
-            "err-failed-parse-handshake",
-            &[("error", &e.to_string())],
-        )),
+        _ => Err(t("err-unexpected-handshake-response")),
     }
 }
 
@@ -92,14 +104,13 @@ async fn perform_login(
         .await
         .map_err(|e| t_args("err-failed-send-login", &[("error", &e.to_string())]))?;
 
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
+    let received = read_server_message(reader)
         .await
-        .map_err(|e| t_args("err-failed-read-login", &[("error", &e.to_string())]))?;
+        .map_err(|e| t_args("err-failed-read-login", &[("error", &e.to_string())]))?
+        .ok_or_else(|| t("err-connection-closed"))?;
 
-    match serde_json::from_str::<ServerMessage>(line.trim()) {
-        Ok(ServerMessage::LoginResponse {
+    match received.message {
+        ServerMessage::LoginResponse {
             success: true,
             session_id: Some(id),
             is_admin,
@@ -107,7 +118,7 @@ async fn perform_login(
             server_info,
             locale,
             ..
-        }) => Ok(LoginInfo {
+        } => Ok(LoginInfo {
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
@@ -115,26 +126,22 @@ async fn perform_login(
             chat_topic_set_by: server_info.map(|info| info.chat_topic_set_by),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
-        Ok(ServerMessage::LoginResponse {
+        ServerMessage::LoginResponse {
             success: true,
             session_id: None,
             ..
-        }) => Err(t("err-no-session-id")),
-        Ok(ServerMessage::LoginResponse {
+        } => Err(t("err-no-session-id")),
+        ServerMessage::LoginResponse {
             success: false,
             error: Some(msg),
             ..
-        }) => Err(msg),
-        Ok(ServerMessage::LoginResponse {
+        } => Err(msg),
+        ServerMessage::LoginResponse {
             success: false,
             error: None,
             ..
-        }) => Err(t("err-login-failed")),
-        Ok(ServerMessage::Error { message, .. }) => Err(message),
-        Ok(_) => Err(t("err-unexpected-login-response")),
-        Err(e) => Err(t_args(
-            "err-failed-parse-login",
-            &[("error", &e.to_string())],
-        )),
+        } => Err(t("err-login-failed")),
+        ServerMessage::Error { message, .. } => Err(message),
+        _ => Err(t("err-unexpected-login-response")),
     }
 }

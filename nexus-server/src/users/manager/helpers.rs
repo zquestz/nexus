@@ -59,7 +59,7 @@ impl UserManager {
 
                 // Check if user has user_list permission (uses cached permissions, admin bypass)
                 if user.has_permission(Permission::UserList) {
-                    let _ = user.tx.send(message.clone());
+                    let _ = user.tx.send((message.clone(), None));
                 }
             }
         }

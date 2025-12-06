@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
@@ -30,10 +32,13 @@ pub struct UserUpdateRequest {
 }
 
 /// Handle a user update request from the client
-pub async fn handle_userupdate(
+pub async fn handle_userupdate<W>(
     request: UserUpdateRequest,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(requesting_session_id) = request.session_id else {
         eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
@@ -392,7 +397,7 @@ pub async fn handle_userupdate(
                                 message: err_account_disabled_by_admin(&user.locale),
                                 command: None,
                             };
-                            let _ = user.tx.send(disconnect_msg);
+                            let _ = user.tx.send((disconnect_msg, None));
                         }
 
                         // Remove user from manager - this drops tx, causing rx.recv() to return None,

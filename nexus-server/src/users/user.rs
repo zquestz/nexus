@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
@@ -17,7 +18,7 @@ pub struct NewSessionParams {
     pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     pub created_at: i64,
-    pub tx: mpsc::UnboundedSender<ServerMessage>,
+    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub features: Vec<String>,
     pub locale: String,
 }
@@ -46,7 +47,7 @@ pub struct UserSession {
     /// When the user logged in (Unix timestamp)
     pub login_time: i64,
     /// Channel sender for sending messages to this user
-    pub tx: mpsc::UnboundedSender<ServerMessage>,
+    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     /// Features enabled for this user
     pub features: Vec<String>,
     /// User's preferred locale (e.g., "en", "en-US", "zh-CN")

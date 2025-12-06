@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, ChatTopicError};
 
@@ -12,11 +14,14 @@ use super::{
 use crate::db::Permission;
 
 /// Handle ChatTopicUpdate command
-pub async fn handle_chattopicupdate(
+pub async fn handle_chattopicupdate<W>(
     topic: String,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(id) = session_id else {
         eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);

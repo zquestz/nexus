@@ -3,14 +3,16 @@
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
+use nexus_common::framing::{FrameReader, FrameWriter};
+
 /// Type alias for TLS stream
 pub type TlsStream = tokio_rustls::client::TlsStream<TcpStream>;
 
-/// Type alias for TLS stream read half with buffering
-pub type Reader = BufReader<tokio::io::ReadHalf<TlsStream>>;
+/// Type alias for TLS stream read half with buffering and framing
+pub type Reader = FrameReader<BufReader<tokio::io::ReadHalf<TlsStream>>>;
 
-/// Type alias for TLS stream write half
-pub type Writer = tokio::io::WriteHalf<TlsStream>;
+/// Type alias for TLS stream write half with framing
+pub type Writer = FrameWriter<tokio::io::WriteHalf<TlsStream>>;
 
 /// Login information returned from the server
 pub struct LoginInfo {

@@ -269,7 +269,7 @@ impl NexusApp {
             Message::NetworkError(connection_id, error) => {
                 self.handle_network_error(connection_id, error)
             }
-            Message::ServerMessageReceived(connection_id, msg) => {
+            Message::ServerMessageReceived(connection_id, _message_id, msg) => {
                 self.handle_server_message_received(connection_id, msg)
             }
         }

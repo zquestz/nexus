@@ -2,6 +2,8 @@
 
 use std::io;
 
+use tokio::io::AsyncWrite;
+
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, UsernameError};
 
@@ -13,11 +15,14 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserKick command
-pub async fn handle_userkick(
+pub async fn handle_userkick<W>(
     target_username: String,
     session_id: Option<u32>,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(session_id) = session_id else {
         eprintln!("UserKick request from {} without login", ctx.peer_addr);
@@ -118,7 +123,7 @@ pub async fn handle_userkick(
             message: err_kicked_by(&user.locale, &requesting_user_session.username),
             command: None,
         };
-        let _ = user.tx.send(kick_msg);
+        let _ = user.tx.send((kick_msg, None));
 
         // Remove user from UserManager (channel closes, connection breaks)
         let target_session_id = user.session_id;

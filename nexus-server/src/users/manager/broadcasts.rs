@@ -15,7 +15,7 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.tx.send(message.clone()).is_err() {
+                if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -53,7 +53,7 @@ impl UserManager {
                 }
 
                 // Send message to this user
-                if user.tx.send(message.clone()).is_err() {
+                if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -82,7 +82,7 @@ impl UserManager {
             let users = self.users.read().await;
             for user in users.values() {
                 if user.username.to_lowercase() == username_lower
-                    && user.tx.send(message.clone()).is_err()
+                    && user.tx.send((message.clone(), None)).is_err()
                 {
                     disconnected.push(user.session_id);
                 }
@@ -115,7 +115,7 @@ impl UserManager {
                 }
 
                 // Send message to this user
-                if user.tx.send(message.clone()).is_err() {
+                if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -156,7 +156,7 @@ impl UserManager {
                 }
 
                 // Send message to this user
-                if user.tx.send(message.clone()).is_err() {
+                if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
             }

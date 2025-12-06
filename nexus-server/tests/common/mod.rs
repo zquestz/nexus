@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 use nexus_server::db::{Database, Permission};
 use nexus_server::users::UserManager;
@@ -44,7 +45,10 @@ pub async fn add_test_user(
     username: &str,
     is_admin: bool,
     permissions: HashSet<Permission>,
-) -> (u32, mpsc::UnboundedReceiver<ServerMessage>) {
+) -> (
+    u32,
+    mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
+) {
     let (tx, rx) = mpsc::unbounded_channel();
     let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
     let created_at = chrono::Utc::now().timestamp();

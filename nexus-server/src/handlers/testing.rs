@@ -5,38 +5,46 @@ pub const DEFAULT_TEST_LOCALE: &str = "en";
 
 use std::net::SocketAddr;
 
+use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
+use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
+use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 
-use super::{HandlerContext, Writer};
+use super::HandlerContext;
 use crate::db::Database;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
 
+/// Type alias for the write half used in tests
+type TestWriteHalf = tokio::net::tcp::OwnedWriteHalf;
+
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
     pub client: TcpStream,
-    pub write_half: Writer,
+    pub frame_writer: FrameWriter<TestWriteHalf>,
     pub user_manager: UserManager,
     pub db: Database,
-    pub tx: mpsc::UnboundedSender<ServerMessage>,
+    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub peer_addr: SocketAddr,
-    pub _rx: mpsc::UnboundedReceiver<ServerMessage>, // Keep receiver alive to prevent channel closure
+    pub _rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>, // Keep receiver alive to prevent channel closure
+    pub message_id: MessageId,
 }
 
 impl TestContext {
     /// Create a HandlerContext from this TestContext
-    pub fn handler_context(&mut self) -> HandlerContext<'_> {
+    pub fn handler_context(&mut self) -> HandlerContext<'_, TestWriteHalf> {
         HandlerContext {
-            writer: &mut self.write_half,
+            writer: &mut self.frame_writer,
             peer_addr: self.peer_addr,
             user_manager: &self.user_manager,
             db: &self.db,
             tx: &self.tx,
             debug: false, // Tests don't need debug logging
             locale: DEFAULT_TEST_LOCALE,
+            message_id: self.message_id,
         }
     }
 }
@@ -67,21 +75,25 @@ pub async fn create_test_context() -> TestContext {
     // Accept connection
     let (server_stream, peer_addr) = listener.accept().await.unwrap();
     let (_read_half, write_half) = server_stream.into_split();
-    let write_half = Box::pin(write_half);
+    let frame_writer = FrameWriter::new(write_half);
 
     let client = client_handle.await.unwrap();
 
     // Create message channel (keep receiver alive to prevent channel closure)
     let (tx, rx) = mpsc::unbounded_channel();
 
+    // Create a default message ID for tests (must be valid hex characters)
+    let message_id = MessageId::from_bytes(b"000000000000").unwrap();
+
     TestContext {
         client,
-        write_half,
+        frame_writer,
         user_manager,
         db,
         tx,
         peer_addr,
         _rx: rx,
+        message_id,
     }
 }
 
@@ -142,12 +154,15 @@ pub async fn login_user_with_features(
         .await
 }
 
-/// Helper to read a ServerMessage from the client stream
+/// Helper to read a ServerMessage from the client stream using the new framing format
 pub async fn read_server_message(client: &mut TcpStream) -> ServerMessage {
-    use tokio::io::AsyncBufReadExt;
+    let (read_half, _write_half) = client.split();
+    let buf_reader = BufReader::new(read_half);
+    let mut frame_reader = FrameReader::new(buf_reader);
 
-    let mut reader = tokio::io::BufReader::new(client);
-    let mut line = String::new();
-    reader.read_line(&mut line).await.unwrap();
-    serde_json::from_str(line.trim()).unwrap()
+    io_read_server_message(&mut frame_reader)
+        .await
+        .expect("Failed to read message")
+        .expect("Connection closed unexpectedly")
+        .message
 }

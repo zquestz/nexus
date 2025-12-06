@@ -9,7 +9,8 @@ use once_cell::sync::Lazy;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, mpsc};
 
-use nexus_common::io::send_client_message;
+use nexus_common::framing::MessageId;
+use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::i18n::t;
@@ -19,7 +20,8 @@ use super::constants::STREAM_CHANNEL_SIZE;
 use super::types::{LoginInfo, Reader, Writer};
 
 /// Type alias for the connection registry
-type ConnectionRegistry = Arc<Mutex<HashMap<usize, mpsc::UnboundedReceiver<ServerMessage>>>>;
+type ConnectionRegistry =
+    Arc<Mutex<HashMap<usize, mpsc::UnboundedReceiver<(MessageId, ServerMessage)>>>>;
 
 /// Global registry for network receivers
 pub static NETWORK_RECEIVERS: Lazy<ConnectionRegistry> =
@@ -53,7 +55,7 @@ pub(super) async fn setup_communication_channels(
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
-    let (msg_tx, msg_rx) = mpsc::unbounded_channel::<ServerMessage>();
+    let (msg_tx, msg_rx) = mpsc::unbounded_channel::<(MessageId, ServerMessage)>();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Spawn background task for bidirectional communication
@@ -81,29 +83,26 @@ fn spawn_network_task(
     mut reader: Reader,
     mut writer: Writer,
     mut cmd_rx: mpsc::UnboundedReceiver<ClientMessage>,
-    msg_tx: mpsc::UnboundedSender<ServerMessage>,
+    msg_tx: mpsc::UnboundedSender<(MessageId, ServerMessage)>,
     mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
     tokio::spawn(async move {
-        let mut line = String::new();
         loop {
             tokio::select! {
-                // Read from server
-                result = tokio::io::AsyncBufReadExt::read_line(&mut reader, &mut line) => {
+                // Read from server using new framing format
+                result = read_server_message(&mut reader) => {
                     match result {
-                        Ok(0) => break, // Connection closed
-                        Ok(_) => {
-                            // Parse and send message to UI
-                            if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(line.trim())
-                                && msg_tx.send(server_msg).is_err() {
-                                    break; // UI closed
-                                }
-                            line.clear();
+                        Ok(Some(received)) => {
+                            // Send message ID and message to UI
+                            if msg_tx.send((received.message_id, received.message)).is_err() {
+                                break; // UI closed
+                            }
                         }
-                        Err(_) => break,
+                        Ok(None) => break, // Connection closed cleanly
+                        Err(_) => break, // Error reading
                     }
                 }
-                // Send to server
+                // Send to server using new framing format
                 Some(msg) = cmd_rx.recv() => {
                     if send_client_message(&mut writer, &msg).await.is_err() {
                         break;
@@ -112,7 +111,7 @@ fn spawn_network_task(
                 // Shutdown signal
                 _ = &mut shutdown_rx => {
                     // Properly close TLS connection with shutdown
-                    let _ = writer.shutdown().await;
+                    let _ = writer.get_mut().shutdown().await;
                     break;
                 }
             }
@@ -121,7 +120,10 @@ fn spawn_network_task(
 }
 
 /// Register connection in global registry with pre-assigned ID
-async fn register_connection(connection_id: usize, msg_rx: mpsc::UnboundedReceiver<ServerMessage>) {
+async fn register_connection(
+    connection_id: usize,
+    msg_rx: mpsc::UnboundedReceiver<(MessageId, ServerMessage)>,
+) {
     let mut receivers = NETWORK_RECEIVERS.lock().await;
     receivers.insert(connection_id, msg_rx);
 }
@@ -140,9 +142,13 @@ pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
         };
 
         if let Some(ref mut receiver) = rx {
-            while let Some(msg) = receiver.recv().await {
+            while let Some((message_id, msg)) = receiver.recv().await {
                 let _ = output
-                    .send(Message::ServerMessageReceived(connection_id, msg))
+                    .send(Message::ServerMessageReceived(
+                        connection_id,
+                        message_id,
+                        msg,
+                    ))
                     .await;
             }
         }

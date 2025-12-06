@@ -2,13 +2,14 @@
 //!
 //! Shared types, protocols, and utilities for the Nexus BBS system.
 
+pub mod framing;
 pub mod io;
 pub mod protocol;
 pub mod validators;
 pub mod version;
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.3.0";
+pub const PROTOCOL_VERSION: &str = "0.4.0";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;

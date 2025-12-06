@@ -2,6 +2,8 @@
 
 use iced::Theme;
 
+use nexus_common::framing::MessageId;
+
 use super::{ChatTab, NetworkConnection, ServerMessage};
 
 /// Messages that drive the application state machine
@@ -105,8 +107,8 @@ pub enum Message {
     SendMessagePressed,
     /// Connection form: Server address field changed
     ServerAddressChanged(String),
-    /// Network: Message received from server
-    ServerMessageReceived(usize, ServerMessage),
+    /// Network: Message received from server (connection_id, message_id, message)
+    ServerMessageReceived(usize, MessageId, ServerMessage),
     /// Connection form: Server name field changed
     ServerNameChanged(String),
     /// Bookmark list: Add Bookmark button pressed

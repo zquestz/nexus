@@ -96,7 +96,7 @@ async fn test_multi_session_partial_disconnect() {
     // Sessions 1 and 3 should receive UserDisconnected message
     let msg1 = rx1.try_recv();
     assert!(msg1.is_ok(), "Session 1 should receive disconnect message");
-    match msg1.unwrap() {
+    match msg1.unwrap().0 {
         ServerMessage::UserDisconnected {
             session_id,
             username,
@@ -207,6 +207,10 @@ async fn test_broadcast_respects_user_list_permission() {
         msg_admin.is_ok(),
         "Admin should receive UserConnected message"
     );
+    assert!(matches!(
+        msg_admin.unwrap().0,
+        ServerMessage::UserConnected { .. }
+    ));
 
     // User with permission should receive
     let msg_with = rx_with.try_recv();
@@ -214,6 +218,10 @@ async fn test_broadcast_respects_user_list_permission() {
         msg_with.is_ok(),
         "User with user_list permission should receive message"
     );
+    assert!(matches!(
+        msg_with.unwrap().0,
+        ServerMessage::UserConnected { .. }
+    ));
 
     // User without permission should NOT receive
     let msg_without = rx_without.try_recv();
@@ -284,7 +292,7 @@ async fn test_broadcast_excludes_specified_session() {
     // Session 2 should receive
     let msg2 = rx2.try_recv();
     assert!(msg2.is_ok(), "Session 2 should receive message");
-    match msg2.unwrap() {
+    match msg2.unwrap().0 {
         ServerMessage::UserConnected { .. } => {}
         _ => panic!("Expected UserConnected"),
     }

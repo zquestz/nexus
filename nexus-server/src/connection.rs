@@ -1,5 +1,22 @@
 //! Client connection handling
 
+use std::io;
+use std::net::SocketAddr;
+
+use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+use tokio_rustls::TlsAcceptor;
+
+use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
+use nexus_common::io::{read_client_message, send_server_message_with_id};
+use nexus_common::protocol::{ClientMessage, ServerMessage};
+
+use crate::constants::*;
+use crate::db::Database;
+use crate::handlers::{self, HandlerContext, err_invalid_message_format};
+use crate::users::UserManager;
+
 /// Connection state for a single client
 struct ConnectionState {
     session_id: Option<u32>,
@@ -16,21 +33,6 @@ impl ConnectionState {
         }
     }
 }
-
-use crate::constants::*;
-use crate::db::Database;
-use crate::handlers::{self, HandlerContext, err_invalid_message_format};
-use crate::users::UserManager;
-use nexus_common::io::send_server_message;
-use nexus_common::protocol::{ClientMessage, ServerMessage};
-use std::io;
-use std::net::SocketAddr;
-
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
-use tokio::net::TcpStream;
-use tokio_rustls::TlsAcceptor;
-
-use tokio::sync::mpsc;
 
 /// Handle a client connection (always with TLS)
 pub async fn handle_connection(
@@ -59,64 +61,81 @@ async fn handle_connection_inner<S>(
     debug: bool,
 ) -> io::Result<()>
 where
-    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let (reader, writer) = tokio::io::split(socket);
-    let mut reader = BufReader::new(reader);
-    let mut writer: handlers::Writer = Box::pin(writer);
+    let buf_reader = BufReader::new(reader);
+    let mut frame_reader = FrameReader::new(buf_reader);
+    let mut frame_writer = FrameWriter::new(writer);
 
     // Create channel for receiving server messages to send to this client
-    let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<(ServerMessage, Option<MessageId>)>();
 
     // Connection state
     let mut conn_state = ConnectionState::new();
-    let mut line = String::new(); // Reusable buffer for reading lines
 
     // Main loop - handle both incoming messages and outgoing events
     // Uses tokio::select! to handle both reading from client and sending to client concurrently
     loop {
         tokio::select! {
             // Handle incoming client messages
-            result = reader.read_line(&mut line) => {
-                let n = result?;
+            result = read_client_message(&mut frame_reader) => {
+                match result {
+                    Ok(Some(received)) => {
+                        // Handle the message
+                        // Clone locale to avoid borrow checker conflict
+                        let locale = conn_state.locale.clone();
 
-                // Connection closed
-                if n == 0 {
-                    break;
+                        let mut ctx = HandlerContext {
+                            writer: &mut frame_writer,
+                            peer_addr,
+                            user_manager: &user_manager,
+                            db: &db,
+                            tx: &tx,
+                            debug,
+                            locale: &locale,
+                            message_id: received.message_id,
+                        };
+
+                        if let Err(e) = handle_client_message(
+                            received.message,
+                            &mut conn_state,
+                            &mut ctx,
+                        ).await {
+                            eprintln!("{}{}", ERR_HANDLING_MESSAGE, e);
+                            break;
+                        }
+                    }
+                    Ok(None) => {
+                        // Connection closed cleanly
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, peer_addr, e);
+                        // Try to send error before disconnecting
+                        let error_msg = ServerMessage::Error {
+                            message: err_invalid_message_format(&conn_state.locale),
+                            command: None,
+                        };
+                        let _ = send_server_message_with_id(
+                            &mut frame_writer,
+                            &error_msg,
+                            MessageId::new(),
+                        ).await;
+                        break;
+                    }
                 }
-
-                // Handle the message
-                // Clone locale to avoid borrow checker conflict
-                let locale = conn_state.locale.clone();
-
-                let mut ctx = HandlerContext {
-                    writer: &mut writer,
-                    peer_addr,
-                    user_manager: &user_manager,
-                    db: &db,
-                    tx: &tx,
-                    debug,
-                    locale: &locale,
-                };
-
-                if let Err(e) = handle_client_message(
-                    &line,
-                    &mut conn_state,
-                    &mut ctx,
-                ).await {
-                    eprintln!("{}{}", ERR_HANDLING_MESSAGE, e);
-                    break;
-                }
-
-                // Clear buffer for next message
-                line.clear();
             }
 
             // Handle outgoing server messages/events
             msg = rx.recv() => {
                 match msg {
-                    Some(msg) => {
-                        send_server_message(&mut writer, &msg).await?;
+                    Some((msg, msg_id)) => {
+                        // Use provided message ID or generate a new one
+                        let id = msg_id.unwrap_or_else(MessageId::new);
+                        if send_server_message_with_id(&mut frame_writer, &msg, id).await.is_err() {
+                            break;
+                        }
                     }
                     None => {
                         // Channel closed (user was removed from manager) - disconnect
@@ -126,6 +145,9 @@ where
             }
         }
     }
+
+    // Shutdown the writer gracefully
+    let _ = frame_writer.get_mut().shutdown().await;
 
     // Remove user on disconnect
     if let Some(id) = conn_state.session_id
@@ -151,120 +173,104 @@ where
 }
 
 /// Handle a message from the client
-async fn handle_client_message(
-    line: &str,
+async fn handle_client_message<W>(
+    msg: ClientMessage,
     conn_state: &mut ConnectionState,
-    ctx: &mut HandlerContext<'_>,
-) -> io::Result<()> {
-    let line = line.trim();
-    // Ignore empty lines (e.g., from keepalive or client mistakes)
-    if line.is_empty() {
-        return Ok(());
-    }
-
-    // NOTE: We don't log the raw message here to avoid leaking passwords
-
-    match serde_json::from_str::<ClientMessage>(line) {
-        Ok(msg) => match msg {
-            ClientMessage::ChatSend { message } => {
-                handlers::handle_chat_send(message, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::ChatTopicUpdate { topic } => {
-                handlers::handle_chattopicupdate(topic, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::Handshake { version } => {
-                handlers::handle_handshake(version, &mut conn_state.handshake_complete, ctx)
-                    .await?;
-            }
-            ClientMessage::Login {
+    ctx: &mut HandlerContext<'_, W>,
+) -> io::Result<()>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    match msg {
+        ClientMessage::ChatSend { message } => {
+            handlers::handle_chat_send(message, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::ChatTopicUpdate { topic } => {
+            handlers::handle_chattopicupdate(topic, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::Handshake { version } => {
+            handlers::handle_handshake(version, &mut conn_state.handshake_complete, ctx).await?;
+        }
+        ClientMessage::Login {
+            username,
+            password,
+            features,
+            locale,
+        } => {
+            handlers::handle_login(
                 username,
                 password,
                 features,
-                locale,
-            } => {
-                handlers::handle_login(
-                    username,
-                    password,
-                    features,
-                    locale.clone(),
-                    conn_state.handshake_complete,
-                    &mut conn_state.session_id,
-                    ctx,
-                )
-                .await?;
+                locale.clone(),
+                conn_state.handshake_complete,
+                &mut conn_state.session_id,
+                ctx,
+            )
+            .await?;
 
-                // Update connection locale after successful login
-                conn_state.locale = locale;
-            }
-            ClientMessage::UserBroadcast { message } => {
-                handlers::handle_user_broadcast(message, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserCreate {
+            // Update connection locale after successful login
+            conn_state.locale = locale;
+        }
+        ClientMessage::UserBroadcast { message } => {
+            handlers::handle_user_broadcast(message, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserCreate {
+            username,
+            password,
+            is_admin,
+            enabled,
+            permissions,
+        } => {
+            handlers::handle_usercreate(
                 username,
                 password,
                 is_admin,
                 enabled,
                 permissions,
-            } => {
-                handlers::handle_usercreate(
-                    username,
-                    password,
-                    is_admin,
-                    enabled,
-                    permissions,
-                    conn_state.session_id,
-                    ctx,
-                )
-                .await?;
-            }
-            ClientMessage::UserDelete { username } => {
-                handlers::handle_userdelete(username, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserEdit { username } => {
-                handlers::handle_useredit(username, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserInfo { username } => {
-                handlers::handle_userinfo(username, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserKick { username } => {
-                handlers::handle_userkick(username, conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserList => {
-                handlers::handle_userlist(conn_state.session_id, ctx).await?;
-            }
-            ClientMessage::UserMessage {
-                to_username,
-                message,
-            } => {
-                handlers::handle_usermessage(to_username, message, conn_state.session_id, ctx)
-                    .await?;
-            }
-            ClientMessage::UserUpdate {
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
+        }
+        ClientMessage::UserDelete { username } => {
+            handlers::handle_userdelete(username, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserEdit { username } => {
+            handlers::handle_useredit(username, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserInfo { username } => {
+            handlers::handle_userinfo(username, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserKick { username } => {
+            handlers::handle_userkick(username, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserList => {
+            handlers::handle_userlist(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserMessage {
+            to_username,
+            message,
+        } => {
+            handlers::handle_usermessage(to_username, message, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserUpdate {
+            username,
+            requested_username,
+            requested_password,
+            requested_is_admin,
+            requested_enabled,
+            requested_permissions,
+        } => {
+            let request = handlers::UserUpdateRequest {
                 username,
                 requested_username,
                 requested_password,
                 requested_is_admin,
                 requested_enabled,
                 requested_permissions,
-            } => {
-                let request = handlers::UserUpdateRequest {
-                    username,
-                    requested_username,
-                    requested_password,
-                    requested_is_admin,
-                    requested_enabled,
-                    requested_permissions,
-                    session_id: conn_state.session_id,
-                };
-                handlers::handle_userupdate(request, ctx).await?;
-            }
-        },
-        Err(e) => {
-            // NOTE: Don't log the raw message - it might contain passwords if malformed
-            eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, ctx.peer_addr, e);
-            return ctx
-                .send_error_and_disconnect(&err_invalid_message_format(&conn_state.locale), None)
-                .await;
+                session_id: conn_state.session_id,
+            };
+            handlers::handle_userupdate(request, ctx).await?;
         }
     }
 
