@@ -4,10 +4,11 @@ use std::io;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, VersionError};
+use nexus_common::version::{self, CompatibilityResult};
 
 use super::{
-    HandlerContext, err_handshake_already_completed, err_version_empty,
-    err_version_invalid_characters, err_version_mismatch, err_version_too_long,
+    HandlerContext, err_handshake_already_completed, err_version_client_too_new, err_version_empty,
+    err_version_invalid_semver, err_version_major_mismatch, err_version_too_long,
 };
 
 /// Handle a handshake request from the client
@@ -16,70 +17,101 @@ pub async fn handle_handshake(
     handshake_complete: &mut bool,
     ctx: &mut HandlerContext<'_>,
 ) -> io::Result<()> {
+    let server_version_str = nexus_common::PROTOCOL_VERSION;
+
     // Check for duplicate handshake
     if *handshake_complete {
         eprintln!("Duplicate handshake attempt from {}", ctx.peer_addr);
         let response = ServerMessage::HandshakeResponse {
             success: false,
-            version: Some(nexus_common::PROTOCOL_VERSION.to_string()),
+            version: Some(server_version_str.to_string()),
             error: Some(err_handshake_already_completed(ctx.locale)),
         };
         ctx.send_message(&response).await?;
         return Err(io::Error::other("Duplicate handshake"));
     }
 
-    // Validate version string
-    if let Err(e) = validators::validate_version(&version) {
-        let error_msg = match e {
-            VersionError::Empty => err_version_empty(ctx.locale),
-            VersionError::TooLong => {
-                err_version_too_long(ctx.locale, validators::MAX_VERSION_LENGTH)
-            }
-            VersionError::InvalidCharacters => err_version_invalid_characters(ctx.locale),
-        };
-        let response = ServerMessage::HandshakeResponse {
-            success: false,
-            version: Some(nexus_common::PROTOCOL_VERSION.to_string()),
-            error: Some(error_msg),
-        };
-        ctx.send_message(&response).await?;
-        return Err(io::Error::other("Invalid version string"));
+    // Validate and parse version string
+    let client_version = match validators::validate_version(&version) {
+        Ok(v) => v,
+        Err(e) => {
+            let error_msg = match e {
+                VersionError::Empty => err_version_empty(ctx.locale),
+                VersionError::TooLong => {
+                    err_version_too_long(ctx.locale, validators::MAX_VERSION_LENGTH)
+                }
+                VersionError::InvalidSemver => err_version_invalid_semver(ctx.locale),
+            };
+            let response = ServerMessage::HandshakeResponse {
+                success: false,
+                version: Some(server_version_str.to_string()),
+                error: Some(error_msg),
+            };
+            ctx.send_message(&response).await?;
+            return Err(io::Error::other("Invalid version string"));
+        }
+    };
+
+    // Check semver compatibility using the already-parsed version
+    match version::check_compatibility(&client_version) {
+        CompatibilityResult::Compatible => {
+            // Version is compatible - complete handshake
+            *handshake_complete = true;
+            let response = ServerMessage::HandshakeResponse {
+                success: true,
+                version: Some(server_version_str.to_string()),
+                error: None,
+            };
+            ctx.send_message(&response).await
+        }
+        CompatibilityResult::MajorMismatch {
+            server_major,
+            client_major,
+        } => {
+            eprintln!(
+                "Handshake from {} failed: major version mismatch (client: {}, server: {})",
+                ctx.peer_addr, client_major, server_major
+            );
+            let response = ServerMessage::HandshakeResponse {
+                success: false,
+                version: Some(server_version_str.to_string()),
+                error: Some(err_version_major_mismatch(
+                    ctx.locale,
+                    server_major,
+                    client_major,
+                )),
+            };
+            ctx.send_message(&response).await?;
+            Err(io::Error::other("Major version mismatch"))
+        }
+        CompatibilityResult::ClientTooNew {
+            server_minor,
+            client_minor,
+        } => {
+            eprintln!(
+                "Handshake from {} failed: client minor version {} is newer than server minor version {}",
+                ctx.peer_addr, client_minor, server_minor
+            );
+            let response = ServerMessage::HandshakeResponse {
+                success: false,
+                version: Some(server_version_str.to_string()),
+                error: Some(err_version_client_too_new(
+                    ctx.locale,
+                    server_version_str,
+                    &version,
+                )),
+            };
+            ctx.send_message(&response).await?;
+            Err(io::Error::other("Client version too new"))
+        }
     }
-
-    // Verify protocol version compatibility
-    let server_version = nexus_common::PROTOCOL_VERSION;
-
-    if version == server_version {
-        // Version matches - complete handshake
-        *handshake_complete = true;
-        let response = ServerMessage::HandshakeResponse {
-            success: true,
-            version: Some(server_version.to_string()),
-            error: None,
-        };
-        ctx.send_message(&response).await?;
-    } else {
-        // Version mismatch - reject handshake
-        eprintln!(
-            "Handshake from {} failed: version mismatch (client: {}, server: {})",
-            ctx.peer_addr, version, server_version
-        );
-        let response = ServerMessage::HandshakeResponse {
-            success: false,
-            version: Some(server_version.to_string()),
-            error: Some(err_version_mismatch(ctx.locale, server_version, &version)),
-        };
-        ctx.send_message(&response).await?;
-        return Err(io::Error::other("Version mismatch"));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::handlers::testing::create_test_context;
+    use nexus_common::version;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -129,29 +161,77 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_version_mismatch() {
+    async fn test_compatible_older_minor_version() {
         let mut test_ctx = create_test_context().await;
         let mut handshake_complete = false;
 
-        // Call handler with mismatched version
-        let client_version = "0.9.9";
+        // Parse the server version to create a compatible older minor version
+        let server_ver = version::protocol_version();
+        // Only test if server minor version > 0 (otherwise we can't go lower)
+        if server_ver.minor > 0 {
+            let client_version = format!("{}.{}.0", server_ver.major, server_ver.minor - 1);
+            let result = handle_handshake(
+                client_version,
+                &mut handshake_complete,
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+
+            assert!(
+                result.is_ok(),
+                "Handshake should succeed with older compatible minor version"
+            );
+            assert!(handshake_complete, "Handshake flag should be set to true");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compatible_different_patch_version() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // Parse the server version to create a version with different patch
+        let server_ver = version::protocol_version();
+        let client_version = format!("{}.{}.99", server_ver.major, server_ver.minor);
         let result = handle_handshake(
-            client_version.to_string(),
+            client_version,
             &mut handshake_complete,
             &mut test_ctx.handler_context(),
         )
         .await;
 
-        // Should fail
+        assert!(
+            result.is_ok(),
+            "Handshake should succeed with different patch version"
+        );
+        assert!(handshake_complete, "Handshake flag should be set to true");
+    }
+
+    #[tokio::test]
+    async fn test_major_version_mismatch() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // Use a different major version
+        let server_ver = version::protocol_version();
+        let client_version = format!("{}.0.0", server_ver.major + 1);
+        let result = handle_handshake(
+            client_version,
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
         assert!(
             result.is_err(),
-            "Handshake should fail with version mismatch"
+            "Handshake should fail with major version mismatch"
         );
         assert!(!handshake_complete, "Handshake flag should remain false");
 
-        // Error should be about version mismatch
+        // Error should be about major version mismatch
         let err = result.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert!(err.to_string().contains("Major version mismatch"));
 
         // Close writer so client can read response
         drop(test_ctx.write_half);
@@ -162,21 +242,101 @@ mod tests {
 
         let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
 
-        // Verify error message format
         match response_msg {
-            ServerMessage::HandshakeResponse {
-                success,
-                version,
-                error,
-            } => {
+            ServerMessage::HandshakeResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
-                assert_eq!(version, Some(nexus_common::PROTOCOL_VERSION.to_string()));
                 assert!(error.is_some(), "Should have error message");
-
                 let error_msg = error.unwrap();
-                assert!(error_msg.contains("Version mismatch"));
-                assert!(error_msg.contains(client_version));
-                assert!(error_msg.contains(nexus_common::PROTOCOL_VERSION));
+                assert!(
+                    error_msg.contains("Incompatible") || error_msg.contains("version"),
+                    "Error should mention incompatible version"
+                );
+            }
+            _ => panic!("Expected HandshakeResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_minor_version_too_new() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // Use a newer minor version
+        let server_ver = version::protocol_version();
+        let client_version = format!("{}.{}.0", server_ver.major, server_ver.minor + 1);
+        let result = handle_handshake(
+            client_version.clone(),
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "Handshake should fail when client minor version is too new"
+        );
+        assert!(!handshake_complete, "Handshake flag should remain false");
+
+        // Close writer so client can read response
+        drop(test_ctx.write_half);
+
+        // Read and verify JSON response
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+
+        match response_msg {
+            ServerMessage::HandshakeResponse { success, error, .. } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("newer") || error_msg.contains(&client_version),
+                    "Error should mention client is newer"
+                );
+            }
+            _ => panic!("Expected HandshakeResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_semver_format() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // Use an invalid semver format
+        let result = handle_handshake(
+            "not-valid-semver".to_string(),
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "Handshake should fail with invalid semver format"
+        );
+        assert!(!handshake_complete, "Handshake flag should remain false");
+
+        // Close writer so client can read response
+        drop(test_ctx.write_half);
+
+        // Read and verify JSON response
+        let mut response = String::new();
+        test_ctx.client.read_to_string(&mut response).await.unwrap();
+
+        let response_msg: ServerMessage = serde_json::from_str(response.trim()).unwrap();
+
+        match response_msg {
+            ServerMessage::HandshakeResponse { success, error, .. } => {
+                assert!(!success, "Response should indicate failure");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("semver") || error_msg.contains("MAJOR.MINOR.PATCH"),
+                    "Error should mention semver format"
+                );
             }
             _ => panic!("Expected HandshakeResponse"),
         }
@@ -216,5 +376,30 @@ mod tests {
         let err = result2.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::Other);
         assert!(err.to_string().contains("Duplicate"));
+    }
+
+    #[tokio::test]
+    async fn test_prerelease_version_compatible() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // Pre-release versions should be compatible based on their base version
+        let server_ver = version::protocol_version();
+        let client_version = format!(
+            "{}.{}.{}-alpha",
+            server_ver.major, server_ver.minor, server_ver.patch
+        );
+        let result = handle_handshake(
+            client_version,
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Handshake should succeed with pre-release version of same base"
+        );
+        assert!(handshake_complete, "Handshake flag should be set to true");
     }
 }

@@ -323,16 +323,32 @@ pub fn err_version_empty(locale: &str) -> String {
     t(locale, "err-version-empty")
 }
 
-/// Get translated "version invalid characters" error
-pub fn err_version_invalid_characters(locale: &str) -> String {
-    t(locale, "err-version-invalid-characters")
+/// Get translated "version invalid semver" error
+pub fn err_version_invalid_semver(locale: &str) -> String {
+    t(locale, "err-version-invalid-semver")
 }
 
-/// Get translated "version mismatch" error
-pub fn err_version_mismatch(locale: &str, server_version: &str, client_version: &str) -> String {
+/// Get translated "version major mismatch" error
+pub fn err_version_major_mismatch(locale: &str, server_major: u64, client_major: u64) -> String {
     t_args(
         locale,
-        "err-version-mismatch",
+        "err-version-major-mismatch",
+        &[
+            ("server_major", &server_major.to_string()),
+            ("client_major", &client_major.to_string()),
+        ],
+    )
+}
+
+/// Get translated "version client too new" error
+pub fn err_version_client_too_new(
+    locale: &str,
+    server_version: &str,
+    client_version: &str,
+) -> String {
+    t_args(
+        locale,
+        "err-version-client-too-new",
         &[
             ("server_version", server_version),
             ("client_version", client_version),

@@ -38,7 +38,7 @@ err-topic-invalid-characters = トピックに無効な文字が含まれてい�
 # バージョン検証のエラー
 err-version-empty = バージョンを空にすることはできません
 err-version-too-long = バージョンが長すぎます（最大{ $max_length }文字）
-err-version-invalid-characters = バージョンに無効な文字が含まれています
+err-version-invalid-semver = バージョンはsemver形式（MAJOR.MINOR.PATCH）である必要があります
 
 # パスワード検証のエラー
 err-password-empty = パスワードを空にすることはできません
@@ -70,7 +70,8 @@ err-unknown-permission = 不明な権限: '{ $permission }'
 err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }文字）
 err-chat-too-long = メッセージが長すぎます（最大{ $max_length }文字）
 err-topic-too-long = トピックは{ $max_length }文字を超えることはできません
-err-version-mismatch = バージョンの不一致：サーバーは{ $server_version }を使用、クライアントは{ $client_version }を使用
+err-version-major-mismatch = 互換性のないプロトコルバージョン：サーバーはバージョン{ $server_major }.x、クライアントはバージョン{ $client_major }.x
+err-version-client-too-new = クライアントバージョン{ $client_version }はサーバーバージョン{ $server_version }より新しいです。サーバーを更新するか、古いクライアントを使用してください。
 err-kicked-by = { $username }によってキックされました
 err-username-exists = ユーザー名「{ $username }」は既に存在します
 err-user-not-found = ユーザー「{ $username }」が見つかりません

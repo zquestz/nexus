@@ -38,7 +38,7 @@ err-topic-invalid-characters = 주제에 잘못된 문자가 포함되어 있습
 # 버전 검증 오류
 err-version-empty = 버전은 비어 있을 수 없습니다
 err-version-too-long = 버전이 너무 깁니다 (최대 { $max_length }자)
-err-version-invalid-characters = 버전에 잘못된 문자가 포함되어 있습니다
+err-version-invalid-semver = 버전은 semver 형식이어야 합니다 (MAJOR.MINOR.PATCH)
 
 # 비밀번호 검증 오류
 err-password-empty = 비밀번호는 비어 있을 수 없습니다
@@ -70,7 +70,8 @@ err-unknown-permission = 알 수 없는 권한: '{ $permission }'
 err-broadcast-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
 err-chat-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
 err-topic-too-long = 주제는 { $max_length }자를 초과할 수 없습니다
-err-version-mismatch = 버전 불일치: 서버는 { $server_version }을 사용하고 클라이언트는 { $client_version }을 사용합니다
+err-version-major-mismatch = 호환되지 않는 프로토콜 버전: 서버는 버전 { $server_major }.x, 클라이언트는 버전 { $client_major }.x입니다
+err-version-client-too-new = 클라이언트 버전 { $client_version }이(가) 서버 버전 { $server_version }보다 최신입니다. 서버를 업데이트하거나 이전 클라이언트를 사용하세요.
 err-kicked-by = { $username }에게 추방당했습니다
 err-username-exists = 사용자 이름 "{ $username }"이(가) 이미 존재합니다
 err-user-not-found = 사용자 "{ $username }"을(를) 찾을 수 없습니다

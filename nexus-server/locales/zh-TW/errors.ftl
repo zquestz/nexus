@@ -38,7 +38,7 @@ err-topic-invalid-characters = 主題包含無效字元
 # 版本驗證錯誤
 err-version-empty = 版本不能為空
 err-version-too-long = 版本太長（最多{ $max_length }個字元）
-err-version-invalid-characters = 版本包含無效字元
+err-version-invalid-semver = 版本必須採用 semver 格式（MAJOR.MINOR.PATCH）
 
 # 密碼驗證錯誤
 err-password-empty = 密碼不能為空
@@ -70,7 +70,8 @@ err-unknown-permission = 未知權限: '{ $permission }'
 err-broadcast-too-long = 訊息太長（最多{ $max_length }個字元）
 err-chat-too-long = 訊息太長（最多{ $max_length }個字元）
 err-topic-too-long = 主題不能超過{ $max_length }個字元
-err-version-mismatch = 版本不符：伺服器使用{ $server_version }，客戶端使用{ $client_version }
+err-version-major-mismatch = 不相容的協定版本：伺服器是版本{ $server_major }.x，客戶端是版本{ $client_major }.x
+err-version-client-too-new = 客戶端版本{ $client_version }比伺服器版本{ $server_version }更新。請更新伺服器或使用較舊的客戶端。
 err-kicked-by = 您已被{ $username }踢出
 err-username-exists = 使用者名稱「{ $username }」已存在
 err-user-not-found = 找不到使用者「{ $username }」

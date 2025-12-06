@@ -38,7 +38,7 @@ err-topic-invalid-characters = Topic contains invalid characters
 # Version Validation Errors
 err-version-empty = Version cannot be empty
 err-version-too-long = Version is too long (max { $max_length } characters)
-err-version-invalid-characters = Version contains invalid characters
+err-version-invalid-semver = Version must be in semver format (MAJOR.MINOR.PATCH)
 
 # Password Validation Errors
 err-password-empty = Password cannot be empty
@@ -77,7 +77,8 @@ err-unknown-permission = Unknown permission: '{ $permission }'
 err-broadcast-too-long = Message too long (max { $max_length } characters)
 err-chat-too-long = Message too long (max { $max_length } characters)
 err-topic-too-long = Topic cannot exceed { $max_length } characters
-err-version-mismatch = Version mismatch: server uses { $server_version }, client uses { $client_version }
+err-version-major-mismatch = Incompatible protocol version: server is version { $server_major }.x, client is version { $client_major }.x
+err-version-client-too-new = Client version { $client_version } is newer than server version { $server_version }. Please update the server or use an older client.
 err-kicked-by = You have been kicked by { $username }
 err-username-exists = Username '{ $username }' already exists
 err-user-not-found = User '{ $username }' not found

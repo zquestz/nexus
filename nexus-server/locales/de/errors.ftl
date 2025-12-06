@@ -38,7 +38,6 @@ err-topic-invalid-characters = Das Thema enthält ungültige Zeichen
 # Versionsvalidierungsfehler
 err-version-empty = Die Version darf nicht leer sein
 err-version-too-long = Die Version ist zu lang (maximal { $max_length } Zeichen)
-err-version-invalid-characters = Die Version enthält ungültige Zeichen
 
 # Passwortvalidierungsfehler
 err-password-empty = Das Passwort darf nicht leer sein
@@ -70,7 +69,6 @@ err-unknown-permission = Unbekannte Berechtigung: '{ $permission }'
 err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
 err-chat-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
 err-topic-too-long = Das Thema darf { $max_length } Zeichen nicht überschreiten
-err-version-mismatch = Versionskonflikt: Server verwendet { $server_version }, Client verwendet { $client_version }
 err-kicked-by = Sie wurden von { $username } hinausgeworfen
 err-username-exists = Der Benutzername „{ $username }" existiert bereits
 err-user-not-found = Benutzer „{ $username }" nicht gefunden

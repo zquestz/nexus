@@ -38,7 +38,7 @@ err-topic-invalid-characters = L'argomento contiene caratteri non validi
 # Errori di validazione versione
 err-version-empty = La versione non può essere vuota
 err-version-too-long = La versione è troppo lunga (massimo { $max_length } caratteri)
-err-version-invalid-characters = La versione contiene caratteri non validi
+err-version-invalid-semver = La versione deve essere nel formato semver (MAJOR.MINOR.PATCH)
 
 # Errori di validazione password
 err-password-empty = La password non può essere vuota
@@ -70,7 +70,8 @@ err-unknown-permission = Permesso sconosciuto: '{ $permission }'
 err-broadcast-too-long = Messaggio troppo lungo (massimo { $max_length } caratteri)
 err-chat-too-long = Messaggio troppo lungo (massimo { $max_length } caratteri)
 err-topic-too-long = L'argomento non può superare { $max_length } caratteri
-err-version-mismatch = Incompatibilità di versione: il server usa { $server_version }, il client usa { $client_version }
+err-version-major-mismatch = Versione del protocollo incompatibile: il server è versione { $server_major }.x, il client è versione { $client_major }.x
+err-version-client-too-new = La versione del client { $client_version } è più recente della versione del server { $server_version }. Aggiorna il server o usa un client più vecchio.
 err-kicked-by = Sei stato espulso da { $username }
 err-username-exists = Il nome utente "{ $username }" esiste già
 err-user-not-found = Utente "{ $username }" non trovato

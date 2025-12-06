@@ -5,6 +5,7 @@
 pub mod io;
 pub mod protocol;
 pub mod validators;
+pub mod version;
 
 /// Version information for the Nexus protocol
 pub const PROTOCOL_VERSION: &str = "0.3.0";
@@ -57,8 +58,10 @@ mod tests {
 
     #[test]
     fn test_protocol_version() {
-        // Verify protocol version exists and has expected format
-        assert!(PROTOCOL_VERSION.starts_with("0."));
+        // Verify protocol version is valid semver
+        let version = version::protocol_version();
+        // Verify round-trip
+        assert_eq!(version.to_string(), PROTOCOL_VERSION);
     }
 
     #[test]

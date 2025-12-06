@@ -38,7 +38,7 @@ err-topic-invalid-characters = 主题包含无效字符
 # 版本验证错误
 err-version-empty = 版本不能为空
 err-version-too-long = 版本太长（最多{ $max_length }个字符）
-err-version-invalid-characters = 版本包含无效字符
+err-version-invalid-semver = 版本必须是semver格式（MAJOR.MINOR.PATCH）
 
 # 密码验证错误
 err-password-empty = 密码不能为空
@@ -70,7 +70,8 @@ err-unknown-permission = 未知权限: '{ $permission }'
 err-broadcast-too-long = 消息太长（最多{ $max_length }个字符）
 err-chat-too-long = 消息太长（最多{ $max_length }个字符）
 err-topic-too-long = 主题不能超过{ $max_length }个字符
-err-version-mismatch = 版本不匹配：服务器使用{ $server_version }，客户端使用{ $client_version }
+err-version-major-mismatch = 不兼容的协议版本：服务器是版本{ $server_major }.x，客户端是版本{ $client_major }.x
+err-version-client-too-new = 客户端版本{ $client_version }比服务器版本{ $server_version }更新。请更新服务器或使用旧版客户端。
 err-kicked-by = 您已被{ $username }踢出
 err-username-exists = 用户名"{ $username }"已存在
 err-user-not-found = 找不到用户"{ $username }"

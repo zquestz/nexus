@@ -38,7 +38,7 @@ err-topic-invalid-characters = Het onderwerp bevat ongeldige tekens
 # Versievalidatiefouten
 err-version-empty = De versie mag niet leeg zijn
 err-version-too-long = De versie is te lang (maximaal { $max_length } tekens)
-err-version-invalid-characters = De versie bevat ongeldige tekens
+err-version-invalid-semver = De versie moet in semver-formaat zijn (MAJOR.MINOR.PATCH)
 
 # Wachtwoordvalidatiefouten
 err-password-empty = Het wachtwoord mag niet leeg zijn
@@ -70,7 +70,8 @@ err-unknown-permission = Onbekende machtiging: '{ $permission }'
 err-broadcast-too-long = Bericht te lang (maximaal { $max_length } tekens)
 err-chat-too-long = Bericht te lang (maximaal { $max_length } tekens)
 err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } tekens bevatten
-err-version-mismatch = Versie-incompatibiliteit: server gebruikt { $server_version }, client gebruikt { $client_version }
+err-version-major-mismatch = Incompatibele protocolversie: server is versie { $server_major }.x, client is versie { $client_major }.x
+err-version-client-too-new = Clientversie { $client_version } is nieuwer dan serverversie { $server_version }. Werk de server bij of gebruik een oudere client.
 err-kicked-by = U bent verwijderd door { $username }
 err-username-exists = De gebruikersnaam "{ $username }" bestaat al
 err-user-not-found = Gebruiker "{ $username }" niet gevonden

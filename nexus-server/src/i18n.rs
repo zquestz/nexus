@@ -163,24 +163,26 @@ mod tests {
     fn test_translation_multiple_args_english() {
         let result = t_args(
             "en",
-            "err-version-mismatch",
-            &[("server_version", "1.0"), ("client_version", "0.9")],
+            "err-version-major-mismatch",
+            &[("server_major", "1"), ("client_major", "2")],
         );
-        assert!(result.contains("Version mismatch"));
-        assert!(result.contains("1.0"));
-        assert!(result.contains("0.9"));
+        assert!(result.contains("Incompatible protocol version"));
+        // Fluent wraps variables with Unicode directional markers, so just check the values
+        assert!(result.contains('1'));
+        assert!(result.contains('2'));
     }
 
     #[test]
     fn test_translation_multiple_args_spanish() {
         let result = t_args(
             "es",
-            "err-version-mismatch",
-            &[("server_version", "1.0"), ("client_version", "0.9")],
+            "err-version-major-mismatch",
+            &[("server_major", "1"), ("client_major", "2")],
         );
-        assert!(result.contains("Versión incompatible"));
-        assert!(result.contains("1.0"));
-        assert!(result.contains("0.9"));
+        assert!(result.contains("incompatible"));
+        // Fluent wraps variables with Unicode directional markers, so just check the values
+        assert!(result.contains('1'));
+        assert!(result.contains('2'));
     }
 
     #[test]
