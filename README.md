@@ -1,7 +1,7 @@
 # Nexus BBS
 
 [![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/zquestz/nexus)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/zquestz/nexus)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
@@ -154,10 +154,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 **Test Coverage:**
 
-- 181 server tests (177 unit + 4 integration)
+- 186 server tests (182 unit + 4 integration)
 - 57 client tests
-- 51 common tests
-- Total: 289 tests
+- 143 common tests
+- Total: 386 tests
 
 ## Database & Configuration
 
@@ -167,8 +167,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 Platform paths:
 
 - Linux: `~/.local/share/nexusd/` and `~/.config/nexus/`
-- macOS: `~/Library/Application Support/nexusd/`
-- Windows: `%APPDATA%\nexusd\`
+- macOS: `~/Library/Application Support/`
+- Windows: `%APPDATA%\`
 
 ## Internationalization
 
