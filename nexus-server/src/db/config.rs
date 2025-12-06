@@ -1,7 +1,9 @@
 //! Server configuration database operations
 
 use super::sql::*;
-use crate::constants::*;
+use crate::constants::{
+    CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_TOPIC, CONFIG_KEY_TOPIC_SET_BY,
+};
 use nexus_common::validators;
 use sqlx::SqlitePool;
 use std::io;
@@ -73,6 +75,17 @@ impl ConfigDb {
 
         Ok(())
     }
+
+    /// Get the maximum connections allowed per IP address
+    pub async fn get_max_connections_per_ip(&self) -> usize {
+        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
+            .fetch_one(&self.pool)
+            .await
+            .expect("max_connections_per_ip config missing")
+            .parse()
+            .expect("max_connections_per_ip config invalid")
+    }
 }
 
 #[cfg(test)]
@@ -127,5 +140,15 @@ mod tests {
         let retrieved = config_db.get_topic().await.unwrap();
         assert_eq!(retrieved.topic, "");
         assert_eq!(retrieved.set_by, "bob");
+    }
+
+    #[tokio::test]
+    async fn test_get_max_connections_per_ip_default() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Migration sets default to 5
+        let limit = config_db.get_max_connections_per_ip().await;
+        assert_eq!(limit, 5);
     }
 }

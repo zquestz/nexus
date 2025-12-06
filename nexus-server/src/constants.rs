@@ -7,8 +7,8 @@
 // Connection Limits
 // =============================================================================
 
-/// Maximum connections allowed per IP address (DoS protection)
-pub const MAX_CONNECTIONS_PER_IP: usize = 5;
+/// Configuration key for max connections per IP in the database
+pub const CONFIG_KEY_MAX_CONNECTIONS_PER_IP: &str = "max_connections_per_ip";
 
 // =============================================================================
 // Database Configuration

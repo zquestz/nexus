@@ -7,13 +7,11 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
-use crate::constants::MAX_CONNECTIONS_PER_IP;
-
 /// Tracks active connections per IP address
 ///
 /// This is used to enforce connection limits and prevent a single IP
 /// from exhausting server resources.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ConnectionTracker {
     /// Map of IP addresses to their current connection count
     connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
@@ -50,12 +48,6 @@ impl ConnectionTracker {
             ip,
             connections: self.connections.clone(),
         })
-    }
-}
-
-impl Default for ConnectionTracker {
-    fn default() -> Self {
-        Self::new(MAX_CONNECTIONS_PER_IP)
     }
 }
 
@@ -183,11 +175,5 @@ mod tests {
         assert_eq!(tracker.connection_count(ip), 0);
         let connections = tracker.connections.lock().expect("connection tracker lock");
         assert!(!connections.contains_key(&ip));
-    }
-
-    #[test]
-    fn test_default_limit() {
-        let tracker = ConnectionTracker::default();
-        assert_eq!(tracker.max_per_ip, MAX_CONNECTIONS_PER_IP);
     }
 }

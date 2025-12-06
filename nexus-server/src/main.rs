@@ -41,8 +41,9 @@ async fn main() {
     // Setup UPnP port forwarding if requested
     let upnp_handle = setup_upnp(args.upnp, args.bind, args.port).await;
 
-    // Setup connection tracking for DoS protection
-    let connection_tracker = ConnectionTracker::new(MAX_CONNECTIONS_PER_IP);
+    // Setup connection tracking for DoS protection (load limit from database)
+    let max_connections_per_ip = database.config.get_max_connections_per_ip().await;
+    let connection_tracker = ConnectionTracker::new(max_connections_per_ip);
 
     // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
