@@ -37,8 +37,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 1026);
-    m.insert("PermissionsUpdated", 621);
+    m.insert("LoginResponse", 1409);
+    m.insert("PermissionsUpdated", 1347);
     m.insert("ServerBroadcast", 1133);
     m.insert("UserConnected", 282);
     m.insert("UserCreateResponse", 568);
@@ -90,7 +90,8 @@ mod tests {
     use crate::validators::{
         MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_LOCALE_LENGTH,
         MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT,
-        MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH,
+        MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -356,8 +357,11 @@ mod tests {
                     .collect(),
             ),
             server_info: Some(ServerInfo {
+                name: str_of_len(MAX_SERVER_NAME_LENGTH),
+                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
                 chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
                 chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
+                max_connections_per_ip: Some(u32::MAX),
             }),
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
         };
@@ -374,6 +378,13 @@ mod tests {
             permissions: (0..MAX_PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
+            server_info: Some(ServerInfo {
+                name: str_of_len(MAX_SERVER_NAME_LENGTH),
+                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
+                chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
+                chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
+                max_connections_per_ip: Some(u32::MAX),
+            }),
         };
         assert_eq!(
             json_size(&msg),

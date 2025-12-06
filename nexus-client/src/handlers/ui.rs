@@ -8,6 +8,25 @@ use iced::Task;
 use iced::widget::text_input;
 
 impl NexusApp {
+    // ==================== Server Info ====================
+
+    /// Show Server Info panel
+    pub fn handle_show_server_info(&mut self) -> Task<Message> {
+        if self.ui_state.active_panel == ActivePanel::ServerInfo {
+            return Task::none();
+        }
+
+        self.ui_state.active_panel = ActivePanel::ServerInfo;
+        Task::none()
+    }
+
+    /// Close Server Info panel
+    pub fn handle_close_server_info(&mut self) -> Task<Message> {
+        self.handle_show_chat_view()
+    }
+}
+
+impl NexusApp {
     // ==================== Fingerprint Handling ====================
 
     /// Accept new certificate fingerprint (update stored fingerprint and complete connection)

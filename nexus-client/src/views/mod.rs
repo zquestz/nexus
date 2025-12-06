@@ -7,6 +7,7 @@ mod connection;
 pub(crate) mod constants;
 mod fingerprint;
 mod layout;
+mod server_info;
 mod server_list;
 mod settings;
 mod user_list;

@@ -10,6 +10,8 @@ mod locale;
 mod message;
 mod password;
 mod permissions;
+mod serverdescription;
+mod servername;
 mod username;
 mod version;
 
@@ -21,5 +23,7 @@ pub use password::{MAX_PASSWORD_LENGTH, PasswordError, validate_password};
 pub use permissions::{
     MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT, PermissionsError, validate_permissions,
 };
+pub use serverdescription::MAX_SERVER_DESCRIPTION_LENGTH;
+pub use servername::MAX_SERVER_NAME_LENGTH;
 pub use username::{MAX_USERNAME_LENGTH, UsernameError, validate_username};
 pub use version::{MAX_VERSION_LENGTH, VersionError, validate_version};

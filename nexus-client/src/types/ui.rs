@@ -16,6 +16,8 @@ pub enum ActivePanel {
     Broadcast,
     /// Settings panel
     Settings,
+    /// Server Info panel
+    ServerInfo,
 }
 
 /// UI visibility state for toggleable panels

@@ -163,6 +163,8 @@ pub enum ServerMessage {
     PermissionsUpdated {
         is_admin: bool,
         permissions: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_info: Option<ServerInfo>,
     },
     /// User broadcast response
     UserBroadcastResponse {
@@ -221,10 +223,17 @@ pub enum ServerMessage {
 /// Server information sent to clients on login
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerInfo {
+    /// Server name
+    pub name: String,
+    /// Server description (empty string if not set)
+    pub description: String,
     /// Current chat topic (empty string if not set)
     pub chat_topic: String,
     /// Username who set the current topic (empty string if never set)
     pub chat_topic_set_by: String,
+    /// Maximum connections allowed per IP address (admin only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_connections_per_ip: Option<u32>,
 }
 
 /// Information about a connected user (basic info for lists)

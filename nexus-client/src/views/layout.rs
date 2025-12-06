@@ -3,6 +3,7 @@
 use super::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
+use super::server_info::{ServerInfoData, server_info_view};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -298,6 +299,33 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .gap(TOOLTIP_GAP)
                     .padding(TOOLTIP_PADDING)
                 },
+                // Server Info button
+                if state.is_connected {
+                    tooltip(
+                        button(icon::server().size(TOOLBAR_ICON_SIZE))
+                            .on_press(Message::ShowServerInfo)
+                            .style(toolbar_button_style(
+                                active_panel == ActivePanel::ServerInfo,
+                            )),
+                        container(shaped_text(t("tooltip-server-info")).size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(tooltip_container_style),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                } else {
+                    tooltip(
+                        button(icon::server().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
+                        container(shaped_text(t("tooltip-server-info")).size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(tooltip_container_style),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                },
             ]
             .spacing(TOOLBAR_ICON_SPACING),
             // Spacer to push collapse buttons to the right
@@ -449,6 +477,19 @@ fn server_content_view<'a>(
         .width(Fill)
         .height(Fill)
         .into(),
+        ActivePanel::ServerInfo => {
+            let data = ServerInfoData {
+                name: conn.server_name.clone(),
+                description: conn.server_description.clone(),
+                chat_topic: conn.chat_topic.clone(),
+                chat_topic_set_by: conn.chat_topic_set_by.clone(),
+                max_connections_per_ip: conn.max_connections_per_ip,
+            };
+            stack![chat, server_info_view(&data)]
+                .width(Fill)
+                .height(Fill)
+                .into()
+        }
         ActivePanel::None => chat,
     }
 }

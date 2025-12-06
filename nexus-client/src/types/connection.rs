@@ -36,10 +36,16 @@ pub struct ServerConnection {
     /// Stored for future use when Fluent translations are implemented.
     #[allow(dead_code)]
     pub locale: String,
+    /// Server name (from ServerInfo)
+    pub server_name: Option<String>,
+    /// Server description (from ServerInfo)
+    pub server_description: Option<String>,
     /// Current chat topic (None if no topic set)
     pub chat_topic: Option<String>,
     /// Username who set the current chat topic
     pub chat_topic_set_by: Option<String>,
+    /// Max connections per IP (admin only, from ServerInfo)
+    pub max_connections_per_ip: Option<u32>,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -85,10 +91,16 @@ pub struct NetworkConnection {
     pub is_admin: bool,
     /// User's permissions
     pub permissions: Vec<String>,
+    /// Server name (if provided in ServerInfo)
+    pub server_name: Option<String>,
+    /// Server description (if provided in ServerInfo)
+    pub server_description: Option<String>,
     /// Chat topic received on login (if user has ChatTopic permission)
     pub chat_topic: Option<String>,
     /// Username who set the chat topic
     pub chat_topic_set_by: Option<String>,
+    /// Max connections per IP (admin only)
+    pub max_connections_per_ip: Option<u32>,
     /// Certificate fingerprint (SHA-256) for TOFU verification
     pub certificate_fingerprint: String,
     /// Locale accepted by the server

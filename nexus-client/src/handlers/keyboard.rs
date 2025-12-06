@@ -99,6 +99,9 @@ impl NexusApp {
                         return self.update(Message::SendBroadcastPressed);
                     }
                 }
+            } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
+                // On server info screen, close the panel
+                return self.update(Message::CloseServerInfo);
             } else if self.active_connection.is_none() {
                 // On connection screen, try to connect
                 let can_connect = !self.connection_form.server_address.trim().is_empty()
@@ -126,6 +129,7 @@ impl NexusApp {
                     ActivePanel::EditUser => return self.update(Message::CancelEditUser),
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
                     ActivePanel::Settings => return self.update(Message::CancelSettings),
+                    ActivePanel::ServerInfo => return self.update(Message::CloseServerInfo),
                     ActivePanel::None => {}
                 }
             }

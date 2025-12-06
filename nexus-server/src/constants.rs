@@ -23,6 +23,12 @@ pub const DATABASE_FILENAME: &str = "nexus.db";
 /// Database configuration key for chat topic
 pub const CONFIG_KEY_TOPIC: &str = "topic";
 
+/// Database configuration key for server name
+pub const CONFIG_KEY_SERVER_NAME: &str = "server_name";
+
+/// Database configuration key for server description
+pub const CONFIG_KEY_SERVER_DESCRIPTION: &str = "server_description";
+
 // =============================================================================
 // Feature Names
 // =============================================================================

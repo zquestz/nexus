@@ -5,7 +5,7 @@ use crate::i18n::t;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
-use nexus_common::protocol::ClientMessage;
+use nexus_common::protocol::{ClientMessage, ServerInfo};
 
 impl NexusApp {
     /// Handle permissions updated notification
@@ -14,6 +14,7 @@ impl NexusApp {
         connection_id: usize,
         is_admin: bool,
         permissions: Vec<String>,
+        server_info: Option<ServerInfo>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -26,6 +27,24 @@ impl NexusApp {
 
         conn.is_admin = is_admin;
         conn.permissions = permissions;
+
+        // Update server info fields from the server's authoritative data
+        if let Some(info) = server_info {
+            conn.server_name = Some(info.name);
+            conn.server_description = Some(info.description);
+            // Empty strings mean no permission or not set
+            conn.chat_topic = if info.chat_topic.is_empty() {
+                None
+            } else {
+                Some(info.chat_topic)
+            };
+            conn.chat_topic_set_by = if info.chat_topic_set_by.is_empty() {
+                None
+            } else {
+                Some(info.chat_topic_set_by)
+            };
+            conn.max_connections_per_ip = info.max_connections_per_ip;
+        }
 
         // If user just gained user_list permission, refresh the list
         // (it may be stale from missed join/leave events while permission was revoked)

@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
 #[cfg(test)]
@@ -244,34 +244,19 @@ where
 
     // Note: Username validation is already done earlier, so no need to check for empty here
 
-    // Get old username, admin status, and permissions before update (to detect changes)
-    // Check if target user is online to use cached permissions, otherwise fall back to DB
-    let (old_account, old_had_chat_topic) = if let Some(online_user) = ctx
+    // Get old username and admin status before update (to detect changes)
+    // Check if target user is online to use cached data, otherwise fall back to DB
+    let old_account = if let Some(online_user) = ctx
         .user_manager
         .get_session_by_username(&request.username)
         .await
     {
-        // User is online - use cached permissions
-        let had_chat_topic = online_user.has_permission(Permission::ChatTopic);
-        (
-            Some((online_user.username.clone(), online_user.is_admin)),
-            had_chat_topic,
-        )
+        Some((online_user.username.clone(), online_user.is_admin))
     } else {
         // User is offline - must check DB
         match ctx.db.users.get_user_by_username(&request.username).await {
-            Ok(Some(acc)) => {
-                let had_chat_topic = acc.is_admin
-                    || ctx
-                        .db
-                        .users
-                        .get_user_permissions(acc.id)
-                        .await
-                        .map(|perms| perms.permissions.contains(&Permission::ChatTopic))
-                        .unwrap_or(false);
-                (Some((acc.username.clone(), acc.is_admin)), had_chat_topic)
-            }
-            _ => (None, false),
+            Ok(Some(acc)) => Some((acc.username.clone(), acc.is_admin)),
+            _ => None,
         }
     };
 
@@ -325,9 +310,50 @@ where
                         .map(|p| p.as_str().to_string())
                         .collect();
 
+                    // Build ServerInfo based on new permissions
+                    let now_has_chat_topic = updated_account.is_admin
+                        || final_permissions
+                            .permissions
+                            .contains(&Permission::ChatTopic);
+
+                    // Always include name and description
+                    let name = ctx.db.config.get_server_name().await.unwrap_or_default();
+                    let description = ctx
+                        .db
+                        .config
+                        .get_server_description()
+                        .await
+                        .unwrap_or_default();
+
+                    // Include chat topic only if user has permission
+                    let (chat_topic, chat_topic_set_by) = if now_has_chat_topic {
+                        match ctx.db.config.get_topic().await {
+                            Ok(topic) => (topic.topic, topic.set_by),
+                            Err(_) => (String::new(), String::new()),
+                        }
+                    } else {
+                        (String::new(), String::new())
+                    };
+
+                    // Include max_connections_per_ip only for admins
+                    let max_connections_per_ip = if updated_account.is_admin {
+                        Some(ctx.db.config.get_max_connections_per_ip().await as u32)
+                    } else {
+                        None
+                    };
+
+                    let server_info = ServerInfo {
+                        name,
+                        description,
+                        chat_topic,
+                        chat_topic_set_by,
+                        max_connections_per_ip,
+                    };
+
                     let permissions_update = ServerMessage::PermissionsUpdated {
                         is_admin: updated_account.is_admin,
                         permissions: permission_strings,
+                        server_info: Some(server_info),
                     };
 
                     // Send to all sessions belonging to the updated user
@@ -338,29 +364,6 @@ where
                             &ctx.db.users,
                         )
                         .await;
-
-                    // If user just gained chat_topic permission, send them the current topic
-                    let now_has_chat_topic = updated_account.is_admin
-                        || final_permissions
-                            .permissions
-                            .contains(&Permission::ChatTopic);
-                    if !old_had_chat_topic
-                        && now_has_chat_topic
-                        && let Ok(chat_topic) = ctx.db.config.get_topic().await
-                    {
-                        // Send topic with the username who originally set it
-                        let topic_msg = ServerMessage::ChatTopic {
-                            topic: chat_topic.topic,
-                            username: chat_topic.set_by,
-                        };
-                        ctx.user_manager
-                            .broadcast_to_username(
-                                &updated_account.username,
-                                &topic_msg,
-                                &ctx.db.users,
-                            )
-                            .await;
-                    }
                 }
 
                 // If user was disabled, disconnect all their active sessions

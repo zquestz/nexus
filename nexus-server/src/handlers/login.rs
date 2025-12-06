@@ -253,26 +253,46 @@ where
             .collect()
     };
 
-    // Fetch server info if user has ChatTopic permission (use cached permissions)
-    let server_info =
+    // Fetch server info (name/description always, topic requires permission, max_conn requires admin)
+    let name = ctx.db.config.get_server_name().await.unwrap_or_default();
+    let description = ctx
+        .db
+        .config
+        .get_server_description()
+        .await
+        .unwrap_or_default();
+
+    // Fetch chat topic only if user has ChatTopic permission
+    let (chat_topic, chat_topic_set_by) =
         if authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatTopic) {
-            // Fetch chat topic from database
             match ctx.db.config.get_topic().await {
-                Ok(chat_topic) => Some(ServerInfo {
-                    chat_topic: chat_topic.topic,
-                    chat_topic_set_by: chat_topic.set_by,
-                }),
+                Ok(topic) => (topic.topic, topic.set_by),
                 Err(e) => {
                     eprintln!(
                         "Error fetching chat topic for {}: {}",
                         authenticated_account.username, e
                     );
-                    None
+                    (String::new(), String::new())
                 }
             }
         } else {
-            None
+            (String::new(), String::new())
         };
+
+    // Fetch max connections per IP (admin only)
+    let max_connections_per_ip = if authenticated_account.is_admin {
+        Some(ctx.db.config.get_max_connections_per_ip().await as u32)
+    } else {
+        None
+    };
+
+    let server_info = Some(ServerInfo {
+        name,
+        description,
+        chat_topic,
+        chat_topic_set_by,
+        max_connections_per_ip,
+    });
 
     let response = ServerMessage::LoginResponse {
         success: true,
@@ -747,9 +767,15 @@ mod tests {
                 assert!(success, "Login should succeed");
                 assert!(server_info.is_some(), "Should include server_info");
                 let info = server_info.unwrap();
+                assert_eq!(info.name, "Nexus BBS", "Should include server name");
+                assert_eq!(info.description, "", "Should include server description");
                 assert_eq!(
                     info.chat_topic, "Test server topic",
                     "Should include chat topic"
+                );
+                assert!(
+                    info.max_connections_per_ip.is_none(),
+                    "Non-admin should not receive max_connections_per_ip"
                 );
             }
             _ => panic!("Expected LoginResponse"),
@@ -757,7 +783,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_login_excludes_server_info_without_permission() {
+    async fn test_login_excludes_topic_without_permission() {
         let mut test_ctx = create_test_context().await;
 
         // Create user without ChatTopic permission
@@ -798,7 +824,7 @@ mod tests {
 
         let response_msg = read_server_message(&mut test_ctx.client).await;
 
-        // Verify LoginResponse excludes server_info
+        // Verify LoginResponse includes server_info with name/description but excludes topic
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -806,9 +832,21 @@ mod tests {
                 ..
             } => {
                 assert!(success, "Login should succeed");
+                assert!(server_info.is_some(), "Should include server_info");
+                let info = server_info.unwrap();
+                assert_eq!(info.name, "Nexus BBS", "Should include server name");
+                assert_eq!(info.description, "", "Should include server description");
+                assert_eq!(
+                    info.chat_topic, "",
+                    "Should NOT include chat topic without permission"
+                );
+                assert_eq!(
+                    info.chat_topic_set_by, "",
+                    "Should NOT include topic setter without permission"
+                );
                 assert!(
-                    server_info.is_none(),
-                    "Should NOT include server_info without permission"
+                    info.max_connections_per_ip.is_none(),
+                    "Non-admin should not receive max_connections_per_ip"
                 );
             }
             _ => panic!("Expected LoginResponse"),
@@ -870,6 +908,11 @@ mod tests {
                 assert!(server_info.is_some(), "Admin should receive server_info");
                 let info = server_info.unwrap();
                 assert_eq!(info.chat_topic, "Admin can see this");
+                assert_eq!(
+                    info.max_connections_per_ip,
+                    Some(5),
+                    "Admin should receive max_connections_per_ip"
+                );
             }
             _ => panic!("Expected LoginResponse"),
         }

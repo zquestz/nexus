@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 8527d93ef990bd7374801bb93126c9a738c6174e5b119efecd09e51ab7c13c89
+// 8892eba9cc3dfa6abd0f63a53764580254aec05e2b96714addec76ef11624f93
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -48,6 +48,10 @@ pub fn megaphone<'a>() -> Text<'a> {
 
 pub fn message<'a>() -> Text<'a> {
     icon("\u{E720}")
+}
+
+pub fn server<'a>() -> Text<'a> {
+    icon("\u{F233}")
 }
 
 pub fn user_plus<'a>() -> Text<'a> {

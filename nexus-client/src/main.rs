@@ -259,6 +259,10 @@ impl NexusApp {
             Message::ToggleSettings => self.handle_toggle_settings(),
             Message::Use24HourTimeToggled(enabled) => self.handle_use_24_hour_time_toggled(enabled),
 
+            // Server info
+            Message::CloseServerInfo => self.handle_close_server_info(),
+            Message::ShowServerInfo => self.handle_show_server_info(),
+
             // Network events (async results)
             Message::BookmarkConnectionResult {
                 result,

@@ -122,8 +122,13 @@ async fn perform_login(
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
+            server_name: server_info.as_ref().map(|info| info.name.clone()),
+            server_description: server_info.as_ref().map(|info| info.description.clone()),
             chat_topic: server_info.as_ref().map(|info| info.chat_topic.clone()),
-            chat_topic_set_by: server_info.map(|info| info.chat_topic_set_by),
+            chat_topic_set_by: server_info
+                .as_ref()
+                .map(|info| info.chat_topic_set_by.clone()),
+            max_connections_per_ip: server_info.and_then(|info| info.max_connections_per_ip),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         ServerMessage::LoginResponse {

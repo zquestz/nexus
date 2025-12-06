@@ -13,6 +13,7 @@ button-create = Create
 button-edit = Edit
 button-update = Update
 button-accept-new-certificate = Accept New Certificate
+button-close = Close
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = Settings
 title-bookmarks = Bookmarks
 title-users = Users
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
+title-server-info = Server Info
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,11 @@ label-show-connection-notifications = Show connect/disconnect notifications
 label-show-timestamps = Show timestamps
 label-use-24-hour-time = Use 24-hour time
 label-show-seconds = Show seconds
+label-server-name = Name:
+label-server-description = Description:
+label-chat-topic = Chat Topic:
+label-chat-topic-set-by = Chat Topic Set By:
+label-max-connections-per-ip = Max Connections Per IP:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +98,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = User Create
 tooltip-user-edit = User Edit
+tooltip-server-info = Server Info
 tooltip-settings = Settings
 tooltip-hide-bookmarks = Hide Bookmarks
 tooltip-show-bookmarks = Show Bookmarks

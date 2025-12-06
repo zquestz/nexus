@@ -71,8 +71,11 @@ pub(super) async fn setup_communication_channels(
         shutdown: Some(Arc::new(Mutex::new(Some(ShutdownHandle::new(shutdown_tx))))),
         is_admin: login_info.is_admin,
         permissions: login_info.permissions,
+        server_name: login_info.server_name,
+        server_description: login_info.server_description,
         chat_topic: login_info.chat_topic,
         chat_topic_set_by: login_info.chat_topic_set_by,
+        max_connections_per_ip: login_info.max_connections_per_ip,
         certificate_fingerprint: fingerprint,
         locale: login_info.locale,
     })

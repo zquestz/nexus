@@ -65,7 +65,8 @@ impl NexusApp {
             ServerMessage::PermissionsUpdated {
                 is_admin,
                 permissions,
-            } => self.handle_permissions_updated(connection_id, is_admin, permissions),
+                server_info,
+            } => self.handle_permissions_updated(connection_id, is_admin, permissions, server_info),
 
             ServerMessage::ServerBroadcast {
                 session_id: _,
