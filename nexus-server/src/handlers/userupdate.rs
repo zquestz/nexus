@@ -345,6 +345,7 @@ where
                     let server_info = ServerInfo {
                         name,
                         description,
+                        version: env!("CARGO_PKG_VERSION").to_string(),
                         chat_topic,
                         chat_topic_set_by,
                         max_connections_per_ip,

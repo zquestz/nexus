@@ -40,6 +40,8 @@ pub struct ServerConnection {
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
     pub server_description: Option<String>,
+    /// Server version (from ServerInfo)
+    pub server_version: Option<String>,
     /// Current chat topic (None if no topic set)
     pub chat_topic: Option<String>,
     /// Username who set the current chat topic
@@ -95,6 +97,8 @@ pub struct NetworkConnection {
     pub server_name: Option<String>,
     /// Server description (if provided in ServerInfo)
     pub server_description: Option<String>,
+    /// Server version (if provided in ServerInfo)
+    pub server_version: Option<String>,
     /// Chat topic received on login (if user has ChatTopic permission)
     pub chat_topic: Option<String>,
     /// Username who set the chat topic

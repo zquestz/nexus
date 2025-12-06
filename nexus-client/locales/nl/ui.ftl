@@ -14,6 +14,7 @@ button-edit = Bewerken
 button-update = Bijwerken
 
 button-accept-new-certificate = Nieuw certificaat accepteren
+button-close = Sluiten
 
 # =============================================================================
 # Titles
@@ -32,6 +33,7 @@ title-settings = Instellingen
 title-bookmarks = Bladwijzers
 title-users = Gebruikers
 title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
+title-server-info = Serverinfo
 
 # =============================================================================
 # Placeholders
@@ -66,6 +68,12 @@ label-show-connection-notifications = Verbindingsmeldingen weergeven
 label-show-timestamps = Tijdstempels weergeven
 label-use-24-hour-time = 24-uursformaat gebruiken
 label-show-seconds = Seconden weergeven
+label-server-name = Naam:
+label-server-description = Beschrijving:
+label-server-version = Versie:
+label-chat-topic = Chat Onderwerp:
+label-chat-topic-set-by = Onderwerp Ingesteld Door:
+label-max-connections-per-ip = Max Verbindingen Per IP:
 
 # =============================================================================
 # Permission Display Names
@@ -92,6 +100,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = Gebruiker aanmaken
 tooltip-user-edit = Gebruiker bewerken
+tooltip-server-info = Serverinfo
 tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen
@@ -321,3 +330,12 @@ cmd-window-list = Open tabbladen: { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = Kan het server-tabblad niet sluiten
 cmd-window-not-found = Tabblad niet gevonden: { $name }
+cmd-serverinfo-desc = Serverinformatie weergeven
+cmd-serverinfo-usage = Gebruik: /{ $command }
+cmd-serverinfo-header = Serverinformatie:
+cmd-serverinfo-name = Naam: { $name }
+cmd-serverinfo-description = Beschrijving: { $description }
+cmd-serverinfo-version = Versie: { $version }
+cmd-serverinfo-topic = Chat Onderwerp: { $topic }
+cmd-serverinfo-topic-set-by = Onderwerp Ingesteld Door: { $username }
+cmd-serverinfo-max-connections = Max Verbindingen Per IP: { $count }

@@ -36,6 +36,7 @@ mod focus;
 mod help;
 mod list;
 mod message;
+mod serverinfo;
 mod topic;
 mod userinfo;
 mod userkick;
@@ -158,6 +159,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_USER_MESSAGE],
         },
         handler: message::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "sinfo",
+            aliases: &["s", "serverinfo"],
+            description_key: "cmd-serverinfo-desc",
+            usage_key: "cmd-serverinfo-usage",
+            permissions: &[],
+        },
+        handler: serverinfo::execute,
     },
     CommandRegistration {
         info: CommandInfo {

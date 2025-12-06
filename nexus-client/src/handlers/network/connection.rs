@@ -232,6 +232,7 @@ impl NexusApp {
             locale: conn.locale,
             server_name: conn.server_name,
             server_description: conn.server_description,
+            server_version: conn.server_version,
             chat_topic: chat_topic.clone(),
             chat_topic_set_by: chat_topic_set_by.clone(),
             max_connections_per_ip: conn.max_connections_per_ip,

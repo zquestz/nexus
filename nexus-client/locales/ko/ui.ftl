@@ -13,6 +13,7 @@ button-create = 생성
 button-edit = 편집
 button-update = 업데이트
 button-accept-new-certificate = 새 인증서 수락
+button-close = 닫기
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = 설정
 title-bookmarks = 북마크
 title-users = 사용자
 title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
+title-server-info = 서버 정보
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = 연결 알림 표시
 label-show-timestamps = 타임스탬프 표시
 label-use-24-hour-time = 24시간 형식 사용
 label-show-seconds = 초 표시
+label-server-name = 이름:
+label-server-description = 설명:
+label-server-version = 버전:
+label-chat-topic = 채팅 주제:
+label-chat-topic-set-by = 주제 설정자:
+label-max-connections-per-ip = IP당 최대 연결 수:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = 채팅
 tooltip-broadcast = 브로드캐스트
 tooltip-user-create = 사용자 생성
 tooltip-user-edit = 사용자 편집
+tooltip-server-info = 서버 정보
 tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
@@ -302,3 +311,12 @@ cmd-window-usage = 사용법: /{ $command } [next|prev|close [사용자명]]
 cmd-window-list = 열린 탭: { $tabs } ({ $count }개 탭)
 cmd-window-close-server = 서버 탭은 닫을 수 없습니다
 cmd-window-not-found = 탭을 찾을 수 없습니다: { $name }
+cmd-serverinfo-desc = 서버 정보 표시
+cmd-serverinfo-usage = 사용법: /{ $command }
+cmd-serverinfo-header = 서버 정보:
+cmd-serverinfo-name = 이름: { $name }
+cmd-serverinfo-description = 설명: { $description }
+cmd-serverinfo-version = 버전: { $version }
+cmd-serverinfo-topic = 채팅 주제: { $topic }
+cmd-serverinfo-topic-set-by = 주제 설정자: { $username }
+cmd-serverinfo-max-connections = IP당 최대 연결 수: { $count }

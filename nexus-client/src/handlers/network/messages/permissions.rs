@@ -32,6 +32,7 @@ impl NexusApp {
         if let Some(info) = server_info {
             conn.server_name = Some(info.name);
             conn.server_description = Some(info.description);
+            conn.server_version = Some(info.version);
             // Empty strings mean no permission or not set
             conn.chat_topic = if info.chat_topic.is_empty() {
                 None

@@ -14,6 +14,7 @@ button-edit = Editar
 button-update = Actualizar
 
 button-accept-new-certificate = Aceptar Nuevo Certificado
+button-close = Cerrar
 
 # =============================================================================
 # Titles
@@ -32,6 +33,7 @@ title-settings = Configuración
 title-bookmarks = Marcadores
 title-users = Usuarios
 title-fingerprint-mismatch = ¡Huella del Certificado No Coincide!
+title-server-info = Info del Servidor
 
 # =============================================================================
 # Placeholders
@@ -66,6 +68,12 @@ label-show-connection-notifications = Mostrar notificaciones de conexión
 label-show-timestamps = Mostrar marcas de tiempo
 label-use-24-hour-time = Usar formato de 24 horas
 label-show-seconds = Mostrar segundos
+label-server-name = Nombre:
+label-server-description = Descripción:
+label-server-version = Versión:
+label-chat-topic = Tema del Chat:
+label-chat-topic-set-by = Tema Establecido Por:
+label-max-connections-per-ip = Máx. Conexiones Por IP:
 
 # =============================================================================
 # Permission Display Names
@@ -92,6 +100,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Difusión
 tooltip-user-create = Crear Usuario
 tooltip-user-edit = Editar Usuario
+tooltip-server-info = Info del Servidor
 tooltip-settings = Configuración
 tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
@@ -322,3 +331,12 @@ cmd-window-list = Pestañas abiertas: { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = No se puede cerrar la pestaña del servidor
 cmd-window-not-found = Pestaña no encontrada: { $name }
+cmd-serverinfo-desc = Mostrar información del servidor
+cmd-serverinfo-usage = Uso: /{ $command }
+cmd-serverinfo-header = Información del Servidor:
+cmd-serverinfo-name = Nombre: { $name }
+cmd-serverinfo-description = Descripción: { $description }
+cmd-serverinfo-version = Versión: { $version }
+cmd-serverinfo-topic = Tema del Chat: { $topic }
+cmd-serverinfo-topic-set-by = Tema Establecido Por: { $username }
+cmd-serverinfo-max-connections = Máx. Conexiones Por IP: { $count }

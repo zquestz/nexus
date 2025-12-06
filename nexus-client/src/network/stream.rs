@@ -73,6 +73,7 @@ pub(super) async fn setup_communication_channels(
         permissions: login_info.permissions,
         server_name: login_info.server_name,
         server_description: login_info.server_description,
+        server_version: login_info.server_version,
         chat_topic: login_info.chat_topic,
         chat_topic_set_by: login_info.chat_topic_set_by,
         max_connections_per_ip: login_info.max_connections_per_ip,

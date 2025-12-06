@@ -12,8 +12,8 @@ button-save = 保存
 button-create = 创建
 button-edit = 编辑
 button-update = 更新
-
 button-accept-new-certificate = 接受新证书
+button-close = 关闭
 
 # =============================================================================
 # Titles
@@ -32,6 +32,8 @@ title-settings = 设置
 title-bookmarks = 书签
 title-users = 用户
 title-fingerprint-mismatch = 证书指纹不匹配！
+title-server-info = 服务器信息
+
 
 # =============================================================================
 # Placeholders
@@ -66,6 +68,12 @@ label-show-connection-notifications = 显示连接通知
 label-show-timestamps = 显示时间戳
 label-use-24-hour-time = 使用24小时制
 label-show-seconds = 显示秒
+label-server-name = 名称：
+label-server-description = 描述：
+label-server-version = 版本：
+label-chat-topic = 聊天主题：
+label-chat-topic-set-by = 主题设置者：
+label-max-connections-per-ip = 每IP最大连接数：
 
 # =============================================================================
 # Permission Display Names
@@ -92,6 +100,7 @@ tooltip-chat = 聊天
 tooltip-broadcast = 广播
 tooltip-user-create = 创建用户
 tooltip-user-edit = 编辑用户
+tooltip-server-info = 服务器信息
 tooltip-settings = 设置
 tooltip-hide-bookmarks = 隐藏书签
 tooltip-show-bookmarks = 显示书签
@@ -303,3 +312,12 @@ cmd-window-usage = 用法：/{ $command } [next|prev|close [用户名]]
 cmd-window-list = 打开的标签页：{ $tabs }（{ $count }个标签页）
 cmd-window-close-server = 无法关闭服务器标签页
 cmd-window-not-found = 未找到标签页：{ $name }
+cmd-serverinfo-desc = 显示服务器信息
+cmd-serverinfo-usage = 用法：/{ $command }
+cmd-serverinfo-header = 服务器信息：
+cmd-serverinfo-name = 名称：{ $name }
+cmd-serverinfo-description = 描述：{ $description }
+cmd-serverinfo-version = 版本：{ $version }
+cmd-serverinfo-topic = 聊天主题：{ $topic }
+cmd-serverinfo-topic-set-by = 主题设置者：{ $username }
+cmd-serverinfo-max-connections = 每IP最大连接数：{ $count }

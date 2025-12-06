@@ -21,6 +21,7 @@ pub struct LoginInfo {
     pub permissions: Vec<String>,
     pub server_name: Option<String>,
     pub server_description: Option<String>,
+    pub server_version: Option<String>,
     pub chat_topic: Option<String>,
     pub chat_topic_set_by: Option<String>,
     pub max_connections_per_ip: Option<u32>,

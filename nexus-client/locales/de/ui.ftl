@@ -13,6 +13,7 @@ button-create = Erstellen
 button-edit = Bearbeiten
 button-update = Aktualisieren
 button-accept-new-certificate = Neues Zertifikat akzeptieren
+button-close = Schließen
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = Einstellungen
 title-bookmarks = Lesezeichen
 title-users = Benutzer
 title-fingerprint-mismatch = Zertifikat-Fingerabdruck stimmt nicht überein!
+title-server-info = Server-Info
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = Verbindungsbenachrichtigungen anzeigen
 label-show-timestamps = Zeitstempel anzeigen
 label-use-24-hour-time = 24-Stunden-Format verwenden
 label-show-seconds = Sekunden anzeigen
+label-server-name = Name:
+label-server-description = Beschreibung:
+label-server-version = Version:
+label-chat-topic = Chat-Thema:
+label-chat-topic-set-by = Chat-Thema gesetzt von:
+label-max-connections-per-ip = Max. Verbindungen pro IP:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Rundnachricht
 tooltip-user-create = Benutzer erstellen
 tooltip-user-edit = Benutzer bearbeiten
+tooltip-server-info = Server-Info
 tooltip-settings = Einstellungen
 tooltip-hide-bookmarks = Lesezeichen ausblenden
 tooltip-show-bookmarks = Lesezeichen anzeigen
@@ -320,3 +329,12 @@ cmd-list-output = Benutzer online: { $users } ({ $count } { $count ->
 })
 cmd-help-usage = Verwendung: /{ $command } [befehl]
 cmd-topic-permission-denied = Sie haben keine Berechtigung, das Thema zu bearbeiten
+cmd-serverinfo-desc = Server-Informationen anzeigen
+cmd-serverinfo-usage = Verwendung: /{ $command }
+cmd-serverinfo-header = Server-Informationen:
+cmd-serverinfo-name = Name: { $name }
+cmd-serverinfo-description = Beschreibung: { $description }
+cmd-serverinfo-version = Version: { $version }
+cmd-serverinfo-topic = Chat-Thema: { $topic }
+cmd-serverinfo-topic-set-by = Thema gesetzt von: { $username }
+cmd-serverinfo-max-connections = Max. Verbindungen pro IP: { $count }

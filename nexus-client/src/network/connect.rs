@@ -124,6 +124,7 @@ async fn perform_login(
             permissions: permissions.unwrap_or_default(),
             server_name: server_info.as_ref().map(|info| info.name.clone()),
             server_description: server_info.as_ref().map(|info| info.description.clone()),
+            server_version: server_info.as_ref().map(|info| info.version.clone()),
             chat_topic: server_info.as_ref().map(|info| info.chat_topic.clone()),
             chat_topic_set_by: server_info
                 .as_ref()

@@ -13,6 +13,7 @@ button-create = Criar
 button-edit = Editar
 button-update = Atualizar
 button-accept-new-certificate = Aceitar Novo Certificado
+button-close = Fechar
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = Configurações
 title-bookmarks = Favoritos
 title-users = Usuários
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
+title-server-info = Info do Servidor
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = Mostrar notificações de conexão
 label-show-timestamps = Mostrar horários
 label-use-24-hour-time = Usar formato de 24 horas
 label-show-seconds = Mostrar segundos
+label-server-name = Nome:
+label-server-description = Descrição:
+label-server-version = Versão:
+label-chat-topic = Tópico do Chat:
+label-chat-topic-set-by = Tópico Definido Por:
+label-max-connections-per-ip = Máx. Conexões Por IP:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Difusão
 tooltip-user-create = Criar Usuário
 tooltip-user-edit = Editar Usuário
+tooltip-server-info = Info do Servidor
 tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos
@@ -320,3 +329,12 @@ cmd-window-list = Abas abertas: { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = Não é possível fechar a aba do servidor
 cmd-window-not-found = Aba não encontrada: { $name }
+cmd-serverinfo-desc = Mostrar informações do servidor
+cmd-serverinfo-usage = Uso: /{ $command }
+cmd-serverinfo-header = Informações do Servidor:
+cmd-serverinfo-name = Nome: { $name }
+cmd-serverinfo-description = Descrição: { $description }
+cmd-serverinfo-version = Versão: { $version }
+cmd-serverinfo-topic = Tópico do Chat: { $topic }
+cmd-serverinfo-topic-set-by = Tópico Definido Por: { $username }
+cmd-serverinfo-max-connections = Máx. Conexões Por IP: { $count }

@@ -13,6 +13,7 @@ button-create = Crea
 button-edit = Modifica
 button-update = Aggiorna
 button-accept-new-certificate = Accetta Nuovo Certificato
+button-close = Chiudi
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = Impostazioni
 title-bookmarks = Segnalibri
 title-users = Utenti
 title-fingerprint-mismatch = Impronta del certificato non corrispondente!
+title-server-info = Info Server
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = Mostra notifiche di connessione
 label-show-timestamps = Mostra timestamp
 label-use-24-hour-time = Usa formato 24 ore
 label-show-seconds = Mostra secondi
+label-server-name = Nome:
+label-server-description = Descrizione:
+label-server-version = Versione:
+label-chat-topic = Argomento Chat:
+label-chat-topic-set-by = Argomento Impostato Da:
+label-max-connections-per-ip = Max Connessioni Per IP:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = Crea utente
 tooltip-user-edit = Modifica utente
+tooltip-server-info = Info Server
 tooltip-settings = Impostazioni
 tooltip-hide-bookmarks = Nascondi segnalibri
 tooltip-show-bookmarks = Mostra segnalibri
@@ -322,3 +331,12 @@ cmd-window-list = Schede aperte: { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = Impossibile chiudere la scheda server
 cmd-window-not-found = Scheda non trovata: { $name }
+cmd-serverinfo-desc = Mostra informazioni del server
+cmd-serverinfo-usage = Uso: /{ $command }
+cmd-serverinfo-header = Informazioni Server:
+cmd-serverinfo-name = Nome: { $name }
+cmd-serverinfo-description = Descrizione: { $description }
+cmd-serverinfo-version = Versione: { $version }
+cmd-serverinfo-topic = Argomento Chat: { $topic }
+cmd-serverinfo-topic-set-by = Argomento Impostato Da: { $username }
+cmd-serverinfo-max-connections = Max Connessioni Per IP: { $count }

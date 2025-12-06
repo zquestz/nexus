@@ -481,6 +481,7 @@ fn server_content_view<'a>(
             let data = ServerInfoData {
                 name: conn.server_name.clone(),
                 description: conn.server_description.clone(),
+                version: conn.server_version.clone(),
                 chat_topic: conn.chat_topic.clone(),
                 chat_topic_set_by: conn.chat_topic_set_by.clone(),
                 max_connections_per_ip: conn.max_connections_per_ip,

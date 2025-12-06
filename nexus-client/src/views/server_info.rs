@@ -15,6 +15,8 @@ pub struct ServerInfoData {
     pub name: Option<String>,
     /// Server description (if provided)
     pub description: Option<String>,
+    /// Server version (if provided)
+    pub version: Option<String>,
     /// Chat topic (if provided)
     pub chat_topic: Option<String>,
     /// Username who set the chat topic
@@ -50,6 +52,14 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     {
         let label = shaped_text(t("label-server-description")).size(TEXT_SIZE);
         let value = shaped_text(description.clone()).size(TEXT_SIZE);
+        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        content = content.push(info_row);
+    }
+
+    // Server version
+    if let Some(version) = &data.version {
+        let label = shaped_text(t("label-server-version")).size(TEXT_SIZE);
+        let value = shaped_text(version.clone()).size(TEXT_SIZE);
         let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }

@@ -13,6 +13,7 @@ button-create = 作成
 button-edit = 編集
 button-update = 更新
 button-accept-new-certificate = 新しい証明書を承認
+button-close = 閉じる
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = 設定
 title-bookmarks = ブックマーク
 title-users = ユーザー
 title-fingerprint-mismatch = 証明書のフィンガープリントが一致しません！
+title-server-info = サーバー情報
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = 接続通知を表示
 label-show-timestamps = タイムスタンプを表示
 label-use-24-hour-time = 24時間形式を使用
 label-show-seconds = 秒を表示
+label-server-name = 名前:
+label-server-description = 説明:
+label-server-version = バージョン:
+label-chat-topic = チャットトピック:
+label-chat-topic-set-by = トピック設定者:
+label-max-connections-per-ip = IP毎の最大接続数:
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = チャット
 tooltip-broadcast = ブロードキャスト
 tooltip-user-create = ユーザー作成
 tooltip-user-edit = ユーザー編集
+tooltip-server-info = サーバー情報
 tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示
@@ -302,3 +311,12 @@ cmd-window-usage = 使用方法: /{ $command } [next|prev|close [ユーザー名
 cmd-window-list = 開いているタブ: { $tabs } ({ $count }個のタブ)
 cmd-window-close-server = サーバータブは閉じられません
 cmd-window-not-found = タブが見つかりません: { $name }
+cmd-serverinfo-desc = サーバー情報を表示
+cmd-serverinfo-usage = 使用方法: /{ $command }
+cmd-serverinfo-header = サーバー情報:
+cmd-serverinfo-name = 名前: { $name }
+cmd-serverinfo-description = 説明: { $description }
+cmd-serverinfo-version = バージョン: { $version }
+cmd-serverinfo-topic = チャットトピック: { $topic }
+cmd-serverinfo-topic-set-by = トピック設定者: { $username }
+cmd-serverinfo-max-connections = IP毎の最大接続数: { $count }

@@ -12,8 +12,8 @@ button-save = Сохранить
 button-create = Создать
 button-edit = Редактировать
 button-update = Обновить
-
 button-accept-new-certificate = Принять новый сертификат
+button-close = Закрыть
 
 # =============================================================================
 # Titles
@@ -32,6 +32,7 @@ title-settings = Настройки
 title-bookmarks = Закладки
 title-users = Пользователи
 title-fingerprint-mismatch = Отпечаток сертификата не совпадает!
+title-server-info = Информация о сервере
 
 # =============================================================================
 # Placeholders
@@ -66,6 +67,12 @@ label-show-connection-notifications = Показывать уведомлени�
 label-show-timestamps = Показывать время
 label-use-24-hour-time = Использовать 24-часовой формат
 label-show-seconds = Показывать секунды
+label-server-name = Название:
+label-server-description = Описание:
+label-server-version = Версия:
+label-chat-topic = Тема чата:
+label-chat-topic-set-by = Тема установлена:
+label-max-connections-per-ip = Макс. подключений на IP:
 
 # =============================================================================
 # Permission Display Names
@@ -92,6 +99,7 @@ tooltip-chat = Чат
 tooltip-broadcast = Рассылка
 tooltip-user-create = Создать пользователя
 tooltip-user-edit = Редактировать пользователя
+tooltip-server-info = Информация о сервере
 tooltip-settings = Настройки
 tooltip-hide-bookmarks = Скрыть закладки
 tooltip-show-bookmarks = Показать закладки
@@ -327,3 +335,12 @@ cmd-window-list = Открытые вкладки: { $tabs } ({ $count } { $coun
 })
 cmd-window-close-server = Невозможно закрыть вкладку сервера
 cmd-window-not-found = Вкладка не найдена: { $name }
+cmd-serverinfo-desc = Показать информацию о сервере
+cmd-serverinfo-usage = Использование: /{ $command }
+cmd-serverinfo-header = Информация о сервере:
+cmd-serverinfo-name = Название: { $name }
+cmd-serverinfo-description = Описание: { $description }
+cmd-serverinfo-version = Версия: { $version }
+cmd-serverinfo-topic = Тема чата: { $topic }
+cmd-serverinfo-topic-set-by = Тема установлена: { $username }
+cmd-serverinfo-max-connections = Макс. подключений на IP: { $count }

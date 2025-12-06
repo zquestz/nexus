@@ -227,6 +227,8 @@ pub struct ServerInfo {
     pub name: String,
     /// Server description (empty string if not set)
     pub description: String,
+    /// Server version
+    pub version: String,
     /// Current chat topic (empty string if not set)
     pub chat_topic: String,
     /// Username who set the current topic (empty string if never set)

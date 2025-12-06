@@ -37,8 +37,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 1409);
-    m.insert("PermissionsUpdated", 1347);
+    m.insert("LoginResponse", 1454);
+    m.insert("PermissionsUpdated", 1392);
     m.insert("ServerBroadcast", 1133);
     m.insert("UserConnected", 282);
     m.insert("UserCreateResponse", 568);
@@ -359,6 +359,7 @@ mod tests {
             server_info: Some(ServerInfo {
                 name: str_of_len(MAX_SERVER_NAME_LENGTH),
                 description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
+                version: str_of_len(MAX_VERSION_LENGTH),
                 chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
                 chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
                 max_connections_per_ip: Some(u32::MAX),
@@ -381,6 +382,7 @@ mod tests {
             server_info: Some(ServerInfo {
                 name: str_of_len(MAX_SERVER_NAME_LENGTH),
                 description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
+                version: str_of_len(MAX_VERSION_LENGTH),
                 chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
                 chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
                 max_connections_per_ip: Some(u32::MAX),

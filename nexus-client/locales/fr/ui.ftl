@@ -14,6 +14,7 @@ button-edit = Modifier
 button-update = Mettre à jour
 
 button-accept-new-certificate = Accepter le nouveau certificat
+button-close = Fermer
 
 # =============================================================================
 # Titles
@@ -32,6 +33,7 @@ title-settings = Paramètres
 title-bookmarks = Signets
 title-users = Utilisateurs
 title-fingerprint-mismatch = Empreinte du certificat non concordante !
+title-server-info = Info Serveur
 
 # =============================================================================
 # Placeholders
@@ -66,6 +68,12 @@ label-show-connection-notifications = Afficher les notifications de connexion
 label-show-timestamps = Afficher les horodatages
 label-use-24-hour-time = Utiliser le format 24 heures
 label-show-seconds = Afficher les secondes
+label-server-name = Nom :
+label-server-description = Description :
+label-server-version = Version :
+label-chat-topic = Sujet du Chat :
+label-chat-topic-set-by = Sujet Défini Par :
+label-max-connections-per-ip = Max. Connexions Par IP :
 
 # =============================================================================
 # Permission Display Names
@@ -92,6 +100,7 @@ tooltip-chat = Chat
 tooltip-broadcast = Diffusion
 tooltip-user-create = Créer un utilisateur
 tooltip-user-edit = Modifier l'utilisateur
+tooltip-server-info = Info Serveur
 tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets
@@ -320,3 +329,12 @@ cmd-window-list = Onglets ouverts : { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = Impossible de fermer l'onglet serveur
 cmd-window-not-found = Onglet non trouvé : { $name }
+cmd-serverinfo-desc = Afficher les informations du serveur
+cmd-serverinfo-usage = Utilisation : /{ $command }
+cmd-serverinfo-header = Informations du Serveur :
+cmd-serverinfo-name = Nom : { $name }
+cmd-serverinfo-description = Description : { $description }
+cmd-serverinfo-version = Version : { $version }
+cmd-serverinfo-topic = Sujet du Chat : { $topic }
+cmd-serverinfo-topic-set-by = Sujet Défini Par : { $username }
+cmd-serverinfo-max-connections = Max. Connexions Par IP : { $count }

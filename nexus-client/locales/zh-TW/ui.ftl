@@ -13,6 +13,7 @@ button-create = 建立
 button-edit = 編輯
 button-update = 更新
 button-accept-new-certificate = 接受新憑證
+button-close = 關閉
 
 # =============================================================================
 # Titles
@@ -31,6 +32,7 @@ title-settings = 設定
 title-bookmarks = 書籤
 title-users = 使用者
 title-fingerprint-mismatch = 憑證指紋不符！
+title-server-info = 伺服器資訊
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,12 @@ label-show-connection-notifications = 顯示連線通知
 label-show-timestamps = 顯示時間戳記
 label-use-24-hour-time = 使用24小時制
 label-show-seconds = 顯示秒數
+label-server-name = 名稱：
+label-server-description = 描述：
+label-server-version = 版本：
+label-chat-topic = 聊天主題：
+label-chat-topic-set-by = 主題設定者：
+label-max-connections-per-ip = 每IP最大連線數：
 
 # =============================================================================
 # Permission Display Names
@@ -91,6 +99,7 @@ tooltip-chat = 聊天
 tooltip-broadcast = 廣播
 tooltip-user-create = 建立使用者
 tooltip-user-edit = 編輯使用者
+tooltip-server-info = 伺服器資訊
 tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤
@@ -302,3 +311,12 @@ cmd-window-usage = 用法：/{ $command } [next|prev|close [用戶名]]
 cmd-window-list = 開啟的分頁：{ $tabs }（{ $count }個分頁）
 cmd-window-close-server = 無法關閉伺服器分頁
 cmd-window-not-found = 找不到分頁：{ $name }
+cmd-serverinfo-desc = 顯示伺服器資訊
+cmd-serverinfo-usage = 用法：/{ $command }
+cmd-serverinfo-header = 伺服器資訊：
+cmd-serverinfo-name = 名稱：{ $name }
+cmd-serverinfo-description = 描述：{ $description }
+cmd-serverinfo-version = 版本：{ $version }
+cmd-serverinfo-topic = 聊天主題：{ $topic }
+cmd-serverinfo-topic-set-by = 主題設定者：{ $username }
+cmd-serverinfo-max-connections = 每IP最大連線數：{ $count }
