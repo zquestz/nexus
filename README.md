@@ -17,6 +17,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 ## Features
 
 - **Mandatory TLS encryption** with auto-generated self-signed certificates
+- **SemVer protocol versioning** - backward-compatible version negotiation during handshake
 - **UPnP port forwarding** for automatic NAT traversal (optional)
 - **Internationalization (i18n)** - 12 languages supported (auto-detects system locale)
 - Real-time chat, broadcast messaging, and chat topics
