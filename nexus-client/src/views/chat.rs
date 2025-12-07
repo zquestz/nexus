@@ -13,7 +13,9 @@ use iced::widget::{
     Column, Id, button, column, container, rich_text, row, scrollable, span, text::Rich,
     text_input, tooltip,
 };
-use iced::{Color, Element, Fill, Theme};
+use iced::{Color, Element, Fill, Font, Theme};
+use linkify::{LinkFinder, LinkKind};
+use once_cell::sync::Lazy;
 
 // ============================================================================
 // Timestamp Settings
@@ -49,37 +51,105 @@ impl TimestampSettings {
 }
 
 // ============================================================================
+// Link Detection
+// ============================================================================
+
+/// Global link finder configured for URL detection (including schemeless URLs)
+static LINK_FINDER: Lazy<LinkFinder> = Lazy::new(|| {
+    let mut finder = LinkFinder::new();
+    finder.kinds(&[LinkKind::Url]);
+    finder.url_must_have_scheme(false);
+    finder
+});
+
+/// A segment of text that may or may not be a link
+#[derive(Debug)]
+enum TextSegment<'a> {
+    /// Plain text
+    Text(&'a str),
+    /// A URL that should be clickable
+    Link(&'a str),
+}
+
+/// Split text into segments of plain text and URLs
+fn split_into_segments(text: &str) -> Vec<TextSegment<'_>> {
+    LINK_FINDER
+        .spans(text)
+        .map(|s| {
+            if s.kind().is_some() {
+                TextSegment::Link(s.as_str())
+            } else {
+                TextSegment::Text(s.as_str())
+            }
+        })
+        .collect()
+}
+
+/// Build the URL to open when a link is clicked
+///
+/// If the URL doesn't have a scheme, prepend "https://"
+fn make_openable_url(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("https://{}", url)
+    }
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
-/// Build a styled rich text message with consistent formatting
+/// Style parameters for rendering a chat message
+struct MessageStyle {
+    timestamp_color: Color,
+    prefix_color: Color,
+    content_color: Color,
+    link_color: Color,
+    font_size: f32,
+}
+
+/// Build a styled rich text message with consistent formatting and clickable links
 fn styled_message<'a>(
     time_str: Option<&str>,
-    timestamp_color: Color,
     prefix: String,
-    prefix_color: Color,
     content: &str,
-    content_color: Color,
-    font_size: f32,
+    style: &MessageStyle,
 ) -> Element<'a, Message> {
-    let text_widget: Rich<'a, (), Message> = if let Some(ts) = time_str {
-        rich_text![
-            span(format!("[{}] ", ts)).color(timestamp_color),
-            span(prefix).color(prefix_color),
-            span(content.to_string()).color(content_color),
-        ]
-        .size(font_size)
+    // Build spans dynamically to support clickable links
+    let mut spans: Vec<iced::widget::text::Span<'a, String, Font>> = Vec::new();
+
+    // Add timestamp if present
+    if let Some(ts) = time_str {
+        spans.push(span(format!("[{}] ", ts)).color(style.timestamp_color));
+    }
+
+    // Add prefix (username, [SYS], etc.)
+    spans.push(span(prefix).color(style.prefix_color));
+
+    // Add content with link detection
+    for segment in split_into_segments(content) {
+        match segment {
+            TextSegment::Text(text) => {
+                spans.push(span(text.to_string()).color(style.content_color));
+            }
+            TextSegment::Link(url) => {
+                let openable_url = make_openable_url(url);
+                spans.push(
+                    span(url.to_string())
+                        .color(style.link_color)
+                        .link(openable_url),
+                );
+            }
+        }
+    }
+
+    let text_widget: Rich<'a, String, Message> = rich_text(spans)
+        .on_link_click(Message::OpenUrl)
+        .size(style.font_size)
         .line_height(CHAT_LINE_HEIGHT)
-        .font(MONOSPACE_FONT)
-    } else {
-        rich_text![
-            span(prefix).color(prefix_color),
-            span(content.to_string()).color(content_color),
-        ]
-        .size(font_size)
-        .line_height(CHAT_LINE_HEIGHT)
-        .font(MONOSPACE_FONT)
-    };
+        .font(MONOSPACE_FONT);
+
     text_widget.into()
 }
 
@@ -190,54 +260,71 @@ fn render_message_line<'a>(
     font_size: f32,
 ) -> Element<'a, Message> {
     let timestamp_color = chat::timestamp(theme);
+    let link_color = theme.palette().primary;
 
     match message_type {
         MessageType::System => {
             let color = chat::system(theme);
+            let style = MessageStyle {
+                timestamp_color,
+                prefix_color: color,
+                content_color: color,
+                link_color,
+                font_size,
+            };
             styled_message(
                 time_str,
-                timestamp_color,
                 format!("{} ", t("chat-prefix-system")),
-                color,
                 line,
-                color,
-                font_size,
+                &style,
             )
         }
         MessageType::Error => {
             let color = chat::error(theme);
+            let style = MessageStyle {
+                timestamp_color,
+                prefix_color: color,
+                content_color: color,
+                link_color,
+                font_size,
+            };
             styled_message(
                 time_str,
-                timestamp_color,
                 format!("{} ", t("chat-prefix-error")),
-                color,
                 line,
-                color,
-                font_size,
+                &style,
             )
         }
         MessageType::Info => {
             let color = chat::info(theme);
+            let style = MessageStyle {
+                timestamp_color,
+                prefix_color: color,
+                content_color: color,
+                link_color,
+                font_size,
+            };
             styled_message(
                 time_str,
-                timestamp_color,
                 format!("{} ", t("chat-prefix-info")),
-                color,
                 line,
-                color,
-                font_size,
+                &style,
             )
         }
         MessageType::Broadcast => {
             let color = chat::broadcast(theme);
+            let style = MessageStyle {
+                timestamp_color,
+                prefix_color: color,
+                content_color: color,
+                link_color,
+                font_size,
+            };
             styled_message(
                 time_str,
-                timestamp_color,
                 format!("{} {}: ", t("chat-prefix-broadcast"), username),
-                color,
                 line,
-                color,
-                font_size,
+                &style,
             )
         }
         MessageType::Chat => {
@@ -247,15 +334,14 @@ fn render_message_line<'a>(
                 chat::text(theme)
             };
             let text_color = chat::text(theme);
-            styled_message(
-                time_str,
+            let style = MessageStyle {
                 timestamp_color,
-                format!("{}: ", username),
-                username_color,
-                line,
-                text_color,
+                prefix_color: username_color,
+                content_color: text_color,
+                link_color,
                 font_size,
-            )
+            };
+            styled_message(time_str, format!("{}: ", username), line, &style)
         }
     }
 }

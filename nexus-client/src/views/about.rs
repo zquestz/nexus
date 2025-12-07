@@ -46,7 +46,6 @@ pub fn about_view(theme: Theme) -> Element<'static, Message> {
     let github_link = rich_text![
         span(GITHUB_URL)
             .color(link_color)
-            .underline(true)
             .link(GITHUB_URL.to_string())
     ]
     .on_link_click(Message::OpenUrl)

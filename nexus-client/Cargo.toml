@@ -30,6 +30,7 @@ sys-locale = "0.3"
 fluent-bundle = "0.16"
 unic-langid = "0.9"
 open = "5"
+linkify = "0.10"
 
 [build-dependencies]
 iced_fontello = "0.13.2"
