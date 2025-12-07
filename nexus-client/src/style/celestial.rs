@@ -37,6 +37,7 @@ fn sea_dark_palette() -> Palette {
         text: hex(0xccd7d4),
         primary: hex(0x2eb398),
         success: hex(0x2eb398),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -48,6 +49,7 @@ fn sea_light_palette() -> Palette {
         text: hex(0x273134),
         primary: hex(0x2eb398),
         success: hex(0x2eb398),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -63,6 +65,7 @@ fn aliz_dark_palette() -> Palette {
         text: hex(0xcbbfbf),
         primary: hex(0xf0544c),
         success: hex(0x3498db),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -74,6 +77,7 @@ fn aliz_light_palette() -> Palette {
         text: hex(0x323232),
         primary: hex(0xf0544c),
         success: hex(0x3498db),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -89,6 +93,7 @@ fn azul_dark_palette() -> Palette {
         text: hex(0xbbc3c8),
         primary: hex(0x3498db),
         success: hex(0x2eb398),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -100,6 +105,7 @@ fn azul_light_palette() -> Palette {
         text: hex(0x2b2f3b),
         primary: hex(0x3498db),
         success: hex(0x2eb398),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -115,6 +121,7 @@ fn pueril_dark_palette() -> Palette {
         text: hex(0xbfbfbf),
         primary: hex(0x97bb72),
         success: hex(0x3498db),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }
@@ -126,6 +133,7 @@ fn pueril_light_palette() -> Palette {
         text: hex(0x323232),
         primary: hex(0x97bb72),
         success: hex(0x3498db),
+        warning: hex(0xf0c674),
         danger: hex(0xfc4138),
     }
 }

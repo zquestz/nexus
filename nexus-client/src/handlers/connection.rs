@@ -9,7 +9,7 @@ use crate::views::constants::{
 };
 use crate::{NexusApp, network};
 use iced::Task;
-use iced::widget::{scrollable, text_input};
+use iced::widget::{Id, operation, scrollable};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -200,8 +200,8 @@ impl NexusApp {
         };
 
         Task::batch([
-            scrollable::snap_to(ScrollableId::ChatMessages.into(), scroll_offset),
-            text_input::focus(text_input::Id::from(InputId::ChatInput)),
+            operation::snap_to(ScrollableId::ChatMessages, scroll_offset),
+            operation::focus(Id::from(InputId::ChatInput)),
         ])
     }
 

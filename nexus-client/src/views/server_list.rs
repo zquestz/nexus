@@ -47,7 +47,7 @@ fn transparent_edit_button(
 
 /// Create a horizontal separator line
 fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, SEPARATOR_HEIGHT))
+    container(Space::new().width(Fill).height(SEPARATOR_HEIGHT))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
         .style(separator_style)

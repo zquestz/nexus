@@ -10,7 +10,8 @@ use crate::style::{
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::{
-    Column, button, column, container, rich_text, row, scrollable, span, text_input, tooltip,
+    Column, Id, button, column, container, rich_text, row, scrollable, span, text::Rich,
+    text_input, tooltip,
 };
 use iced::{Color, Element, Fill, Theme};
 
@@ -61,7 +62,7 @@ fn styled_message<'a>(
     content_color: Color,
     font_size: f32,
 ) -> Element<'a, Message> {
-    if let Some(ts) = time_str {
+    let text_widget: Rich<'a, (), Message> = if let Some(ts) = time_str {
         rich_text![
             span(format!("[{}] ", ts)).color(timestamp_color),
             span(prefix).color(prefix_color),
@@ -70,7 +71,6 @@ fn styled_message<'a>(
         .size(font_size)
         .line_height(CHAT_LINE_HEIGHT)
         .font(MONOSPACE_FONT)
-        .into()
     } else {
         rich_text![
             span(prefix).color(prefix_color),
@@ -79,8 +79,8 @@ fn styled_message<'a>(
         .size(font_size)
         .line_height(CHAT_LINE_HEIGHT)
         .font(MONOSPACE_FONT)
-        .into()
-    }
+    };
+    text_widget.into()
 }
 
 /// Check if a username belongs to an admin in the online users list
@@ -320,7 +320,7 @@ fn build_input_row<'a>(message_input: &'a str, font_size: f32) -> iced::widget::
     let text_field = text_input(&t("placeholder-message"), message_input)
         .on_input(Message::ChatInputChanged)
         .on_submit(Message::SendMessagePressed)
-        .id(text_input::Id::from(InputId::ChatInput))
+        .id(Id::from(InputId::ChatInput))
         .padding(INPUT_PADDING)
         .size(font_size)
         .font(MONOSPACE_FONT)
@@ -402,7 +402,7 @@ pub fn chat_view<'a>(
     let chat_column = build_message_list(conn, &theme, font_size, timestamp_settings);
 
     let chat_scrollable = scrollable(chat_column)
-        .id(ScrollableId::ChatMessages.into())
+        .id(ScrollableId::ChatMessages)
         .on_scroll(Message::ChatScrolled)
         .width(Fill)
         .height(Fill);

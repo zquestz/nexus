@@ -4,7 +4,7 @@ use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::Task;
-use iced::widget::text_input;
+use iced::widget::{Id, operation};
 use std::collections::HashMap;
 
 impl NexusApp {
@@ -100,7 +100,7 @@ impl NexusApp {
         self.bookmark_edit = BookmarkEditState::default();
         self.bookmark_edit.mode = BookmarkEditMode::Add;
         self.focused_field = InputId::BookmarkName;
-        text_input::focus(text_input::Id::from(InputId::BookmarkName))
+        operation::focus(Id::from(InputId::BookmarkName))
     }
 
     /// Show the edit bookmark dialog for a specific bookmark
@@ -113,7 +113,7 @@ impl NexusApp {
             // Move any connection error to the edit dialog (acknowledges and clears it)
             self.bookmark_edit.error = self.bookmark_errors.remove(&index);
 
-            return text_input::focus(text_input::Id::from(InputId::BookmarkName));
+            return operation::focus(Id::from(InputId::BookmarkName));
         }
         Task::none()
     }

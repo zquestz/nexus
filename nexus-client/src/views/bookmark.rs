@@ -8,7 +8,7 @@ use crate::style::{
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Id, Space, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -58,30 +58,30 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                 .style(error_text_style)
                 .into(),
         );
-        column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        column_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        column_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        column_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     column_items.extend([
         text_input(&t("placeholder-server-name"), &state.bookmark.name)
             .on_input(Message::BookmarkNameChanged)
             .on_submit(submit_action.clone())
-            .id(text_input::Id::from(InputId::BookmarkName))
+            .id(Id::from(InputId::BookmarkName))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .into(),
         text_input(&t("placeholder-server-address"), &state.bookmark.address)
             .on_input(Message::BookmarkAddressChanged)
             .on_submit(submit_action.clone())
-            .id(text_input::Id::from(InputId::BookmarkAddress))
+            .id(Id::from(InputId::BookmarkAddress))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .into(),
         text_input(&t("placeholder-port"), &state.bookmark.port)
             .on_input(Message::BookmarkPortChanged)
             .on_submit(submit_action.clone())
-            .id(text_input::Id::from(InputId::BookmarkPort))
+            .id(Id::from(InputId::BookmarkPort))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .into(),
@@ -91,7 +91,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         )
         .on_input(Message::BookmarkUsernameChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::BookmarkUsername))
+        .id(Id::from(InputId::BookmarkUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),
@@ -101,18 +101,19 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         )
         .on_input(Message::BookmarkPasswordChanged)
         .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::BookmarkPassword))
+        .id(Id::from(InputId::BookmarkPassword))
         .secure(true)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),
-        Space::with_height(SPACER_SIZE_SMALL).into(),
-        checkbox(t("label-auto-connect"), state.bookmark.auto_connect)
+        Space::new().height(SPACER_SIZE_SMALL).into(),
+        checkbox(state.bookmark.auto_connect)
+            .label(t("label-auto-connect"))
             .on_toggle(Message::BookmarkAutoConnectToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
             .into(),
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
         {
             let mut buttons: Vec<Element<'_, Message>> = vec![
                 button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -146,7 +147,8 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             });
 
             {
-                let mut row_items: Vec<Element<'_, Message>> = vec![Space::with_width(Fill).into()];
+                let mut row_items: Vec<Element<'_, Message>> =
+                    vec![Space::new().width(Fill).into()];
                 row_items.extend(buttons);
                 row(row_items).spacing(ELEMENT_SPACING).into()
             }

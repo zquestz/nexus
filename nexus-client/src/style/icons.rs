@@ -7,14 +7,14 @@
 // ============================================================================
 
 /// Toolbar icon size (for collapse/expand icons)
-pub const TOOLBAR_ICON_SIZE: u16 = 20;
+pub const TOOLBAR_ICON_SIZE: f32 = 20.0;
 
 // ============================================================================
 // Server List Icons
 // ============================================================================
 
 /// Server list disconnect icon size (larger, more prominent)
-pub const SERVER_LIST_DISCONNECT_ICON_SIZE: u16 = 18;
+pub const SERVER_LIST_DISCONNECT_ICON_SIZE: f32 = 18.0;
 
 // ============================================================================
 // Sidebar Action Icons

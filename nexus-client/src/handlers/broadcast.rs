@@ -4,7 +4,7 @@ use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatMessage, InputId, Message};
 use iced::Task;
-use iced::widget::text_input;
+use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -38,7 +38,7 @@ impl NexusApp {
         }
 
         self.ui_state.active_panel = ActivePanel::Broadcast;
-        text_input::focus(text_input::Id::from(InputId::BroadcastMessage))
+        operation::focus(Id::from(InputId::BroadcastMessage))
     }
 
     // ==================== Form Handlers ====================

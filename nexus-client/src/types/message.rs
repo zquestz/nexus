@@ -1,6 +1,7 @@
 //! Message types for the Elm-style architecture
 
 use iced::Theme;
+use iced::widget::markdown;
 
 use nexus_common::framing::MessageId;
 
@@ -147,6 +148,9 @@ pub enum Message {
     ToggleSettings,
     /// Settings panel: Theme selected from picker
     ThemeSelected(Theme),
+    /// About panel: URL link clicked
+    #[allow(dead_code)]
+    OpenUrl(markdown::Uri),
     /// About panel: Close button pressed
     CloseAbout,
     /// Server info panel: Close button pressed

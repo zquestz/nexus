@@ -9,19 +9,19 @@
 // ============================================================================
 
 /// Text input field padding
-pub const INPUT_PADDING: u16 = 8;
+pub const INPUT_PADDING: f32 = 8.0;
 
 /// Button padding
-pub const BUTTON_PADDING: u16 = 10;
+pub const BUTTON_PADDING: f32 = 10.0;
 
 /// Form container padding
-pub const FORM_PADDING: u16 = 20;
+pub const FORM_PADDING: f32 = 20.0;
 
 /// Toolbar horizontal padding (matches FORM_PADDING for alignment)
-pub const TOOLBAR_PADDING_HORIZONTAL: u16 = 20;
+pub const TOOLBAR_PADDING_HORIZONTAL: f32 = 20.0;
 
 /// Toolbar vertical padding
-pub const TOOLBAR_PADDING_VERTICAL: u16 = 8;
+pub const TOOLBAR_PADDING_VERTICAL: f32 = 8.0;
 
 /// Icon button padding (vertical)
 pub const ICON_BUTTON_PADDING_VERTICAL: f32 = 8.0;
@@ -42,15 +42,15 @@ pub const CLOSE_BUTTON_PADDING: iced::Padding = iced::Padding {
     top: 0.0,
     right: 0.0,
     bottom: 0.0,
-    left: SMALL_PADDING as f32,
+    left: SMALL_PADDING,
 };
 
 /// Tab content padding (standard padding with extra right space for close button)
 pub const TAB_CONTENT_PADDING: iced::Padding = iced::Padding {
-    top: INPUT_PADDING as f32,
-    right: SMALL_PADDING as f32,
-    bottom: INPUT_PADDING as f32,
-    left: INPUT_PADDING as f32,
+    top: INPUT_PADDING,
+    right: SMALL_PADDING,
+    bottom: INPUT_PADDING,
+    left: INPUT_PADDING,
 };
 
 /// Toolbar container padding (horizontal)
@@ -65,103 +65,103 @@ pub const TOOLBAR_CONTAINER_PADDING: iced::Padding = iced::Padding {
 };
 
 /// Tooltip gap (distance between element and tooltip)
-pub const TOOLTIP_GAP: u16 = 5;
+pub const TOOLTIP_GAP: f32 = 5.0;
 
 /// Tooltip padding (internal padding)
-pub const TOOLTIP_PADDING: u16 = 4;
+pub const TOOLTIP_PADDING: f32 = 4.0;
 
 /// Tooltip background padding (inside the tooltip box)
-pub const TOOLTIP_BACKGROUND_PADDING: u16 = 6;
+pub const TOOLTIP_BACKGROUND_PADDING: f32 = 6.0;
 
 /// Small padding (general use)
-pub const SMALL_PADDING: u16 = 5;
+pub const SMALL_PADDING: f32 = 5.0;
 
 // ============================================================================
 // Spacing
 // ============================================================================
 
 /// General spacing between form elements
-pub const ELEMENT_SPACING: u16 = 10;
+pub const ELEMENT_SPACING: f32 = 10.0;
 
 /// Spacing between chat messages (compact)
-pub const CHAT_SPACING: u16 = 3;
+pub const CHAT_SPACING: f32 = 3.0;
 
 /// Small spacing (general use)
-pub const SMALL_SPACING: u16 = 5;
+pub const SMALL_SPACING: f32 = 5.0;
 
 /// Medium vertical spacer (between sections)
-pub const SPACER_SIZE_MEDIUM: u16 = 10;
+pub const SPACER_SIZE_MEDIUM: f32 = 10.0;
 
 /// Small vertical spacer (between related items)
-pub const SPACER_SIZE_SMALL: u16 = 5;
+pub const SPACER_SIZE_SMALL: f32 = 5.0;
 
 /// Toolbar spacing between sections
-pub const TOOLBAR_SPACING: u16 = 20;
+pub const TOOLBAR_SPACING: f32 = 20.0;
 
 /// Toolbar icon spacing within icon groups
-pub const TOOLBAR_ICON_SPACING: u16 = 0;
+pub const TOOLBAR_ICON_SPACING: f32 = 0.0;
 
 /// Panel spacing (no gap between panels)
-pub const PANEL_SPACING: u16 = 0;
+pub const PANEL_SPACING: f32 = 0.0;
 
 /// Server list section spacing
-pub const SERVER_LIST_SECTION_SPACING: u16 = 5;
+pub const SERVER_LIST_SECTION_SPACING: f32 = 5.0;
 
 /// Server list item spacing
-pub const SERVER_LIST_ITEM_SPACING: u16 = 3;
+pub const SERVER_LIST_ITEM_SPACING: f32 = 3.0;
 
 /// No spacing between button and icon (flush)
-pub const NO_SPACING: u16 = 0;
+pub const NO_SPACING: f32 = 0.0;
 
 /// User list item spacing
-pub const USER_LIST_ITEM_SPACING: u16 = 3;
+pub const USER_LIST_ITEM_SPACING: f32 = 3.0;
 
 /// User list column spacing
-pub const USER_LIST_SPACING: u16 = 8;
+pub const USER_LIST_SPACING: f32 = 8.0;
 
 // ============================================================================
 // Dimensions
 // ============================================================================
 
 /// Maximum width for form dialogs
-pub const FORM_MAX_WIDTH: u16 = 400;
+pub const FORM_MAX_WIDTH: f32 = 400.0;
 
 /// Maximum width for fingerprint dialog (wider to show fingerprints)
 pub const FINGERPRINT_DIALOG_MAX_WIDTH: f32 = 600.0;
 
 /// Server list panel width
-pub const SERVER_LIST_PANEL_WIDTH: u16 = 220;
+pub const SERVER_LIST_PANEL_WIDTH: f32 = 220.0;
 
 /// Server list button height
-pub const SERVER_LIST_BUTTON_HEIGHT: u16 = 32;
+pub const SERVER_LIST_BUTTON_HEIGHT: f32 = 32.0;
 
 /// Separator line height
-pub const SEPARATOR_HEIGHT: u16 = 1;
+pub const SEPARATOR_HEIGHT: f32 = 1.0;
 
 /// Border width (standard)
 pub const BORDER_WIDTH: f32 = 1.0;
 
 /// User list panel width
-pub const USER_LIST_PANEL_WIDTH: u16 = 180;
+pub const USER_LIST_PANEL_WIDTH: f32 = 180.0;
 
 // ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================
 
 /// Space after fingerprint dialog title
-pub const FINGERPRINT_SPACE_AFTER_TITLE: u16 = 10;
+pub const FINGERPRINT_SPACE_AFTER_TITLE: f32 = 10.0;
 
 /// Space after server info line in fingerprint dialog
-pub const FINGERPRINT_SPACE_AFTER_SERVER_INFO: u16 = 10;
+pub const FINGERPRINT_SPACE_AFTER_SERVER_INFO: f32 = 10.0;
 
 /// Space after warning text in fingerprint dialog
-pub const FINGERPRINT_SPACE_AFTER_WARNING: u16 = 10;
+pub const FINGERPRINT_SPACE_AFTER_WARNING: f32 = 10.0;
 
 /// Space after fingerprint labels (tight coupling with value)
-pub const FINGERPRINT_SPACE_AFTER_LABEL: u16 = 0;
+pub const FINGERPRINT_SPACE_AFTER_LABEL: f32 = 0.0;
 
 /// Space between fingerprint sections (expected vs received)
-pub const FINGERPRINT_SPACE_BETWEEN_SECTIONS: u16 = 8;
+pub const FINGERPRINT_SPACE_BETWEEN_SECTIONS: f32 = 8.0;
 
 /// Space before button row in fingerprint dialog
-pub const FINGERPRINT_SPACE_BEFORE_BUTTONS: u16 = 10;
+pub const FINGERPRINT_SPACE_BEFORE_BUTTONS: f32 = 10.0;

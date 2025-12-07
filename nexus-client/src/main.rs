@@ -14,7 +14,7 @@ mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use iced::widget::text_input;
+use iced::widget::{Id, operation};
 use iced::{Element, Subscription, Task, Theme};
 
 use style::{WINDOW_HEIGHT, WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_WIDTH_MIN};
@@ -28,7 +28,8 @@ use types::{
 /// Configures the Iced application with window settings, fonts, and theme,
 /// then starts the event loop.
 pub fn main() -> iced::Result {
-    iced::application(WINDOW_TITLE, NexusApp::update, NexusApp::view)
+    iced::application(NexusApp::new, NexusApp::update, NexusApp::view)
+        .title(WINDOW_TITLE)
         .theme(NexusApp::theme)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {
@@ -41,7 +42,7 @@ pub fn main() -> iced::Result {
         .font(fonts::SAUCECODE_PRO_MONO_ITALIC)
         .font(fonts::SAUCECODE_PRO_MONO_BOLD_ITALIC)
         .font(icon::FONT)
-        .run_with(NexusApp::new)
+        .run()
 }
 
 /// Main application state for the Nexus BBS client
@@ -128,7 +129,7 @@ impl NexusApp {
         let auto_connect_tasks = autostart::generate_auto_connect_tasks(&app.config);
 
         // Combine focus task with auto-connect tasks
-        let mut tasks = vec![text_input::focus(text_input::Id::from(InputId::ServerName))];
+        let mut tasks = vec![operation::focus(Id::from(InputId::ServerName))];
         tasks.extend(auto_connect_tasks);
 
         (app, Task::batch(tasks))
@@ -261,6 +262,7 @@ impl NexusApp {
 
             // About
             Message::CloseAbout => self.handle_close_about(),
+            Message::OpenUrl(url) => self.handle_open_url(url),
             Message::ShowAbout => self.handle_show_about(),
 
             // Server info
@@ -292,9 +294,9 @@ impl NexusApp {
 
         // Subscribe to all active connections
         for conn in self.connections.values() {
-            subscriptions.push(Subscription::run_with_id(
+            subscriptions.push(Subscription::run_with(
                 conn.connection_id,
-                network::network_stream(conn.connection_id),
+                network::network_stream,
             ));
         }
 

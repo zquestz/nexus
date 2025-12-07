@@ -27,7 +27,7 @@ use iced::{Center, Element, Fill};
 
 /// Create a horizontal separator line
 fn separator<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, BORDER_WIDTH))
+    container(Space::new().width(Fill).height(BORDER_WIDTH))
         .width(Fill)
         .height(BORDER_WIDTH)
         .style(separator_style)
@@ -468,7 +468,10 @@ fn server_content_view<'a>(
 
     // Overlay panels on top when active
     match active_panel {
-        ActivePanel::About => stack![chat, about_view()].width(Fill).height(Fill).into(),
+        ActivePanel::About => stack![chat, about_view(theme)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::Broadcast => stack![chat, broadcast_view(conn)]
             .width(Fill)
             .height(Fill)

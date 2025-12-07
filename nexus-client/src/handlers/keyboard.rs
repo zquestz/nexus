@@ -3,7 +3,7 @@
 use crate::NexusApp;
 use crate::types::{ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, UserEditState};
 use iced::keyboard::{self, key};
-use iced::widget::text_input;
+use iced::widget::{Id, operation};
 use iced::{Event, Task};
 
 impl NexusApp {
@@ -214,7 +214,7 @@ impl NexusApp {
                 _ => InputId::BookmarkName,
             };
             self.focused_field = next_field;
-            return text_input::focus(text_input::Id::from(next_field));
+            return operation::focus(Id::from(next_field));
         } else if self.ui_state.active_panel == ActivePanel::AddUser {
             // On add user screen, cycle through fields
             let next_field = match self.focused_field {
@@ -223,7 +223,7 @@ impl NexusApp {
                 _ => InputId::AdminUsername,
             };
             self.focused_field = next_field;
-            return text_input::focus(text_input::Id::from(next_field));
+            return operation::focus(Id::from(next_field));
         } else if self.ui_state.active_panel == ActivePanel::EditUser {
             // On edit user screen, handle both stages
             if let Some(conn_id) = self.active_connection
@@ -233,7 +233,7 @@ impl NexusApp {
                     UserEditState::SelectingUser { .. } => {
                         // Stage 1: Only username field
                         self.focused_field = InputId::EditUsername;
-                        return text_input::focus(text_input::Id::from(InputId::EditUsername));
+                        return operation::focus(Id::from(InputId::EditUsername));
                     }
                     UserEditState::EditingUser { .. } => {
                         // Stage 2: Cycle through edit fields
@@ -243,7 +243,7 @@ impl NexusApp {
                             _ => InputId::EditNewUsername,
                         };
                         self.focused_field = next_field;
-                        return text_input::focus(text_input::Id::from(next_field));
+                        return operation::focus(Id::from(next_field));
                     }
                     UserEditState::None => {}
                 }
@@ -251,14 +251,14 @@ impl NexusApp {
         } else if self.ui_state.active_panel == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
-            return text_input::focus(text_input::Id::from(InputId::BroadcastMessage));
+            return operation::focus(Id::from(InputId::BroadcastMessage));
         } else if self.ui_state.active_panel == ActivePanel::Settings {
             // Settings panel has no text inputs yet, just return
             return Task::none();
         } else if self.active_connection.is_some() {
             // In chat view, Tab refocuses the chat input
             self.focused_field = InputId::ChatInput;
-            return text_input::focus(text_input::Id::from(InputId::ChatInput));
+            return operation::focus(Id::from(InputId::ChatInput));
         } else if self.active_connection.is_none() {
             // On connection screen, cycle through fields
             let next_field = match self.focused_field {
@@ -270,7 +270,7 @@ impl NexusApp {
                 _ => InputId::ServerName,
             };
             self.focused_field = next_field;
-            return text_input::focus(text_input::Id::from(next_field));
+            return operation::focus(Id::from(next_field));
         }
         Task::none()
     }

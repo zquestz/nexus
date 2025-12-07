@@ -74,7 +74,7 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     .style(btn::secondary);
 
     let button_row = row![
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         cancel_button,
         accept_button
     ]
@@ -82,19 +82,19 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
 
     let dialog = column![
         title,
-        Space::with_height(FINGERPRINT_SPACE_AFTER_TITLE),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_TITLE),
         server_line,
-        Space::with_height(FINGERPRINT_SPACE_AFTER_SERVER_INFO),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_SERVER_INFO),
         warning,
-        Space::with_height(FINGERPRINT_SPACE_AFTER_WARNING),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_WARNING),
         expected_label,
-        Space::with_height(FINGERPRINT_SPACE_AFTER_LABEL),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_LABEL),
         expected_value,
-        Space::with_height(FINGERPRINT_SPACE_BETWEEN_SECTIONS),
+        Space::new().height(FINGERPRINT_SPACE_BETWEEN_SECTIONS),
         received_label,
-        Space::with_height(FINGERPRINT_SPACE_AFTER_LABEL),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_LABEL),
         received_value,
-        Space::with_height(FINGERPRINT_SPACE_BEFORE_BUTTONS),
+        Space::new().height(FINGERPRINT_SPACE_BEFORE_BUTTONS),
         button_row,
     ]
     .spacing(ELEMENT_SPACING)

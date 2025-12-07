@@ -1,6 +1,6 @@
 //! UI state and widget identifier types
 
-use iced::widget::{scrollable, text_input};
+use iced::widget::Id;
 
 /// Which panel is currently active in the main content area
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -125,9 +125,27 @@ pub enum InputId {
     ChatInput,
 }
 
-impl From<InputId> for text_input::Id {
+impl From<InputId> for Id {
     fn from(id: InputId) -> Self {
-        text_input::Id::new(format!("{:?}", id))
+        Id::new(match id {
+            InputId::ServerName => "InputId::ServerName",
+            InputId::ServerAddress => "InputId::ServerAddress",
+            InputId::Port => "InputId::Port",
+            InputId::Username => "InputId::Username",
+            InputId::Password => "InputId::Password",
+            InputId::BookmarkName => "InputId::BookmarkName",
+            InputId::BookmarkAddress => "InputId::BookmarkAddress",
+            InputId::BookmarkPort => "InputId::BookmarkPort",
+            InputId::BookmarkUsername => "InputId::BookmarkUsername",
+            InputId::BookmarkPassword => "InputId::BookmarkPassword",
+            InputId::AdminUsername => "InputId::AdminUsername",
+            InputId::AdminPassword => "InputId::AdminPassword",
+            InputId::EditUsername => "InputId::EditUsername",
+            InputId::EditNewUsername => "InputId::EditNewUsername",
+            InputId::EditNewPassword => "InputId::EditNewPassword",
+            InputId::BroadcastMessage => "InputId::BroadcastMessage",
+            InputId::ChatInput => "InputId::ChatInput",
+        })
     }
 }
 
@@ -138,8 +156,10 @@ pub enum ScrollableId {
     ChatMessages,
 }
 
-impl From<ScrollableId> for scrollable::Id {
+impl From<ScrollableId> for Id {
     fn from(id: ScrollableId) -> Self {
-        scrollable::Id::new(format!("{:?}", id))
+        Id::new(match id {
+            ScrollableId::ChatMessages => "ScrollableId::ChatMessages",
+        })
     }
 }

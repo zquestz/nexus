@@ -36,13 +36,13 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
         .align_x(Center);
 
     let mut content =
-        column![title, Space::with_height(SPACER_SIZE_MEDIUM),].spacing(ELEMENT_SPACING);
+        column![title, Space::new().height(SPACER_SIZE_MEDIUM),].spacing(ELEMENT_SPACING);
 
     // Server name
     if let Some(name) = &data.name {
         let label = shaped_text(t("label-server-name")).size(TEXT_SIZE);
         let value = shaped_text(name.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
@@ -52,7 +52,7 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     {
         let label = shaped_text(t("label-server-description")).size(TEXT_SIZE);
         let value = shaped_text(description.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
@@ -60,7 +60,7 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     if let Some(version) = &data.version {
         let label = shaped_text(t("label-server-version")).size(TEXT_SIZE);
         let value = shaped_text(version.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
@@ -70,7 +70,7 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     {
         let label = shaped_text(t("label-chat-topic")).size(TEXT_SIZE);
         let value = shaped_text(topic.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
@@ -80,7 +80,7 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     {
         let label = shaped_text(t("label-chat-topic-set-by")).size(TEXT_SIZE);
         let value = shaped_text(set_by.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
@@ -88,20 +88,20 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     if let Some(max_conn) = data.max_connections_per_ip {
         let label = shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE);
         let value = shaped_text(max_conn.to_string()).size(TEXT_SIZE);
-        let info_row = row![label, Space::with_width(ELEMENT_SPACING), value].align_y(Center);
+        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }
 
     // Close button (primary style since it's the default action)
     let buttons = row![
-        Space::with_width(Fill),
+        Space::new().width(Fill),
         button(shaped_text(t("button-close")).size(TEXT_SIZE))
             .on_press(Message::CloseServerInfo)
             .padding(BUTTON_PADDING),
     ]
     .spacing(ELEMENT_SPACING);
 
-    content = content.push(Space::with_height(SPACER_SIZE_MEDIUM));
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
     content = content.push(buttons);
 
     let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);

@@ -137,34 +137,43 @@ async fn register_connection(
 /// Creates a subscription stream that receives messages from the server
 /// for a specific connection. When the connection closes, sends a NetworkError
 /// message and ends the stream.
-pub fn network_stream(connection_id: usize) -> impl Stream<Item = Message> {
-    stream::channel(STREAM_CHANNEL_SIZE, move |mut output| async move {
-        // Get the receiver from the registry
-        let mut rx = {
-            let mut receivers = NETWORK_RECEIVERS.lock().await;
-            receivers.remove(&connection_id)
-        };
+///
+/// Takes a reference to connection_id for compatibility with Subscription::run_with.
+/// Returns a boxed stream to allow use as a function pointer.
+pub fn network_stream(
+    connection_id: &usize,
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send>> {
+    let connection_id = *connection_id;
+    Box::pin(stream::channel(
+        STREAM_CHANNEL_SIZE,
+        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            // Get the receiver from the registry
+            let mut rx = {
+                let mut receivers = NETWORK_RECEIVERS.lock().await;
+                receivers.remove(&connection_id)
+            };
 
-        if let Some(ref mut receiver) = rx {
-            while let Some((message_id, msg)) = receiver.recv().await {
-                let _ = output
-                    .send(Message::ServerMessageReceived(
-                        connection_id,
-                        message_id,
-                        msg,
-                    ))
-                    .await;
+            if let Some(ref mut receiver) = rx {
+                while let Some((message_id, msg)) = receiver.recv().await {
+                    let _ = output
+                        .send(Message::ServerMessageReceived(
+                            connection_id,
+                            message_id,
+                            msg,
+                        ))
+                        .await;
+                }
             }
-        }
 
-        // Connection closed - send error and end stream naturally
-        let _ = output
-            .send(Message::NetworkError(
-                connection_id,
-                t("err-connection-closed"),
-            ))
-            .await;
+            // Connection closed - send error and end stream naturally
+            let _ = output
+                .send(Message::NetworkError(
+                    connection_id,
+                    t("err-connection-closed"),
+                ))
+                .await;
 
-        // Stream ends naturally here, allowing Iced to clean up the subscription
-    })
+            // Stream ends naturally here, allowing Iced to clean up the subscription
+        },
+    ))
 }

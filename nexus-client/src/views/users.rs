@@ -11,7 +11,7 @@ use crate::types::{
     ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
 };
 use iced::widget::button as btn;
-use iced::widget::{Column, Space, button, checkbox, container, row, text, text_input};
+use iced::widget::{Column, Id, Space, button, checkbox, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -20,7 +20,7 @@ use iced::{Center, Element, Fill};
 
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
-    container(Space::new(Fill, Fill))
+    container(Space::new().width(Fill).height(Fill))
         .width(Fill)
         .height(Fill)
         .style(content_background_style)
@@ -56,13 +56,15 @@ where
 
         let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission) {
             // Can toggle permissions they have
-            checkbox(display_name, *enabled)
+            checkbox(*enabled)
+                .label(display_name)
                 .on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
                 .size(TEXT_SIZE)
                 .text_shaping(text::Shaping::Advanced)
         } else {
             // Cannot toggle permissions they don't have
-            checkbox(display_name, *enabled)
+            checkbox(*enabled)
+                .label(display_name)
                 .size(TEXT_SIZE)
                 .text_shaping(text::Shaping::Advanced)
         };
@@ -108,36 +110,40 @@ fn add_user_view<'a>(
     let username_input = text_input(&t("placeholder-username"), &user_management.username)
         .on_input(Message::AdminUsernameChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::AdminUsername))
+        .id(Id::from(InputId::AdminUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password"), &user_management.password)
         .on_input(Message::AdminPasswordChanged)
         .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::AdminPassword))
+        .id(Id::from(InputId::AdminPassword))
         .secure(true)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let admin_checkbox = if conn.is_admin {
-        checkbox(t("label-admin"), user_management.is_admin)
+        checkbox(user_management.is_admin)
+            .label(t("label-admin"))
             .on_toggle(Message::AdminIsAdminToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(t("label-admin"), user_management.is_admin)
+        checkbox(user_management.is_admin)
+            .label(t("label-admin"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
 
     let enabled_checkbox = if conn.is_admin {
-        checkbox(t("label-enabled"), user_management.enabled)
+        checkbox(user_management.enabled)
+            .label(t("label-enabled"))
             .on_toggle(Message::AdminEnabledToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(t("label-enabled"), user_management.enabled)
+        checkbox(user_management.enabled)
+            .label(t("label-enabled"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
@@ -174,9 +180,9 @@ fn add_user_view<'a>(
                 .style(error_text_style)
                 .into(),
         );
-        create_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        create_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        create_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        create_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     create_items.extend([
@@ -184,11 +190,11 @@ fn add_user_view<'a>(
         password_input.into(),
         admin_checkbox.into(),
         enabled_checkbox.into(),
-        Space::with_height(SPACER_SIZE_SMALL).into(),
+        Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::with_width(Fill), cancel_button, create_button]
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        row![Space::new().width(Fill), cancel_button, create_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);
@@ -230,7 +236,7 @@ fn select_user_view<'a>(
     let username_input = text_input(&t("placeholder-username"), username)
         .on_input(Message::EditUsernameChanged)
         .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::EditUsername))
+        .id(Id::from(InputId::EditUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
@@ -270,16 +276,16 @@ fn select_user_view<'a>(
                 .style(error_text_style)
                 .into(),
         );
-        edit_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        edit_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        edit_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        edit_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     edit_items.extend([
         username_input.into(),
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
         row![
-            Space::with_width(Fill),
+            Space::new().width(Fill),
             cancel_button,
             delete_button,
             edit_button
@@ -342,36 +348,40 @@ fn update_user_view<'a>(
     let username_input = text_input(&t("placeholder-username"), new_username)
         .on_input(Message::EditNewUsernameChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::EditNewUsername))
+        .id(Id::from(InputId::EditNewUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password-keep-current"), new_password)
         .on_input(Message::EditNewPasswordChanged)
         .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::EditNewPassword))
+        .id(Id::from(InputId::EditNewPassword))
         .secure(true)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let admin_checkbox = if conn.is_admin {
-        checkbox(t("label-admin"), is_admin)
+        checkbox(is_admin)
+            .label(t("label-admin"))
             .on_toggle(Message::EditIsAdminToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(t("label-admin"), is_admin)
+        checkbox(is_admin)
+            .label(t("label-admin"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
 
     let enabled_checkbox = if conn.is_admin {
-        checkbox(t("label-enabled"), enabled)
+        checkbox(enabled)
+            .label(t("label-enabled"))
             .on_toggle(Message::EditEnabledToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(t("label-enabled"), enabled)
+        checkbox(enabled)
+            .label(t("label-enabled"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
@@ -405,9 +415,9 @@ fn update_user_view<'a>(
                 .style(error_text_style)
                 .into(),
         );
-        update_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        update_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        update_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        update_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     update_items.extend([
@@ -415,11 +425,11 @@ fn update_user_view<'a>(
         password_input.into(),
         admin_checkbox.into(),
         enabled_checkbox.into(),
-        Space::with_height(SPACER_SIZE_SMALL).into(),
+        Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::with_width(Fill), cancel_button, update_button]
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        row![Space::new().width(Fill), cancel_button, update_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);

@@ -7,7 +7,7 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
-use iced::widget::{Space, button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Id, Space, button, checkbox, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -40,35 +40,35 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
     let server_name_input = text_input(&t("placeholder-server-name"), &form.server_name)
         .on_input(Message::ServerNameChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::ServerName))
+        .id(Id::from(InputId::ServerName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let server_address_input = text_input(&t("placeholder-server-address"), &form.server_address)
         .on_input(Message::ServerAddressChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::ServerAddress))
+        .id(Id::from(InputId::ServerAddress))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let port_input = text_input(&t("placeholder-port"), &form.port)
         .on_input(Message::PortChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::Port))
+        .id(Id::from(InputId::Port))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let username_input = text_input(&t("placeholder-username-optional"), &form.username)
         .on_input(Message::UsernameChanged)
         .on_submit(submit_action.clone())
-        .id(text_input::Id::from(InputId::Username))
+        .id(Id::from(InputId::Username))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password-optional"), &form.password)
         .on_input(Message::PasswordChanged)
         .on_submit(submit_action)
-        .id(text_input::Id::from(InputId::Password))
+        .id(Id::from(InputId::Password))
         .secure(true)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
@@ -93,9 +93,9 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
                 .style(error_text_style)
                 .into(),
         );
-        column_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        column_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        column_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        column_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     column_items.extend([
@@ -104,14 +104,15 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         port_input.into(),
         username_input.into(),
         password_input.into(),
-        Space::with_height(SPACER_SIZE_SMALL).into(),
-        checkbox(t("label-add-bookmark"), form.add_bookmark)
+        Space::new().height(SPACER_SIZE_SMALL).into(),
+        checkbox(form.add_bookmark)
+            .label(t("label-add-bookmark"))
             .on_toggle(Message::AddBookmarkToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
             .into(),
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::with_width(Fill), connect_button]
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        row![Space::new().width(Fill), connect_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);

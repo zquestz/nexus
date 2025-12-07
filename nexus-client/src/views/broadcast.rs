@@ -8,7 +8,7 @@ use crate::style::{
 };
 use crate::types::{InputId, Message, ServerConnection};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, container, row, text_input};
+use iced::widget::{Id, Space, button, container, row, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -34,7 +34,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
     };
 
     let message_input = text_input(&t("placeholder-broadcast-message"), &conn.broadcast_message)
-        .id(text_input::Id::from(InputId::BroadcastMessage))
+        .id(Id::from(InputId::BroadcastMessage))
         .on_input(Message::BroadcastMessageChanged)
         .on_submit(submit_action)
         .padding(INPUT_PADDING)
@@ -42,7 +42,7 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .font(MONOSPACE_FONT);
 
     let buttons = row![
-        Space::with_width(Fill),
+        Space::new().width(Fill),
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelBroadcast)
             .padding(BUTTON_PADDING)
@@ -69,14 +69,14 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
                 .style(error_text_style)
                 .into(),
         );
-        form_items.push(Space::with_height(SPACER_SIZE_SMALL).into());
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        form_items.push(Space::with_height(SPACER_SIZE_MEDIUM).into());
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
     form_items.extend([
         message_input.into(),
-        Space::with_height(SPACER_SIZE_MEDIUM).into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
         buttons.into(),
     ]);
 

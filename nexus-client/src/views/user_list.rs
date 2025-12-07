@@ -67,7 +67,7 @@ fn with_tooltip<'a>(
 
 /// Create a horizontal separator line (primary color)
 fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
-    container(Space::new(Fill, SEPARATOR_HEIGHT))
+    container(Space::new().width(Fill).height(SEPARATOR_HEIGHT))
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
         .style(user_toolbar_separator_style)
@@ -139,7 +139,7 @@ fn create_user_toolbar<'a>(
     // Kick button (if not self, has permission, and target is not admin)
     if !is_self && has_user_kick_permission && !target_is_admin {
         // Add spacer to push kick button to the right
-        toolbar_row = toolbar_row.push(Space::new(Fill, SEPARATOR_HEIGHT));
+        toolbar_row = toolbar_row.push(Space::new().width(Fill).height(SEPARATOR_HEIGHT));
 
         let kick_icon = icon_container(icon::kick());
         let kick_button = enabled_icon_button(

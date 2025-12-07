@@ -29,40 +29,40 @@ pub const BOLD_FONT: Font = Font {
 // ============================================================================
 
 /// Title text size (e.g., form headers)
-pub const TITLE_SIZE: u16 = 20;
+pub const TITLE_SIZE: f32 = 20.0;
 
 /// Standard text and input field size
-pub const TEXT_SIZE: u16 = 14;
+pub const TEXT_SIZE: f32 = 14.0;
 
 /// Chat message text size
-pub const CHAT_MESSAGE_SIZE: u16 = 14;
+pub const CHAT_MESSAGE_SIZE: f32 = 14.0;
 
 /// Chat message line height (1.5x for better readability)
 pub const CHAT_LINE_HEIGHT: f32 = 1.5;
 
 /// Toolbar title text size
-pub const TOOLBAR_TITLE_SIZE: u16 = 16;
+pub const TOOLBAR_TITLE_SIZE: f32 = 16.0;
 
 /// Tooltip text size (smaller, less imposing)
-pub const TOOLTIP_TEXT_SIZE: u16 = 11;
+pub const TOOLTIP_TEXT_SIZE: f32 = 11.0;
 
 /// Empty view message text size
-pub const EMPTY_VIEW_SIZE: u16 = 16;
+pub const EMPTY_VIEW_SIZE: f32 = 16.0;
 
 /// Server list section title size
-pub const SECTION_TITLE_SIZE: u16 = 14;
+pub const SECTION_TITLE_SIZE: f32 = 14.0;
 
 /// Server list server name text size
-pub const SERVER_LIST_TEXT_SIZE: u16 = 13;
+pub const SERVER_LIST_TEXT_SIZE: f32 = 13.0;
 
 /// Server list small text size (empty states, action buttons)
-pub const SERVER_LIST_SMALL_TEXT_SIZE: u16 = 11;
+pub const SERVER_LIST_SMALL_TEXT_SIZE: f32 = 11.0;
 
 /// User list title size
-pub const USER_LIST_TITLE_SIZE: u16 = 16;
+pub const USER_LIST_TITLE_SIZE: f32 = 16.0;
 
 /// User list username text size
-pub const USER_LIST_TEXT_SIZE: u16 = 12;
+pub const USER_LIST_TEXT_SIZE: f32 = 12.0;
 
 /// User list small text size (empty states)
-pub const USER_LIST_SMALL_TEXT_SIZE: u16 = 11;
+pub const USER_LIST_SMALL_TEXT_SIZE: f32 = 11.0;

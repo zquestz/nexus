@@ -52,52 +52,47 @@ pub fn settings_view(
         .align_y(Center);
 
     // Connection notifications checkbox
-    let notifications_checkbox = checkbox(
-        t("label-show-connection-notifications"),
-        show_connection_notifications,
-    )
-    .on_toggle(Message::ConnectionNotificationsToggled)
-    .text_size(TEXT_SIZE);
+    let notifications_checkbox = checkbox(show_connection_notifications)
+        .label(t("label-show-connection-notifications"))
+        .on_toggle(Message::ConnectionNotificationsToggled)
+        .text_size(TEXT_SIZE);
 
     // Timestamp settings
-    let timestamps_checkbox = checkbox(
-        t("label-show-timestamps"),
-        timestamp_settings.show_timestamps,
-    )
-    .on_toggle(Message::ShowTimestampsToggled)
-    .text_size(TEXT_SIZE);
+    let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)
+        .label(t("label-show-timestamps"))
+        .on_toggle(Message::ShowTimestampsToggled)
+        .text_size(TEXT_SIZE);
 
     // 24-hour time checkbox (disabled if timestamps are hidden)
     let time_format_checkbox = if timestamp_settings.show_timestamps {
-        checkbox(
-            t("label-use-24-hour-time"),
-            timestamp_settings.use_24_hour_time,
-        )
-        .on_toggle(Message::Use24HourTimeToggled)
-        .text_size(TEXT_SIZE)
+        checkbox(timestamp_settings.use_24_hour_time)
+            .label(t("label-use-24-hour-time"))
+            .on_toggle(Message::Use24HourTimeToggled)
+            .text_size(TEXT_SIZE)
     } else {
-        checkbox(
-            t("label-use-24-hour-time"),
-            timestamp_settings.use_24_hour_time,
-        )
-        .text_size(TEXT_SIZE)
+        checkbox(timestamp_settings.use_24_hour_time)
+            .label(t("label-use-24-hour-time"))
+            .text_size(TEXT_SIZE)
     };
 
     // Show seconds checkbox (disabled if timestamps are hidden)
     let seconds_checkbox = if timestamp_settings.show_timestamps {
-        checkbox(t("label-show-seconds"), timestamp_settings.show_seconds)
+        checkbox(timestamp_settings.show_seconds)
+            .label(t("label-show-seconds"))
             .on_toggle(Message::ShowSecondsToggled)
             .text_size(TEXT_SIZE)
     } else {
-        checkbox(t("label-show-seconds"), timestamp_settings.show_seconds).text_size(TEXT_SIZE)
+        checkbox(timestamp_settings.show_seconds)
+            .label(t("label-show-seconds"))
+            .text_size(TEXT_SIZE)
     };
 
     // Indent the dependent timestamp options
-    let time_format_row = row![Space::with_width(20), time_format_checkbox];
-    let seconds_row = row![Space::with_width(20), seconds_checkbox];
+    let time_format_row = row![Space::new().width(20), time_format_checkbox];
+    let seconds_row = row![Space::new().width(20), seconds_checkbox];
 
     let buttons = row![
-        Space::with_width(Fill),
+        Space::new().width(Fill),
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelSettings)
             .padding(BUTTON_PADDING)
@@ -110,14 +105,14 @@ pub fn settings_view(
 
     let form = column![
         title,
-        Space::with_height(SPACER_SIZE_MEDIUM),
+        Space::new().height(SPACER_SIZE_MEDIUM),
         theme_row,
         font_size_row,
         notifications_checkbox,
         timestamps_checkbox,
         time_format_row,
         seconds_row,
-        Space::with_height(SPACER_SIZE_MEDIUM),
+        Space::new().height(SPACER_SIZE_MEDIUM),
         buttons,
     ]
     .spacing(ELEMENT_SPACING)

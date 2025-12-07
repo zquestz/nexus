@@ -8,7 +8,7 @@ use crate::types::{
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
-use iced::widget::text_input;
+use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::UnboundedSender;
@@ -89,7 +89,7 @@ impl NexusApp {
                 // Clear connection form
                 self.connection_form.clear();
 
-                text_input::focus(text_input::Id::from(InputId::ChatInput))
+                operation::focus(Id::from(InputId::ChatInput))
             }
             Err(error) => {
                 self.connection_form.error = Some(error);
@@ -159,7 +159,7 @@ impl NexusApp {
                 // Add chat topic message if present
                 self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
 
-                text_input::focus(text_input::Id::from(InputId::ChatInput))
+                operation::focus(Id::from(InputId::ChatInput))
             }
             Err(error) => {
                 if let Some(idx) = bookmark_index {

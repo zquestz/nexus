@@ -5,7 +5,7 @@ use crate::config::{CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
 use iced::Task;
-use iced::widget::text_input;
+use iced::widget::{Id, markdown, operation};
 
 impl NexusApp {
     // ==================== About ====================
@@ -23,6 +23,12 @@ impl NexusApp {
     /// Close About panel
     pub fn handle_close_about(&mut self) -> Task<Message> {
         self.handle_show_chat_view()
+    }
+
+    /// Open a URL in the default browser
+    pub fn handle_open_url(&mut self, url: markdown::Uri) -> Task<Message> {
+        let _ = open::that(url.as_str());
+        Task::none()
     }
 
     // ==================== Server Info ====================
@@ -95,7 +101,7 @@ impl NexusApp {
 
         conn.user_management.clear_add_user();
         self.focused_field = InputId::AdminUsername;
-        text_input::focus(text_input::Id::from(InputId::AdminUsername))
+        operation::focus(Id::from(InputId::AdminUsername))
     }
 
     /// Show Edit User panel (does nothing if already shown)
@@ -115,7 +121,7 @@ impl NexusApp {
 
         conn.user_management.start_editing();
         self.focused_field = InputId::EditUsername;
-        text_input::focus(text_input::Id::from(InputId::EditUsername))
+        operation::focus(Id::from(InputId::EditUsername))
     }
 
     // ==================== Sidebar Toggles ====================

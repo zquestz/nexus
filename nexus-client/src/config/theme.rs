@@ -11,9 +11,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// Theme preference wrapper that enables serialization of iced::Theme
 ///
 /// Serializes as the theme's display name (e.g., "Catppuccin Frappé").
-/// Defaults to system theme, falls back to Dark on deserialization failure.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// Defaults to Dark theme, falls back to Dark on deserialization failure.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ThemePreference(pub Theme);
+
+impl Default for ThemePreference {
+    fn default() -> Self {
+        Self(Theme::Dark)
+    }
+}
 
 impl ThemePreference {
     /// Get the inner iced Theme
@@ -82,9 +88,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_matches_system() {
-        // Default should match system theme (Theme::default())
-        assert_eq!(ThemePreference::default().0, Theme::default());
+    fn test_default_is_dark() {
+        // Default should be Dark theme
+        assert_eq!(ThemePreference::default().0, Theme::Dark);
     }
 
     #[test]

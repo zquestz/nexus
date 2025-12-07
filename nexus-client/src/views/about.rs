@@ -7,23 +7,23 @@ use crate::style::{
 };
 use crate::types::Message;
 use iced::widget::{Space, button, column, container, row, svg};
-use iced::{Center, Element, Fill};
+use iced::{Center, Element, Fill, Theme};
 
 /// App icon SVG bytes (embedded at compile time)
 const APP_ICON_SVG: &[u8] = include_bytes!("../../assets/linux/nexus.svg");
 
 /// App icon size in pixels
-const APP_ICON_SIZE: u16 = 128;
+const APP_ICON_SIZE: f32 = 128.0;
 
 /// Render the about panel
 ///
 /// Displays app icon, name, version, and copyright.
-pub fn about_view() -> Element<'static, Message> {
+pub fn about_view(_theme: Theme) -> Element<'static, Message> {
     // App icon (SVG)
     let app_icon = svg(svg::Handle::from_memory(APP_ICON_SVG))
         .width(APP_ICON_SIZE)
         .height(APP_ICON_SIZE);
-    let icon_row = row![Space::with_width(Fill), app_icon, Space::with_width(Fill)];
+    let icon_row = row![Space::new().width(Fill), app_icon, Space::new().width(Fill)];
 
     // App name
     let app_name = shaped_text(t("about-app-name"))
@@ -45,7 +45,7 @@ pub fn about_view() -> Element<'static, Message> {
 
     // Close button (primary style since it's the default action)
     let buttons = row![
-        Space::with_width(Fill),
+        Space::new().width(Fill),
         button(shaped_text(t("button-close")).size(TEXT_SIZE))
             .on_press(Message::CloseAbout)
             .padding(BUTTON_PADDING),
@@ -56,9 +56,9 @@ pub fn about_view() -> Element<'static, Message> {
         icon_row,
         app_name,
         version,
-        Space::with_height(SPACER_SIZE_MEDIUM),
+        Space::new().height(SPACER_SIZE_MEDIUM),
         copyright,
-        Space::with_height(SPACER_SIZE_MEDIUM),
+        Space::new().height(SPACER_SIZE_MEDIUM),
         buttons,
     ]
     .spacing(ELEMENT_SPACING)
