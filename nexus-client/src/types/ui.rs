@@ -8,6 +8,8 @@ pub enum ActivePanel {
     /// No panel active (show chat)
     #[default]
     None,
+    /// About panel
+    About,
     /// Add User panel
     AddUser,
     /// Edit User panel

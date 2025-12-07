@@ -147,8 +147,12 @@ pub enum Message {
     ToggleSettings,
     /// Settings panel: Theme selected from picker
     ThemeSelected(Theme),
+    /// About panel: Close button pressed
+    CloseAbout,
     /// Server info panel: Close button pressed
     CloseServerInfo,
+    /// Toolbar: Show About panel
+    ShowAbout,
     /// Toolbar: Show Server Info panel
     ShowServerInfo,
     /// Settings panel: Use 24-hour time format toggled

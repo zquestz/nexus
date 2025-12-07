@@ -99,6 +99,9 @@ impl NexusApp {
                         return self.update(Message::SendBroadcastPressed);
                     }
                 }
+            } else if self.ui_state.active_panel == ActivePanel::About {
+                // On about screen, close the panel
+                return self.update(Message::CloseAbout);
             } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
                 // On server info screen, close the panel
                 return self.update(Message::CloseServerInfo);
@@ -125,6 +128,7 @@ impl NexusApp {
             } else {
                 // Cancel active panel
                 match self.ui_state.active_panel {
+                    ActivePanel::About => return self.update(Message::CloseAbout),
                     ActivePanel::AddUser => return self.update(Message::CancelAddUser),
                     ActivePanel::EditUser => return self.update(Message::CancelEditUser),
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),

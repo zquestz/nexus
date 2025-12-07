@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 8892eba9cc3dfa6abd0f63a53764580254aec05e2b96714addec76ef11624f93
+// 529b9b57319ec621009bf0349e9d83aafdab5e4dc165e683d723b66bf70ccb84
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -32,6 +32,10 @@ pub fn expand_right<'a>() -> Text<'a> {
 
 pub fn info<'a>() -> Text<'a> {
     icon("\u{F129}")
+}
+
+pub fn info_circled<'a>() -> Text<'a> {
+    icon("\u{E705}")
 }
 
 pub fn kick<'a>() -> Text<'a> {

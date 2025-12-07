@@ -8,6 +8,23 @@ use iced::Task;
 use iced::widget::text_input;
 
 impl NexusApp {
+    // ==================== About ====================
+
+    /// Show About panel (does nothing if already shown)
+    pub fn handle_show_about(&mut self) -> Task<Message> {
+        if self.ui_state.active_panel == ActivePanel::About {
+            return Task::none();
+        }
+
+        self.ui_state.active_panel = ActivePanel::About;
+        Task::none()
+    }
+
+    /// Close About panel
+    pub fn handle_close_about(&mut self) -> Task<Message> {
+        self.handle_show_chat_view()
+    }
+
     // ==================== Server Info ====================
 
     /// Show Server Info panel

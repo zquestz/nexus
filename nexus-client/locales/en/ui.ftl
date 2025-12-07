@@ -33,6 +33,7 @@ title-bookmarks = Bookmarks
 title-users = Users
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
+title-about = About
 
 # =============================================================================
 # Placeholders
@@ -100,6 +101,7 @@ tooltip-broadcast = Broadcast
 tooltip-user-create = User Create
 tooltip-user-edit = User Edit
 tooltip-server-info = Server Info
+tooltip-about = About
 tooltip-settings = Settings
 tooltip-hide-bookmarks = Hide Bookmarks
 tooltip-show-bookmarks = Show Bookmarks
@@ -334,3 +336,10 @@ cmd-serverinfo-desc = Show server information
 cmd-serverinfo-usage = Usage: /{ $command }
 cmd-serverinfo-header = [server]
 cmd-serverinfo-end = End of server info
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

@@ -1,5 +1,6 @@
 //! UI view rendering components
 
+mod about;
 mod bookmark;
 mod broadcast;
 mod chat;

@@ -35,6 +35,7 @@ fn separator<'a>() -> Element<'a, Message> {
 }
 
 use super::{
+    about::about_view,
     bookmark::bookmark_edit_view,
     broadcast::broadcast_view,
     chat::{TimestampSettings, chat_view},
@@ -332,6 +333,18 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
             container(shaped_text("")).width(Fill),
             // Collapse buttons group (with theme toggle)
             row![
+                // About button
+                tooltip(
+                    button(icon::info_circled().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ShowAbout)
+                        .style(toolbar_button_style(active_panel == ActivePanel::About)),
+                    container(shaped_text(t("tooltip-about")).size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(tooltip_container_style),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING),
                 // Settings button
                 tooltip(
                     button(icon::cog().size(TOOLBAR_ICON_SIZE))
@@ -455,6 +468,7 @@ fn server_content_view<'a>(
 
     // Overlay panels on top when active
     match active_panel {
+        ActivePanel::About => stack![chat, about_view()].width(Fill).height(Fill).into(),
         ActivePanel::Broadcast => stack![chat, broadcast_view(conn)]
             .width(Fill)
             .height(Fill)
