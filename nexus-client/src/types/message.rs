@@ -149,7 +149,6 @@ pub enum Message {
     /// Settings panel: Theme selected from picker
     ThemeSelected(Theme),
     /// About panel: URL link clicked
-    #[allow(dead_code)]
     OpenUrl(markdown::Uri),
     /// About panel: Close button pressed
     CloseAbout,
