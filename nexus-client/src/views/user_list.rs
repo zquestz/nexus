@@ -6,15 +6,17 @@ use crate::icon;
 use crate::style::{
     FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
     SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
-    USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
-    alternating_row_style, chat, disabled_icon_button_style, icon_button_with_hover_style,
-    muted_text_style, shaped_text, sidebar_panel_style, tooltip_container_style, ui,
-    user_list_item_button_style, user_toolbar_separator_style,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING,
+    USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH, USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING,
+    USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE, alternating_row_style, chat,
+    disabled_icon_button_style, icon_button_with_hover_style, muted_text_style, shaped_text,
+    sidebar_panel_style, tooltip_container_style, ui, user_list_item_button_style,
+    user_toolbar_separator_style,
 };
 use crate::types::{Message, ServerConnection};
+use crate::user_avatar::generate_identicon;
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Center, Color, Element, Fill, Theme};
 
 // ============================================================================
 // Helper Functions
@@ -188,28 +190,52 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
             let is_expanded = conn.expanded_user.as_ref() == Some(&user.username);
             let is_even = index % 2 == 0;
 
-            // Username button
+            // Username button with avatar
             let user_is_admin = user.is_admin;
             let username_clone = user.username.clone();
 
-            let user_button = button(
-                container(shaped_text(&user.username).size(USER_LIST_TEXT_SIZE))
-                    .width(Fill)
-                    .align_x(iced::alignment::Horizontal::Left),
+            // Get cached avatar (should already be populated by handlers)
+            let avatar_element: Element<'_, Message> =
+                if let Some(cached_avatar) = conn.avatar_cache.get(&user.username) {
+                    cached_avatar.render(USER_LIST_AVATAR_SIZE)
+                } else {
+                    // Fallback: generate identicon if not in cache (shouldn't happen normally)
+                    generate_identicon(&user.username).render(USER_LIST_AVATAR_SIZE)
+                };
+
+            // Row with avatar and username
+            let user_row = row![
+                avatar_element,
+                shaped_text(&user.username).size(USER_LIST_TEXT_SIZE),
+            ]
+            .spacing(USER_LIST_AVATAR_SPACING)
+            .align_y(Center);
+
+            let user_button = button(container(user_row).width(Fill))
+                .on_press(Message::UserListItemClicked(username_clone))
+                .width(Fill)
+                .padding(INPUT_PADDING)
+                .style(user_list_item_button_style(
+                    user_is_admin,
+                    chat::admin(theme),
+                ));
+
+            // Wrap button in tooltip showing full username (useful when truncated)
+            let user_button_with_tooltip = tooltip(
+                user_button,
+                container(shaped_text(&user.username).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Left,
             )
-            .on_press(Message::UserListItemClicked(username_clone))
-            .width(Fill)
-            .padding(INPUT_PADDING)
-            .style(user_list_item_button_style(
-                user_is_admin,
-                chat::admin(theme),
-            ));
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
 
             // Create item column (username + optional toolbar)
             let mut item_column = Column::new().spacing(NO_SPACING);
 
-            // Username button
-            item_column = item_column.push(user_button);
+            // Username button with tooltip
+            item_column = item_column.push(user_button_with_tooltip);
 
             // Add toolbar if expanded
             if is_expanded {

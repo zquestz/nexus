@@ -4,6 +4,9 @@
 //! - `CachedAvatar` - Cached image/SVG handle for stable rendering
 //! - `generate_identicon()` - Generate identicon from username
 //! - `decode_data_uri()` - Decode data URI to cached handle
+//! - `get_or_create_avatar()` - Get cached avatar or create one
+
+use std::collections::HashMap;
 
 use iced::Element;
 use iced::widget::{image, svg};
@@ -23,6 +26,16 @@ pub enum CachedAvatar {
     Image(image::Handle),
     /// SVG image
     Svg(svg::Handle),
+}
+
+// Manual Debug implementation since Iced handles don't implement Debug
+impl std::fmt::Debug for CachedAvatar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CachedAvatar::Image(_) => f.debug_tuple("Image").field(&"<handle>").finish(),
+            CachedAvatar::Svg(_) => f.debug_tuple("Svg").field(&"<handle>").finish(),
+        }
+    }
 }
 
 impl CachedAvatar {
@@ -58,6 +71,34 @@ pub fn generate_identicon(seed: &str) -> CachedAvatar {
         .export_png_data()
         .expect("Identicon PNG generation from string seed should not fail");
     CachedAvatar::Image(image::Handle::from_bytes(png_data))
+}
+
+/// Get or create a cached avatar for a user
+///
+/// This function manages the avatar cache:
+/// - If the user's avatar is already cached, returns a clone
+/// - If the user has a custom avatar (data URI), decodes and caches it
+/// - If decoding fails or no avatar, generates and caches an identicon
+///
+/// The cache key is the username (case-sensitive, matching server behavior).
+pub fn get_or_create_avatar(
+    cache: &mut HashMap<String, CachedAvatar>,
+    username: &str,
+    avatar_data_uri: Option<&str>,
+) -> CachedAvatar {
+    // Check if already cached
+    if let Some(cached) = cache.get(username) {
+        return cached.clone();
+    }
+
+    // Try to decode custom avatar, fall back to identicon
+    let avatar = avatar_data_uri
+        .and_then(decode_data_uri)
+        .unwrap_or_else(|| generate_identicon(username));
+
+    // Cache and return
+    cache.insert(username.to_string(), avatar.clone());
+    avatar
 }
 
 /// Decode a data URI into a cached avatar
@@ -211,6 +252,76 @@ mod tests {
         // Unicode characters should work
         let handle = generate_identicon("日本語ユーザー");
         assert!(matches!(handle, CachedAvatar::Image(_)));
+    }
+
+    // =========================================================================
+    // get_or_create_avatar tests
+    // =========================================================================
+
+    #[test]
+    fn test_get_or_create_avatar_no_avatar_generates_identicon() {
+        let mut cache = HashMap::new();
+        let avatar = get_or_create_avatar(&mut cache, "testuser", None);
+        assert!(matches!(avatar, CachedAvatar::Image(_)));
+        assert!(cache.contains_key("testuser"));
+    }
+
+    #[test]
+    fn test_get_or_create_avatar_caches_result() {
+        let mut cache = HashMap::new();
+
+        // First call creates and caches
+        let _avatar1 = get_or_create_avatar(&mut cache, "alice", None);
+        assert_eq!(cache.len(), 1);
+
+        // Second call returns cached (doesn't add new entry)
+        let _avatar2 = get_or_create_avatar(&mut cache, "alice", None);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn test_get_or_create_avatar_different_users() {
+        let mut cache = HashMap::new();
+
+        get_or_create_avatar(&mut cache, "alice", None);
+        get_or_create_avatar(&mut cache, "bob", None);
+
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains_key("alice"));
+        assert!(cache.contains_key("bob"));
+    }
+
+    #[test]
+    fn test_get_or_create_avatar_with_valid_png() {
+        use base64::Engine;
+
+        let mut cache = HashMap::new();
+
+        // Create a minimal valid PNG
+        let png_bytes: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+            0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
+            0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D,
+            0xB4, 0x00, // IEND chunk
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(png_bytes);
+        let data_uri = format!("data:image/png;base64,{}", base64_data);
+
+        let avatar = get_or_create_avatar(&mut cache, "alice", Some(&data_uri));
+        assert!(matches!(avatar, CachedAvatar::Image(_)));
+    }
+
+    #[test]
+    fn test_get_or_create_avatar_invalid_uri_falls_back_to_identicon() {
+        let mut cache = HashMap::new();
+
+        // Invalid data URI should fall back to identicon
+        let avatar = get_or_create_avatar(&mut cache, "alice", Some("not-a-valid-data-uri"));
+        assert!(matches!(avatar, CachedAvatar::Image(_)));
+        assert!(cache.contains_key("alice"));
     }
 
     // =========================================================================

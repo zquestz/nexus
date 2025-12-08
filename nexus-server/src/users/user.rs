@@ -21,6 +21,8 @@ pub struct NewSessionParams {
     pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub features: Vec<String>,
     pub locale: String,
+    /// User's avatar as a data URI (ephemeral, not stored in DB)
+    pub avatar: Option<String>,
 }
 
 /// Represents a logged-in user session
@@ -52,6 +54,8 @@ pub struct UserSession {
     pub features: Vec<String>,
     /// User's preferred locale (e.g., "en", "en-US", "zh-CN")
     pub locale: String,
+    /// User's avatar as a data URI (ephemeral, not stored in DB)
+    pub avatar: Option<String>,
 }
 
 impl UserSession {
@@ -69,6 +73,7 @@ impl UserSession {
             tx: params.tx,
             features: params.features,
             locale: params.locale,
+            avatar: params.avatar,
         }
     }
 

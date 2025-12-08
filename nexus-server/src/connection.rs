@@ -196,17 +196,17 @@ where
             password,
             features,
             locale,
+            avatar,
         } => {
-            handlers::handle_login(
+            let request = handlers::LoginRequest {
                 username,
                 password,
                 features,
-                locale.clone(),
-                conn_state.handshake_complete,
-                &mut conn_state.session_id,
-                ctx,
-            )
-            .await?;
+                locale: locale.clone(),
+                avatar,
+                handshake_complete: conn_state.handshake_complete,
+            };
+            handlers::handle_login(request, &mut conn_state.session_id, ctx).await?;
 
             // Update connection locale after successful login
             conn_state.locale = locale;

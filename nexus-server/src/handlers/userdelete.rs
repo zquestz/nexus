@@ -423,6 +423,7 @@ mod tests {
                 tx: online_tx,
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 

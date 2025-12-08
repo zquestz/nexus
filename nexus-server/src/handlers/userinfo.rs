@@ -115,6 +115,12 @@ where
     }
     let features: Vec<String> = all_features.into_iter().collect();
 
+    // Get avatar from most recent login session ("latest login wins")
+    let avatar = target_sessions
+        .iter()
+        .max_by_key(|s| s.login_time)
+        .and_then(|s| s.avatar.clone());
+
     // Collect IP addresses from all sessions (for admins only)
     let addresses: Vec<String> = target_sessions
         .iter()
@@ -136,6 +142,7 @@ where
             features,
             created_at: target_account.created_at,
             locale,
+            avatar,
             is_admin: Some(target_account.is_admin),
             addresses: Some(addresses),
         }
@@ -148,6 +155,7 @@ where
             features,
             created_at: target_account.created_at,
             locale,
+            avatar,
             is_admin: Some(target_account.is_admin),
             addresses: None,
         }
@@ -208,6 +216,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -261,6 +270,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -346,6 +356,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -363,6 +374,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -455,6 +467,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -472,6 +485,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -567,6 +581,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -584,6 +599,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -671,6 +687,197 @@ mod tests {
                 assert_eq!(user_info.username, "Alice");
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
+        }
+    }
+
+    // =========================================================================
+    // Avatar tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_userinfo_includes_avatar() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user with avatar
+        let password = "password";
+        let hashed = crate::db::hash_password(password).unwrap();
+        let account = test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                true,
+                &crate::db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
+
+        // Add session with avatar
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 100,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: std::collections::HashSet::new(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(avatar_data.clone()),
+            })
+            .await;
+
+        // Request user info
+        let result = handle_userinfo(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { user, .. } => {
+                let user_info = user.unwrap();
+                assert_eq!(
+                    user_info.avatar,
+                    Some(avatar_data),
+                    "Avatar should be included"
+                );
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_avatar_latest_login_wins() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user
+        let password = "password";
+        let hashed = crate::db::hash_password(password).unwrap();
+        let account = test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                true,
+                &crate::db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        let old_avatar = "data:image/png;base64,OLD_AVATAR".to_string();
+        let new_avatar = "data:image/png;base64,NEW_AVATAR".to_string();
+
+        // Add first session with old avatar
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 100,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: std::collections::HashSet::new(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(old_avatar),
+            })
+            .await;
+
+        // Delay of 1.1 seconds to ensure different login timestamps (timestamps are in seconds)
+        tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
+
+        // Add second session with new avatar (later login time)
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 101,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: std::collections::HashSet::new(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(new_avatar.clone()),
+            })
+            .await;
+
+        // Request user info
+        let result = handle_userinfo(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { user, .. } => {
+                let user_info = user.unwrap();
+                assert_eq!(user_info.session_ids.len(), 2, "Should have 2 sessions");
+                assert_eq!(
+                    user_info.avatar,
+                    Some(new_avatar),
+                    "Avatar should be from latest login"
+                );
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_no_avatar() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user without avatar
+        let _target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // Request user info
+        let result = handle_userinfo(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { user, .. } => {
+                let user_info = user.unwrap();
+                assert_eq!(user_info.avatar, None, "Avatar should be None");
+            }
+            _ => panic!("Expected UserInfoResponse"),
         }
     }
 }

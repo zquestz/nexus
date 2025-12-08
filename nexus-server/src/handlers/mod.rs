@@ -23,7 +23,7 @@ pub use chat::handle_chat_send;
 pub use chattopicupdate::handle_chattopicupdate;
 pub use errors::*;
 pub use handshake::handle_handshake;
-pub use login::handle_login;
+pub use login::{LoginRequest, handle_login};
 pub use usercreate::handle_usercreate;
 pub use userdelete::handle_userdelete;
 pub use useredit::handle_useredit;

@@ -159,4 +159,6 @@ pub struct UserInfo {
     pub is_admin: bool,
     /// All active session IDs for this user
     pub session_ids: Vec<u32>,
+    /// User's avatar as a data URI (None = use identicon)
+    pub avatar: Option<String>,
 }

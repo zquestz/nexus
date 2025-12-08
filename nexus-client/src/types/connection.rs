@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 use super::{ChatMessage, ChatTab, ScrollState, UserInfo, UserManagementState};
+use crate::user_avatar::CachedAvatar;
 
 /// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
 type WrappedShutdownHandle =
@@ -78,6 +79,8 @@ pub struct ServerConnection {
     pub user_management: UserManagementState,
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
+    /// Cached avatar handles for rendering (prevents flickering)
+    pub avatar_cache: HashMap<String, CachedAvatar>,
 }
 
 /// Network connection handle returned by connect_to_server()

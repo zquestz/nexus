@@ -33,6 +33,9 @@ pub enum ClientMessage {
         features: Vec<String>,
         #[serde(default = "default_locale")]
         locale: String,
+        /// User's avatar as a data URI (e.g., "data:image/png;base64,...")
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        avatar: Option<String>,
     },
     /// Broadcast a message to all connected users
     UserBroadcast { message: String },
@@ -246,6 +249,9 @@ pub struct UserInfo {
     pub is_admin: bool,
     pub session_ids: Vec<u32>,
     pub locale: String,
+    /// User's avatar as a data URI (ephemeral, from most recent login)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 /// Detailed information about a user (for UserInfo command)
@@ -259,6 +265,9 @@ pub struct UserInfoDetailed {
     pub created_at: i64,
     /// User's preferred locale
     pub locale: String,
+    /// User's avatar as a data URI (ephemeral, from most recent login)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
     /// Only included for admins viewing the info
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_admin: Option<bool>,
@@ -288,12 +297,23 @@ impl std::fmt::Debug for ClientMessage {
                 password: _,
                 features,
                 locale,
+                avatar,
             } => f
                 .debug_struct("Login")
                 .field("username", username)
                 .field("password", &"<REDACTED>")
                 .field("features", features)
                 .field("locale", locale)
+                .field(
+                    "avatar",
+                    &avatar.as_ref().map(|a| {
+                        if a.len() > 50 {
+                            format!("{}...<{} bytes>", &a[..50], a.len())
+                        } else {
+                            a.clone()
+                        }
+                    }),
+                )
                 .finish(),
             ClientMessage::UserBroadcast { message } => f
                 .debug_struct("UserBroadcast")
@@ -367,12 +387,15 @@ mod tests {
             password: "secret".to_string(),
             features: vec!["chat".to_string()],
             locale: "en".to_string(),
+            avatar: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"Login\""));
         assert!(json.contains("\"username\":\"alice\""));
         assert!(json.contains("\"features\""));
         assert!(json.contains("\"locale\":\"en\""));
+        // avatar is None so should not be serialized
+        assert!(!json.contains("\"avatar\""));
     }
 
     #[test]
@@ -385,11 +408,13 @@ mod tests {
                 password,
                 features,
                 locale,
+                avatar,
             } => {
                 assert_eq!(username, "alice");
                 assert_eq!(password, "secret");
                 assert_eq!(features, vec!["chat".to_string()]);
                 assert_eq!(locale, "en"); // Default locale
+                assert!(avatar.is_none()); // Default avatar
             }
             _ => panic!("Expected Login message"),
         }
@@ -402,6 +427,7 @@ mod tests {
             password: "super_secret_password".to_string(),
             features: vec!["chat".to_string()],
             locale: "en".to_string(),
+            avatar: None,
         };
         let debug_output = format!("{:?}", msg);
 
@@ -484,5 +510,106 @@ mod tests {
         assert!(json.contains("\"is_admin\":false"));
         assert!(json.contains("\"user_list\""));
         assert!(json.contains("\"chat_send\""));
+    }
+
+    // =========================================================================
+    // Avatar serialization tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize_login_with_avatar() {
+        let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        let msg = ClientMessage::Login {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            features: vec!["chat".to_string()],
+            locale: "en".to_string(),
+            avatar: Some(avatar_data.clone()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"avatar\""));
+        assert!(json.contains(&avatar_data));
+    }
+
+    #[test]
+    fn test_deserialize_login_with_avatar() {
+        let json = r#"{"type":"Login","username":"alice","password":"secret","features":["chat"],"locale":"en","avatar":"data:image/png;base64,abc123"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::Login { avatar, .. } => {
+                assert_eq!(avatar, Some("data:image/png;base64,abc123".to_string()));
+            }
+            _ => panic!("Expected Login message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_info_with_avatar() {
+        let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        let user_info = UserInfo {
+            username: "alice".to_string(),
+            login_time: 1234567890,
+            is_admin: false,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: Some(avatar_data.clone()),
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        assert!(json.contains("\"avatar\""));
+        assert!(json.contains(&avatar_data));
+    }
+
+    #[test]
+    fn test_serialize_user_info_without_avatar() {
+        let user_info = UserInfo {
+            username: "alice".to_string(),
+            login_time: 1234567890,
+            is_admin: false,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: None,
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        // avatar should not be in JSON when None (skip_serializing_if)
+        assert!(!json.contains("\"avatar\""));
+    }
+
+    #[test]
+    fn test_serialize_user_info_detailed_with_avatar() {
+        let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        let user_info = UserInfoDetailed {
+            username: "alice".to_string(),
+            login_time: 1234567890,
+            session_ids: vec![1, 2],
+            features: vec!["chat".to_string()],
+            created_at: 1234567800,
+            locale: "en".to_string(),
+            avatar: Some(avatar_data.clone()),
+            is_admin: Some(false),
+            addresses: None,
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        assert!(json.contains("\"avatar\""));
+        assert!(json.contains(&avatar_data));
+    }
+
+    #[test]
+    fn test_debug_login_truncates_large_avatar() {
+        // Create a large avatar string
+        let large_avatar = format!("data:image/png;base64,{}", "A".repeat(1000));
+        let msg = ClientMessage::Login {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: Some(large_avatar.clone()),
+        };
+        let debug_output = format!("{:?}", msg);
+
+        // Should truncate the avatar and show byte count
+        assert!(debug_output.contains("..."));
+        assert!(debug_output.contains("bytes"));
+        // Should NOT contain the full avatar
+        assert!(!debug_output.contains(&large_avatar));
     }
 }

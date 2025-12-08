@@ -30,6 +30,25 @@ pub fn err_authentication(locale: &str) -> String {
     t(locale, "err-authentication")
 }
 
+/// Get translated "avatar invalid format" error
+pub fn err_avatar_invalid_format(locale: &str) -> String {
+    t(locale, "err-avatar-invalid-format")
+}
+
+/// Get translated "avatar too large" error
+pub fn err_avatar_too_large(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-avatar-too-large",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "avatar unsupported type" error
+pub fn err_avatar_unsupported_type(locale: &str) -> String {
+    t(locale, "err-avatar-unsupported-type")
+}
+
 /// Get translated "broadcast too long" error
 pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
     t_args(

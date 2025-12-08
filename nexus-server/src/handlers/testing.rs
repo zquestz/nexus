@@ -150,6 +150,7 @@ pub async fn login_user_with_features(
             tx: test_ctx.tx.clone(),
             features,
             locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
         })
         .await
 }

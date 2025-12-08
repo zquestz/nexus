@@ -1,5 +1,10 @@
 # 身份驗證和會話錯誤
 err-not-logged-in = 未登入
+
+# 頭像驗證錯誤
+err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）
+err-avatar-too-large = 頭像太大（最多{ $max_length }個字元）
+err-avatar-unsupported-type = 不支援的頭像類型（僅支援PNG、WebP或SVG）
 err-authentication = 身份驗證錯誤
 err-invalid-credentials = 使用者名稱或密碼無效
 err-handshake-required = 需要握手
@@ -86,3 +91,4 @@ err-permissions-empty-permission = 權限名稱不能為空
 err-permissions-permission-too-long = 權限名稱太長（最多{ $max_length }個字元）
 err-permissions-contains-newlines = 權限名稱不能包含換行符
 err-permissions-invalid-characters = 權限名稱包含無效字元
+

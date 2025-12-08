@@ -130,8 +130,10 @@ mod tests {
 
     #[test]
     fn test_settings_with_avatar_serialization_roundtrip() {
-        let mut settings = Settings::default();
-        settings.avatar = Some("data:image/png;base64,abc123".to_string());
+        let settings = Settings {
+            avatar: Some("data:image/png;base64,abc123".to_string()),
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&settings).expect("serialize");
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");

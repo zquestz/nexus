@@ -1,13 +1,17 @@
 //! User info panel view
 
+use std::collections::HashMap;
+
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, chat, content_background_style, shaped_text,
+    TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING, chat, content_background_style,
+    shaped_text,
 };
 use crate::types::Message;
+use crate::user_avatar::{CachedAvatar, generate_identicon};
 use iced::widget::button as btn;
 use iced::widget::{Space, button, column, container, row};
 use iced::{Center, Color, Element, Fill, Theme};
@@ -19,25 +23,21 @@ use super::constants::PERMISSION_USER_EDIT;
 ///
 /// Displays user information received from the server.
 /// Shows loading state, error state, or user details depending on data.
-pub fn user_info_view(
+pub fn user_info_view<'a>(
     data: &Option<Result<UserInfoDetailed, String>>,
     theme: Theme,
     is_admin: bool,
     permissions: &[String],
     current_username: &str,
-) -> Element<'static, Message> {
+    avatar_cache: &'a HashMap<String, CachedAvatar>,
+) -> Element<'a, Message> {
     let has_edit_permission = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
-    let title = shaped_text(t("title-user-info"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
 
-    let mut content =
-        column![title, Space::new().height(SPACER_SIZE_MEDIUM),].spacing(ELEMENT_SPACING);
+    let mut content = column![].spacing(ELEMENT_SPACING);
 
     match data {
         None => {
-            // Loading state
+            // Loading state - show centered loading text
             let loading = shaped_text(t("user-info-loading"))
                 .size(TEXT_SIZE)
                 .width(Fill)
@@ -53,8 +53,8 @@ pub fn user_info_view(
             content = content.push(error_text);
         }
         Some(Ok(user)) => {
-            // User info display
-            content = build_user_info_content(content, user, &theme);
+            // User info display with avatar + username header
+            content = build_user_info_content(content, user, &theme, avatar_cache);
         }
     }
 
@@ -119,19 +119,33 @@ fn build_user_info_content<'a>(
     mut content: iced::widget::Column<'a, Message>,
     user: &UserInfoDetailed,
     theme: &Theme,
+    avatar_cache: &'a HashMap<String, CachedAvatar>,
 ) -> iced::widget::Column<'a, Message> {
-    // Username - red for admins
+    // Header row: Avatar + Username (title-sized, red for admins)
     let is_admin = user.is_admin.unwrap_or(false);
-    let username_color = if is_admin {
-        Some(chat::admin(theme))
+
+    let avatar_element: Element<'_, Message> =
+        if let Some(cached_avatar) = avatar_cache.get(&user.username) {
+            cached_avatar.render(USER_INFO_AVATAR_SIZE)
+        } else {
+            // Fallback: generate identicon (shouldn't happen if cache is properly populated)
+            generate_identicon(&user.username).render(USER_INFO_AVATAR_SIZE)
+        };
+
+    let username_text = if is_admin {
+        shaped_text(&user.username)
+            .size(TITLE_SIZE)
+            .color(chat::admin(theme))
     } else {
-        None
+        shaped_text(&user.username).size(TITLE_SIZE)
     };
-    content = content.push(info_row(
-        t("user-info-username"),
-        user.username.clone(),
-        username_color,
-    ));
+
+    let header_row = row![avatar_element, username_text]
+        .spacing(USER_INFO_AVATAR_SPACING)
+        .align_y(Center);
+
+    content = content.push(header_row);
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
 
     // Role (only shown if is_admin field is present)
     if user.is_admin.is_some() {

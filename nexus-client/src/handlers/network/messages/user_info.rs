@@ -5,6 +5,7 @@ use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
+use crate::user_avatar::get_or_create_avatar;
 use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
@@ -187,15 +188,27 @@ impl NexusApp {
             return Task::none();
         }
 
-        conn.online_users = users
+        let user_list: Vec<ClientUserInfo> = users
             .unwrap_or_default()
             .into_iter()
             .map(|u| ClientUserInfo {
                 username: u.username,
                 is_admin: u.is_admin,
                 session_ids: u.session_ids,
+                avatar: u.avatar,
             })
             .collect();
+
+        // Pre-populate avatar cache for all users
+        for user in &user_list {
+            get_or_create_avatar(
+                &mut conn.avatar_cache,
+                &user.username,
+                user.avatar.as_deref(),
+            );
+        }
+
+        conn.online_users = user_list;
         sort_user_list(&mut conn.online_users);
 
         // Clear expanded_user if the user is no longer in the list
@@ -228,9 +241,28 @@ impl NexusApp {
             .iter_mut()
             .find(|u| u.username == previous_username)
         {
+            // Check if avatar changed (invalidate cache if so)
+            let avatar_changed = existing_user.avatar != user.avatar;
+
             existing_user.username = new_username.clone();
             existing_user.is_admin = user.is_admin;
             existing_user.session_ids = user.session_ids;
+            existing_user.avatar = user.avatar.clone();
+
+            // If username changed, remove old cache entry
+            if username_changed {
+                conn.avatar_cache.remove(&previous_username);
+            } else if avatar_changed {
+                // Same username but avatar changed - invalidate cache
+                conn.avatar_cache.remove(&new_username);
+            }
+
+            // Pre-populate cache with new avatar
+            get_or_create_avatar(
+                &mut conn.avatar_cache,
+                &new_username,
+                user.avatar.as_deref(),
+            );
 
             // Re-sort the list since username may have changed
             sort_user_list(&mut conn.online_users);

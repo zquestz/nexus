@@ -1,5 +1,10 @@
 # Ошибки аутентификации и сеанса
 err-not-logged-in = Не выполнен вход
+
+# Ошибки валидации аватара
+err-avatar-invalid-format = Недопустимый формат аватара (должен быть data URI с кодировкой base64)
+err-avatar-too-large = Аватар слишком большой (макс. { $max_length } символов)
+err-avatar-unsupported-type = Неподдерживаемый тип аватара (только PNG, WebP или SVG)
 err-authentication = Ошибка аутентификации
 err-invalid-credentials = Неверное имя пользователя или пароль
 err-handshake-required = Требуется рукопожатие
@@ -86,3 +91,4 @@ err-permissions-empty-permission = Название разрешения не м
 err-permissions-permission-too-long = Название разрешения слишком длинное (максимум { $max_length } символов)
 err-permissions-contains-newlines = Название разрешения не может содержать переносы строк
 err-permissions-invalid-characters = Название разрешения содержит недопустимые символы
+

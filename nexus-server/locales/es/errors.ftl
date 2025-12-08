@@ -1,5 +1,10 @@
 # Errores de autenticación y sesión
 err-not-logged-in = No has iniciado sesión
+
+# Errores de validación de avatar
+err-avatar-invalid-format = Formato de avatar no válido (debe ser una URI de datos con codificación base64)
+err-avatar-too-large = El avatar es demasiado grande (máx. { $max_length } caracteres)
+err-avatar-unsupported-type = Tipo de avatar no compatible (solo PNG, WebP o SVG)
 err-authentication = Error de autenticación
 err-invalid-credentials = Usuario o contraseña inválidos
 err-handshake-required = Se requiere handshake
@@ -87,3 +92,4 @@ err-permissions-empty-permission = El nombre del permiso no puede estar vacío
 err-permissions-permission-too-long = El nombre del permiso es demasiado largo (máx. { $max_length } caracteres)
 err-permissions-contains-newlines = El nombre del permiso no puede contener saltos de línea
 err-permissions-invalid-characters = El nombre del permiso contiene caracteres inválidos
+

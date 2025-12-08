@@ -148,6 +148,7 @@ impl NexusApp {
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
             let locale = get_locale().to_string();
+            let avatar = self.config.settings.avatar.clone();
             let display_name = bookmark.name.clone();
 
             return Task::perform(
@@ -158,6 +159,7 @@ impl NexusApp {
                         username,
                         password,
                         locale,
+                        avatar,
                         connection_id,
                     )
                     .await

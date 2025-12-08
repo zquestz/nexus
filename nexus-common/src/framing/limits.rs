@@ -21,7 +21,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatSend", 1056);
     m.insert("ChatTopicUpdate", 293);
     m.insert("Handshake", 65);
-    m.insert("Login", 933);
+    m.insert("Login", 176945);
     m.insert("UserBroadcast", 1061);
     m.insert("UserCreate", 944);
     m.insert("UserDelete", 67);
@@ -40,18 +40,18 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("LoginResponse", 1454);
     m.insert("PermissionsUpdated", 1392);
     m.insert("ServerBroadcast", 1133);
-    m.insert("UserConnected", 282);
+    m.insert("UserConnected", 176294);
     m.insert("UserCreateResponse", 568);
     m.insert("UserDeleteResponse", 568);
     m.insert("UserDisconnected", 97);
     m.insert("UserEditResponse", 695);
     m.insert("UserBroadcastResponse", 571);
-    m.insert("UserInfoResponse", 1400);
+    m.insert("UserInfoResponse", 177412);
     m.insert("UserKickResponse", 566);
     m.insert("UserListResponse", 0); // unlimited (server-trusted)
     m.insert("UserMessage", 1177); // shared type: server (1177) > client (1108)
     m.insert("UserMessageResponse", 569);
-    m.insert("UserUpdated", 335);
+    m.insert("UserUpdated", 176347);
     m.insert("UserUpdateResponse", 568);
 
     m
@@ -88,10 +88,10 @@ mod tests {
     use super::*;
     use crate::protocol::{ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed};
     use crate::validators::{
-        MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_LOCALE_LENGTH,
-        MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT,
-        MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH,
-        MAX_VERSION_LENGTH,
+        MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
+        MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+        MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
+        MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -190,6 +190,7 @@ mod tests {
                 .map(|_| str_of_len(MAX_FEATURE_LENGTH))
                 .collect(),
             locale: str_of_len(MAX_LOCALE_LENGTH),
+            avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("Login") as usize);
     }
@@ -416,6 +417,7 @@ mod tests {
                 is_admin: true,
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
+                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
             },
         };
         assert_eq!(
@@ -506,6 +508,7 @@ mod tests {
                     .collect(),
                 created_at: i64::MAX,
                 locale: str_of_len(MAX_LOCALE_LENGTH),
+                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
                 is_admin: Some(true),
                 addresses: Some(vec![str_of_len(45); 10]),
             }),
@@ -573,6 +576,7 @@ mod tests {
                 is_admin: true,
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
+                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
             },
         };
         assert_eq!(

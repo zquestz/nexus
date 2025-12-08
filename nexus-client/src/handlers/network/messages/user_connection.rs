@@ -4,6 +4,7 @@ use crate::NexusApp;
 use crate::handlers::network::helpers::sort_user_list;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
+use crate::user_avatar::get_or_create_avatar;
 use iced::Task;
 use nexus_common::protocol::UserInfo as ProtocolUserInfo;
 
@@ -30,6 +31,19 @@ impl NexusApp {
                     existing_user.session_ids.push(*session_id);
                 }
             }
+
+            // Update avatar if it changed (latest login wins, including clearing avatar)
+            if existing_user.avatar != user.avatar {
+                existing_user.avatar = user.avatar.clone();
+                // Invalidate cache so new avatar (or identicon) is displayed
+                conn.avatar_cache.remove(&user.username);
+                get_or_create_avatar(
+                    &mut conn.avatar_cache,
+                    &user.username,
+                    user.avatar.as_deref(),
+                );
+            }
+
             false
         } else {
             // New user - add to list
@@ -37,8 +51,17 @@ impl NexusApp {
                 username: user.username.clone(),
                 is_admin: user.is_admin,
                 session_ids: user.session_ids.clone(),
+                avatar: user.avatar.clone(),
             });
             sort_user_list(&mut conn.online_users);
+
+            // Pre-populate avatar cache for new user
+            get_or_create_avatar(
+                &mut conn.avatar_cache,
+                &user.username,
+                user.avatar.as_deref(),
+            );
+
             true
         };
 
@@ -85,6 +108,9 @@ impl NexusApp {
                 if conn.expanded_user.as_ref() == Some(&username) {
                     conn.expanded_user = None;
                 }
+
+                // Remove from avatar cache
+                conn.avatar_cache.remove(&username);
             }
         }
 

@@ -26,6 +26,7 @@ pub async fn connect_to_server(
     username: String,
     password: String,
     locale: String,
+    avatar: Option<String>,
     connection_id: usize,
 ) -> Result<NetworkConnection, String> {
     // Establish TCP connection and get certificate fingerprint
@@ -44,6 +45,7 @@ pub async fn connect_to_server(
         username,
         password,
         locale,
+        avatar,
     )
     .await?;
 
@@ -93,12 +95,14 @@ async fn perform_login(
     username: String,
     password: String,
     locale: String,
+    avatar: Option<String>,
 ) -> Result<LoginInfo, String> {
     let login = ClientMessage::Login {
         username,
         password,
         features: DEFAULT_FEATURES.iter().map(|s| s.to_string()).collect(),
         locale,
+        avatar,
     };
     send_client_message(writer, &login)
         .await

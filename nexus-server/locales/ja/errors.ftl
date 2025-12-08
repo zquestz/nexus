@@ -1,5 +1,10 @@
 # 認証とセッションのエラー
 err-not-logged-in = ログインしていません
+
+# アバター検証エラー
+err-avatar-invalid-format = アバター形式が無効です（base64エンコードのデータURIである必要があります）
+err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }文字）
+err-avatar-unsupported-type = サポートされていないアバタータイプです（PNG、WebP、SVGのみ）
 err-authentication = 認証エラー
 err-invalid-credentials = ユーザー名またはパスワードが無効です
 err-handshake-required = ハンドシェイクが必要です
@@ -86,3 +91,4 @@ err-permissions-empty-permission = 権限名を空にすることはできませ
 err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max_length }文字）
 err-permissions-contains-newlines = 権限名に改行を含めることはできません
 err-permissions-invalid-characters = 権限名に無効な文字が含まれています
+

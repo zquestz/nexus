@@ -28,7 +28,8 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - Admin panel for user management (create/edit/delete)
 - SQLite database with Argon2id password hashing
 - Cross-platform GUI with 30 themes (22 built-in Iced + 8 custom Celestial themes)
-- Settings panel with theme picker, chat font size, and notification preferences
+- User avatars (custom images or auto-generated identicons)
+- Settings panel with theme picker, chat font size, avatar, and notification preferences
 - Universal IP binding (IPv4 and IPv6)
 
 ## Architecture
@@ -155,10 +156,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 **Test Coverage:**
 
-- 189 server tests (185 unit + 4 integration)
-- 57 client tests
-- 147 common tests
-- Total: 393 tests
+- 200 server tests
+- 80 client tests
+- 170 common tests
+- 4 integration tests
+- 1 doctest
+- Total: 455 tests
 
 ## Database & Configuration
 

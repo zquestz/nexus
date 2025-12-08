@@ -3,6 +3,10 @@
 use std::collections::HashMap;
 use std::io;
 
+/// Aggregated user data for deduplication
+/// Fields: (login_time, is_admin, session_ids, locale, avatar, avatar_login_time)
+type UserAggregateData = (i64, bool, Vec<u32>, String, Option<String>, i64);
+
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::{ServerMessage, UserInfo};
@@ -52,22 +56,31 @@ where
 
     // Deduplicate by username and aggregate sessions
     // Use is_admin from UserManager instead of querying DB for each user
-    let mut user_map: HashMap<String, (i64, bool, Vec<u32>, String)> = HashMap::new();
+    // Avatar uses "latest login wins" - track login_time for avatar selection
+    let mut user_map: HashMap<String, UserAggregateData> = HashMap::new();
 
     for user in all_users {
         user_map
             .entry(user.username.clone())
-            .and_modify(|(login_time, _, session_ids, _)| {
-                // Keep earliest login time
-                *login_time = (*login_time).min(user.login_time);
-                session_ids.push(user.session_id);
-                // Note: locale stays from first session
-            })
+            .and_modify(
+                |(login_time, _, session_ids, _, avatar, avatar_login_time)| {
+                    // Keep earliest login time for display
+                    *login_time = (*login_time).min(user.login_time);
+                    session_ids.push(user.session_id);
+                    // Avatar: latest login wins
+                    if user.login_time > *avatar_login_time {
+                        *avatar = user.avatar.clone();
+                        *avatar_login_time = user.login_time;
+                    }
+                },
+            )
             .or_insert((
                 user.login_time,
                 user.is_admin, // Use is_admin from UserManager
                 vec![user.session_id],
                 user.locale.clone(),
+                user.avatar.clone(),
+                user.login_time, // Track login time for avatar selection
             ));
     }
 
@@ -75,12 +88,13 @@ where
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
         .map(
-            |(username, (login_time, is_admin, session_ids, locale))| UserInfo {
+            |(username, (login_time, is_admin, session_ids, locale, avatar, _))| UserInfo {
                 username,
                 login_time,
                 is_admin,
                 session_ids,
                 locale,
+                avatar,
             },
         )
         .collect();
@@ -224,6 +238,201 @@ mod tests {
                 assert_eq!(users[0].session_ids.len(), 1);
                 assert_eq!(users[0].session_ids[0], session_id);
                 assert!(users[0].is_admin, "admin should have is_admin=true");
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    // =========================================================================
+    // Avatar aggregation tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_userlist_includes_avatar() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with avatar
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &perms)
+            .await
+            .unwrap();
+
+        let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
+
+        // Add session with avatar
+        let session_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 1,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(avatar_data.clone()),
+            })
+            .await;
+
+        // Get user list
+        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                assert_eq!(users.len(), 1);
+                assert_eq!(
+                    users[0].avatar,
+                    Some(avatar_data),
+                    "Avatar should be included"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_avatar_latest_login_wins() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &perms)
+            .await
+            .unwrap();
+
+        let old_avatar = "data:image/png;base64,OLD_AVATAR".to_string();
+        let new_avatar = "data:image/png;base64,NEW_AVATAR".to_string();
+
+        // Add first session with old avatar (earlier login time)
+        let _session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 1,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(old_avatar.clone()),
+            })
+            .await;
+
+        // Delay of 1.1 seconds to ensure different login timestamps (timestamps are in seconds)
+        tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
+
+        // Add second session with new avatar (later login time)
+        let session2 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 2,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: Some(new_avatar.clone()),
+            })
+            .await;
+
+        // Get user list
+        let result = handle_userlist(Some(session2), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                assert_eq!(users.len(), 1);
+                assert_eq!(users[0].session_ids.len(), 2, "Should have 2 sessions");
+                assert_eq!(
+                    users[0].avatar,
+                    Some(new_avatar),
+                    "Avatar should be from latest login"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_no_avatar() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user without avatar
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, true, &perms)
+            .await
+            .unwrap();
+
+        // Add session without avatar
+        let session_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 1,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+            })
+            .await;
+
+        // Get user list
+        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                assert_eq!(users.len(), 1);
+                assert_eq!(users[0].avatar, None, "Avatar should be None");
             }
             _ => panic!("Expected UserListResponse"),
         }

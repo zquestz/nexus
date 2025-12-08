@@ -1,5 +1,10 @@
 # Erreurs d'authentification et de session
 err-not-logged-in = Non connecté
+
+# Erreurs de validation d'avatar
+err-avatar-invalid-format = Format d'avatar invalide (doit être une URI de données avec encodage base64)
+err-avatar-too-large = L'avatar est trop volumineux (max. { $max_length } caractères)
+err-avatar-unsupported-type = Type d'avatar non pris en charge (PNG, WebP ou SVG uniquement)
 err-authentication = Erreur d'authentification
 err-invalid-credentials = Nom d'utilisateur ou mot de passe invalide
 err-handshake-required = Handshake requis
@@ -86,3 +91,4 @@ err-permissions-empty-permission = Le nom de la permission ne peut pas être vid
 err-permissions-permission-too-long = Le nom de la permission est trop long (maximum { $max_length } caractères)
 err-permissions-contains-newlines = Le nom de la permission ne peut pas contenir de sauts de ligne
 err-permissions-invalid-characters = Le nom de la permission contient des caractères invalides
+

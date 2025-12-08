@@ -1,5 +1,10 @@
 # Authenticatie- en sessiefouten
 err-not-logged-in = Niet ingelogd
+
+# Avatar validatiefouten
+err-avatar-invalid-format = Ongeldig avatar-formaat (moet een data-URI zijn met base64-codering)
+err-avatar-too-large = Avatar is te groot (max. { $max_length } tekens)
+err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, WebP of SVG)
 err-authentication = Authenticatiefout
 err-invalid-credentials = Ongeldige gebruikersnaam of wachtwoord
 err-handshake-required = Handshake vereist
@@ -86,3 +91,4 @@ err-permissions-empty-permission = De machtigingsnaam mag niet leeg zijn
 err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { $max_length } tekens)
 err-permissions-contains-newlines = De machtigingsnaam mag geen regelafbrekingen bevatten
 err-permissions-invalid-characters = De machtigingsnaam bevat ongeldige tekens
+

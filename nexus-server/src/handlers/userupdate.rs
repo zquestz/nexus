@@ -453,8 +453,9 @@ where
                         .get_session_ids_for_user(&updated_account.username)
                         .await;
 
-                    // Get earliest login time and locale from all sessions
-                    let (login_time, locale) = if !session_ids.is_empty() {
+                    // Get earliest login time, locale, and avatar from all sessions
+                    // Avatar uses "latest login wins"
+                    let (login_time, locale, avatar) = if !session_ids.is_empty() {
                         let user_sessions = ctx
                             .user_manager
                             .get_sessions_by_username(&updated_account.username)
@@ -471,9 +472,15 @@ where
                             .map(|u| u.locale.clone())
                             .unwrap_or_else(|| "en".to_string());
 
-                        (login_time, locale)
+                        // Avatar from most recent login
+                        let avatar = user_sessions
+                            .iter()
+                            .max_by_key(|u| u.login_time)
+                            .and_then(|u| u.avatar.clone());
+
+                        (login_time, locale, avatar)
                     } else {
-                        (0, "en".to_string()) // User not currently online
+                        (0, "en".to_string(), None) // User not currently online
                     };
 
                     let user_info = UserInfo {
@@ -482,6 +489,7 @@ where
                         is_admin: updated_account.is_admin,
                         session_ids,
                         locale,
+                        avatar,
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
@@ -1209,6 +1217,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -1396,6 +1405,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 
@@ -1412,6 +1422,7 @@ mod tests {
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
             })
             .await;
 

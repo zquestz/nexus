@@ -66,6 +66,7 @@ pub async fn add_test_user(
             tx,
             features: vec!["chat".to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
         })
         .await;
 

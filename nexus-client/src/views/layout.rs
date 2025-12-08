@@ -520,7 +520,8 @@ fn server_content_view<'a>(
                 theme,
                 conn.is_admin,
                 &conn.permissions,
-                &conn.username
+                &conn.username,
+                &conn.avatar_cache
             )
         ]
         .width(Fill)

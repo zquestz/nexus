@@ -86,6 +86,7 @@ impl NexusApp {
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
         let locale = get_locale().to_string();
+        let avatar = self.config.settings.avatar.clone();
         let connection_id = self.next_connection_id;
         self.next_connection_id += 1;
 
@@ -97,6 +98,7 @@ impl NexusApp {
                     username,
                     password,
                     locale,
+                    avatar,
                     connection_id,
                 )
                 .await
@@ -141,6 +143,11 @@ impl NexusApp {
         let permissions = conn.permissions.clone();
 
         self.active_connection = Some(connection_id);
+
+        // Always close UserInfo panel when switching (data is connection-specific)
+        if self.ui_state.active_panel == ActivePanel::UserInfo {
+            self.ui_state.active_panel = ActivePanel::None;
+        }
 
         // Close any panel the new connection doesn't have permission for
         self.close_panels_without_permission(is_admin, &permissions);

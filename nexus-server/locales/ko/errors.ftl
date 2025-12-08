@@ -1,5 +1,10 @@
 # 인증 및 세션 오류
 err-not-logged-in = 로그인되지 않음
+
+# 아바타 유효성 검사 오류
+err-avatar-invalid-format = 아바타 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
+err-avatar-too-large = 아바타가 너무 큽니다 (최대 { $max_length }자)
+err-avatar-unsupported-type = 지원되지 않는 아바타 유형입니다 (PNG, WebP 또는 SVG만 가능)
 err-authentication = 인증 오류
 err-invalid-credentials = 잘못된 사용자 이름 또는 비밀번호
 err-handshake-required = 핸드셰이크 필요
@@ -86,3 +91,4 @@ err-permissions-empty-permission = 권한 이름은 비워둘 수 없습니다
 err-permissions-permission-too-long = 권한 이름이 너무 깁니다 (최대 { $max_length }자)
 err-permissions-contains-newlines = 권한 이름에 줄바꿈을 포함할 수 없습니다
 err-permissions-invalid-characters = 권한 이름에 잘못된 문자가 포함되어 있습니다
+

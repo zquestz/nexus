@@ -5,34 +5,53 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
-use nexus_common::validators::{self, FeaturesError, LocaleError, PasswordError, UsernameError};
+use nexus_common::validators::{
+    self, AvatarError, FeaturesError, LocaleError, PasswordError, UsernameError,
+};
 
 use super::{
     HandlerContext, current_timestamp, err_account_disabled, err_already_logged_in,
-    err_authentication, err_database, err_failed_to_create_user, err_features_empty_feature,
-    err_features_feature_too_long, err_features_invalid_characters, err_features_too_many,
-    err_handshake_required, err_invalid_credentials, err_locale_invalid_characters,
-    err_locale_too_long, err_password_empty, err_password_too_long, err_username_empty,
-    err_username_invalid, err_username_too_long,
+    err_authentication, err_avatar_invalid_format, err_avatar_too_large,
+    err_avatar_unsupported_type, err_database, err_failed_to_create_user,
+    err_features_empty_feature, err_features_feature_too_long, err_features_invalid_characters,
+    err_features_too_many, err_handshake_required, err_invalid_credentials,
+    err_locale_invalid_characters, err_locale_too_long, err_password_empty, err_password_too_long,
+    err_username_empty, err_username_invalid, err_username_too_long,
 };
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
 use crate::db::{self, Permission};
 use crate::users::user::NewSessionParams;
 
+/// Login request parameters
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+    pub features: Vec<String>,
+    pub locale: String,
+    pub avatar: Option<String>,
+    pub handshake_complete: bool,
+}
+
 /// Handle a login request from the client
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_login<W>(
-    username: String,
-    password: String,
-    features: Vec<String>,
-    locale: String,
-    handshake_complete: bool,
+    request: LoginRequest,
     session_id: &mut Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
+    let LoginRequest {
+        username,
+        password,
+        features,
+        locale,
+        avatar,
+        handshake_complete,
+    } = request;
+
     // Verify handshake completed
     if !handshake_complete {
         eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
@@ -98,6 +117,22 @@ where
                 err_features_feature_too_long(&locale, validators::MAX_FEATURE_LENGTH)
             }
             FeaturesError::InvalidCharacters => err_features_invalid_characters(&locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .await;
+    }
+
+    // Validate avatar (if provided)
+    if let Some(ref avatar_data) = avatar
+        && let Err(e) = validators::validate_avatar(avatar_data)
+    {
+        let error_msg = match e {
+            AvatarError::TooLarge => {
+                err_avatar_too_large(&locale, validators::MAX_AVATAR_DATA_URI_LENGTH)
+            }
+            AvatarError::InvalidFormat => err_avatar_invalid_format(&locale),
+            AvatarError::UnsupportedType => err_avatar_unsupported_type(&locale),
         };
         return ctx
             .send_error_and_disconnect(&error_msg, Some("Login"))
@@ -237,6 +272,7 @@ where
             tx: ctx.tx.clone(),
             features,
             locale: locale.clone(),
+            avatar: avatar.clone(),
         })
         .await;
     *session_id = Some(id);
@@ -317,6 +353,7 @@ where
         is_admin: authenticated_account.is_admin,
         session_ids: vec![id],
         locale: locale.clone(),
+        avatar,
     };
     ctx.user_manager
         .broadcast_user_event(
@@ -341,16 +378,15 @@ mod tests {
         let handshake_complete = false; // Not completed
 
         // Try to login without handshake
-        let result = handle_login(
-            "alice".to_string(),
-            "password".to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail
         assert!(result.is_err(), "Login should fail without handshake");
@@ -364,16 +400,15 @@ mod tests {
         let handshake_complete = true;
 
         // First user login
-        let result = handle_login(
-            "alice".to_string(),
-            "password123".to_string(),
-            vec![FEATURE_CHAT.to_string()],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "First login should succeed");
@@ -444,16 +479,15 @@ mod tests {
         let handshake_complete = true;
 
         // Login with correct password
-        let result = handle_login(
-            "bob".to_string(),
-            password.to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Login with correct password should succeed");
@@ -514,16 +548,15 @@ mod tests {
         let handshake_complete = true;
 
         // Login with wrong password
-        let result = handle_login(
-            "bob".to_string(),
-            "wrongpassword".to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: "wrongpassword".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail
         assert!(result.is_err(), "Login with wrong password should fail");
@@ -548,16 +581,15 @@ mod tests {
         let handshake_complete = true;
 
         // Try to login as non-existent user
-        let result = handle_login(
-            "nonexistent".to_string(),
-            "password".to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "nonexistent".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail
         assert!(
@@ -604,16 +636,15 @@ mod tests {
         let mut session_id = None;
 
         // Attempt login
-        let result = handle_login(
-            "alice".to_string(),
-            password.to_string(),
-            vec![FEATURE_CHAT.to_string()],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Login should succeed");
 
@@ -682,31 +713,31 @@ mod tests {
         let handshake_complete = true;
 
         // First login
-        let result1 = handle_login(
-            "alice".to_string(),
-            "password".to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request1 = LoginRequest {
+            username: "alice".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result1 =
+            handle_login(request1, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(result1.is_ok(), "First login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
         // Second login on same connection (should fail)
-        let result2 = handle_login(
-            "alice".to_string(),
-            "password".to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request2 = LoginRequest {
+            username: "alice".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result2 =
+            handle_login(request2, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(
             result2.is_err(),
@@ -741,16 +772,15 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        let result = handle_login(
-            "alice".to_string(),
-            password.to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Login should succeed");
 
@@ -808,16 +838,15 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        let result = handle_login(
-            "alice".to_string(),
-            password.to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Login should succeed");
 
@@ -879,16 +908,15 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        let result = handle_login(
-            "admin".to_string(),
-            password.to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "admin".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Login should succeed");
 
@@ -947,16 +975,15 @@ mod tests {
         let handshake_complete = true;
 
         // Attempt login with disabled account
-        let result = handle_login(
-            "bob".to_string(),
-            password.to_string(),
-            vec![],
-            DEFAULT_TEST_LOCALE.to_string(),
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "Login with disabled account should fail");
@@ -996,16 +1023,15 @@ mod tests {
         let handshake_complete = true;
 
         // Attempt login with wrong password using Spanish locale
-        let result = handle_login(
-            "alice".to_string(),
-            "wrong_password".to_string(),
-            vec![],
-            "es".to_string(), // Request Spanish locale
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "wrong_password".to_string(),
+            features: vec![],
+            locale: "es".to_string(), // Request Spanish locale
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "Login with wrong password should fail");
@@ -1044,16 +1070,15 @@ mod tests {
         let handshake_complete = true;
 
         // Attempt login with wrong password using empty locale (should default to "en")
-        let result = handle_login(
-            "alice".to_string(),
-            "wrong_password".to_string(),
-            vec![],
-            "".to_string(), // Empty locale should default to English
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "wrong_password".to_string(),
+            features: vec![],
+            locale: "".to_string(), // Empty locale should default to English
+            avatar: None,
             handshake_complete,
-            &mut session_id,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "Login with wrong password should fail");
@@ -1071,6 +1096,189 @@ mod tests {
                 );
             }
             _ => panic!("Expected Error message"),
+        }
+    }
+
+    // =========================================================================
+    // Avatar validation tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_login_with_valid_avatar() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Valid PNG data URI (minimal)
+        let valid_avatar = "data:image/png;base64,iVBORw0KGgo=".to_string();
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(valid_avatar),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login with valid avatar should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::LoginResponse { success, .. } => {
+                assert!(success, "Login should succeed with valid avatar");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_with_avatar_too_large() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Create avatar that exceeds MAX_AVATAR_DATA_URI_LENGTH
+        let prefix = "data:image/png;base64,";
+        let padding = "A".repeat(validators::MAX_AVATAR_DATA_URI_LENGTH);
+        let too_large_avatar = format!("{}{}", prefix, padding);
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(too_large_avatar),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        // Should fail with disconnect
+        assert!(result.is_err(), "Login with oversized avatar should fail");
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert!(
+                    message.contains("too large") || message.contains("max"),
+                    "Error should mention size limit, got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_with_avatar_invalid_format() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Invalid format - missing base64 marker
+        let invalid_avatar = "data:image/png,notbase64encoded".to_string();
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(invalid_avatar),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "Login with invalid avatar format should fail"
+        );
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert!(
+                    message.contains("format") || message.contains("Invalid"),
+                    "Error should mention invalid format, got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_with_avatar_unsupported_type() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Unsupported type - GIF
+        let unsupported_avatar =
+            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                .to_string();
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(unsupported_avatar),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "Login with unsupported avatar type should fail"
+        );
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert!(
+                    message.contains("Unsupported")
+                        || message.contains("PNG")
+                        || message.contains("WebP")
+                        || message.contains("SVG"),
+                    "Error should mention unsupported type, got: {}",
+                    message
+                );
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_without_avatar_succeeds() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // No avatar (None)
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login without avatar should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::LoginResponse { success, .. } => {
+                assert!(success, "Login should succeed without avatar");
+            }
+            _ => panic!("Expected LoginResponse"),
         }
     }
 }

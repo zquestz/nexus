@@ -1,5 +1,10 @@
 # Authentication & Session Errors
 err-not-logged-in = Not logged in
+
+# Avatar Validation Errors
+err-avatar-invalid-format = Invalid avatar format (must be a data URI with base64 encoding)
+err-avatar-too-large = Avatar is too large (max { $max_length } characters)
+err-avatar-unsupported-type = Unsupported avatar type (PNG, WebP, or SVG only)
 err-authentication = Authentication error
 err-invalid-credentials = Invalid username or password
 err-handshake-required = Handshake required

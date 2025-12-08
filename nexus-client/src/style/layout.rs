@@ -147,6 +147,18 @@ pub const USER_LIST_PANEL_WIDTH: f32 = 180.0;
 /// Avatar preview size in settings panel
 pub const AVATAR_PREVIEW_SIZE: f32 = 48.0;
 
+/// Avatar size in user list sidebar
+pub const USER_LIST_AVATAR_SIZE: f32 = 28.0;
+
+/// Spacing between avatar and username in user list
+pub const USER_LIST_AVATAR_SPACING: f32 = 8.0;
+
+/// Avatar size in user info panel
+pub const USER_INFO_AVATAR_SIZE: f32 = 64.0;
+
+/// Spacing between avatar and username in user info panel
+pub const USER_INFO_AVATAR_SPACING: f32 = 12.0;
+
 // ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================

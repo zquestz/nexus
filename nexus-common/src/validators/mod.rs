@@ -4,6 +4,7 @@
 //! between client and server - clients can use them for pre-validation,
 //! servers use them for enforcement.
 
+mod avatar;
 mod chattopic;
 mod features;
 mod locale;
@@ -15,6 +16,7 @@ mod servername;
 mod username;
 mod version;
 
+pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
 pub use chattopic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};
