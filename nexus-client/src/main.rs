@@ -244,7 +244,7 @@ impl NexusApp {
             Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
-            Message::ToggleEditUser => self.handle_toggle_edit_user(),
+            Message::ToggleEditUser(username) => self.handle_toggle_edit_user(username),
             Message::ToggleUserList => self.handle_toggle_user_list(),
 
             // Settings

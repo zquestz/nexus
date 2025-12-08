@@ -280,7 +280,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                 if state.is_connected && has_user_edit {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
-                            .on_press(Message::ToggleEditUser)
+                            .on_press(Message::ToggleEditUser(None))
                             .style(toolbar_button_style(active_panel == ActivePanel::EditUser)),
                         container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -509,10 +509,19 @@ fn server_content_view<'a>(
                 .height(Fill)
                 .into()
         }
-        ActivePanel::UserInfo => stack![chat, user_info_view(&conn.user_info_data, theme)]
-            .width(Fill)
-            .height(Fill)
-            .into(),
+        ActivePanel::UserInfo => stack![
+            chat,
+            user_info_view(
+                &conn.user_info_data,
+                theme,
+                conn.is_admin,
+                &conn.permissions,
+                &conn.username
+            )
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
         ActivePanel::None => chat,
     }
 }

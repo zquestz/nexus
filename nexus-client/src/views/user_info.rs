@@ -8,9 +8,12 @@ use crate::style::{
     TITLE_SIZE, chat, content_background_style, shaped_text,
 };
 use crate::types::Message;
+use iced::widget::button as btn;
 use iced::widget::{Space, button, column, container, row};
 use iced::{Center, Color, Element, Fill, Theme};
 use nexus_common::protocol::UserInfoDetailed;
+
+use super::constants::PERMISSION_USER_EDIT;
 
 /// Render the user info panel
 ///
@@ -19,7 +22,11 @@ use nexus_common::protocol::UserInfoDetailed;
 pub fn user_info_view(
     data: &Option<Result<UserInfoDetailed, String>>,
     theme: Theme,
+    is_admin: bool,
+    permissions: &[String],
+    current_username: &str,
 ) -> Element<'static, Message> {
+    let has_edit_permission = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
     let title = shaped_text(t("title-user-info"))
         .size(TITLE_SIZE)
         .width(Fill)
@@ -51,14 +58,28 @@ pub fn user_info_view(
         }
     }
 
-    // Close button
-    let buttons = row![
-        Space::new().width(Fill),
+    // Build buttons row - spacer, then Edit (if permitted) + Close on the right
+    let mut buttons = row![Space::new().width(Fill)].spacing(ELEMENT_SPACING);
+
+    // Add edit button if user has permission, data loaded, and not viewing self
+    if has_edit_permission
+        && let Some(Ok(user)) = data
+        && user.username.to_lowercase() != current_username.to_lowercase()
+    {
+        buttons = buttons.push(
+            button(shaped_text(t("button-edit")).size(TEXT_SIZE))
+                .on_press(Message::ToggleEditUser(Some(user.username.clone())))
+                .padding(BUTTON_PADDING)
+                .style(btn::secondary),
+        );
+    }
+
+    // Close button (primary)
+    buttons = buttons.push(
         button(shaped_text(t("button-close")).size(TEXT_SIZE))
             .on_press(Message::CloseUserInfo)
             .padding(BUTTON_PADDING),
-    ]
-    .spacing(ELEMENT_SPACING);
+    );
 
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
     content = content.push(buttons);

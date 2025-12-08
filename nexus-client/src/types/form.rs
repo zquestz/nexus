@@ -133,9 +133,11 @@ impl UserManagementState {
     }
 
     /// Start editing a user (stage 1: enter username)
-    pub fn start_editing(&mut self) {
+    ///
+    /// If `username` is provided, pre-fills the username field.
+    pub fn start_editing(&mut self, username: Option<String>) {
         self.edit_state = UserEditState::SelectingUser {
-            username: String::new(),
+            username: username.unwrap_or_default(),
         };
     }
 

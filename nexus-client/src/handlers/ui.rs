@@ -144,7 +144,9 @@ impl NexusApp {
     }
 
     /// Show Edit User panel (does nothing if already shown)
-    pub fn handle_toggle_edit_user(&mut self) -> Task<Message> {
+    ///
+    /// If `username` is provided, pre-fills the username field.
+    pub fn handle_toggle_edit_user(&mut self, username: Option<String>) -> Task<Message> {
         if self.ui_state.active_panel == ActivePanel::EditUser {
             return Task::none();
         }
@@ -158,7 +160,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.user_management.start_editing();
+        conn.user_management.start_editing(username);
         self.focused_field = InputId::EditUsername;
         operation::focus(Id::from(InputId::EditUsername))
     }

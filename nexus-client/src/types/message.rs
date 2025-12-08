@@ -130,8 +130,8 @@ pub enum Message {
     ToggleBookmarks,
     /// Toolbar: Toggle Broadcast panel
     ToggleBroadcast,
-    /// Toolbar: Toggle Edit User panel
-    ToggleEditUser,
+    /// Toolbar: Toggle Edit User panel (optionally pre-populate username)
+    ToggleEditUser(Option<String>),
     /// Settings panel: Cancel button pressed (restore original settings)
     CancelSettings,
     /// Settings panel: Chat font size selected from picker
