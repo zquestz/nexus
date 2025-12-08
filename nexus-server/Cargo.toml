@@ -2,6 +2,9 @@
 name = "nexus-server"
 version = "0.4.0"
 edition = "2024"
+license = "MIT"
+authors = ["Josh Ellithorpe <quest@mac.com>"]
+description = "Cross-platform BBS server"
 
 [dependencies]
 nexus-common = { path = "../nexus-common" }

@@ -3,14 +3,15 @@ name = "nexus-client"
 version = "0.4.0"
 edition = "2024"
 license = "MIT"
-description = "BBS client for Yggdrasil network"
+authors = ["Josh Ellithorpe <quest@mac.com>"]
+description = "Cross-platform BBS client"
 
 [package.metadata.bundle]
 name = "Nexus BBS"
 identifier = "at.greyh.nexus"
 icon = ["assets/macos/nexus.png", "assets/windows/nexus.ico"]
 category = "public.app-category.social-networking"
-short_description = "BBS client for Yggdrasil network"
+short_description = "Cross-platform BBS client"
 copyright = "Copyright (c) 2025 Nexus BBS Project"
 
 [dependencies]
