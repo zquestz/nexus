@@ -1,4 +1,5 @@
 //! Nexus BBS Client - GUI Application
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
 mod commands;
