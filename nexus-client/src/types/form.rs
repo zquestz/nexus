@@ -1,6 +1,24 @@
 //! Connection and user management form state
 
 use crate::config::Config;
+
+/// Default permissions for new users
+///
+/// These permissions are enabled by default when creating a new user:
+/// - `chat_receive`: Receive chat messages
+/// - `chat_send`: Send chat messages
+/// - `chat_topic`: View chat topic
+/// - `user_info`: View user information
+/// - `user_list`: View connected users list
+/// - `user_message`: Send private messages
+const DEFAULT_USER_PERMISSIONS: &[&str] = &[
+    "chat_receive",
+    "chat_send",
+    "chat_topic",
+    "user_info",
+    "user_list",
+    "user_message",
+];
 use crate::user_avatar::{CachedAvatar, decode_data_uri, generate_identicon};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
@@ -105,7 +123,7 @@ impl Default for UserManagementState {
             enabled: true, // Default to enabled
             permissions: ALL_PERMISSIONS
                 .iter()
-                .map(|s| (s.to_string(), false))
+                .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
             edit_state: UserEditState::None,
             create_error: None,
@@ -121,8 +139,8 @@ impl UserManagementState {
         self.password.clear();
         self.is_admin = false;
         self.enabled = true; // Reset to default enabled
-        for (_, enabled) in &mut self.permissions {
-            *enabled = false;
+        for (perm_name, enabled) in &mut self.permissions {
+            *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
         self.create_error = None;
     }

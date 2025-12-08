@@ -11,7 +11,7 @@ identifier = "at.greyh.nexus"
 icon = ["assets/macos/nexus.png", "assets/windows/nexus.ico"]
 category = "public.app-category.social-networking"
 short_description = "BBS client for Yggdrasil network"
-copyright = "Copyright (c) Josh Ellithorpe 2025. All rights reserved."
+copyright = "Copyright (c) 2025 Nexus BBS Project"
 
 [dependencies]
 nexus-common = { path = "../nexus-common" }
