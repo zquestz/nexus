@@ -33,7 +33,9 @@ title-settings = Paramètres
 title-bookmarks = Signets
 title-users = Utilisateurs
 title-fingerprint-mismatch = Empreinte du certificat non concordante !
-title-server-info = Info Serveur
+title-server-info = Infos Serveur
+title-user-info = Infos Utilisateur
+title-about = À propos
 
 # =============================================================================
 # Placeholders
@@ -98,9 +100,10 @@ permission-user_message = Message Utilisateur
 
 tooltip-chat = Chat
 tooltip-broadcast = Diffusion
-tooltip-user-create = Créer un utilisateur
-tooltip-user-edit = Modifier l'utilisateur
-tooltip-server-info = Info Serveur
+tooltip-user-create = Créer Utilisateur
+tooltip-user-edit = Modifier Utilisateur
+tooltip-server-info = Infos Serveur
+tooltip-about = À propos
 tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets
@@ -173,9 +176,10 @@ msg-connection-cancelled = Connexion annulée en raison d'un certificat non conc
 
 err-connection-broken = Erreur de connexion
 err-user-kick-failed = Échec de l'expulsion de l'utilisateur
-err-no-shutdown-handle = Erreur de connexion : Pas de handle d'arrêt
+err-no-shutdown-handle = Erreur de connexion : Pas de gestionnaire d'arrêt
 err-userlist-failed = Échec de l'actualisation de la liste des utilisateurs
-err-port-invalid = Le port doit être un nombre valide (1-65535)
+err-port-invalid = Le port doit être un numéro valide (1-65535)
+err-no-chat-permission = Vous n'avez pas la permission d'envoyer des messages
 
 # Network connection errors
 err-no-peer-certificates = Aucun certificat de serveur trouvé
@@ -252,19 +256,23 @@ fingerprint-warning = Cela pourrait indiquer un problème de sécurité (attaque
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = est Administrateur
-user-info-connected-ago = connecté : il y a { $duration }
-user-info-connected-sessions = connecté : il y a { $duration } ({ $count } sessions)
-user-info-features = fonctionnalités : { $features }
-user-info-locale = langue : { $locale }
-user-info-address = adresse : { $address }
-user-info-addresses = adresses :
-user-info-address-item = - { $address }
-user-info-created = créé : { $created }
+user-info-username = Nom d'utilisateur :
+user-info-role = Rôle :
+user-info-role-admin = admin
+user-info-role-user = utilisateur
+user-info-connected = Connecté :
+user-info-connected-value = il y a { $duration }
+user-info-connected-value-sessions = il y a { $duration } ({ $count } sessions)
+user-info-features = Fonctionnalités :
+user-info-features-value = { $features }
+user-info-features-none = Aucune
+user-info-locale = Langue :
+user-info-address = Adresse :
+user-info-addresses = Adresses :
+user-info-created = Créé :
 user-info-end = Fin des informations utilisateur
 user-info-unknown = Inconnu
-user-info-error = Erreur : { $error }
+user-info-loading = Chargement des informations utilisateur...
 
 # =============================================================================
 # Time Duration
@@ -333,3 +341,10 @@ cmd-serverinfo-desc = Afficher les informations du serveur
 cmd-serverinfo-usage = Utilisation : /{ $command }
 cmd-serverinfo-header = [serveur]
 cmd-serverinfo-end = Fin des informations du serveur
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

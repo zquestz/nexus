@@ -33,6 +33,8 @@ title-bookmarks = 書籤
 title-users = 使用者
 title-fingerprint-mismatch = 憑證指紋不符！
 title-server-info = 伺服器資訊
+title-user-info = 使用者資訊
+title-about = 關於
 
 # =============================================================================
 # Placeholders
@@ -97,9 +99,10 @@ permission-user_message = 使用者訊息
 
 tooltip-chat = 聊天
 tooltip-broadcast = 廣播
-tooltip-user-create = 建立使用者
-tooltip-user-edit = 編輯使用者
+tooltip-user-create = 建立用戶
+tooltip-user-edit = 編輯用戶
 tooltip-server-info = 伺服器資訊
+tooltip-about = 關於
 tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤
@@ -252,19 +255,23 @@ fingerprint-warning = 這可能表示存在安全問題（中間人攻擊）或�
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = 是管理員
-user-info-connected-ago = 已連線：{ $duration }前
-user-info-connected-sessions = 已連線：{ $duration }前（{ $count }個工作階段）
-user-info-features = 功能：{ $features }
-user-info-locale = 語言：{ $locale }
-user-info-address = 位址：{ $address }
+user-info-username = 使用者名稱：
+user-info-role = 角色：
+user-info-role-admin = 管理員
+user-info-role-user = 使用者
+user-info-connected = 已連線：
+user-info-connected-value = { $duration }前
+user-info-connected-value-sessions = { $duration }前（{ $count }個工作階段）
+user-info-features = 功能：
+user-info-features-value = { $features }
+user-info-features-none = 無
+user-info-locale = 語言：
+user-info-address = 位址：
 user-info-addresses = 位址：
-user-info-address-item = - { $address }
-user-info-created = 建立時間：{ $created }
+user-info-created = 建立時間：
 user-info-end = 使用者資訊結束
 user-info-unknown = 未知
-user-info-error = 錯誤：{ $error }
+user-info-loading = 正在載入使用者資訊...
 
 # =============================================================================
 # Time Duration
@@ -315,3 +322,10 @@ cmd-serverinfo-desc = 顯示伺服器資訊
 cmd-serverinfo-usage = 用法：/{ $command }
 cmd-serverinfo-header = [伺服器]
 cmd-serverinfo-end = 伺服器資訊結束
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

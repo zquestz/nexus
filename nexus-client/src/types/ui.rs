@@ -20,6 +20,8 @@ pub enum ActivePanel {
     Settings,
     /// Server Info panel
     ServerInfo,
+    /// User Info panel (triggered by info icon click)
+    UserInfo,
 }
 
 /// UI visibility state for toggleable panels

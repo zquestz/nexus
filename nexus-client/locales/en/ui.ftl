@@ -33,6 +33,7 @@ title-bookmarks = Bookmarks
 title-users = Users
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
+title-user-info = User Info
 title-about = About
 
 # =============================================================================
@@ -256,18 +257,23 @@ fingerprint-warning = This could indicate a security issue (MITM attack) or the 
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = is an Administrator
-user-info-connected-ago = connected: { $duration } ago
-user-info-connected-sessions = connected: { $duration } ago ({ $count } sessions)
-user-info-features = features: { $features }
-user-info-locale = locale: { $locale }
-user-info-address = address: { $address }
-user-info-addresses = addresses:
-user-info-address-item = - { $address }
-user-info-created = created: { $created }
+user-info-username = Username:
+user-info-role = Role:
+user-info-role-admin = admin
+user-info-role-user = user
+user-info-connected = Connected:
+user-info-connected-value = { $duration } ago
+user-info-connected-value-sessions = { $duration } ago ({ $count } sessions)
+user-info-features = Features:
+user-info-features-value = { $features }
+user-info-features-none = None
+user-info-locale = Locale:
+user-info-address = Address:
+user-info-addresses = Addresses:
+user-info-created = Created:
 user-info-end = End of user info
 user-info-unknown = Unknown
+user-info-loading = Loading user info...
 
 # =============================================================================
 # Time Duration

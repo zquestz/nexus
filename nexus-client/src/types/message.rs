@@ -154,6 +154,8 @@ pub enum Message {
     CloseAbout,
     /// Server info panel: Close button pressed
     CloseServerInfo,
+    /// User info panel: Close button pressed
+    CloseUserInfo,
     /// Toolbar: Show About panel
     ShowAbout,
     /// Toolbar: Show Server Info panel

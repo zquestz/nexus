@@ -33,7 +33,9 @@ title-settings = Instellingen
 title-bookmarks = Bladwijzers
 title-users = Gebruikers
 title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
-title-server-info = Serverinfo
+title-server-info = Server Info
+title-user-info = Gebruiker Info
+title-about = Over
 
 # =============================================================================
 # Placeholders
@@ -100,7 +102,8 @@ tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-user-create = Gebruiker aanmaken
 tooltip-user-edit = Gebruiker bewerken
-tooltip-server-info = Serverinfo
+tooltip-server-info = Server Info
+tooltip-about = Over
 tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen
@@ -253,19 +256,23 @@ fingerprint-warning = Dit kan wijzen op een beveiligingsprobleem (MITM-aanval) o
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = is Beheerder
-user-info-connected-ago = verbonden: { $duration } geleden
-user-info-connected-sessions = verbonden: { $duration } geleden ({ $count } sessies)
-user-info-features = functies: { $features }
-user-info-locale = taal: { $locale }
-user-info-address = adres: { $address }
-user-info-addresses = adressen:
-user-info-address-item = - { $address }
-user-info-created = aangemaakt: { $created }
+user-info-username = Gebruikersnaam:
+user-info-role = Rol:
+user-info-role-admin = admin
+user-info-role-user = gebruiker
+user-info-connected = Verbonden:
+user-info-connected-value = { $duration } geleden
+user-info-connected-value-sessions = { $duration } geleden ({ $count } sessies)
+user-info-features = Functies:
+user-info-features-value = { $features }
+user-info-features-none = Geen
+user-info-locale = Taal:
+user-info-address = Adres:
+user-info-addresses = Adressen:
+user-info-created = Aangemaakt:
 user-info-end = Einde gebruikersinformatie
 user-info-unknown = Onbekend
-user-info-error = Fout: { $error }
+user-info-loading = Gebruikersinformatie laden...
 
 # =============================================================================
 # Time Duration
@@ -334,3 +341,10 @@ cmd-serverinfo-desc = Serverinformatie weergeven
 cmd-serverinfo-usage = Gebruik: /{ $command }
 cmd-serverinfo-header = [server]
 cmd-serverinfo-end = Einde serverinformatie
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

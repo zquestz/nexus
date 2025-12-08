@@ -4,7 +4,7 @@ use crate::NexusApp;
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
+use crate::types::{ActivePanel, ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
 use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
@@ -14,6 +14,9 @@ const INFO_INDENT: &str = "  ";
 
 impl NexusApp {
     /// Handle user info response
+    ///
+    /// If the UserInfo panel is open and waiting for data, populate it.
+    /// Otherwise (e.g., from /info command), show the result in chat.
     pub fn handle_user_info_response(
         &mut self,
         connection_id: usize,
@@ -21,6 +24,28 @@ impl NexusApp {
         error: Option<String>,
         user: Option<UserInfoDetailed>,
     ) -> Task<Message> {
+        // Check if UserInfo panel is open and waiting for data
+        let panel_waiting = self.ui_state.active_panel == ActivePanel::UserInfo
+            && self
+                .connections
+                .get(&connection_id)
+                .is_some_and(|conn| conn.user_info_data.is_none());
+
+        if panel_waiting {
+            // Populate the panel with the response
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                if success {
+                    if let Some(user_data) = user {
+                        conn.user_info_data = Some(Ok(user_data));
+                    }
+                } else {
+                    conn.user_info_data = Some(Err(error.unwrap_or_default()));
+                }
+            }
+            return Task::none();
+        }
+
+        // Panel not open - show in chat (from /info command)
         if !success {
             return self
                 .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
@@ -46,51 +71,62 @@ impl NexusApp {
         // Build multi-line IRC WHOIS-style output
         let mut lines = Vec::new();
 
-        // Header
-        lines.push(t_args("user-info-header", &[("username", &user.username)]));
+        // Username header
+        lines.push(format!("[{}]", user.username));
 
-        // Admin status (only visible to admins)
-        if let Some(is_admin) = user.is_admin
-            && is_admin
-        {
-            lines.push(format!("{INFO_INDENT}{}", t("user-info-is-admin")));
+        // Role (only visible to admins)
+        if let Some(is_admin) = user.is_admin {
+            let role_value = if is_admin {
+                t("user-info-role-admin")
+            } else {
+                t("user-info-role-user")
+            };
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-role").to_lowercase(),
+                role_value
+            ));
         }
 
         // Sessions
         let session_count = user.session_ids.len();
-        if session_count == 1 {
-            lines.push(format!(
-                "{INFO_INDENT}{}",
-                t_args("user-info-connected-ago", &[("duration", &duration_str)])
-            ));
+        let connected_value = if session_count == 1 {
+            t_args("user-info-connected-value", &[("duration", &duration_str)])
         } else {
-            lines.push(format!(
-                "{INFO_INDENT}{}",
-                t_args(
-                    "user-info-connected-sessions",
-                    &[
-                        ("duration", &duration_str),
-                        ("count", &session_count.to_string())
-                    ]
-                )
-            ));
-        }
+            t_args(
+                "user-info-connected-value-sessions",
+                &[
+                    ("duration", &duration_str),
+                    ("count", &session_count.to_string()),
+                ],
+            )
+        };
+        lines.push(format!(
+            "{INFO_INDENT}{} {}",
+            t("user-info-connected").to_lowercase(),
+            connected_value
+        ));
 
         // Features
-        if !user.features.is_empty() {
-            lines.push(format!(
-                "{INFO_INDENT}{}",
-                t_args(
-                    "user-info-features",
-                    &[("features", &user.features.join(", "))]
-                )
-            ));
-        }
+        let features_value = if user.features.is_empty() {
+            t("user-info-features-none").to_lowercase()
+        } else {
+            t_args(
+                "user-info-features-value",
+                &[("features", &user.features.join(", "))],
+            )
+        };
+        lines.push(format!(
+            "{INFO_INDENT}{} {}",
+            t("user-info-features").to_lowercase(),
+            features_value
+        ));
 
         // Locale
         lines.push(format!(
-            "{INFO_INDENT}{}",
-            t_args("user-info-locale", &[("locale", &user.locale)])
+            "{INFO_INDENT}{} {}",
+            t("user-info-locale").to_lowercase(),
+            user.locale
         ));
 
         // IP Addresses (only visible to admins)
@@ -99,24 +135,26 @@ impl NexusApp {
         {
             if addresses.len() == 1 {
                 lines.push(format!(
-                    "{INFO_INDENT}{}",
-                    t_args("user-info-address", &[("address", &addresses[0])])
+                    "{INFO_INDENT}{} {}",
+                    t("user-info-address").to_lowercase(),
+                    addresses[0]
                 ));
             } else {
-                lines.push(format!("{INFO_INDENT}{}", t("user-info-addresses")));
+                lines.push(format!(
+                    "{INFO_INDENT}{}",
+                    t("user-info-addresses").to_lowercase()
+                ));
                 for addr in &addresses {
-                    lines.push(format!(
-                        "{INFO_INDENT}{}",
-                        t_args("user-info-address-item", &[("address", addr)])
-                    ));
+                    lines.push(format!("{INFO_INDENT}  - {}", addr));
                 }
             }
         }
 
         // Account created (last field)
         lines.push(format!(
-            "{INFO_INDENT}{}",
-            t_args("user-info-created", &[("created", &created)])
+            "{INFO_INDENT}{} {}",
+            t("user-info-created").to_lowercase(),
+            created
         ));
 
         lines.push(format!("{INFO_INDENT}{}", t("user-info-end")));

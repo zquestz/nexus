@@ -4,6 +4,7 @@ use super::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::server_info::{ServerInfoData, server_info_view};
+use super::user_info::user_info_view;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -508,6 +509,10 @@ fn server_content_view<'a>(
                 .height(Fill)
                 .into()
         }
+        ActivePanel::UserInfo => stack![chat, user_info_view(&conn.user_info_data, theme)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::None => chat,
     }
 }

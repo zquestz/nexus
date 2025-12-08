@@ -1,6 +1,6 @@
 //! Server connection types
 
-use nexus_common::protocol::ClientMessage;
+use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
@@ -76,6 +76,8 @@ pub struct ServerConnection {
     pub broadcast_error: Option<String>,
     /// User management panel state
     pub user_management: UserManagementState,
+    /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
+    pub user_info_data: Option<Result<UserInfoDetailed, String>>,
 }
 
 /// Network connection handle returned by connect_to_server()

@@ -33,6 +33,8 @@ title-bookmarks = ブックマーク
 title-users = ユーザー
 title-fingerprint-mismatch = 証明書のフィンガープリントが一致しません！
 title-server-info = サーバー情報
+title-user-info = ユーザー情報
+title-about = アプリについて
 
 # =============================================================================
 # Placeholders
@@ -100,6 +102,7 @@ tooltip-broadcast = ブロードキャスト
 tooltip-user-create = ユーザー作成
 tooltip-user-edit = ユーザー編集
 tooltip-server-info = サーバー情報
+tooltip-about = アプリについて
 tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示
@@ -252,19 +255,23 @@ fingerprint-warning = これはセキュリティ上の問題（MITM攻撃）ま
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = 管理者です
-user-info-connected-ago = 接続: { $duration }前
-user-info-connected-sessions = 接続: { $duration }前（{ $count }セッション）
-user-info-features = 機能: { $features }
-user-info-locale = ロケール: { $locale }
-user-info-address = アドレス: { $address }
+user-info-username = ユーザー名:
+user-info-role = 役割:
+user-info-role-admin = 管理者
+user-info-role-user = ユーザー
+user-info-connected = 接続:
+user-info-connected-value = { $duration }前
+user-info-connected-value-sessions = { $duration }前（{ $count }セッション）
+user-info-features = 機能:
+user-info-features-value = { $features }
+user-info-features-none = なし
+user-info-locale = ロケール:
+user-info-address = アドレス:
 user-info-addresses = アドレス:
-user-info-address-item = - { $address }
-user-info-created = 作成日: { $created }
+user-info-created = 作成日:
 user-info-end = ユーザー情報終了
 user-info-unknown = 不明
-user-info-error = エラー: { $error }
+user-info-loading = ユーザー情報を読み込み中...
 
 # =============================================================================
 # Time Duration
@@ -315,3 +322,10 @@ cmd-serverinfo-desc = サーバー情報を表示
 cmd-serverinfo-usage = 使用方法: /{ $command }
 cmd-serverinfo-header = [サーバー]
 cmd-serverinfo-end = サーバー情報終了
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

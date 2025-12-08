@@ -125,20 +125,10 @@ where
     let actual_username = target_account.username.clone();
 
     // Build response with appropriate visibility level
+    // is_admin is visible to everyone (same as in user list)
+    // addresses are only visible to admins
     let user_info = if requesting_user.is_admin {
-        // Admin gets all fields including target user's admin status and addresses
-        UserInfoDetailed {
-            username: actual_username,
-            login_time: earliest_login,
-            session_ids: session_ids.clone(),
-            features,
-            created_at: target_account.created_at,
-            locale: locale.clone(),
-            is_admin: Some(target_account.is_admin),
-            addresses: Some(addresses),
-        }
-    } else {
-        // Non-admin gets filtered fields
+        // Admin gets all fields including addresses
         UserInfoDetailed {
             username: actual_username,
             login_time: earliest_login,
@@ -146,7 +136,19 @@ where
             features,
             created_at: target_account.created_at,
             locale,
-            is_admin: None,
+            is_admin: Some(target_account.is_admin),
+            addresses: Some(addresses),
+        }
+    } else {
+        // Non-admin gets all fields except addresses
+        UserInfoDetailed {
+            username: actual_username,
+            login_time: earliest_login,
+            session_ids,
+            features,
+            created_at: target_account.created_at,
+            locale,
+            is_admin: Some(target_account.is_admin),
             addresses: None,
         }
     };
@@ -397,11 +399,16 @@ mod tests {
                 assert_eq!(user_info.features, vec![FEATURE_CHAT.to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
-                // Verify admin-only fields are NOT present (None)
+                // Verify is_admin is visible to everyone (same as user list)
                 assert!(
-                    user_info.is_admin.is_none(),
-                    "Non-admin should not see is_admin field"
+                    user_info.is_admin.is_some(),
+                    "is_admin should be visible to all users"
                 );
+                assert!(
+                    !user_info.is_admin.unwrap(),
+                    "Target user should not be admin"
+                );
+                // Verify addresses are NOT visible to non-admins
                 assert!(
                     user_info.addresses.is_none(),
                     "Non-admin should not see addresses field"

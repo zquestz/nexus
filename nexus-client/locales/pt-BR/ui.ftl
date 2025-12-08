@@ -33,6 +33,8 @@ title-bookmarks = Favoritos
 title-users = Usuários
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
 title-server-info = Info do Servidor
+title-user-info = Info do Usuário
+title-about = Sobre
 
 # =============================================================================
 # Placeholders
@@ -100,6 +102,7 @@ tooltip-broadcast = Difusão
 tooltip-user-create = Criar Usuário
 tooltip-user-edit = Editar Usuário
 tooltip-server-info = Info do Servidor
+tooltip-about = Sobre
 tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos
@@ -252,19 +255,23 @@ fingerprint-warning = Isso pode indicar um problema de segurança (ataque MITM) 
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = é Administrador
-user-info-connected-ago = conectado: há { $duration }
-user-info-connected-sessions = conectado: há { $duration } ({ $count } sessões)
-user-info-features = recursos: { $features }
-user-info-locale = idioma: { $locale }
-user-info-address = endereço: { $address }
-user-info-addresses = endereços:
-user-info-address-item = - { $address }
-user-info-created = criado: { $created }
+user-info-username = Nome de usuário:
+user-info-role = Função:
+user-info-role-admin = admin
+user-info-role-user = usuário
+user-info-connected = Conectado:
+user-info-connected-value = há { $duration }
+user-info-connected-value-sessions = há { $duration } ({ $count } sessões)
+user-info-features = Recursos:
+user-info-features-value = { $features }
+user-info-features-none = Nenhum
+user-info-locale = Idioma:
+user-info-address = Endereço:
+user-info-addresses = Endereços:
+user-info-created = Criado:
 user-info-end = Fim das informações do usuário
 user-info-unknown = Desconhecido
-user-info-error = Erro: { $error }
+user-info-loading = Carregando informações do usuário...
 
 # =============================================================================
 # Time Duration
@@ -333,3 +340,10 @@ cmd-serverinfo-desc = Mostrar informações do servidor
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [servidor]
 cmd-serverinfo-end = Fim das informações do servidor
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

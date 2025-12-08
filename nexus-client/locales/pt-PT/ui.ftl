@@ -33,6 +33,8 @@ title-bookmarks = Marcadores
 title-users = Utilizadores
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
 title-server-info = Info do Servidor
+title-user-info = Info do Utilizador
+title-about = Sobre
 
 # =============================================================================
 # Placeholders
@@ -100,6 +102,7 @@ tooltip-broadcast = Difusão
 tooltip-user-create = Criar Utilizador
 tooltip-user-edit = Editar Utilizador
 tooltip-server-info = Info do Servidor
+tooltip-about = Sobre
 tooltip-settings = Definições
 tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
@@ -253,19 +256,23 @@ fingerprint-warning = Isto pode indicar um problema de segurança (ataque MITM) 
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = é Administrador
-user-info-connected-ago = ligado: há { $duration }
-user-info-connected-sessions = ligado: há { $duration } ({ $count } sessões)
-user-info-features = funcionalidades: { $features }
-user-info-locale = idioma: { $locale }
-user-info-address = endereço: { $address }
-user-info-addresses = endereços:
-user-info-address-item = - { $address }
-user-info-created = criado: { $created }
+user-info-username = Nome de utilizador:
+user-info-role = Função:
+user-info-role-admin = admin
+user-info-role-user = utilizador
+user-info-connected = Ligado:
+user-info-connected-value = há { $duration }
+user-info-connected-value-sessions = há { $duration } ({ $count } sessões)
+user-info-features = Funcionalidades:
+user-info-features-value = { $features }
+user-info-features-none = Nenhuma
+user-info-locale = Idioma:
+user-info-address = Endereço:
+user-info-addresses = Endereços:
+user-info-created = Criado:
 user-info-end = Fim das informações do utilizador
 user-info-unknown = Desconhecido
-user-info-error = Erro: { $error }
+user-info-loading = A carregar informações do utilizador...
 
 # =============================================================================
 # Time Duration
@@ -331,6 +338,13 @@ cmd-window-list = Separadores abertos: { $tabs } ({ $count } { $count ->
 cmd-window-close-server = Não é possível fechar o separador do servidor
 cmd-window-not-found = Separador não encontrado: { $name }
 cmd-serverinfo-desc = Mostrar informações do servidor
-cmd-serverinfo-usage = Uso: /{ $command }
+cmd-serverinfo-usage = Utilização: /{ $command }
 cmd-serverinfo-header = [servidor]
 cmd-serverinfo-end = Fim das informações do servidor
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

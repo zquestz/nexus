@@ -269,6 +269,9 @@ impl NexusApp {
             Message::CloseServerInfo => self.handle_close_server_info(),
             Message::ShowServerInfo => self.handle_show_server_info(),
 
+            // User info
+            Message::CloseUserInfo => self.handle_close_user_info(),
+
             // Network events (async results)
             Message::BookmarkConnectionResult {
                 result,

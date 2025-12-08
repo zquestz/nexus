@@ -3,10 +3,7 @@
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
-use crate::views::constants::{
-    PERMISSION_CHAT_SEND, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT,
-    PERMISSION_USER_MESSAGE,
-};
+use crate::views::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::{NexusApp, network};
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
@@ -139,30 +136,14 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Copy permission data before mutable borrow
+        let is_admin = conn.is_admin;
+        let permissions = conn.permissions.clone();
+
         self.active_connection = Some(connection_id);
 
-        let has_broadcast = conn.is_admin
-            || conn
-                .permissions
-                .iter()
-                .any(|p| p == PERMISSION_USER_BROADCAST);
-        let has_user_create =
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
-        let has_user_edit =
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
-
-        match self.ui_state.active_panel {
-            ActivePanel::Broadcast if !has_broadcast => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            ActivePanel::AddUser if !has_user_create => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            ActivePanel::EditUser if !has_user_edit => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            _ => {}
-        }
+        // Close any panel the new connection doesn't have permission for
+        self.close_panels_without_permission(is_admin, &permissions);
 
         self.handle_show_chat_view()
     }

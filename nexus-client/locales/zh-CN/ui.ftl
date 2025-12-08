@@ -33,6 +33,8 @@ title-bookmarks = 书签
 title-users = 用户
 title-fingerprint-mismatch = 证书指纹不匹配！
 title-server-info = 服务器信息
+title-user-info = 用户信息
+title-about = 关于
 
 
 # =============================================================================
@@ -101,6 +103,7 @@ tooltip-broadcast = 广播
 tooltip-user-create = 创建用户
 tooltip-user-edit = 编辑用户
 tooltip-server-info = 服务器信息
+tooltip-about = 关于
 tooltip-settings = 设置
 tooltip-hide-bookmarks = 隐藏书签
 tooltip-show-bookmarks = 显示书签
@@ -253,19 +256,23 @@ fingerprint-warning = 这可能表示存在安全问题（中间人攻击）或�
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = 是管理员
-user-info-connected-ago = 已连接：{ $duration }前
-user-info-connected-sessions = 已连接：{ $duration }前（{ $count }个会话）
-user-info-features = 功能：{ $features }
-user-info-locale = 语言：{ $locale }
-user-info-address = 地址：{ $address }
+user-info-username = 用户名：
+user-info-role = 角色：
+user-info-role-admin = 管理员
+user-info-role-user = 用户
+user-info-connected = 已连接：
+user-info-connected-value = { $duration }前
+user-info-connected-value-sessions = { $duration }前（{ $count }个会话）
+user-info-features = 功能：
+user-info-features-value = { $features }
+user-info-features-none = 无
+user-info-locale = 语言：
+user-info-address = 地址：
 user-info-addresses = 地址：
-user-info-address-item = - { $address }
-user-info-created = 创建时间：{ $created }
+user-info-created = 创建时间：
 user-info-end = 用户信息结束
 user-info-unknown = 未知
-user-info-error = 错误：{ $error }
+user-info-loading = 正在加载用户信息...
 
 # =============================================================================
 # Time Duration
@@ -316,3 +323,10 @@ cmd-serverinfo-desc = 显示服务器信息
 cmd-serverinfo-usage = 用法：/{ $command }
 cmd-serverinfo-header = [服务器]
 cmd-serverinfo-end = 服务器信息结束
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

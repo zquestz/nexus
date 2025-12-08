@@ -2,7 +2,8 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, ChatTab, InputId, Message, UserEditState};
+use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, UserEditState};
+use crate::views::constants::PERMISSION_USER_INFO;
 use iced::Task;
 
 use nexus_common::protocol::ClientMessage;
@@ -549,17 +550,30 @@ impl NexusApp {
     }
 
     /// Handle info icon click on expanded user
+    ///
+    /// Opens the UserInfo panel and sends a request to the server.
+    /// The panel shows a loading state until the response arrives.
+    /// Requires user_info permission.
     pub fn handle_user_info_icon_clicked(&mut self, username: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
+            // Check permission (admins always have access)
+            let has_permission =
+                conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_INFO);
+            if !has_permission {
+                return Task::none();
+            }
+
+            // Clear previous data and open the panel (shows loading state)
+            conn.user_info_data = None;
+            self.ui_state.active_panel = ActivePanel::UserInfo;
+
             // Send UserInfo request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
                 let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+                conn.user_info_data = Some(Err(error_msg));
             }
-
-            return self.handle_show_chat_view();
         }
         Task::none()
     }

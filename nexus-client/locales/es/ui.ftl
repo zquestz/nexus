@@ -34,6 +34,8 @@ title-bookmarks = Marcadores
 title-users = Usuarios
 title-fingerprint-mismatch = ¡Huella del Certificado No Coincide!
 title-server-info = Info del Servidor
+title-user-info = Info del Usuario
+title-about = Acerca de
 
 # =============================================================================
 # Placeholders
@@ -101,6 +103,7 @@ tooltip-broadcast = Difusión
 tooltip-user-create = Crear Usuario
 tooltip-user-edit = Editar Usuario
 tooltip-server-info = Info del Servidor
+tooltip-about = Acerca de
 tooltip-settings = Configuración
 tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
@@ -178,6 +181,7 @@ err-user-kick-failed = Error al expulsar usuario
 err-no-shutdown-handle = Error de conexión: Sin manejador de cierre
 err-userlist-failed = Error al actualizar lista de usuarios
 err-port-invalid = El puerto debe ser un número válido (1-65535)
+err-no-chat-permission = No tienes permiso para enviar mensajes
 
 # Network connection errors
 err-no-peer-certificates = No se encontraron certificados del servidor
@@ -254,19 +258,23 @@ fingerprint-warning = Esto podría indicar un problema de seguridad (ataque MITM
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = es Administrador
-user-info-connected-ago = conectado: hace { $duration }
-user-info-connected-sessions = conectado: hace { $duration } ({ $count } sesiones)
-user-info-features = características: { $features }
-user-info-locale = idioma: { $locale }
-user-info-address = dirección: { $address }
-user-info-addresses = direcciones:
-user-info-address-item = - { $address }
-user-info-created = creado: { $created }
+user-info-username = Usuario:
+user-info-role = Rol:
+user-info-role-admin = admin
+user-info-role-user = usuario
+user-info-connected = Conectado:
+user-info-connected-value = hace { $duration }
+user-info-connected-value-sessions = hace { $duration } ({ $count } sesiones)
+user-info-features = Características:
+user-info-features-value = { $features }
+user-info-features-none = Ninguna
+user-info-locale = Idioma:
+user-info-address = Dirección:
+user-info-addresses = Direcciones:
+user-info-created = Creado:
 user-info-end = Fin de información del usuario
 user-info-unknown = Desconocido
-user-info-error = Error: { $error }
+user-info-loading = Cargando información del usuario...
 
 # =============================================================================
 # Time Duration
@@ -335,3 +343,10 @@ cmd-serverinfo-desc = Mostrar información del servidor
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [servidor]
 cmd-serverinfo-end = Fin de información del servidor
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

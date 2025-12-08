@@ -11,6 +11,7 @@ mod layout;
 mod server_info;
 mod server_list;
 mod settings;
+mod user_info;
 mod user_list;
 mod users;
 

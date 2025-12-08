@@ -4,6 +4,9 @@ use crate::NexusApp;
 use crate::config::{CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
+use crate::views::constants::{
+    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_INFO,
+};
 use iced::Task;
 use iced::widget::{Id, markdown, operation};
 
@@ -46,6 +49,42 @@ impl NexusApp {
     /// Close Server Info panel
     pub fn handle_close_server_info(&mut self) -> Task<Message> {
         self.handle_show_chat_view()
+    }
+
+    // ==================== User Info ====================
+
+    /// Close User Info panel
+    pub fn handle_close_user_info(&mut self) -> Task<Message> {
+        self.handle_show_chat_view()
+    }
+
+    // ==================== Panel Permission Helpers ====================
+
+    /// Close any active panel that the user doesn't have permission for.
+    ///
+    /// Called when switching connections or when a new connection is established
+    /// to ensure the user doesn't see panels they can't access.
+    pub fn close_panels_without_permission(&mut self, is_admin: bool, permissions: &[String]) {
+        let has_broadcast = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_BROADCAST);
+        let has_user_create = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
+        let has_user_edit = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+        let has_user_info = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_INFO);
+
+        match self.ui_state.active_panel {
+            ActivePanel::Broadcast if !has_broadcast => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            ActivePanel::AddUser if !has_user_create => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            ActivePanel::EditUser if !has_user_edit => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            ActivePanel::UserInfo if !has_user_info => {
+                self.ui_state.active_panel = ActivePanel::None;
+            }
+            _ => {}
+        }
     }
 }
 

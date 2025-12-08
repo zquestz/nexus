@@ -250,10 +250,16 @@ impl NexusApp {
             pending_message_tab: None,
             broadcast_error: None,
             user_management: UserManagementState::default(),
+            user_info_data: None,
         };
 
+        let is_admin = server_conn.is_admin;
+        let permissions = server_conn.permissions.clone();
         self.connections.insert(conn.connection_id, server_conn);
         self.active_connection = Some(conn.connection_id);
+
+        // Close any active panel the new connection doesn't have permission for
+        self.close_panels_without_permission(is_admin, &permissions);
 
         Some(ConnectionRegistration {
             tx: conn_tx,

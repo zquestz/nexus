@@ -31,8 +31,10 @@ title-connected = Connessi
 title-settings = Impostazioni
 title-bookmarks = Segnalibri
 title-users = Utenti
-title-fingerprint-mismatch = Impronta del certificato non corrispondente!
+title-fingerprint-mismatch = Impronta certificato non corrispondente!
 title-server-info = Info Server
+title-user-info = Info Utente
+title-about = Informazioni
 
 # =============================================================================
 # Placeholders
@@ -97,9 +99,10 @@ permission-user_message = Messaggio Utente
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
-tooltip-user-create = Crea utente
-tooltip-user-edit = Modifica utente
+tooltip-user-create = Crea Utente
+tooltip-user-edit = Modifica Utente
 tooltip-server-info = Info Server
+tooltip-about = Informazioni
 tooltip-settings = Impostazioni
 tooltip-hide-bookmarks = Nascondi segnalibri
 tooltip-show-bookmarks = Mostra segnalibri
@@ -254,19 +257,23 @@ fingerprint-warning = Questo potrebbe indicare un problema di sicurezza (attacco
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = è Amministratore
-user-info-connected-ago = connesso: { $duration } fa
-user-info-connected-sessions = connesso: { $duration } fa ({ $count } sessioni)
-user-info-features = funzionalità: { $features }
-user-info-locale = lingua: { $locale }
-user-info-address = indirizzo: { $address }
-user-info-addresses = indirizzi:
-user-info-address-item = - { $address }
-user-info-created = creato: { $created }
+user-info-username = Nome utente:
+user-info-role = Ruolo:
+user-info-role-admin = admin
+user-info-role-user = utente
+user-info-connected = Connesso:
+user-info-connected-value = { $duration } fa
+user-info-connected-value-sessions = { $duration } fa ({ $count } sessioni)
+user-info-features = Funzionalità:
+user-info-features-value = { $features }
+user-info-features-none = Nessuna
+user-info-locale = Lingua:
+user-info-address = Indirizzo:
+user-info-addresses = Indirizzi:
+user-info-created = Creato:
 user-info-end = Fine informazioni utente
 user-info-unknown = Sconosciuto
-user-info-error = Errore: { $error }
+user-info-loading = Caricamento informazioni utente...
 
 # =============================================================================
 # Time Duration
@@ -335,3 +342,10 @@ cmd-serverinfo-desc = Mostra informazioni del server
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [server]
 cmd-serverinfo-end = Fine informazioni server
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

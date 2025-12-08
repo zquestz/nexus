@@ -33,6 +33,8 @@ title-bookmarks = Закладки
 title-users = Пользователи
 title-fingerprint-mismatch = Отпечаток сертификата не совпадает!
 title-server-info = Информация о сервере
+title-user-info = Информация о пользователе
+title-about = О программе
 
 # =============================================================================
 # Placeholders
@@ -100,6 +102,7 @@ tooltip-broadcast = Рассылка
 tooltip-user-create = Создать пользователя
 tooltip-user-edit = Редактировать пользователя
 tooltip-server-info = Информация о сервере
+tooltip-about = О программе
 tooltip-settings = Настройки
 tooltip-hide-bookmarks = Скрыть закладки
 tooltip-show-bookmarks = Показать закладки
@@ -252,19 +255,23 @@ fingerprint-warning = Это может указывать на проблему
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = является Администратором
-user-info-connected-ago = подключён: { $duration } назад
-user-info-connected-sessions = подключён: { $duration } назад ({ $count } сеансов)
-user-info-features = возможности: { $features }
-user-info-locale = язык: { $locale }
-user-info-address = адрес: { $address }
-user-info-addresses = адреса:
-user-info-address-item = - { $address }
-user-info-created = создан: { $created }
+user-info-username = Имя пользователя:
+user-info-role = Роль:
+user-info-role-admin = админ
+user-info-role-user = пользователь
+user-info-connected = Подключён:
+user-info-connected-value = { $duration } назад
+user-info-connected-value-sessions = { $duration } назад ({ $count } сеансов)
+user-info-features = Возможности:
+user-info-features-value = { $features }
+user-info-features-none = Нет
+user-info-locale = Язык:
+user-info-address = Адрес:
+user-info-addresses = Адреса:
+user-info-created = Создан:
 user-info-end = Конец информации о пользователе
 user-info-unknown = Неизвестно
-user-info-error = Ошибка: { $error }
+user-info-loading = Загрузка информации о пользователе...
 
 # =============================================================================
 # Time Duration
@@ -339,3 +346,10 @@ cmd-serverinfo-desc = Показать информацию о сервере
 cmd-serverinfo-usage = Использование: /{ $command }
 cmd-serverinfo-header = [сервер]
 cmd-serverinfo-end = Конец информации о сервере
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project

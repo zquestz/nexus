@@ -33,6 +33,8 @@ title-bookmarks = 북마크
 title-users = 사용자
 title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
 title-server-info = 서버 정보
+title-user-info = 사용자 정보
+title-about = 정보
 
 # =============================================================================
 # Placeholders
@@ -100,6 +102,7 @@ tooltip-broadcast = 브로드캐스트
 tooltip-user-create = 사용자 생성
 tooltip-user-edit = 사용자 편집
 tooltip-server-info = 서버 정보
+tooltip-about = 정보
 tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
@@ -252,19 +255,23 @@ fingerprint-warning = 이는 보안 문제(MITM 공격)를 나타내거나 서�
 # User Info Display
 # =============================================================================
 
-user-info-header = [{ $username }]
-user-info-is-admin = 관리자입니다
-user-info-connected-ago = 연결됨: { $duration } 전
-user-info-connected-sessions = 연결됨: { $duration } 전 ({ $count }개 세션)
-user-info-features = 기능: { $features }
-user-info-locale = 언어: { $locale }
-user-info-address = 주소: { $address }
+user-info-username = 사용자명:
+user-info-role = 역할:
+user-info-role-admin = 관리자
+user-info-role-user = 사용자
+user-info-connected = 연결됨:
+user-info-connected-value = { $duration } 전
+user-info-connected-value-sessions = { $duration } 전 ({ $count }개 세션)
+user-info-features = 기능:
+user-info-features-value = { $features }
+user-info-features-none = 없음
+user-info-locale = 언어:
+user-info-address = 주소:
 user-info-addresses = 주소:
-user-info-address-item = - { $address }
-user-info-created = 생성일: { $created }
+user-info-created = 생성일:
 user-info-end = 사용자 정보 끝
 user-info-unknown = 알 수 없음
-user-info-error = 오류: { $error }
+user-info-loading = 사용자 정보 로딩 중...
 
 # =============================================================================
 # Time Duration
@@ -315,3 +322,10 @@ cmd-serverinfo-desc = 서버 정보 표시
 cmd-serverinfo-usage = 사용법: /{ $command }
 cmd-serverinfo-header = [서버]
 cmd-serverinfo-end = 서버 정보 끝
+
+# =============================================================================
+# About Panel
+# =============================================================================
+
+about-app-name = Nexus BBS
+about-copyright = © 2025 Nexus BBS Project
