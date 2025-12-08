@@ -124,10 +124,10 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             // Connection exists but couldn't get all required state
             empty_content_view()
         } else {
-            // Not connected - show connection form, with Settings overlay if active
+            // Not connected - show connection form, with Settings/About overlay if active
             let conn_form = connection_form_view(config.connection_form);
-            if config.ui_state.active_panel == ActivePanel::Settings {
-                stack![
+            match config.ui_state.active_panel {
+                ActivePanel::Settings => stack![
                     conn_form,
                     settings_view(
                         config.theme.clone(),
@@ -143,9 +143,12 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 ]
                 .width(Fill)
                 .height(Fill)
-                .into()
-            } else {
-                conn_form
+                .into(),
+                ActivePanel::About => stack![conn_form, about_view(config.theme.clone())]
+                    .width(Fill)
+                    .height(Fill)
+                    .into(),
+                _ => conn_form,
             }
         };
 
