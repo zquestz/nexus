@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,30 +19,30 @@ jobs:
         rust: [stable]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Run tests
         run: cargo test --workspace --verbose
 
@@ -55,30 +55,30 @@ jobs:
         rust: [stable]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Build release
         run: cargo build --release --workspace --verbose
 
@@ -87,12 +87,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      
+
       - name: Run clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
 
@@ -101,12 +101,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -121,44 +121,44 @@ jobs:
           - os: macos-latest
             bundle_command: cargo bundle --release
           - os: windows-latest
-            bundle_command: cargo bundle --target x86_64-pc-windows-msvc --format msi --release
+            bundle_command: cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-bundle-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Install cargo-bundle
-        run: cargo install cargo-bundle
-      
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
       - name: Add ICNS icon for macOS builds
         if: runner.os == 'macOS'
         run: sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
         working-directory: nexus-client
-      
+
       - name: Rename binary to Nexus for macOS builds
         if: runner.os == 'macOS'
         run: sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
         working-directory: nexus-client
-      
+
       - name: Build bundle
         run: ${{ matrix.bundle_command }}
         working-directory: nexus-client
