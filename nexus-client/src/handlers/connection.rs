@@ -150,11 +150,13 @@ impl NexusApp {
 
     // ==================== Chat Helpers ====================
 
-    /// Scroll chat and focus input if chat view is visible (no panel overlay).
+    /// Scroll chat if chat view is visible (no panel overlay).
     ///
     /// Use this for background events (e.g., incoming messages) that shouldn't
     /// close panels or steal focus from panel input fields.
-    pub fn scroll_chat_if_visible(&self) -> Task<Message> {
+    ///
+    /// If `focus` is true, also focuses the chat input field.
+    pub fn scroll_chat_if_visible(&self, focus: bool) -> Task<Message> {
         // Don't scroll or steal focus if a panel is open
         if self.ui_state.active_panel != ActivePanel::None {
             return Task::none();
@@ -180,10 +182,14 @@ impl NexusApp {
             }
         };
 
-        Task::batch([
-            operation::snap_to(ScrollableId::ChatMessages, scroll_offset),
-            operation::focus(Id::from(InputId::ChatInput)),
-        ])
+        if focus {
+            Task::batch([
+                operation::snap_to(ScrollableId::ChatMessages, scroll_offset),
+                operation::focus(Id::from(InputId::ChatInput)),
+            ])
+        } else {
+            operation::snap_to(ScrollableId::ChatMessages, scroll_offset)
+        }
     }
 
     // ==================== Chat Handlers ====================

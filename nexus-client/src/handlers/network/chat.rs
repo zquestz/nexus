@@ -29,7 +29,7 @@ impl NexusApp {
         }
 
         if self.active_connection == Some(connection_id) {
-            return self.scroll_chat_if_visible();
+            return self.scroll_chat_if_visible(true);
         }
 
         Task::none()

@@ -41,7 +41,7 @@ impl NexusApp {
             conn.unread_tabs.insert(pm_tab);
             Task::none()
         } else {
-            self.scroll_chat_if_visible()
+            self.scroll_chat_if_visible(true)
         }
     }
 

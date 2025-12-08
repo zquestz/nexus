@@ -170,13 +170,13 @@ impl NexusApp {
     /// Toggle bookmarks sidebar visibility
     pub fn handle_toggle_bookmarks(&mut self) -> Task<Message> {
         self.ui_state.show_bookmarks = !self.ui_state.show_bookmarks;
-        Task::none()
+        self.scroll_chat_if_visible(false)
     }
 
     /// Toggle user list sidebar visibility
     pub fn handle_toggle_user_list(&mut self) -> Task<Message> {
         self.ui_state.show_user_list = !self.ui_state.show_user_list;
-        Task::none()
+        self.scroll_chat_if_visible(false)
     }
 
     // ==================== Settings ====================
