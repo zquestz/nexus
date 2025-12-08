@@ -272,7 +272,7 @@ impl NexusApp {
 
         Task::future(async {
             let file = AsyncFileDialog::new()
-                .add_filter("Images", &["png", "webp", "svg"])
+                .add_filter("Images", &["png", "webp", "svg", "jpg", "jpeg"])
                 .pick_file()
                 .await;
 
@@ -290,6 +290,7 @@ impl NexusApp {
                         "png" => "image/png",
                         "webp" => "image/webp",
                         "svg" => "image/svg+xml",
+                        "jpg" | "jpeg" => "image/jpeg",
                         _ => {
                             return Message::AvatarLoaded(Err(AvatarError::UnsupportedType));
                         }

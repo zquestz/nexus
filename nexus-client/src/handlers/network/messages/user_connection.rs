@@ -4,7 +4,7 @@ use crate::NexusApp;
 use crate::handlers::network::helpers::sort_user_list;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
-use crate::user_avatar::get_or_create_avatar;
+use crate::user_avatar::{compute_avatar_hash, get_or_create_avatar};
 use iced::Task;
 use nexus_common::protocol::UserInfo as ProtocolUserInfo;
 
@@ -18,6 +18,9 @@ impl NexusApp {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
+
+        // Compute hash of incoming avatar for comparison
+        let new_avatar_hash = compute_avatar_hash(user.avatar.as_deref());
 
         // Check if user already exists (multi-device connection) and update accordingly
         let is_new_user = if let Some(existing_user) = conn
@@ -33,8 +36,8 @@ impl NexusApp {
             }
 
             // Update avatar if it changed (latest login wins, including clearing avatar)
-            if existing_user.avatar != user.avatar {
-                existing_user.avatar = user.avatar.clone();
+            if existing_user.avatar_hash != new_avatar_hash {
+                existing_user.avatar_hash = new_avatar_hash;
                 // Invalidate cache so new avatar (or identicon) is displayed
                 conn.avatar_cache.remove(&user.username);
                 get_or_create_avatar(
@@ -51,7 +54,7 @@ impl NexusApp {
                 username: user.username.clone(),
                 is_admin: user.is_admin,
                 session_ids: user.session_ids.clone(),
-                avatar: user.avatar.clone(),
+                avatar_hash: new_avatar_hash,
             });
             sort_user_list(&mut conn.online_users);
 

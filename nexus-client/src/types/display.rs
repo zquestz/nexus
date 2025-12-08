@@ -159,6 +159,9 @@ pub struct UserInfo {
     pub is_admin: bool,
     /// All active session IDs for this user
     pub session_ids: Vec<u32>,
-    /// User's avatar as a data URI (None = use identicon)
-    pub avatar: Option<String>,
+    /// SHA-256 hash of the avatar data URI for change detection (None = no avatar/identicon)
+    ///
+    /// We store a 32-byte hash instead of the full data URI (up to 176KB) to save memory.
+    /// The actual decoded avatar is stored in `ServerConnection.avatar_cache`.
+    pub avatar_hash: Option<[u8; 32]>,
 }

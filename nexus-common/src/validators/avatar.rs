@@ -13,7 +13,7 @@
 pub const MAX_AVATAR_DATA_URI_LENGTH: usize = 176_000;
 
 /// Allowed MIME types for avatars
-const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/webp", "image/svg+xml"];
+const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/webp", "image/svg+xml", "image/jpeg"];
 
 /// Errors that can occur when validating an avatar
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +31,7 @@ pub enum AvatarError {
 /// Checks:
 /// - Length does not exceed `MAX_AVATAR_DATA_URI_LENGTH`
 /// - Starts with `data:` prefix
-/// - Contains a supported MIME type (image/png, image/webp, image/svg+xml)
+/// - Contains a supported MIME type (image/png, image/webp, image/jpeg, image/svg+xml)
 /// - Contains `;base64,` marker
 ///
 /// # Arguments
@@ -56,6 +56,9 @@ pub enum AvatarError {
 ///
 /// // Valid SVG avatar
 /// assert!(validate_avatar("data:image/svg+xml;base64,PHN2Zz4=").is_ok());
+///
+/// // Valid JPEG avatar
+/// assert!(validate_avatar("data:image/jpeg;base64,/9j/4AAQ").is_ok());
 ///
 /// // Invalid: unsupported type
 /// assert_eq!(
@@ -123,6 +126,12 @@ mod tests {
     }
 
     #[test]
+    fn test_valid_jpeg_avatar() {
+        let avatar = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBEQACEQA=";
+        assert!(validate_avatar(avatar).is_ok());
+    }
+
+    #[test]
     fn test_valid_minimal_avatar() {
         // Minimal valid data URI
         let avatar = "data:image/png;base64,";
@@ -171,12 +180,6 @@ mod tests {
     fn test_unsupported_gif() {
         let avatar =
             "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-        assert_eq!(validate_avatar(avatar), Err(AvatarError::UnsupportedType));
-    }
-
-    #[test]
-    fn test_unsupported_jpeg() {
-        let avatar = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
         assert_eq!(validate_avatar(avatar), Err(AvatarError::UnsupportedType));
     }
 

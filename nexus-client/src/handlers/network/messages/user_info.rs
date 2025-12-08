@@ -5,7 +5,7 @@ use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
-use crate::user_avatar::get_or_create_avatar;
+use crate::user_avatar::{compute_avatar_hash, get_or_create_avatar};
 use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
@@ -191,22 +191,18 @@ impl NexusApp {
         let user_list: Vec<ClientUserInfo> = users
             .unwrap_or_default()
             .into_iter()
-            .map(|u| ClientUserInfo {
-                username: u.username,
-                is_admin: u.is_admin,
-                session_ids: u.session_ids,
-                avatar: u.avatar,
+            .map(|u| {
+                let avatar_hash = compute_avatar_hash(u.avatar.as_deref());
+                // Pre-populate avatar cache for this user
+                get_or_create_avatar(&mut conn.avatar_cache, &u.username, u.avatar.as_deref());
+                ClientUserInfo {
+                    username: u.username,
+                    is_admin: u.is_admin,
+                    session_ids: u.session_ids,
+                    avatar_hash,
+                }
             })
             .collect();
-
-        // Pre-populate avatar cache for all users
-        for user in &user_list {
-            get_or_create_avatar(
-                &mut conn.avatar_cache,
-                &user.username,
-                user.avatar.as_deref(),
-            );
-        }
 
         conn.online_users = user_list;
         sort_user_list(&mut conn.online_users);
@@ -233,6 +229,7 @@ impl NexusApp {
 
         let new_username = user.username;
         let username_changed = previous_username != new_username;
+        let new_avatar_hash = compute_avatar_hash(user.avatar.as_deref());
 
         // Update the user's info in the online_users list
         // Use previous_username to find the user (in case username changed)
@@ -242,12 +239,12 @@ impl NexusApp {
             .find(|u| u.username == previous_username)
         {
             // Check if avatar changed (invalidate cache if so)
-            let avatar_changed = existing_user.avatar != user.avatar;
+            let avatar_changed = existing_user.avatar_hash != new_avatar_hash;
 
             existing_user.username = new_username.clone();
             existing_user.is_admin = user.is_admin;
             existing_user.session_ids = user.session_ids;
-            existing_user.avatar = user.avatar.clone();
+            existing_user.avatar_hash = new_avatar_hash;
 
             // If username changed, remove old cache entry
             if username_changed {

@@ -159,6 +159,12 @@ pub const USER_INFO_AVATAR_SIZE: f32 = 64.0;
 /// Spacing between avatar and username in user info panel
 pub const USER_INFO_AVATAR_SPACING: f32 = 12.0;
 
+/// Maximum size to cache avatars at (matches largest display size)
+///
+/// Raster images are resized to this dimension before caching to save memory.
+/// SVGs are not resized (vector graphics scale without quality loss).
+pub const AVATAR_MAX_CACHE_SIZE: u32 = 64;
+
 // ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================
