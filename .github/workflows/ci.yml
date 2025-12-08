@@ -154,6 +154,11 @@ jobs:
         run: sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
         working-directory: nexus-client
       
+      - name: Rename binary to Nexus for macOS builds
+        if: runner.os == 'macOS'
+        run: sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
+        working-directory: nexus-client
+      
       - name: Build bundle
         run: ${{ matrix.bundle_command }}
         working-directory: nexus-client
