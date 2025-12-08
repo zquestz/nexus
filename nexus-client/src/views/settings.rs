@@ -1,15 +1,17 @@
 //! Settings panel view
 
 use super::chat::TimestampSettings;
-use crate::config::{CHAT_FONT_SIZES, all_themes};
+use crate::config::settings::CHAT_FONT_SIZES;
+use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, content_background_style, shaped_text,
+    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
+    error_text_style, shaped_text, shaped_text_wrapped,
 };
-use crate::types::Message;
+use crate::types::{Message, SettingsFormState};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, checkbox, column, container, pick_list, row};
+use iced::widget::{Column, Space, button, checkbox, container, pick_list, row};
 use iced::{Center, Element, Fill, Theme};
 
 // ============================================================================
@@ -25,7 +27,19 @@ pub fn settings_view(
     show_connection_notifications: bool,
     chat_font_size: u8,
     timestamp_settings: TimestampSettings,
+    settings_form: Option<&SettingsFormState>,
 ) -> Element<'static, Message> {
+    // Extract avatar state from settings form (only present when panel is open)
+    let (avatar, default_avatar, error) = settings_form
+        .map(|f| {
+            (
+                f.cached_avatar.as_ref(),
+                Some(&f.default_avatar),
+                f.error.as_deref(),
+            )
+        })
+        .unwrap_or((None, None, None));
+
     let title = shaped_text(t("title-settings"))
         .size(TITLE_SIZE)
         .width(Fill)
@@ -91,6 +105,40 @@ pub fn settings_view(
     let time_format_row = row![Space::new().width(20), time_format_checkbox];
     let seconds_row = row![Space::new().width(20), seconds_checkbox];
 
+    // Avatar section
+    let avatar_label = shaped_text(t("label-avatar")).size(TEXT_SIZE);
+    let avatar_preview: Element<'static, Message> = if let Some(av) = avatar {
+        av.render(AVATAR_PREVIEW_SIZE)
+    } else if let Some(default) = default_avatar {
+        default.render(AVATAR_PREVIEW_SIZE)
+    } else {
+        Space::new()
+            .width(AVATAR_PREVIEW_SIZE)
+            .height(AVATAR_PREVIEW_SIZE)
+            .into()
+    };
+
+    let pick_avatar_button = button(shaped_text(t("button-choose-avatar")).size(TEXT_SIZE))
+        .on_press(Message::PickAvatarPressed)
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
+
+    let clear_avatar_button = if avatar.is_some() {
+        button(shaped_text(t("button-clear-avatar")).size(TEXT_SIZE))
+            .on_press(Message::ClearAvatarPressed)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary)
+    } else {
+        button(shaped_text(t("button-clear-avatar")).size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary)
+    };
+
+    let avatar_buttons = row![pick_avatar_button, clear_avatar_button].spacing(ELEMENT_SPACING);
+    let avatar_row = row![avatar_label, avatar_preview, avatar_buttons]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+
     let buttons = row![
         Space::new().width(Fill),
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -103,21 +151,39 @@ pub fn settings_view(
     ]
     .spacing(ELEMENT_SPACING);
 
-    let form = column![
-        title,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        theme_row,
-        font_size_row,
-        notifications_checkbox,
-        timestamps_checkbox,
-        time_format_row,
-        seconds_row,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        buttons,
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    let mut form_items: Vec<Element<'static, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(error) = error {
+        form_items.push(
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        theme_row.into(),
+        avatar_row.into(),
+        font_size_row.into(),
+        notifications_checkbox.into(),
+        timestamps_checkbox.into(),
+        time_format_row.into(),
+        seconds_row.into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        buttons.into(),
+    ]);
+
+    let form = Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
 
     container(form)
         .width(Fill)

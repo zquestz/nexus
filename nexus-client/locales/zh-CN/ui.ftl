@@ -14,6 +14,8 @@ button-edit = 编辑
 button-update = 更新
 button-accept-new-certificate = 接受新证书
 button-close = 关闭
+button-choose-avatar = 选择头像
+button-clear-avatar = 清除
 
 # =============================================================================
 # Titles
@@ -76,6 +78,7 @@ label-server-version = 版本：
 label-chat-topic = 聊天主题：
 label-chat-topic-set-by = 主题设置者：
 label-max-connections-per-ip = 每IP最大连接数：
+label-avatar = 头像：
 
 # =============================================================================
 # Permission Display Names
@@ -210,6 +213,8 @@ err-username-too-long = 用户名过长（最多{ $max }个字符）
 err-username-invalid = 用户名包含无效字符
 err-password-too-long = 密码过长（最多{ $max }个字符）
 err-topic-too-long = 主题过长（{ $length }个字符，最多{ $max }个字符）
+err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP或SVG。
+err-avatar-too-large = 头像过大。最大大小为{ $max_kb }KB。
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

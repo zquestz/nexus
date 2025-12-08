@@ -6,6 +6,7 @@ use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 
 use super::{ChatTab, NetworkConnection, ServerMessage};
+use crate::handlers::ui::AvatarError;
 
 /// Messages that drive the application state machine
 #[derive(Debug, Clone)]
@@ -136,8 +137,14 @@ pub enum Message {
     CancelSettings,
     /// Settings panel: Chat font size selected from picker
     ChatFontSizeSelected(u8),
+    /// Settings panel: Clear avatar button pressed
+    ClearAvatarPressed,
     /// Settings panel: Connection notifications checkbox toggled
     ConnectionNotificationsToggled(bool),
+    /// Settings panel: Avatar loaded from file picker (data URI or error)
+    AvatarLoaded(Result<String, AvatarError>),
+    /// Settings panel: Pick avatar button pressed
+    PickAvatarPressed,
     /// Settings panel: Save button pressed (persist to disk)
     SaveSettings,
     /// Settings panel: Show seconds in timestamps toggled

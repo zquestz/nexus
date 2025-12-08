@@ -10,6 +10,7 @@ mod icon;
 mod network;
 mod style;
 mod types;
+mod user_avatar;
 mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -250,9 +251,12 @@ impl NexusApp {
             // Settings
             Message::CancelSettings => self.handle_cancel_settings(),
             Message::ChatFontSizeSelected(size) => self.handle_chat_font_size_selected(size),
+            Message::ClearAvatarPressed => self.handle_clear_avatar_pressed(),
             Message::ConnectionNotificationsToggled(enabled) => {
                 self.handle_connection_notifications_toggled(enabled)
             }
+            Message::AvatarLoaded(result) => self.handle_avatar_loaded(result),
+            Message::PickAvatarPressed => self.handle_pick_avatar_pressed(),
             Message::SaveSettings => self.handle_save_settings(),
             Message::ShowSecondsToggled(enabled) => self.handle_show_seconds_toggled(enabled),
             Message::ShowTimestampsToggled(enabled) => self.handle_show_timestamps_toggled(enabled),
@@ -325,6 +329,7 @@ impl NexusApp {
             show_timestamps: self.config.settings.show_timestamps,
             use_24_hour_time: self.config.settings.use_24_hour_time,
             show_seconds: self.config.settings.show_seconds,
+            settings_form: self.settings_form.as_ref(),
             connections: &self.connections,
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,

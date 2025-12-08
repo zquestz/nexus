@@ -1,7 +1,7 @@
 //! UI panel toggles
 
 use crate::NexusApp;
-use crate::config::{CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
+use crate::config::settings::{AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
 use crate::views::constants::{
@@ -9,6 +9,7 @@ use crate::views::constants::{
 };
 use iced::Task;
 use iced::widget::{Id, markdown, operation};
+use rfd::AsyncFileDialog;
 
 impl NexusApp {
     // ==================== About ====================
@@ -259,4 +260,121 @@ impl NexusApp {
         self.config.settings.show_seconds = enabled;
         Task::none()
     }
+
+    // ==================== Avatar ====================
+
+    /// Handle pick avatar button pressed - opens file dialog
+    pub fn handle_pick_avatar_pressed(&mut self) -> Task<Message> {
+        // Clear any previous error when starting a new pick
+        if let Some(form) = &mut self.settings_form {
+            form.error = None;
+        }
+
+        Task::future(async {
+            let file = AsyncFileDialog::new()
+                .add_filter("Images", &["png", "webp", "svg"])
+                .pick_file()
+                .await;
+
+            match file {
+                Some(handle) => {
+                    let path = handle.path();
+                    let extension = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+
+                    // Determine MIME type from extension
+                    let mime_type = match extension.as_str() {
+                        "png" => "image/png",
+                        "webp" => "image/webp",
+                        "svg" => "image/svg+xml",
+                        _ => {
+                            return Message::AvatarLoaded(Err(AvatarError::UnsupportedType));
+                        }
+                    };
+
+                    // Read file contents
+                    let bytes = handle.read().await;
+
+                    // Check size
+                    if bytes.len() > AVATAR_MAX_SIZE {
+                        return Message::AvatarLoaded(Err(AvatarError::TooLarge));
+                    }
+
+                    // Validate file content matches expected format
+                    if !crate::user_avatar::validate_image_bytes(&bytes, mime_type) {
+                        return Message::AvatarLoaded(Err(AvatarError::UnsupportedType));
+                    }
+
+                    // Build data URI
+                    use base64::Engine;
+                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
+
+                    Message::AvatarLoaded(Ok(data_uri))
+                }
+                None => {
+                    // User cancelled - no change
+                    Message::AvatarLoaded(Err(AvatarError::Cancelled))
+                }
+            }
+        })
+    }
+
+    /// Handle avatar loaded from file picker
+    pub fn handle_avatar_loaded(&mut self, result: Result<String, AvatarError>) -> Task<Message> {
+        match result {
+            Ok(data_uri) => {
+                // Clear error and update avatar
+                if let Some(form) = &mut self.settings_form {
+                    form.error = None;
+                    form.cached_avatar = crate::user_avatar::decode_data_uri(&data_uri);
+                }
+                self.config.settings.avatar = Some(data_uri);
+            }
+            Err(AvatarError::Cancelled) => {
+                // User cancelled - no error to show
+            }
+            Err(AvatarError::UnsupportedType) => {
+                if let Some(form) = &mut self.settings_form {
+                    form.error = Some(t("err-avatar-unsupported-type"));
+                }
+            }
+            Err(AvatarError::TooLarge) => {
+                if let Some(form) = &mut self.settings_form {
+                    let max_kb = (AVATAR_MAX_SIZE / 1024).to_string();
+                    form.error = Some(t_args("err-avatar-too-large", &[("max_kb", &max_kb)]));
+                }
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle clear avatar button pressed
+    pub fn handle_clear_avatar_pressed(&mut self) -> Task<Message> {
+        // Clear error and avatar when clearing
+        if let Some(form) = &mut self.settings_form {
+            form.error = None;
+            form.cached_avatar = None;
+        }
+        self.config.settings.avatar = None;
+        Task::none()
+    }
+}
+
+// =============================================================================
+// Avatar Error Type
+// =============================================================================
+
+/// Errors that can occur when loading an avatar
+#[derive(Debug, Clone)]
+pub enum AvatarError {
+    /// User cancelled the file picker
+    Cancelled,
+    /// File type not supported (not PNG, WebP, or SVG)
+    UnsupportedType,
+    /// File exceeds maximum size
+    TooLarge,
 }

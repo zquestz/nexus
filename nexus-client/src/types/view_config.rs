@@ -1,8 +1,8 @@
 //! View configuration struct for passing state to view rendering
 
 use crate::types::{
-    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection, UiState,
-    UserManagementState,
+    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
+    SettingsFormState, UiState, UserManagementState,
 };
 use iced::Theme;
 use std::collections::HashMap;
@@ -29,6 +29,9 @@ pub struct ViewConfig<'a> {
 
     /// Show seconds in timestamps
     pub show_seconds: bool,
+
+    /// Settings form state (present when settings panel is open)
+    pub settings_form: Option<&'a SettingsFormState>,
 
     /// Active server connections by connection_id
     pub connections: &'a HashMap<usize, ServerConnection>,

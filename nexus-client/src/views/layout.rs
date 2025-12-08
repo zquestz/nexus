@@ -118,6 +118,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                     use_24_hour_time: config.use_24_hour_time,
                     show_seconds: config.show_seconds,
                 },
+                config.settings_form,
             )
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -137,6 +138,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                             use_24_hour_time: config.use_24_hour_time,
                             show_seconds: config.show_seconds,
                         },
+                        config.settings_form,
                     )
                 ]
                 .width(Fill)
@@ -457,6 +459,7 @@ fn server_content_view<'a>(
     show_connection_notifications: bool,
     chat_font_size: u8,
     timestamp_settings: TimestampSettings,
+    settings_form: Option<&'a crate::types::SettingsFormState>,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
     let chat = chat_view(
@@ -490,6 +493,7 @@ fn server_content_view<'a>(
                 show_connection_notifications,
                 chat_font_size,
                 timestamp_settings,
+                settings_form,
             )
         ]
         .width(Fill)

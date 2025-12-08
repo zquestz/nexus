@@ -1,10 +1,13 @@
 //! User preference settings
 
-use super::ThemePreference;
+use super::theme::ThemePreference;
 
 // =============================================================================
 // Constants
 // =============================================================================
+
+/// Maximum avatar size in bytes (128KB)
+pub const AVATAR_MAX_SIZE: usize = 128 * 1024;
 
 /// Minimum allowed chat font size
 pub const CHAT_FONT_SIZE_MIN: u8 = 9;
@@ -48,6 +51,10 @@ pub struct Settings {
     /// Show seconds in timestamps
     #[serde(default = "default_true")]
     pub show_seconds: bool,
+
+    /// User avatar as data URI (e.g., "data:image/png;base64,...")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 impl Default for Settings {
@@ -59,6 +66,7 @@ impl Default for Settings {
             show_timestamps: default_true(),
             use_24_hour_time: false,
             show_seconds: default_true(),
+            avatar: None,
         }
     }
 }
@@ -92,6 +100,7 @@ mod tests {
         assert!(settings.show_timestamps);
         assert!(!settings.use_24_hour_time);
         assert!(settings.show_seconds);
+        assert!(settings.avatar.is_none());
     }
 
     #[test]
@@ -116,5 +125,17 @@ mod tests {
         assert_eq!(settings.show_timestamps, deserialized.show_timestamps);
         assert_eq!(settings.use_24_hour_time, deserialized.use_24_hour_time);
         assert_eq!(settings.show_seconds, deserialized.show_seconds);
+        assert_eq!(settings.avatar, deserialized.avatar);
+    }
+
+    #[test]
+    fn test_settings_with_avatar_serialization_roundtrip() {
+        let mut settings = Settings::default();
+        settings.avatar = Some("data:image/png;base64,abc123".to_string());
+
+        let json = serde_json::to_string(&settings).expect("serialize");
+        let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(settings.avatar, deserialized.avatar);
     }
 }

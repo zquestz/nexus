@@ -14,6 +14,8 @@ button-edit = 편집
 button-update = 업데이트
 button-accept-new-certificate = 새 인증서 수락
 button-close = 닫기
+button-choose-avatar = 아바타 선택
+button-clear-avatar = 지우기
 
 # =============================================================================
 # Titles
@@ -75,6 +77,7 @@ label-server-version = 버전:
 label-chat-topic = 채팅 주제:
 label-chat-topic-set-by = 주제 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
+label-avatar = 아바타:
 
 # =============================================================================
 # Permission Display Names
@@ -209,6 +212,8 @@ err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max }자
 err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있습니다
 err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
 err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
+err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP 또는 SVG를 사용하세요.
+err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

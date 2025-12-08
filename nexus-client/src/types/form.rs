@@ -1,6 +1,7 @@
 //! Connection and user management form state
 
 use crate::config::Config;
+use crate::user_avatar::{CachedAvatar, decode_data_uri, generate_identicon};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 /// User edit flow state (two-stage process)
@@ -179,17 +180,35 @@ impl UserManagementState {
 ///
 /// Stores a snapshot of the configuration when the settings panel is opened,
 /// allowing the user to cancel and restore the original settings.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SettingsFormState {
     /// Original config snapshot to restore on cancel
     pub original_config: Config,
+    /// Error message to display (e.g., avatar load failure)
+    pub error: Option<String>,
+    /// Cached avatar for stable rendering (decoded from config.settings.avatar)
+    pub cached_avatar: Option<CachedAvatar>,
+    /// Default avatar for settings preview when no custom avatar is set
+    pub default_avatar: CachedAvatar,
 }
 
 impl SettingsFormState {
     /// Create a new settings form state with a snapshot of the current config
     pub fn new(config: &Config) -> Self {
+        // Decode avatar from config if present
+        let cached_avatar = config
+            .settings
+            .avatar
+            .as_ref()
+            .and_then(|data_uri| decode_data_uri(data_uri));
+        // Generate default avatar for settings preview
+        let default_avatar = generate_identicon("default");
+
         Self {
             original_config: config.clone(),
+            error: None,
+            cached_avatar,
+            default_avatar,
         }
     }
 }

@@ -5,5 +5,5 @@ mod broadcast;
 mod connection;
 mod keyboard;
 pub(crate) mod network;
-mod ui;
+pub mod ui;
 mod user_management;

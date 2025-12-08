@@ -12,8 +12,10 @@ button-save = 保存
 button-create = 作成
 button-edit = 編集
 button-update = 更新
-button-accept-new-certificate = 新しい証明書を承認
+button-accept-new-certificate = 新しい証明書を受け入れる
 button-close = 閉じる
+button-choose-avatar = アバターを選択
+button-clear-avatar = クリア
 
 # =============================================================================
 # Titles
@@ -75,6 +77,7 @@ label-server-version = バージョン:
 label-chat-topic = チャットトピック:
 label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
+label-avatar = アバター:
 
 # =============================================================================
 # Permission Display Names
@@ -209,6 +212,8 @@ err-username-too-long = ユーザー名が長すぎます（最大{ $max }文字
 err-username-invalid = ユーザー名に無効な文字が含まれています
 err-password-too-long = パスワードが長すぎます（最大{ $max }文字）
 err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
+err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、またはSVGを使用してください。
+err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

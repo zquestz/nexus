@@ -14,6 +14,8 @@ button-edit = Bearbeiten
 button-update = Aktualisieren
 button-accept-new-certificate = Neues Zertifikat akzeptieren
 button-close = Schließen
+button-choose-avatar = Avatar auswählen
+button-clear-avatar = Löschen
 
 # =============================================================================
 # Titles
@@ -75,6 +77,7 @@ label-server-version = Version:
 label-chat-topic = Chat-Thema:
 label-chat-topic-set-by = Chat-Thema gesetzt von:
 label-max-connections-per-ip = Max. Verbindungen pro IP:
+label-avatar = Avatar:
 
 # =============================================================================
 # Permission Display Names
@@ -209,6 +212,8 @@ err-username-too-long = Benutzername ist zu lang (max { $max } Zeichen)
 err-username-invalid = Benutzername enthält ungültige Zeichen
 err-password-too-long = Passwort ist zu lang (max { $max } Zeichen)
 err-topic-too-long = Thema ist zu lang ({ $length } Zeichen, max { $max })
+err-avatar-unsupported-type = Nicht unterstützter Dateityp. Verwenden Sie PNG, WebP oder SVG.
+err-avatar-too-large = Avatar zu groß. Maximale Größe ist { $max_kb }KB.
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

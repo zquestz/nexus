@@ -144,6 +144,9 @@ pub const BORDER_WIDTH: f32 = 1.0;
 /// User list panel width
 pub const USER_LIST_PANEL_WIDTH: f32 = 180.0;
 
+/// Avatar preview size in settings panel
+pub const AVATAR_PREVIEW_SIZE: f32 = 48.0;
+
 // ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================

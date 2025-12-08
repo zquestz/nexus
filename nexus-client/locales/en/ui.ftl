@@ -14,6 +14,8 @@ button-edit = Edit
 button-update = Update
 button-accept-new-certificate = Accept New Certificate
 button-close = Close
+button-choose-avatar = Choose Avatar
+button-clear-avatar = Clear
 
 # =============================================================================
 # Titles
@@ -63,8 +65,8 @@ label-enabled = Enabled
 label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
-label-theme = Theme
-label-chat-font-size = Chat Font Size
+label-theme = Theme:
+label-chat-font-size = Chat Font Size:
 label-show-connection-notifications = Show connect/disconnect notifications
 label-show-timestamps = Show timestamps
 label-use-24-hour-time = Use 24-hour time
@@ -75,6 +77,7 @@ label-server-version = Version:
 label-chat-topic = Chat Topic:
 label-chat-topic-set-by = Chat Topic Set By:
 label-max-connections-per-ip = Max Connections Per IP:
+label-avatar = Avatar:
 
 # =============================================================================
 # Permission Display Names
@@ -211,6 +214,8 @@ err-username-too-long = Username is too long (max { $max } characters)
 err-username-invalid = Username contains invalid characters
 err-password-too-long = Password is too long (max { $max } characters)
 err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
+err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, or SVG.
+err-avatar-too-large = Avatar too large. Maximum size is { $max_kb }KB.
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

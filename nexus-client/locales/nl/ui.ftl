@@ -13,8 +13,10 @@ button-create = Aanmaken
 button-edit = Bewerken
 button-update = Bijwerken
 
-button-accept-new-certificate = Nieuw certificaat accepteren
+button-accept-new-certificate = Nieuw Certificaat Accepteren
 button-close = Sluiten
+button-choose-avatar = Avatar Kiezen
+button-clear-avatar = Wissen
 
 # =============================================================================
 # Titles
@@ -76,6 +78,7 @@ label-server-version = Versie:
 label-chat-topic = Chat Onderwerp:
 label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
+label-avatar = Avatar:
 
 # =============================================================================
 # Permission Display Names
@@ -210,6 +213,8 @@ err-username-too-long = Gebruikersnaam is te lang (max { $max } tekens)
 err-username-invalid = Gebruikersnaam bevat ongeldige tekens
 err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
 err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
+err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP of SVG.
+err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

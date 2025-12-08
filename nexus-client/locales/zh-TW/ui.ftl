@@ -14,6 +14,8 @@ button-edit = 編輯
 button-update = 更新
 button-accept-new-certificate = 接受新憑證
 button-close = 關閉
+button-choose-avatar = 選擇頭像
+button-clear-avatar = 清除
 
 # =============================================================================
 # Titles
@@ -75,6 +77,7 @@ label-server-version = 版本：
 label-chat-topic = 聊天主題：
 label-chat-topic-set-by = 主題設定者：
 label-max-connections-per-ip = 每IP最大連線數：
+label-avatar = 頭像：
 
 # =============================================================================
 # Permission Display Names
@@ -209,6 +212,8 @@ err-username-too-long = 使用者名稱過長（最多{ $max }個字元）
 err-username-invalid = 使用者名稱包含無效字元
 err-password-too-long = 密碼過長（最多{ $max }個字元）
 err-topic-too-long = 主題過長（{ $length }個字元，最多{ $max }個字元）
+err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP或SVG。
+err-avatar-too-large = 頭像過大。最大大小為{ $max_kb }KB。
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)
