@@ -145,12 +145,15 @@ pub const ERR_PARSE_MESSAGE: &str = "Failed to parse message from ";
 pub const ERR_CONNECTION_LIMIT: &str = "Connection limit exceeded for IP: ";
 
 /// File permissions error
+#[cfg(unix)]
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";
 
 /// File metadata read error
+#[cfg(unix)]
 pub const ERR_READ_METADATA: &str = "Failed to read file metadata: ";
 
 /// Permission set error
+#[cfg(unix)]
 pub const ERR_SET_PERMS: &str = "Failed to set permissions: ";
 
 // =============================================================================
@@ -158,9 +161,11 @@ pub const ERR_SET_PERMS: &str = "Failed to set permissions: ";
 // =============================================================================
 
 /// SIGTERM handler setup error
+#[cfg(unix)]
 pub const ERR_SIGNAL_SIGTERM: &str = "Failed to setup SIGTERM handler";
 
 /// SIGINT handler setup error
+#[cfg(unix)]
 pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 
 /// Ctrl+C handler setup error (Windows)
@@ -184,12 +189,14 @@ pub const ERR_GENERATE_CERT: &str = "Failed to generate certificate: ";
 pub const ERR_WRITE_CERT_FILE: &str = "Failed to write certificate file: ";
 
 /// Certificate permissions error
+#[cfg(unix)]
 pub const ERR_SET_CERT_PERMISSIONS: &str = "Failed to set certificate permissions: ";
 
 /// Key file write error
 pub const ERR_WRITE_KEY_FILE: &str = "Failed to write private key file: ";
 
 /// Key permissions error
+#[cfg(unix)]
 pub const ERR_SET_KEY_PERMISSIONS: &str = "Failed to set key permissions: ";
 
 // =============================================================================
