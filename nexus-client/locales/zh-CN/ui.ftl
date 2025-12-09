@@ -83,6 +83,7 @@ label-max-connections-per-ip = 每IP最大连接数：
 label-avatar = 头像：
 label-details = 技术详情
 label-chat-options = 聊天选项
+label-appearance = 外观
 
 # =============================================================================
 # Permission Display Names

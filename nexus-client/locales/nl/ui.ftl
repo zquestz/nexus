@@ -83,6 +83,7 @@ label-max-connections-per-ip = Max Verbindingen Per IP:
 label-avatar = Avatar:
 label-details = Technische details
 label-chat-options = Chatopties
+label-appearance = Uiterlijk
 
 # =============================================================================
 # Permission Display Names

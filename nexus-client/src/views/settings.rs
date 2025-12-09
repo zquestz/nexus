@@ -169,14 +169,21 @@ pub fn settings_view(
         form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
+    // Appearance subheading
+    let appearance_heading = shaped_text(t("label-appearance"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+
     // Chat subheading
     let chat_heading = shaped_text(t("label-chat-options"))
         .size(SUBHEADING_SIZE)
         .style(subheading_text_style);
 
     form_items.extend([
-        theme_row.into(),
         avatar_row.into(),
+        Space::new().height(SPACER_SIZE_SMALL).into(),
+        appearance_heading.into(),
+        theme_row.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         chat_heading.into(),
         font_size_row.into(),

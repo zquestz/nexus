@@ -82,6 +82,7 @@ label-max-connections-per-ip = IP당 최대 연결 수:
 label-avatar = 아바타:
 label-details = 기술 세부 정보
 label-chat-options = 채팅 옵션
+label-appearance = 외관
 
 # =============================================================================
 # Permission Display Names

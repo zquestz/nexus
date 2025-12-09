@@ -82,6 +82,7 @@ label-max-connections-per-ip = Макс. подключений на IP:
 label-avatar = Аватар:
 label-details = Технические детали
 label-chat-options = Настройки чата
+label-appearance = Внешний вид
 
 # =============================================================================
 # Permission Display Names
