@@ -508,6 +508,8 @@ fn server_content_view<'a>(
                 description: conn.server_description.clone(),
                 version: conn.server_version.clone(),
                 max_connections_per_ip: conn.max_connections_per_ip,
+                is_admin: conn.is_admin,
+                edit_state: conn.server_info_edit.as_ref(),
             };
             stack![chat, server_info_view(&data)]
                 .width(Fill)

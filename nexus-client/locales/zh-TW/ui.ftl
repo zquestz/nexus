@@ -33,6 +33,7 @@ title-connected = 已連線
 title-settings = 設定
 title-bookmarks = 書籤
 title-users = 使用者
+title-edit-server-info = 編輯伺服器資訊
 title-fingerprint-mismatch = 憑證指紋不符！
 title-server-info = 伺服器資訊
 title-user-info = 使用者資訊
@@ -53,6 +54,7 @@ placeholder-password-keep-current = 密碼（留空保持目前密碼）
 placeholder-message = 輸入訊息...
 placeholder-no-permission = 無權限
 placeholder-broadcast-message = 輸入廣播訊息...
+placeholder-server-description = 伺服器描述
 
 # =============================================================================
 # Labels
@@ -166,7 +168,7 @@ msg-topic-updated = 主題更新成功
 
 msg-topic-cleared = { $username } 清除了主題
 msg-topic-set = { $username } 設定了主題：{ $topic }
-msg-server-info-updated = 伺服器設定已更新：{ $name }
+msg-server-info-updated = 伺服器設定已更新
 msg-server-info-update-success = 伺服器設定更新成功
 msg-topic-display = 主題：{ $topic }
 msg-user-connected = { $username } 已連線
@@ -217,6 +219,14 @@ err-password-too-long = 密碼過長（最多{ $max }個字元）
 err-topic-too-long = 主題過長（{ $length }個字元，最多{ $max }個字元）
 err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP或SVG。
 err-avatar-too-large = 頭像過大。最大大小為{ $max_kb }KB。
+err-server-name-empty = 伺服器名稱不能為空
+err-server-name-too-long = 伺服器名稱過長（最多{ $max }個字元）
+err-server-name-contains-newlines = 伺服器名稱不能包含換行符
+err-server-name-invalid-characters = 伺服器名稱包含無效字元
+err-server-description-too-long = 描述過長（最多{ $max }個字元）
+err-server-description-contains-newlines = 描述不能包含換行符
+err-server-description-invalid-characters = 描述包含無效字元
+err-failed-send-update = 傳送更新失敗：{ $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

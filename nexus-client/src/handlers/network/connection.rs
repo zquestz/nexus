@@ -252,6 +252,7 @@ impl NexusApp {
             user_management: UserManagementState::default(),
             user_info_data: None,
             avatar_cache: HashMap::new(),
+            server_info_edit: None,
         };
 
         let is_admin = server_conn.is_admin;

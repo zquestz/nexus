@@ -4,7 +4,9 @@ use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-use super::{ChatMessage, ChatTab, ScrollState, UserInfo, UserManagementState};
+use super::{
+    ChatMessage, ChatTab, ScrollState, ServerInfoEditState, UserInfo, UserManagementState,
+};
 use crate::user_avatar::CachedAvatar;
 
 /// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
@@ -81,6 +83,8 @@ pub struct ServerConnection {
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
     /// Cached avatar handles for rendering (prevents flickering)
     pub avatar_cache: HashMap<String, CachedAvatar>,
+    /// Server info edit state (Some when editing, None otherwise)
+    pub server_info_edit: Option<ServerInfoEditState>,
 }
 
 /// Network connection handle returned by connect_to_server()

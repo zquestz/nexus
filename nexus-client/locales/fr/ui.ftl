@@ -34,6 +34,7 @@ title-connected = Connectés
 title-settings = Paramètres
 title-bookmarks = Signets
 title-users = Utilisateurs
+title-edit-server-info = Modifier les infos serveur
 title-fingerprint-mismatch = Empreinte du certificat non concordante !
 title-server-info = Infos Serveur
 title-user-info = Infos Utilisateur
@@ -54,6 +55,7 @@ placeholder-password-keep-current = Mot de passe (laisser vide pour conserver l'
 placeholder-message = Tapez un message...
 placeholder-no-permission = Pas de permission
 placeholder-broadcast-message = Entrez le message de diffusion...
+placeholder-server-description = Description du serveur
 
 # =============================================================================
 # Labels
@@ -167,7 +169,7 @@ msg-topic-updated = Sujet mis à jour avec succès
 
 msg-topic-cleared = Sujet effacé par { $username }
 msg-topic-set = Sujet défini par { $username } : { $topic }
-msg-server-info-updated = Configuration du serveur mise à jour : { $name }
+msg-server-info-updated = Configuration du serveur mise à jour
 msg-server-info-update-success = Configuration du serveur mise à jour avec succès
 msg-topic-display = Sujet : { $topic }
 msg-user-connected = { $username } s'est connecté
@@ -218,6 +220,14 @@ err-password-too-long = Le mot de passe est trop long (max { $max } caractères)
 err-topic-too-long = Le sujet est trop long ({ $length } caractères, max { $max })
 err-avatar-unsupported-type = Type de fichier non pris en charge. Utilisez PNG, WebP ou SVG.
 err-avatar-too-large = Icône trop grande. La taille maximale est de { $max_kb }Ko.
+err-server-name-empty = Le nom du serveur ne peut pas être vide
+err-server-name-too-long = Le nom du serveur est trop long (max { $max } caractères)
+err-server-name-contains-newlines = Le nom du serveur ne peut pas contenir de sauts de ligne
+err-server-name-invalid-characters = Le nom du serveur contient des caractères invalides
+err-server-description-too-long = La description est trop longue (max { $max } caractères)
+err-server-description-contains-newlines = La description ne peut pas contenir de sauts de ligne
+err-server-description-invalid-characters = La description contient des caractères invalides
+err-failed-send-update = Échec de l'envoi de la mise à jour : { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

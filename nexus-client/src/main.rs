@@ -44,6 +44,7 @@ pub fn main() -> iced::Result {
         .font(fonts::SAUCECODE_PRO_MONO_ITALIC)
         .font(fonts::SAUCECODE_PRO_MONO_BOLD_ITALIC)
         .font(icon::FONT)
+        .font(iced_aw::ICED_AW_FONT_BYTES)
         .run()
 }
 
@@ -271,8 +272,20 @@ impl NexusApp {
             Message::ShowAbout => self.handle_show_about(),
 
             // Server info
+            Message::CancelEditServerInfo => self.handle_cancel_edit_server_info(),
             Message::CloseServerInfo => self.handle_close_server_info(),
+            Message::EditServerInfoDescriptionChanged(description) => {
+                self.handle_edit_server_info_description_changed(description)
+            }
+            Message::EditServerInfoMaxConnectionsChanged(max_connections) => {
+                self.handle_edit_server_info_max_connections_changed(max_connections)
+            }
+            Message::EditServerInfoNameChanged(name) => {
+                self.handle_edit_server_info_name_changed(name)
+            }
+            Message::EditServerInfoPressed => self.handle_edit_server_info_pressed(),
             Message::ShowServerInfo => self.handle_show_server_info(),
+            Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),
 
             // User info
             Message::CloseUserInfo => self.handle_close_user_info(),

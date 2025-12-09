@@ -80,8 +80,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Build system message before moving name
-        let system_message = t_args("msg-server-info-updated", &[("name", &server_info.name)]);
+        // Build system message
+        let system_message = t("msg-server-info-updated");
 
         // Update stored server info (moves ownership)
         conn.server_name = Some(server_info.name);
@@ -102,14 +102,35 @@ impl NexusApp {
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        let message = if success {
-            ChatMessage::info(t("msg-server-info-update-success"))
-        } else {
-            ChatMessage::error(t_args(
-                "err-failed-update-server-info",
-                &[("error", &error.unwrap_or_default())],
-            ))
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
         };
-        self.add_chat_message(connection_id, message)
+
+        if success {
+            // Exit edit mode on success
+            conn.server_info_edit = None;
+            self.add_chat_message(
+                connection_id,
+                ChatMessage::info(t("msg-server-info-update-success")),
+            )
+        } else {
+            // Show error in the edit form if still open, otherwise show in chat
+            let error_msg = error.unwrap_or_default();
+            if let Some(edit_state) = &mut conn.server_info_edit {
+                edit_state.error = Some(t_args(
+                    "err-failed-update-server-info",
+                    &[("error", &error_msg)],
+                ));
+                Task::none()
+            } else {
+                self.add_chat_message(
+                    connection_id,
+                    ChatMessage::error(t_args(
+                        "err-failed-update-server-info",
+                        &[("error", &error_msg)],
+                    )),
+                )
+            }
+        }
     }
 }

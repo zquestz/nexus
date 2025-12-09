@@ -33,6 +33,7 @@ title-connected = Подключённые
 title-settings = Настройки
 title-bookmarks = Закладки
 title-users = Пользователи
+title-edit-server-info = Редактировать информацию о сервере
 title-fingerprint-mismatch = Отпечаток сертификата не совпадает!
 title-server-info = Информация о сервере
 title-user-info = Информация о пользователе
@@ -53,6 +54,7 @@ placeholder-password-keep-current = Пароль (оставьте пустым 
 placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
 placeholder-broadcast-message = Введите сообщение рассылки...
+placeholder-server-description = Описание сервера
 
 # =============================================================================
 # Labels
@@ -166,7 +168,7 @@ msg-topic-updated = Тема успешно обновлена
 
 msg-topic-cleared = Тема очищена пользователем { $username }
 msg-topic-set = Тема установлена пользователем { $username }: { $topic }
-msg-server-info-updated = Конфигурация сервера обновлена: { $name }
+msg-server-info-updated = Конфигурация сервера обновлена
 msg-server-info-update-success = Конфигурация сервера успешно обновлена
 msg-topic-display = Тема: { $topic }
 msg-user-connected = { $username } подключился
@@ -217,6 +219,14 @@ err-password-too-long = Пароль слишком длинный (макс { $
 err-topic-too-long = Тема слишком длинная ({ $length } символов, макс { $max })
 err-avatar-unsupported-type = Неподдерживаемый тип файла. Используйте PNG, WebP или SVG.
 err-avatar-too-large = Аватар слишком большой. Максимальный размер { $max_kb }КБ.
+err-server-name-empty = Имя сервера не может быть пустым
+err-server-name-too-long = Имя сервера слишком длинное (макс { $max } символов)
+err-server-name-contains-newlines = Имя сервера не может содержать переносы строк
+err-server-name-invalid-characters = Имя сервера содержит недопустимые символы
+err-server-description-too-long = Описание слишком длинное (макс { $max } символов)
+err-server-description-contains-newlines = Описание не может содержать переносы строк
+err-server-description-invalid-characters = Описание содержит недопустимые символы
+err-failed-send-update = Не удалось отправить обновление: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

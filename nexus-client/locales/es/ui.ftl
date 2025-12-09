@@ -34,6 +34,7 @@ title-connected = Conectados
 title-settings = Configuración
 title-bookmarks = Marcadores
 title-users = Usuarios
+title-edit-server-info = Editar Info del Servidor
 title-fingerprint-mismatch = ¡Huella del Certificado No Coincide!
 title-server-info = Info del Servidor
 title-user-info = Info del Usuario
@@ -54,6 +55,7 @@ placeholder-password-keep-current = Contraseña (dejar vacío para mantener actu
 placeholder-message = Escribe un mensaje...
 placeholder-no-permission = Sin permiso
 placeholder-broadcast-message = Escribe un mensaje de difusión...
+placeholder-server-description = Descripción del servidor
 
 # =============================================================================
 # Labels
@@ -169,7 +171,7 @@ msg-topic-updated = Tema actualizado exitosamente
 
 msg-topic-cleared = Tema borrado por { $username }
 msg-topic-set = Tema establecido por { $username }: { $topic }
-msg-server-info-updated = Configuración del servidor actualizada: { $name }
+msg-server-info-updated = Configuración del servidor actualizada
 msg-server-info-update-success = Configuración del servidor actualizada exitosamente
 msg-topic-display = Tema: { $topic }
 msg-user-connected = { $username } se conectó
@@ -220,6 +222,14 @@ err-password-too-long = La contraseña es demasiado larga (máx { $max } caracte
 err-topic-too-long = El tema es demasiado largo ({ $length } caracteres, máx { $max })
 err-avatar-unsupported-type = Tipo de archivo no soportado. Use PNG, WebP o SVG.
 err-avatar-too-large = Icono demasiado grande. El tamaño máximo es { $max_kb }KB.
+err-server-name-empty = El nombre del servidor no puede estar vacío
+err-server-name-too-long = El nombre del servidor es demasiado largo (máx { $max } caracteres)
+err-server-name-contains-newlines = El nombre del servidor no puede contener saltos de línea
+err-server-name-invalid-characters = El nombre del servidor contiene caracteres inválidos
+err-server-description-too-long = La descripción es demasiado larga (máx { $max } caracteres)
+err-server-description-contains-newlines = La descripción no puede contener saltos de línea
+err-server-description-invalid-characters = La descripción contiene caracteres inválidos
+err-failed-send-update = Error al enviar actualización: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

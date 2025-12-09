@@ -103,7 +103,13 @@ impl NexusApp {
                 // On about screen, close the panel
                 return self.update(Message::CloseAbout);
             } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
-                // On server info screen, close the panel
+                // On server info screen, submit if in edit mode, otherwise close
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                    && conn.server_info_edit.is_some()
+                {
+                    return self.update(Message::UpdateServerInfoPressed);
+                }
                 return self.update(Message::CloseServerInfo);
             } else if self.ui_state.active_panel == ActivePanel::UserInfo {
                 // On user info screen, close the panel
@@ -136,7 +142,16 @@ impl NexusApp {
                     ActivePanel::EditUser => return self.update(Message::CancelEditUser),
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
                     ActivePanel::Settings => return self.update(Message::CancelSettings),
-                    ActivePanel::ServerInfo => return self.update(Message::CloseServerInfo),
+                    ActivePanel::ServerInfo => {
+                        // If in edit mode, cancel edit; otherwise close panel
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get(&conn_id)
+                            && conn.server_info_edit.is_some()
+                        {
+                            return self.update(Message::CancelEditServerInfo);
+                        }
+                        return self.update(Message::CloseServerInfo);
+                    }
                     ActivePanel::UserInfo => return self.update(Message::CloseUserInfo),
                     ActivePanel::None => {}
                 }
@@ -251,6 +266,20 @@ impl NexusApp {
                     }
                     UserEditState::None => {}
                 }
+            }
+        } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
+            // Server info edit screen: cycle through name and description fields
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+                && conn.server_info_edit.is_some()
+            {
+                let next_field = match self.focused_field {
+                    InputId::EditServerInfoName => InputId::EditServerInfoDescription,
+                    InputId::EditServerInfoDescription => InputId::EditServerInfoName,
+                    _ => InputId::EditServerInfoName,
+                };
+                self.focused_field = next_field;
+                return operation::focus(Id::from(next_field));
             }
         } else if self.ui_state.active_panel == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays

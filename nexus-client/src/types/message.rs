@@ -51,6 +51,8 @@ pub enum Message {
     CancelBookmarkEdit,
     /// Broadcast panel: Cancel button pressed
     CancelBroadcast,
+    /// Server info edit: Cancel button pressed (exit edit mode)
+    CancelEditServerInfo,
     /// User edit panel: Cancel button pressed
     CancelEditUser,
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
@@ -89,6 +91,14 @@ pub enum Message {
     EditUsernameChanged(String),
     /// User edit panel: Edit button pressed (stage 1)
     EditUserPressed,
+    /// Server info edit: Description field changed
+    EditServerInfoDescriptionChanged(String),
+    /// Server info edit: Max connections per IP field changed
+    EditServerInfoMaxConnectionsChanged(u32),
+    /// Server info edit: Name field changed
+    EditServerInfoNameChanged(String),
+    /// Server info edit: Edit button pressed (enter edit mode)
+    EditServerInfoPressed,
     /// Keyboard or mouse event
     Event(iced::Event),
     /// Keyboard: Navigate to next chat tab (Ctrl+Tab)
@@ -173,6 +183,8 @@ pub enum Message {
     ToggleUserList,
     /// User edit panel: Update button pressed (stage 2)
     UpdateUserPressed,
+    /// Server info edit: Update button pressed (save changes)
+    UpdateServerInfoPressed,
     /// User list: Info icon clicked on expanded user
     UserInfoIconClicked(String),
     /// User list: Kick icon clicked on expanded user (disconnect - future)

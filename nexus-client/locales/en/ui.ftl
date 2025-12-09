@@ -33,6 +33,7 @@ title-connected = Connected
 title-settings = Settings
 title-bookmarks = Bookmarks
 title-users = Users
+title-edit-server-info = Edit Server Info
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
 title-user-info = User Info
@@ -53,6 +54,7 @@ placeholder-password-keep-current = Password (leave empty to keep current)
 placeholder-message = Type a message...
 placeholder-no-permission = No permission
 placeholder-broadcast-message = Enter broadcast message...
+placeholder-server-description = Server description
 
 # =============================================================================
 # Labels
@@ -168,7 +170,7 @@ msg-topic-updated = Topic updated successfully
 
 msg-topic-cleared = Topic cleared by { $username }
 msg-topic-set = Topic set by { $username }: { $topic }
-msg-server-info-updated = Server configuration updated: { $name }
+msg-server-info-updated = Server configuration updated
 msg-server-info-update-success = Server configuration updated successfully
 msg-topic-display = Topic: { $topic }
 msg-user-connected = { $username } connected
@@ -219,6 +221,14 @@ err-password-too-long = Password is too long (max { $max } characters)
 err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
 err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, or SVG.
 err-avatar-too-large = Avatar too large. Maximum size is { $max_kb }KB.
+err-server-name-empty = Server name cannot be empty
+err-server-name-too-long = Server name is too long (max { $max } characters)
+err-server-name-contains-newlines = Server name cannot contain newlines
+err-server-name-invalid-characters = Server name contains invalid characters
+err-server-description-too-long = Description is too long (max { $max } characters)
+err-server-description-contains-newlines = Description cannot contain newlines
+err-server-description-invalid-characters = Description contains invalid characters
+err-failed-send-update = Failed to send update: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

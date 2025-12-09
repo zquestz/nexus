@@ -33,6 +33,7 @@ title-connected = Verbunden
 title-settings = Einstellungen
 title-bookmarks = Lesezeichen
 title-users = Benutzer
+title-edit-server-info = Server-Info bearbeiten
 title-fingerprint-mismatch = Zertifikat-Fingerabdruck stimmt nicht überein!
 title-server-info = Server-Info
 title-user-info = Benutzer-Info
@@ -53,6 +54,7 @@ placeholder-password-keep-current = Passwort (leer lassen um aktuelles zu behalt
 placeholder-message = Nachricht eingeben...
 placeholder-no-permission = Keine Berechtigung
 placeholder-broadcast-message = Rundnachricht eingeben...
+placeholder-server-description = Serverbeschreibung
 
 # =============================================================================
 # Labels
@@ -166,7 +168,7 @@ msg-topic-updated = Thema erfolgreich aktualisiert
 
 msg-topic-cleared = Thema gelöscht von { $username }
 msg-topic-set = Thema gesetzt von { $username }: { $topic }
-msg-server-info-updated = Serverkonfiguration aktualisiert: { $name }
+msg-server-info-updated = Serverkonfiguration aktualisiert
 msg-server-info-update-success = Serverkonfiguration erfolgreich aktualisiert
 msg-topic-display = Thema: { $topic }
 msg-user-connected = { $username } hat sich verbunden
@@ -217,6 +219,14 @@ err-password-too-long = Passwort ist zu lang (max { $max } Zeichen)
 err-topic-too-long = Thema ist zu lang ({ $length } Zeichen, max { $max })
 err-avatar-unsupported-type = Nicht unterstützter Dateityp. Verwenden Sie PNG, WebP oder SVG.
 err-avatar-too-large = Avatar zu groß. Maximale Größe ist { $max_kb }KB.
+err-server-name-empty = Servername darf nicht leer sein
+err-server-name-too-long = Servername ist zu lang (max { $max } Zeichen)
+err-server-name-contains-newlines = Servername darf keine Zeilenumbrüche enthalten
+err-server-name-invalid-characters = Servername enthält ungültige Zeichen
+err-server-description-too-long = Beschreibung ist zu lang (max { $max } Zeichen)
+err-server-description-contains-newlines = Beschreibung darf keine Zeilenumbrüche enthalten
+err-server-description-invalid-characters = Beschreibung enthält ungültige Zeichen
+err-failed-send-update = Aktualisierung konnte nicht gesendet werden: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

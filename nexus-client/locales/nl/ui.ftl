@@ -34,6 +34,7 @@ title-connected = Verbonden
 title-settings = Instellingen
 title-bookmarks = Bladwijzers
 title-users = Gebruikers
+title-edit-server-info = Server Info bewerken
 title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
 title-server-info = Server Info
 title-user-info = Gebruiker Info
@@ -54,6 +55,7 @@ placeholder-password-keep-current = Wachtwoord (leeg laten om huidige te behoude
 placeholder-message = Typ een bericht...
 placeholder-no-permission = Geen toestemming
 placeholder-broadcast-message = Voer broadcastbericht in...
+placeholder-server-description = Serverbeschrijving
 
 # =============================================================================
 # Labels
@@ -167,7 +169,7 @@ msg-topic-updated = Onderwerp succesvol bijgewerkt
 
 msg-topic-cleared = Onderwerp gewist door { $username }
 msg-topic-set = Onderwerp ingesteld door { $username }: { $topic }
-msg-server-info-updated = Serverconfiguratie bijgewerkt: { $name }
+msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-server-info-update-success = Serverconfiguratie succesvol bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
 msg-user-connected = { $username } is verbonden
@@ -218,6 +220,14 @@ err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
 err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
 err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP of SVG.
 err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.
+err-server-name-empty = Servernaam mag niet leeg zijn
+err-server-name-too-long = Servernaam is te lang (max { $max } tekens)
+err-server-name-contains-newlines = Servernaam mag geen regeleinden bevatten
+err-server-name-invalid-characters = Servernaam bevat ongeldige tekens
+err-server-description-too-long = Beschrijving is te lang (max { $max } tekens)
+err-server-description-contains-newlines = Beschrijving mag geen regeleinden bevatten
+err-server-description-invalid-characters = Beschrijving bevat ongeldige tekens
+err-failed-send-update = Kan update niet verzenden: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

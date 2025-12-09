@@ -121,6 +121,10 @@ pub enum InputId {
     EditNewUsername,
     /// Edit user panel: New password input (stage 2)
     EditNewPassword,
+    /// Server info edit: Name input
+    EditServerInfoName,
+    /// Server info edit: Description input
+    EditServerInfoDescription,
     /// Broadcast panel: Message input
     BroadcastMessage,
     /// Chat: Message input
@@ -145,6 +149,8 @@ impl From<InputId> for Id {
             InputId::EditUsername => "InputId::EditUsername",
             InputId::EditNewUsername => "InputId::EditNewUsername",
             InputId::EditNewPassword => "InputId::EditNewPassword",
+            InputId::EditServerInfoName => "InputId::EditServerInfoName",
+            InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
             InputId::BroadcastMessage => "InputId::BroadcastMessage",
             InputId::ChatInput => "InputId::ChatInput",
         })

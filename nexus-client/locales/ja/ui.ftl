@@ -33,6 +33,7 @@ title-connected = 接続中
 title-settings = 設定
 title-bookmarks = ブックマーク
 title-users = ユーザー
+title-edit-server-info = サーバー情報を編集
 title-fingerprint-mismatch = 証明書のフィンガープリントが一致しません！
 title-server-info = サーバー情報
 title-user-info = ユーザー情報
@@ -53,6 +54,7 @@ placeholder-password-keep-current = パスワード（現在のまま維持す�
 placeholder-message = メッセージを入力...
 placeholder-no-permission = 権限がありません
 placeholder-broadcast-message = ブロードキャストメッセージを入力...
+placeholder-server-description = サーバーの説明
 
 # =============================================================================
 # Labels
@@ -166,7 +168,7 @@ msg-topic-updated = トピックが正常に更新されました
 
 msg-topic-cleared = { $username } がトピックをクリアしました
 msg-topic-set = { $username } がトピックを設定しました: { $topic }
-msg-server-info-updated = サーバー設定が更新されました: { $name }
+msg-server-info-updated = サーバー設定が更新されました
 msg-server-info-update-success = サーバー設定が正常に更新されました
 msg-topic-display = トピック: { $topic }
 msg-user-connected = { $username } が接続しました
@@ -217,6 +219,14 @@ err-password-too-long = パスワードが長すぎます（最大{ $max }文字
 err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
 err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、またはSVGを使用してください。
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。
+err-server-name-empty = サーバー名は空にできません
+err-server-name-too-long = サーバー名が長すぎます（最大{ $max }文字）
+err-server-name-contains-newlines = サーバー名に改行を含めることはできません
+err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
+err-server-description-too-long = 説明が長すぎます（最大{ $max }文字）
+err-server-description-contains-newlines = 説明に改行を含めることはできません
+err-server-description-invalid-characters = 説明に無効な文字が含まれています
+err-failed-send-update = 更新の送信に失敗しました: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

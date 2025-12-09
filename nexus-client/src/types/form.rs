@@ -210,6 +210,55 @@ pub struct SettingsFormState {
     pub default_avatar: CachedAvatar,
 }
 
+// =============================================================================
+// Server Info Edit State
+// =============================================================================
+
+/// Server info edit panel state
+///
+/// Stores the form values for editing server configuration.
+/// Only admins can access this form.
+#[derive(Debug, Clone)]
+pub struct ServerInfoEditState {
+    /// Server name (editable)
+    pub name: String,
+    /// Server description (editable)
+    pub description: String,
+    /// Max connections per IP (editable, uses NumberInput)
+    pub max_connections_per_ip: Option<u32>,
+    /// Error message to display
+    pub error: Option<String>,
+}
+
+impl ServerInfoEditState {
+    /// Create a new server info edit state with current values
+    pub fn new(
+        name: Option<&str>,
+        description: Option<&str>,
+        max_connections_per_ip: Option<u32>,
+    ) -> Self {
+        Self {
+            name: name.unwrap_or("").to_string(),
+            description: description.unwrap_or("").to_string(),
+            max_connections_per_ip,
+            error: None,
+        }
+    }
+
+    /// Check if the form has any changes compared to original values
+    pub fn has_changes(
+        &self,
+        original_name: Option<&str>,
+        original_description: Option<&str>,
+        original_max_connections: Option<u32>,
+    ) -> bool {
+        let name_changed = self.name != original_name.unwrap_or("");
+        let desc_changed = self.description != original_description.unwrap_or("");
+        let max_conn_changed = self.max_connections_per_ip != original_max_connections;
+        name_changed || desc_changed || max_conn_changed
+    }
+}
+
 impl SettingsFormState {
     /// Create a new settings form state with a snapshot of the current config
     pub fn new(config: &Config) -> Self {

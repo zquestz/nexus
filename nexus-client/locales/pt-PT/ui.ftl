@@ -33,6 +33,7 @@ title-connected = Ligados
 title-settings = Definições
 title-bookmarks = Marcadores
 title-users = Utilizadores
+title-edit-server-info = Editar Info do Servidor
 title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
 title-server-info = Info do Servidor
 title-user-info = Info do Utilizador
@@ -53,6 +54,7 @@ placeholder-password-keep-current = Palavra-passe (deixe vazio para manter a act
 placeholder-message = Escreva uma mensagem...
 placeholder-no-permission = Sem permissão
 placeholder-broadcast-message = Escreva a mensagem de difusão...
+placeholder-server-description = Descrição do servidor
 
 # =============================================================================
 # Labels
@@ -167,7 +169,7 @@ msg-topic-updated = Tópico atualizado com sucesso
 
 msg-topic-cleared = Tópico limpo por { $username }
 msg-topic-set = Tópico definido por { $username }: { $topic }
-msg-server-info-updated = Configuração do servidor atualizada: { $name }
+msg-server-info-updated = Configuração do servidor atualizada
 msg-server-info-update-success = Configuração do servidor atualizada com sucesso
 msg-topic-display = Tópico: { $topic }
 msg-user-connected = { $username } ligou-se
@@ -218,6 +220,14 @@ err-password-too-long = A palavra-passe é demasiado longa (máx { $max } caract
 err-topic-too-long = O tópico é demasiado longo ({ $length } caracteres, máx { $max })
 err-avatar-unsupported-type = Tipo de ficheiro não suportado. Use PNG, WebP ou SVG.
 err-avatar-too-large = Ícone demasiado grande. O tamanho máximo é { $max_kb }KB.
+err-server-name-empty = O nome do servidor não pode estar vazio
+err-server-name-too-long = O nome do servidor é demasiado longo (máx { $max } caracteres)
+err-server-name-contains-newlines = O nome do servidor não pode conter quebras de linha
+err-server-name-invalid-characters = O nome do servidor contém caracteres inválidos
+err-server-description-too-long = A descrição é demasiado longa (máx { $max } caracteres)
+err-server-description-contains-newlines = A descrição não pode conter quebras de linha
+err-server-description-invalid-characters = A descrição contém caracteres inválidos
+err-failed-send-update = Falha ao enviar atualização: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

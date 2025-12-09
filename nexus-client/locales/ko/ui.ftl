@@ -33,6 +33,7 @@ title-connected = 연결됨
 title-settings = 설정
 title-bookmarks = 북마크
 title-users = 사용자
+title-edit-server-info = 서버 정보 편집
 title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
 title-server-info = 서버 정보
 title-user-info = 사용자 정보
@@ -53,6 +54,7 @@ placeholder-password-keep-current = 비밀번호 (현재 유지하려면 비워�
 placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
 placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요...
+placeholder-server-description = 서버 설명
 
 # =============================================================================
 # Labels
@@ -166,7 +168,7 @@ msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 
 msg-topic-cleared = { $username }님이 주제를 삭제했습니다
 msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
-msg-server-info-updated = 서버 설정이 업데이트되었습니다: { $name }
+msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-server-info-update-success = 서버 설정이 성공적으로 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 msg-user-connected = { $username }님이 연결되었습니다
@@ -217,6 +219,14 @@ err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
 err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP 또는 SVG를 사용하세요.
 err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.
+err-server-name-empty = 서버 이름은 비워둘 수 없습니다
+err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max }자)
+err-server-name-contains-newlines = 서버 이름에 줄바꿈을 포함할 수 없습니다
+err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
+err-server-description-too-long = 설명이 너무 깁니다 (최대 { $max }자)
+err-server-description-contains-newlines = 설명에 줄바꿈을 포함할 수 없습니다
+err-server-description-invalid-characters = 설명에 잘못된 문자가 포함되어 있습니다
+err-failed-send-update = 업데이트 전송 실패: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

@@ -48,7 +48,15 @@ impl NexusApp {
     }
 
     /// Close Server Info panel
+    ///
+    /// Also clears any active edit state.
     pub fn handle_close_server_info(&mut self) -> Task<Message> {
+        // Clear edit state if present
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.server_info_edit = None;
+        }
         self.handle_show_chat_view()
     }
 
