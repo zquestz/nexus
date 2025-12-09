@@ -2,18 +2,18 @@
 
 use std::collections::HashMap;
 
+use super::layout::scrollable_panel;
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING, chat, content_background_style,
-    shaped_text,
+    TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING, chat, shaped_text,
 };
 use crate::types::Message;
 use crate::user_avatar::{CachedAvatar, generate_identicon};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, column, container, row};
+use iced::widget::{Space, button, column, row};
 use iced::{Center, Color, Element, Fill, Theme};
 use nexus_common::protocol::UserInfoDetailed;
 
@@ -86,12 +86,7 @@ pub fn user_info_view<'a>(
 
     let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
 
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(form)
 }
 
 /// Create a label: value row for the user info panel

@@ -8,18 +8,18 @@ use super::user_info::user_info_view;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BORDER_WIDTH, EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
-    TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    disabled_icon_button_style, muted_text_style, separator_style, shaped_text,
-    toolbar_background_style, toolbar_button_style, tooltip_container_style,
-    transparent_icon_button_style,
+    BORDER_WIDTH, EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE,
+    TOOLBAR_ICON_SPACING, TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING,
+    TOOLBAR_TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    content_background_style, disabled_icon_button_style, modal_overlay_style, muted_text_style,
+    separator_style, shaped_text, toolbar_background_style, toolbar_button_style,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
     ViewConfig,
 };
-use iced::widget::{Space, button, column, container, row, stack, tooltip};
+use iced::widget::{Column, Space, button, column, container, row, scrollable, stack, tooltip};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -32,6 +32,45 @@ fn separator<'a>() -> Element<'a, Message> {
         .width(Fill)
         .height(BORDER_WIDTH)
         .style(separator_style)
+        .into()
+}
+
+/// Wrap a form column in a scrollable, centered container with background styling.
+///
+/// This is the standard wrapper for all panel views (About, Settings, Server Info,
+/// User Info, Broadcast, Add/Edit User). It provides:
+/// - Vertical scrolling when content exceeds window height
+/// - Horizontal and vertical centering of the form (when content fits)
+/// - Consistent background styling
+pub fn scrollable_panel(form: Column<'_, Message>) -> Element<'_, Message> {
+    let scrollable_form = scrollable(container(form).width(Fill).center_x(Fill))
+        .width(Fill)
+        .height(iced::Length::Shrink);
+
+    container(scrollable_form)
+        .width(Fill)
+        .height(Fill)
+        .center(Fill)
+        .style(content_background_style)
+        .into()
+}
+
+/// Wrap a form column in a scrollable, centered container with modal overlay styling.
+///
+/// This is the wrapper for modal dialogs (e.g., fingerprint mismatch). It provides:
+/// - Vertical scrolling when content exceeds window height
+/// - Horizontal and vertical centering of the form (when content fits)
+/// - Semi-transparent overlay background
+pub fn scrollable_modal(form: Column<'_, Message>) -> Element<'_, Message> {
+    let scrollable_form = scrollable(container(form).width(Fill).center_x(Fill))
+        .width(Fill)
+        .height(iced::Length::Shrink);
+
+    container(scrollable_form)
+        .width(Fill)
+        .height(Fill)
+        .center(Fill)
+        .style(modal_overlay_style)
         .into()
 }
 

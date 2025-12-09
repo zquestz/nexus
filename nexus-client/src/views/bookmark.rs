@@ -1,5 +1,6 @@
 //! Bookmark add/edit form
 
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
@@ -8,7 +9,7 @@ use crate::style::{
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, checkbox, column, container, row, text, text_input};
+use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -160,9 +161,5 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    container(content)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .into()
+    scrollable_panel(content)
 }

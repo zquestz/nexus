@@ -1,12 +1,13 @@
 //! About panel view
 
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, content_background_style, shaped_text,
+    TITLE_SIZE, shaped_text,
 };
 use crate::types::Message;
-use iced::widget::{Space, button, column, container, rich_text, row, span, svg};
+use iced::widget::{Space, button, column, rich_text, row, span, svg};
 use iced::{Center, Element, Fill, Theme};
 
 /// App icon SVG bytes (embedded at compile time)
@@ -86,10 +87,5 @@ pub fn about_view(theme: Theme) -> Element<'static, Message> {
     .padding(FORM_PADDING)
     .max_width(FORM_MAX_WIDTH);
 
-    container(content)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(content)
 }

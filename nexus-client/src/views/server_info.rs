@@ -1,15 +1,15 @@
 //! Server info panel view
 
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
-    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
-    subheading_text_style,
+    error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
 use crate::types::{InputId, Message, ServerInfoEditState};
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, column, container, row, text_input};
+use iced::widget::{Id, Space, button, column, row, text_input};
 use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
 
@@ -118,12 +118,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
 
     let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
 
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(form)
 }
 
 /// Render the server info edit view (editable form)
@@ -210,10 +205,5 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(form)
 }

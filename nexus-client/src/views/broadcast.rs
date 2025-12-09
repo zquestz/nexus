@@ -1,14 +1,15 @@
 //! Broadcast message panel view
 
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, shaped_text, shaped_text_wrapped,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
+    shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, container, row, text_input};
+use iced::widget::{Id, Space, button, row, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -85,10 +86,5 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(form)
 }

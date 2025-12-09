@@ -1,18 +1,18 @@
 //! Settings panel view
 
 use super::chat::TimestampSettings;
+use super::layout::scrollable_panel;
 use crate::config::settings::CHAT_FONT_SIZES;
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
-    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
-    subheading_text_style,
+    error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
 use crate::types::{Message, SettingsFormState};
 use iced::widget::button as btn;
-use iced::widget::{Column, Space, button, checkbox, container, pick_list, row};
+use iced::widget::{Column, Space, button, checkbox, pick_list, row};
 use iced::{Center, Element, Fill, Theme};
 
 // ============================================================================
@@ -200,10 +200,5 @@ pub fn settings_view(
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(form)
 }

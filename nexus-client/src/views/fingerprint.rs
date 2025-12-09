@@ -1,16 +1,17 @@
 //! Certificate fingerprint mismatch dialog view
 
+use super::layout::scrollable_modal;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FINGERPRINT_DIALOG_MAX_WIDTH, FINGERPRINT_SPACE_AFTER_LABEL,
     FINGERPRINT_SPACE_AFTER_SERVER_INFO, FINGERPRINT_SPACE_AFTER_TITLE,
     FINGERPRINT_SPACE_AFTER_WARNING, FINGERPRINT_SPACE_BEFORE_BUTTONS,
     FINGERPRINT_SPACE_BETWEEN_SECTIONS, FORM_PADDING, MONOSPACE_FONT, TEXT_SIZE, TITLE_SIZE,
-    modal_overlay_style, shaped_text, shaped_text_wrapped,
+    shaped_text, shaped_text_wrapped,
 };
 use crate::types::{FingerprintMismatch, Message};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, column, container, row};
+use iced::widget::{Space, button, column, row};
 use iced::{Element, Length};
 
 // ============================================================================
@@ -101,12 +102,5 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     .padding(FORM_PADDING)
     .max_width(FINGERPRINT_DIALOG_MAX_WIDTH);
 
-    // Center the dialog and add dark overlay background
-    container(dialog)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .style(modal_overlay_style)
-        .into()
+    scrollable_modal(dialog)
 }

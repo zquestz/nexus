@@ -1,17 +1,18 @@
 //! User management panel (add, edit, delete users)
 
 use super::constants::PERMISSION_USER_DELETE;
+use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, shaped_text, shaped_text_wrapped,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
+    shaped_text_wrapped,
 };
 use crate::types::{
     ActivePanel, InputId, Message, ServerConnection, UserEditState, UserManagementState,
 };
 use iced::widget::button as btn;
-use iced::widget::{Column, Id, Space, button, checkbox, container, row, text, text_input};
+use iced::widget::{Column, Id, Space, button, checkbox, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -20,21 +21,7 @@ use iced::{Center, Element, Fill};
 
 /// Helper function to create an empty fallback panel
 fn empty_panel<'a>() -> Element<'a, Message> {
-    container(Space::new().width(Fill).height(Fill))
-        .width(Fill)
-        .height(Fill)
-        .style(content_background_style)
-        .into()
-}
-
-/// Wrap a form in a centered container with background styling
-fn wrap_form<'a>(form: Column<'a, Message>) -> Element<'a, Message> {
-    container(form)
-        .width(Fill)
-        .height(Fill)
-        .center(Fill)
-        .style(content_background_style)
-        .into()
+    scrollable_panel(Column::new())
 }
 
 /// Build permission checkboxes split into two columns
@@ -204,7 +191,7 @@ fn add_user_view<'a>(
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    wrap_form(create_form)
+    scrollable_panel(create_form)
 }
 
 // ============================================================================
@@ -299,7 +286,7 @@ fn select_user_view<'a>(
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    wrap_form(edit_form)
+    scrollable_panel(edit_form)
 }
 
 // ============================================================================
@@ -439,7 +426,7 @@ fn update_user_view<'a>(
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
 
-    wrap_form(update_form)
+    scrollable_panel(update_form)
 }
 
 // ============================================================================
