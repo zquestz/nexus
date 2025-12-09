@@ -47,9 +47,12 @@ impl NexusApp {
             return false;
         };
 
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return false;
+        };
+
         (cmd == CMD_USER_EDIT || cmd == CMD_USER_UPDATE)
-            && self.ui_state.active_panel == ActivePanel::EditUser
-            && self.active_connection == Some(connection_id)
+            && conn.active_panel == ActivePanel::EditUser
     }
 
     /// Check if error should be shown in server info edit form
@@ -58,13 +61,13 @@ impl NexusApp {
             return false;
         };
 
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return false;
+        };
+
         // ServerInfo panel can be in display or edit mode, so also check edit state
         cmd == CMD_SERVER_INFO_UPDATE
-            && self.ui_state.active_panel == ActivePanel::ServerInfo
-            && self.active_connection == Some(connection_id)
-            && self
-                .connections
-                .get(&connection_id)
-                .is_some_and(|conn| conn.server_info_edit.is_some())
+            && conn.active_panel == ActivePanel::ServerInfo
+            && conn.server_info_edit.is_some()
     }
 }

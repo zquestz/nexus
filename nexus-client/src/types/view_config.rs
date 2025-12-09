@@ -57,8 +57,11 @@ pub struct ViewConfig<'a> {
     /// User management state (only present when connected)
     pub user_management: Option<&'a UserManagementState>,
 
-    /// UI panel visibility state
+    /// UI panel visibility state (sidebars)
     pub ui_state: &'a UiState,
+
+    /// Effective active panel (computed from connection or ui_state)
+    pub active_panel: ActivePanel,
 }
 
 /// Toolbar state configuration

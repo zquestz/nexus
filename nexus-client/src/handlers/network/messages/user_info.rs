@@ -26,11 +26,9 @@ impl NexusApp {
         user: Option<UserInfoDetailed>,
     ) -> Task<Message> {
         // Check if UserInfo panel is open and waiting for data
-        let panel_waiting = self.ui_state.active_panel == ActivePanel::UserInfo
-            && self
-                .connections
-                .get(&connection_id)
-                .is_some_and(|conn| conn.user_info_data.is_none());
+        let panel_waiting = self.connections.get(&connection_id).is_some_and(|conn| {
+            conn.active_panel == ActivePanel::UserInfo && conn.user_info_data.is_none()
+        });
 
         if panel_waiting {
             // Populate the panel with the response

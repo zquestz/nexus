@@ -567,7 +567,7 @@ impl NexusApp {
 
             // Clear previous data and open the panel (shows loading state)
             conn.user_info_data = None;
-            self.ui_state.active_panel = ActivePanel::UserInfo;
+            conn.active_panel = ActivePanel::UserInfo;
 
             // Send UserInfo request to server
             if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {

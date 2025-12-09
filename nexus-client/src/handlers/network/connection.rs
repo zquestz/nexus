@@ -3,7 +3,7 @@
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ChatTab, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
+    ActivePanel, ChatTab, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
     UserManagementState,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
@@ -253,15 +253,14 @@ impl NexusApp {
             user_info_data: None,
             avatar_cache: HashMap::new(),
             server_info_edit: None,
+            active_panel: ActivePanel::None,
         };
 
-        let is_admin = server_conn.is_admin;
-        let permissions = server_conn.permissions.clone();
         self.connections.insert(conn.connection_id, server_conn);
         self.active_connection = Some(conn.connection_id);
 
-        // Close any active panel the new connection doesn't have permission for
-        self.close_panels_without_permission(is_admin, &permissions);
+        // Always start on chat screen - close any app-wide panels (Settings/About)
+        self.ui_state.active_panel = ActivePanel::None;
 
         Some(ConnectionRegistration {
             tx: conn_tx,

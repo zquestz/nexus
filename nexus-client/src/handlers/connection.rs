@@ -134,25 +134,14 @@ impl NexusApp {
 
     /// Switch active view to a different connection
     pub fn handle_switch_to_connection(&mut self, connection_id: usize) -> Task<Message> {
-        let Some(conn) = self.connections.get(&connection_id) else {
+        if !self.connections.contains_key(&connection_id) {
             return Task::none();
         };
 
-        // Copy permission data before mutable borrow
-        let is_admin = conn.is_admin;
-        let permissions = conn.permissions.clone();
-
         self.active_connection = Some(connection_id);
 
-        // Always close UserInfo panel when switching (data is connection-specific)
-        if self.ui_state.active_panel == ActivePanel::UserInfo {
-            self.ui_state.active_panel = ActivePanel::None;
-        }
-
-        // Close any panel the new connection doesn't have permission for
-        self.close_panels_without_permission(is_admin, &permissions);
-
-        self.handle_show_chat_view()
+        // Scroll chat and focus input (app-wide panels like Settings/About persist)
+        self.scroll_chat_if_visible(true)
     }
 
     // ==================== Chat Helpers ====================
@@ -165,7 +154,7 @@ impl NexusApp {
     /// If `focus` is true, also focuses the chat input field.
     pub fn scroll_chat_if_visible(&self, focus: bool) -> Task<Message> {
         // Don't scroll or steal focus if a panel is open
-        if self.ui_state.active_panel != ActivePanel::None {
+        if self.active_panel() != ActivePanel::None {
             return Task::none();
         }
 
@@ -207,7 +196,7 @@ impl NexusApp {
         viewport: iced::widget::scrollable::Viewport,
     ) -> Task<Message> {
         // Only track scroll when chat view is active (no panel overlay)
-        if self.ui_state.active_panel != ActivePanel::None {
+        if self.active_panel() != ActivePanel::None {
             return Task::none();
         }
 

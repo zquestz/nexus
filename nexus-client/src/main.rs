@@ -353,6 +353,7 @@ impl NexusApp {
             message_input,
             user_management,
             ui_state: &self.ui_state,
+            active_panel: self.active_panel(),
         };
 
         let main_view = views::main_layout(config);

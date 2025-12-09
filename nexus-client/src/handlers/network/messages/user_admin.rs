@@ -25,13 +25,11 @@ impl NexusApp {
     ) -> Task<Message> {
         if success {
             // Close add user panel on success
-            if self.ui_state.active_panel == ActivePanel::AddUser
-                && self.active_connection == Some(connection_id)
+            if let Some(conn) = self.connections.get_mut(&connection_id)
+                && conn.active_panel == ActivePanel::AddUser
             {
-                self.ui_state.active_panel = ActivePanel::None;
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management.clear_add_user();
-                }
+                conn.active_panel = ActivePanel::None;
+                conn.user_management.clear_add_user();
             }
 
             // add_chat_message handles scrolling when this is the active connection
@@ -56,13 +54,11 @@ impl NexusApp {
     ) -> Task<Message> {
         if success {
             // Close edit panel on success
-            if self.ui_state.active_panel == ActivePanel::EditUser
-                && self.active_connection == Some(connection_id)
+            if let Some(conn) = self.connections.get_mut(&connection_id)
+                && conn.active_panel == ActivePanel::EditUser
             {
-                self.ui_state.active_panel = ActivePanel::None;
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management.clear_edit_user();
-                }
+                conn.active_panel = ActivePanel::None;
+                conn.user_management.clear_edit_user();
             }
 
             // add_chat_message handles scrolling when this is the active connection
@@ -113,13 +109,11 @@ impl NexusApp {
     ) -> Task<Message> {
         if success {
             // Close edit panel on success
-            if self.ui_state.active_panel == ActivePanel::EditUser
-                && self.active_connection == Some(connection_id)
+            if let Some(conn) = self.connections.get_mut(&connection_id)
+                && conn.active_panel == ActivePanel::EditUser
             {
-                self.ui_state.active_panel = ActivePanel::None;
-                if let Some(conn) = self.connections.get_mut(&connection_id) {
-                    conn.user_management.clear_edit_user();
-                }
+                conn.active_panel = ActivePanel::None;
+                conn.user_management.clear_edit_user();
             }
 
             // add_chat_message handles scrolling when this is the active connection

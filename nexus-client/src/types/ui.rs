@@ -25,13 +25,14 @@ pub enum ActivePanel {
 }
 
 /// UI visibility state for toggleable panels
+/// Global UI state that persists across connection changes
 #[derive(Debug, Clone)]
 pub struct UiState {
     /// Show bookmarks sidebar
     pub show_bookmarks: bool,
     /// Show user list sidebar
     pub show_user_list: bool,
-    /// Currently active panel in the main content area
+    /// App-wide active panel (Settings, About) - takes precedence over connection panels
     pub active_panel: ActivePanel,
 }
 

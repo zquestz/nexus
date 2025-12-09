@@ -4,23 +4,48 @@ use crate::NexusApp;
 use crate::config::settings::{AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
-use crate::views::constants::{
-    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_INFO,
-};
 use iced::Task;
 use iced::widget::{Id, markdown, operation};
 use rfd::AsyncFileDialog;
 
 impl NexusApp {
+    // ==================== Active Panel Helpers ====================
+
+    /// Get the effective active panel.
+    ///
+    /// When connected, returns the connection's active panel.
+    /// When not connected, returns the app-wide panel from ui_state.
+    pub fn active_panel(&self) -> ActivePanel {
+        self.active_connection
+            .and_then(|id| self.connections.get(&id))
+            .map(|conn| conn.active_panel)
+            .unwrap_or(self.ui_state.active_panel)
+    }
+
+    /// Set the active panel.
+    ///
+    /// When connected, stores in the connection (all panels are per-connection).
+    /// When not connected, stores in ui_state (only Settings/About make sense).
+    pub fn set_active_panel(&mut self, panel: ActivePanel) {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.active_panel = panel;
+        } else {
+            // Not connected - only Settings/About/None make sense
+            self.ui_state.active_panel = panel;
+        }
+    }
+
     // ==================== About ====================
 
     /// Show About panel (does nothing if already shown)
     pub fn handle_show_about(&mut self) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::About {
+        if self.active_panel() == ActivePanel::About {
             return Task::none();
         }
 
-        self.ui_state.active_panel = ActivePanel::About;
+        self.set_active_panel(ActivePanel::About);
         Task::none()
     }
 
@@ -39,11 +64,11 @@ impl NexusApp {
 
     /// Show Server Info panel
     pub fn handle_show_server_info(&mut self) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::ServerInfo {
+        if self.active_panel() == ActivePanel::ServerInfo {
             return Task::none();
         }
 
-        self.ui_state.active_panel = ActivePanel::ServerInfo;
+        self.set_active_panel(ActivePanel::ServerInfo);
         Task::none()
     }
 
@@ -65,35 +90,6 @@ impl NexusApp {
     /// Close User Info panel
     pub fn handle_close_user_info(&mut self) -> Task<Message> {
         self.handle_show_chat_view()
-    }
-
-    // ==================== Panel Permission Helpers ====================
-
-    /// Close any active panel that the user doesn't have permission for.
-    ///
-    /// Called when switching connections or when a new connection is established
-    /// to ensure the user doesn't see panels they can't access.
-    pub fn close_panels_without_permission(&mut self, is_admin: bool, permissions: &[String]) {
-        let has_broadcast = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_BROADCAST);
-        let has_user_create = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
-        let has_user_edit = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
-        let has_user_info = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_INFO);
-
-        match self.ui_state.active_panel {
-            ActivePanel::Broadcast if !has_broadcast => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            ActivePanel::AddUser if !has_user_create => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            ActivePanel::EditUser if !has_user_edit => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            ActivePanel::UserInfo if !has_user_info => {
-                self.ui_state.active_panel = ActivePanel::None;
-            }
-            _ => {}
-        }
     }
 }
 
@@ -134,11 +130,11 @@ impl NexusApp {
 
     /// Show Add User panel (does nothing if already shown)
     pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::AddUser {
+        if self.active_panel() == ActivePanel::AddUser {
             return Task::none();
         }
 
-        self.ui_state.active_panel = ActivePanel::AddUser;
+        self.set_active_panel(ActivePanel::AddUser);
 
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -156,11 +152,11 @@ impl NexusApp {
     ///
     /// If `username` is provided, pre-fills the username field.
     pub fn handle_toggle_edit_user(&mut self, username: Option<String>) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::EditUser {
+        if self.active_panel() == ActivePanel::EditUser {
             return Task::none();
         }
 
-        self.ui_state.active_panel = ActivePanel::EditUser;
+        self.set_active_panel(ActivePanel::EditUser);
 
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -194,13 +190,13 @@ impl NexusApp {
     ///
     /// Takes a snapshot of the current config so it can be restored on cancel.
     pub fn handle_toggle_settings(&mut self) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::Settings {
+        if self.active_panel() == ActivePanel::Settings {
             return Task::none();
         }
 
         // Snapshot current config for potential cancel/restore
         self.settings_form = Some(SettingsFormState::new(&self.config));
-        self.ui_state.active_panel = ActivePanel::Settings;
+        self.set_active_panel(ActivePanel::Settings);
         Task::none()
     }
 

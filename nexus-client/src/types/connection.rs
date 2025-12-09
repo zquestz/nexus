@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 use super::{
-    ChatMessage, ChatTab, ScrollState, ServerInfoEditState, UserInfo, UserManagementState,
+    ActivePanel, ChatMessage, ChatTab, ScrollState, ServerInfoEditState, UserInfo,
+    UserManagementState,
 };
 use crate::user_avatar::CachedAvatar;
 
@@ -85,6 +86,8 @@ pub struct ServerConnection {
     pub avatar_cache: HashMap<String, CachedAvatar>,
     /// Server info edit state (Some when editing, None otherwise)
     pub server_info_edit: Option<ServerInfoEditState>,
+    /// Currently active panel in the main content area (per-connection)
+    pub active_panel: ActivePanel,
 }
 
 /// Network connection handle returned by connect_to_server()

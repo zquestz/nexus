@@ -116,7 +116,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     let toolbar = build_toolbar(ToolbarState {
         show_bookmarks: config.ui_state.show_bookmarks,
         show_user_list: config.ui_state.show_user_list,
-        active_panel: config.ui_state.active_panel,
+        active_panel: config.active_panel,
         is_connected: config.active_connection.is_some(),
         is_admin,
         permissions,
@@ -148,7 +148,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 conn,
                 config.message_input,
                 user_mgmt,
-                config.ui_state.active_panel,
+                config.active_panel,
                 config.theme.clone(),
                 config.show_connection_notifications,
                 config.chat_font_size,
@@ -165,7 +165,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         } else {
             // Not connected - show connection form, with Settings/About overlay if active
             let conn_form = connection_form_view(config.connection_form);
-            match config.ui_state.active_panel {
+            match config.active_panel {
                 ActivePanel::Settings => stack![
                     conn_form,
                     settings_view(

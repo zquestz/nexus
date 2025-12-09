@@ -27,17 +27,17 @@ impl NexusApp {
     /// This is the single source of truth for returning to the chat view.
     /// All code paths that close panels and return to chat should use this method.
     pub fn handle_show_chat_view(&mut self) -> Task<Message> {
-        self.ui_state.active_panel = ActivePanel::None;
+        self.set_active_panel(ActivePanel::None);
         self.scroll_chat_if_visible(true)
     }
 
     /// Show broadcast panel (does nothing if already shown)
     pub fn handle_toggle_broadcast(&mut self) -> Task<Message> {
-        if self.ui_state.active_panel == ActivePanel::Broadcast {
+        if self.active_panel() == ActivePanel::Broadcast {
             return Task::none();
         }
 
-        self.ui_state.active_panel = ActivePanel::Broadcast;
+        self.set_active_panel(ActivePanel::Broadcast);
         operation::focus(Id::from(InputId::BroadcastMessage))
     }
 

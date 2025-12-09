@@ -57,7 +57,7 @@ impl NexusApp {
                 if can_save {
                     return self.update(Message::SaveBookmark);
                 }
-            } else if self.ui_state.active_panel == ActivePanel::AddUser {
+            } else if self.active_panel() == ActivePanel::AddUser {
                 // On add user screen, try to create user
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -68,7 +68,7 @@ impl NexusApp {
                         return self.update(Message::CreateUserPressed);
                     }
                 }
-            } else if self.ui_state.active_panel == ActivePanel::EditUser {
+            } else if self.active_panel() == ActivePanel::EditUser {
                 // On edit user screen, handle Enter for both stages
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -89,7 +89,7 @@ impl NexusApp {
                         UserEditState::None => {}
                     }
                 }
-            } else if self.ui_state.active_panel == ActivePanel::Broadcast {
+            } else if self.active_panel() == ActivePanel::Broadcast {
                 // On broadcast screen, try to send broadcast
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -99,10 +99,10 @@ impl NexusApp {
                         return self.update(Message::SendBroadcastPressed);
                     }
                 }
-            } else if self.ui_state.active_panel == ActivePanel::About {
+            } else if self.active_panel() == ActivePanel::About {
                 // On about screen, close the panel
                 return self.update(Message::CloseAbout);
-            } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
+            } else if self.active_panel() == ActivePanel::ServerInfo {
                 // On server info screen, submit if in edit mode, otherwise close
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
@@ -111,7 +111,7 @@ impl NexusApp {
                     return self.update(Message::UpdateServerInfoPressed);
                 }
                 return self.update(Message::CloseServerInfo);
-            } else if self.ui_state.active_panel == ActivePanel::UserInfo {
+            } else if self.active_panel() == ActivePanel::UserInfo {
                 // On user info screen, close the panel
                 return self.update(Message::CloseUserInfo);
             } else if self.active_connection.is_none() {
@@ -136,7 +136,7 @@ impl NexusApp {
                 return self.update(Message::CancelBookmarkEdit);
             } else {
                 // Cancel active panel
-                match self.ui_state.active_panel {
+                match self.active_panel() {
                     ActivePanel::About => return self.update(Message::CloseAbout),
                     ActivePanel::AddUser => return self.update(Message::CancelAddUser),
                     ActivePanel::EditUser => return self.update(Message::CancelEditUser),
@@ -234,7 +234,7 @@ impl NexusApp {
             };
             self.focused_field = next_field;
             return operation::focus(Id::from(next_field));
-        } else if self.ui_state.active_panel == ActivePanel::AddUser {
+        } else if self.active_panel() == ActivePanel::AddUser {
             // On add user screen, cycle through fields
             let next_field = match self.focused_field {
                 InputId::AdminUsername => InputId::AdminPassword,
@@ -243,7 +243,7 @@ impl NexusApp {
             };
             self.focused_field = next_field;
             return operation::focus(Id::from(next_field));
-        } else if self.ui_state.active_panel == ActivePanel::EditUser {
+        } else if self.active_panel() == ActivePanel::EditUser {
             // On edit user screen, handle both stages
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
@@ -267,7 +267,7 @@ impl NexusApp {
                     UserEditState::None => {}
                 }
             }
-        } else if self.ui_state.active_panel == ActivePanel::ServerInfo {
+        } else if self.active_panel() == ActivePanel::ServerInfo {
             // Server info edit screen: cycle through name and description fields
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
@@ -281,11 +281,11 @@ impl NexusApp {
                 self.focused_field = next_field;
                 return operation::focus(Id::from(next_field));
             }
-        } else if self.ui_state.active_panel == ActivePanel::Broadcast {
+        } else if self.active_panel() == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return operation::focus(Id::from(InputId::BroadcastMessage));
-        } else if self.ui_state.active_panel == ActivePanel::Settings {
+        } else if self.active_panel() == ActivePanel::Settings {
             // Settings panel has no text inputs yet, just return
             return Task::none();
         } else if self.active_connection.is_some() {
