@@ -1,11 +1,11 @@
 //! Protocol definitions for Nexus BBS
 //!
-//! All messages are sent as newline-delimited JSON.
+//! All messages are sent as newline-delimited JSON over TLS.
 //!
 //! ## Password Security
 //!
-//! Clients send passwords in plaintext in Login messages. The Yggdrasil network
-//! provides end-to-end encryption, so passwords are secure in transit.
+//! Clients send passwords in plaintext in Login messages. TLS encryption
+//! ensures passwords are secure in transit.
 //!
 //! The server hashes passwords using Argon2id with per-user salts before storing them.
 
