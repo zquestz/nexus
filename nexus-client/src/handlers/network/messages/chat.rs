@@ -107,12 +107,9 @@ impl NexusApp {
         };
 
         if success {
-            // Exit edit mode on success
+            // Exit edit mode on success (no message - the broadcast will show SYS message)
             conn.server_info_edit = None;
-            self.add_chat_message(
-                connection_id,
-                ChatMessage::info(t("msg-server-info-update-success")),
-            )
+            Task::none()
         } else {
             // Show error in the edit form if still open, otherwise show in chat
             let error_msg = error.unwrap_or_default();

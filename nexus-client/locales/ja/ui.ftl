@@ -172,7 +172,6 @@ msg-topic-updated = トピックが正常に更新されました
 msg-topic-cleared = { $username } がトピックをクリアしました
 msg-topic-set = { $username } がトピックを設定しました: { $topic }
 msg-server-info-updated = サーバー設定が更新されました
-msg-server-info-update-success = サーバー設定が正常に更新されました
 msg-topic-display = トピック: { $topic }
 msg-user-connected = { $username } が接続しました
 msg-user-disconnected = { $username } が切断しました

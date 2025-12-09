@@ -172,7 +172,6 @@ msg-topic-updated = Тема успешно обновлена
 msg-topic-cleared = Тема очищена пользователем { $username }
 msg-topic-set = Тема установлена пользователем { $username }: { $topic }
 msg-server-info-updated = Конфигурация сервера обновлена
-msg-server-info-update-success = Конфигурация сервера успешно обновлена
 msg-topic-display = Тема: { $topic }
 msg-user-connected = { $username } подключился
 msg-user-disconnected = { $username } отключился

@@ -174,7 +174,6 @@ msg-topic-updated = Argomento aggiornato con successo
 msg-topic-cleared = Argomento cancellato da { $username }
 msg-topic-set = Argomento impostato da { $username }: { $topic }
 msg-server-info-updated = Configurazione del server aggiornata
-msg-server-info-update-success = Configurazione del server aggiornata con successo
 msg-topic-display = Argomento: { $topic }
 msg-user-connected = { $username } si è connesso
 msg-user-disconnected = { $username } si è disconnesso

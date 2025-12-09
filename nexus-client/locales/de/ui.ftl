@@ -172,7 +172,6 @@ msg-topic-updated = Thema erfolgreich aktualisiert
 msg-topic-cleared = Thema gelöscht von { $username }
 msg-topic-set = Thema gesetzt von { $username }: { $topic }
 msg-server-info-updated = Serverkonfiguration aktualisiert
-msg-server-info-update-success = Serverkonfiguration erfolgreich aktualisiert
 msg-topic-display = Thema: { $topic }
 msg-user-connected = { $username } hat sich verbunden
 msg-user-disconnected = { $username } hat sich getrennt

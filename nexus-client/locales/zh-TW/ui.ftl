@@ -172,7 +172,6 @@ msg-topic-updated = 主題更新成功
 msg-topic-cleared = { $username } 清除了主題
 msg-topic-set = { $username } 設定了主題：{ $topic }
 msg-server-info-updated = 伺服器設定已更新
-msg-server-info-update-success = 伺服器設定更新成功
 msg-topic-display = 主題：{ $topic }
 msg-user-connected = { $username } 已連線
 msg-user-disconnected = { $username } 已中斷連線

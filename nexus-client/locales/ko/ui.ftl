@@ -172,7 +172,6 @@ msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 msg-topic-cleared = { $username }님이 주제를 삭제했습니다
 msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
 msg-server-info-updated = 서버 설정이 업데이트되었습니다
-msg-server-info-update-success = 서버 설정이 성공적으로 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 msg-user-connected = { $username }님이 연결되었습니다
 msg-user-disconnected = { $username }님의 연결이 해제되었습니다

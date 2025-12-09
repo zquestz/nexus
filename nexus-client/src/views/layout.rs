@@ -8,9 +8,9 @@ use super::user_info::user_info_view;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BORDER_WIDTH, EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE,
-    TOOLBAR_ICON_SPACING, TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING,
-    TOOLBAR_TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    BORDER_WIDTH, EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
+    TOOLBAR_PADDING_HORIZONTAL, TOOLBAR_PADDING_VERTICAL, TOOLBAR_SPACING, TOOLBAR_TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     content_background_style, disabled_icon_button_style, modal_overlay_style, muted_text_style,
     separator_style, shaped_text, toolbar_background_style, toolbar_button_style,
     tooltip_container_style, transparent_icon_button_style,
