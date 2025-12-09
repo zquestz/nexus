@@ -37,8 +37,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 1454);
-    m.insert("PermissionsUpdated", 1392);
+    m.insert("LoginResponse", 1458);
+    m.insert("PermissionsUpdated", 1396);
     m.insert("ServerBroadcast", 1133);
     m.insert("UserConnected", 176294);
     m.insert("UserCreateResponse", 568);
@@ -86,7 +86,9 @@ pub fn known_message_types() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed};
+    use crate::protocol::{
+        ChatInfo, ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed,
+    };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
         MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
@@ -361,9 +363,11 @@ mod tests {
                 name: str_of_len(MAX_SERVER_NAME_LENGTH),
                 description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
                 version: str_of_len(MAX_VERSION_LENGTH),
-                chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-                chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
                 max_connections_per_ip: Some(u32::MAX),
+            }),
+            chat_info: Some(ChatInfo {
+                topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
+                topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
             }),
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
         };
@@ -384,9 +388,11 @@ mod tests {
                 name: str_of_len(MAX_SERVER_NAME_LENGTH),
                 description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
                 version: str_of_len(MAX_VERSION_LENGTH),
-                chat_topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-                chat_topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
                 max_connections_per_ip: Some(u32::MAX),
+            }),
+            chat_info: Some(ChatInfo {
+                topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
+                topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
             }),
         };
         assert_eq!(

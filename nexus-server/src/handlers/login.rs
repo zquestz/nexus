@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, PasswordError, UsernameError,
 };
@@ -298,23 +298,6 @@ where
         .await
         .unwrap_or_default();
 
-    // Fetch chat topic only if user has ChatTopic permission
-    let (chat_topic, chat_topic_set_by) =
-        if authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatTopic) {
-            match ctx.db.config.get_topic().await {
-                Ok(topic) => (topic.topic, topic.set_by),
-                Err(e) => {
-                    eprintln!(
-                        "Error fetching chat topic for {}: {}",
-                        authenticated_account.username, e
-                    );
-                    (String::new(), String::new())
-                }
-            }
-        } else {
-            (String::new(), String::new())
-        };
-
     // Fetch max connections per IP (admin only)
     let max_connections_per_ip = if authenticated_account.is_admin {
         Some(ctx.db.config.get_max_connections_per_ip().await as u32)
@@ -326,10 +309,28 @@ where
         name,
         description,
         version: env!("CARGO_PKG_VERSION").to_string(),
-        chat_topic,
-        chat_topic_set_by,
         max_connections_per_ip,
     });
+
+    // Fetch chat info only if user has ChatTopic permission
+    let chat_info =
+        if authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatTopic) {
+            match ctx.db.chat.get_topic().await {
+                Ok(topic) => Some(ChatInfo {
+                    topic: topic.topic,
+                    topic_set_by: topic.set_by,
+                }),
+                Err(e) => {
+                    eprintln!(
+                        "Error fetching chat topic for {}: {}",
+                        authenticated_account.username, e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
     let response = ServerMessage::LoginResponse {
         success: true,
@@ -337,6 +338,7 @@ where
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
         server_info,
+        chat_info,
         locale: Some(locale.clone()),
         error: None,
     };
@@ -764,7 +766,7 @@ mod tests {
         // Set a topic
         test_ctx
             .db
-            .config
+            .chat
             .set_topic("Test server topic", "admin")
             .await
             .unwrap();
@@ -793,6 +795,7 @@ mod tests {
             ServerMessage::LoginResponse {
                 success,
                 server_info,
+                chat_info,
                 ..
             } => {
                 assert!(success, "Login should succeed");
@@ -800,14 +803,13 @@ mod tests {
                 let info = server_info.unwrap();
                 assert_eq!(info.name, "Nexus BBS", "Should include server name");
                 assert_eq!(info.description, "", "Should include server description");
-                assert_eq!(
-                    info.chat_topic, "Test server topic",
-                    "Should include chat topic"
-                );
                 assert!(
                     info.max_connections_per_ip.is_none(),
                     "Non-admin should not receive max_connections_per_ip"
                 );
+                assert!(chat_info.is_some(), "Should include chat_info");
+                let chat = chat_info.unwrap();
+                assert_eq!(chat.topic, "Test server topic", "Should include chat topic");
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -828,9 +830,10 @@ mod tests {
             .unwrap();
 
         // Set a topic (user shouldn't see it)
+        // Set a topic that should NOT be visible
         test_ctx
             .db
-            .config
+            .chat
             .set_topic("Secret topic", "admin")
             .await
             .unwrap();
@@ -859,6 +862,7 @@ mod tests {
             ServerMessage::LoginResponse {
                 success,
                 server_info,
+                chat_info,
                 ..
             } => {
                 assert!(success, "Login should succeed");
@@ -866,17 +870,13 @@ mod tests {
                 let info = server_info.unwrap();
                 assert_eq!(info.name, "Nexus BBS", "Should include server name");
                 assert_eq!(info.description, "", "Should include server description");
-                assert_eq!(
-                    info.chat_topic, "",
-                    "Should NOT include chat topic without permission"
-                );
-                assert_eq!(
-                    info.chat_topic_set_by, "",
-                    "Should NOT include topic setter without permission"
-                );
                 assert!(
                     info.max_connections_per_ip.is_none(),
                     "Non-admin should not receive max_connections_per_ip"
+                );
+                assert!(
+                    chat_info.is_none(),
+                    "Should NOT include chat_info without permission"
                 );
             }
             _ => panic!("Expected LoginResponse"),
@@ -900,7 +900,7 @@ mod tests {
         // Set a topic
         test_ctx
             .db
-            .config
+            .chat
             .set_topic("Admin can see this", "admin")
             .await
             .unwrap();
@@ -924,24 +924,27 @@ mod tests {
 
         let response_msg = read_server_message(&mut test_ctx.client).await;
 
-        // Verify admin receives server_info
+        // Verify admin receives server_info and chat_info
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
                 is_admin,
                 server_info,
+                chat_info,
                 ..
             } => {
                 assert!(success, "Login should succeed");
                 assert_eq!(is_admin, Some(true), "Should be admin");
                 assert!(server_info.is_some(), "Admin should receive server_info");
                 let info = server_info.unwrap();
-                assert_eq!(info.chat_topic, "Admin can see this");
                 assert_eq!(
                     info.max_connections_per_ip,
                     Some(5),
                     "Admin should receive max_connections_per_ip"
                 );
+                assert!(chat_info.is_some(), "Admin should receive chat_info");
+                let chat = chat_info.unwrap();
+                assert_eq!(chat.topic, "Admin can see this");
             }
             _ => panic!("Expected LoginResponse"),
         }

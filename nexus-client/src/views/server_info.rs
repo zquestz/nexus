@@ -17,10 +17,6 @@ pub struct ServerInfoData {
     pub description: Option<String>,
     /// Server version (if provided)
     pub version: Option<String>,
-    /// Chat topic (if provided)
-    pub chat_topic: Option<String>,
-    /// Username who set the chat topic
-    pub chat_topic_set_by: Option<String>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
 }
@@ -60,26 +56,6 @@ pub fn server_info_view(data: &ServerInfoData) -> Element<'static, Message> {
     if let Some(version) = &data.version {
         let label = shaped_text(t("label-server-version")).size(TEXT_SIZE);
         let value = shaped_text(version.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
-        content = content.push(info_row);
-    }
-
-    // Chat topic (only if non-empty)
-    if let Some(topic) = &data.chat_topic
-        && !topic.is_empty()
-    {
-        let label = shaped_text(t("label-chat-topic")).size(TEXT_SIZE);
-        let value = shaped_text(topic.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
-        content = content.push(info_row);
-    }
-
-    // Chat topic set by (only if non-empty)
-    if let Some(set_by) = &data.chat_topic_set_by
-        && !set_by.is_empty()
-    {
-        let label = shaped_text(t("label-chat-topic-set-by")).size(TEXT_SIZE);
-        let value = shaped_text(set_by.clone()).size(TEXT_SIZE);
         let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
         content = content.push(info_row);
     }

@@ -34,8 +34,6 @@ pub fn execute(
     let server_name = conn.server_name.clone();
     let server_description = conn.server_description.clone();
     let server_version = conn.server_version.clone();
-    let chat_topic = conn.chat_topic.clone();
-    let chat_topic_set_by = conn.chat_topic_set_by.clone();
     let max_connections_per_ip = conn.max_connections_per_ip;
 
     // Build multi-line output similar to user info
@@ -62,22 +60,6 @@ pub fn execute(
     if let Some(version) = server_version {
         let label = t("label-server-version").to_lowercase();
         lines.push(format!("{INFO_INDENT}{label} {version}"));
-    }
-
-    // Chat topic (only if set)
-    if let Some(topic) = chat_topic
-        && !topic.is_empty()
-    {
-        let label = t("label-chat-topic").to_lowercase();
-        lines.push(format!("{INFO_INDENT}{label} {topic}"));
-
-        // Topic set by
-        if let Some(set_by) = chat_topic_set_by
-            && !set_by.is_empty()
-        {
-            let label = t("label-chat-topic-set-by").to_lowercase();
-            lines.push(format!("{INFO_INDENT}{label} {set_by}"));
-        }
     }
 
     // Max connections per IP (admin only)

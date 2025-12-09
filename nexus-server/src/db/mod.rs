@@ -2,6 +2,7 @@
 
 use crate::constants::*;
 
+pub mod chat;
 pub mod config;
 pub mod password;
 pub mod permissions;
@@ -11,6 +12,7 @@ pub mod users;
 #[cfg(test)]
 pub mod testing;
 
+pub use chat::ChatDb;
 pub use config::ConfigDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
@@ -24,6 +26,7 @@ use std::path::{Path, PathBuf};
 pub struct Database {
     pub users: UserDb,
     pub config: ConfigDb,
+    pub chat: ChatDb,
 }
 
 impl Database {
@@ -31,7 +34,8 @@ impl Database {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             users: UserDb::new(pool.clone()),
-            config: ConfigDb::new(pool),
+            config: ConfigDb::new(pool.clone()),
+            chat: ChatDb::new(pool),
         }
     }
 }

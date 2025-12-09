@@ -3214,7 +3214,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-client"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64",
  "chrono",
@@ -3242,7 +3242,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-common"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "rand 0.9.2",
  "semver",
@@ -3253,7 +3253,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "argon2",
  "chrono",

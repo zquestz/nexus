@@ -5,7 +5,7 @@ use crate::i18n::t;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
-use nexus_common::protocol::{ClientMessage, ServerInfo};
+use nexus_common::protocol::{ChatInfo, ClientMessage, ServerInfo};
 
 impl NexusApp {
     /// Handle permissions updated notification
@@ -15,6 +15,7 @@ impl NexusApp {
         is_admin: bool,
         permissions: Vec<String>,
         server_info: Option<ServerInfo>,
+        chat_info: Option<ChatInfo>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -33,18 +34,26 @@ impl NexusApp {
             conn.server_name = Some(info.name);
             conn.server_description = Some(info.description);
             conn.server_version = Some(info.version);
-            // Empty strings mean no permission or not set
-            conn.chat_topic = if info.chat_topic.is_empty() {
-                None
-            } else {
-                Some(info.chat_topic)
-            };
-            conn.chat_topic_set_by = if info.chat_topic_set_by.is_empty() {
-                None
-            } else {
-                Some(info.chat_topic_set_by)
-            };
             conn.max_connections_per_ip = info.max_connections_per_ip;
+        }
+
+        // Update chat info separately
+        if let Some(info) = chat_info {
+            // Empty strings mean not set
+            conn.chat_topic = if info.topic.is_empty() {
+                None
+            } else {
+                Some(info.topic)
+            };
+            conn.chat_topic_set_by = if info.topic_set_by.is_empty() {
+                None
+            } else {
+                Some(info.topic_set_by)
+            };
+        } else {
+            // No chat_info means no permission to see topic
+            conn.chat_topic = None;
+            conn.chat_topic_set_by = None;
         }
 
         // If user just gained user_list permission, refresh the list

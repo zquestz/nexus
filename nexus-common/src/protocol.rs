@@ -124,6 +124,8 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        chat_info: Option<ChatInfo>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         locale: Option<String>,
     },
     /// Broadcast message from another user
@@ -168,6 +170,8 @@ pub enum ServerMessage {
         permissions: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        chat_info: Option<ChatInfo>,
     },
     /// User broadcast response
     UserBroadcastResponse {
@@ -232,13 +236,18 @@ pub struct ServerInfo {
     pub description: String,
     /// Server version
     pub version: String,
-    /// Current chat topic (empty string if not set)
-    pub chat_topic: String,
-    /// Username who set the current topic (empty string if never set)
-    pub chat_topic_set_by: String,
     /// Maximum connections allowed per IP address (admin only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_connections_per_ip: Option<u32>,
+}
+
+/// Chat room information (topic, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatInfo {
+    /// Current chat topic (empty string if not set)
+    pub topic: String,
+    /// Username who set the current topic (empty string if never set)
+    pub topic_set_by: String,
 }
 
 /// Information about a connected user (basic info for lists)
@@ -450,6 +459,7 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
             server_info: None,
+            chat_info: None,
             locale: Some("en".to_string()),
             error: None,
         };
@@ -467,6 +477,7 @@ mod tests {
             is_admin: None,
             permissions: None,
             server_info: None,
+            chat_info: None,
             locale: None,
             error: Some("Invalid credentials".to_string()),
         };
@@ -483,6 +494,7 @@ mod tests {
             is_admin: Some(true),
             permissions: Some(vec![]),
             server_info: None,
+            chat_info: None,
             locale: Some("en".to_string()),
             error: None,
         };
@@ -501,6 +513,7 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             server_info: None,
+            chat_info: None,
             locale: Some("en".to_string()),
             error: None,
         };

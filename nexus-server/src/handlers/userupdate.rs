@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
 #[cfg(test)]
@@ -325,16 +325,6 @@ where
                         .await
                         .unwrap_or_default();
 
-                    // Include chat topic only if user has permission
-                    let (chat_topic, chat_topic_set_by) = if now_has_chat_topic {
-                        match ctx.db.config.get_topic().await {
-                            Ok(topic) => (topic.topic, topic.set_by),
-                            Err(_) => (String::new(), String::new()),
-                        }
-                    } else {
-                        (String::new(), String::new())
-                    };
-
                     // Include max_connections_per_ip only for admins
                     let max_connections_per_ip = if updated_account.is_admin {
                         Some(ctx.db.config.get_max_connections_per_ip().await as u32)
@@ -346,15 +336,27 @@ where
                         name,
                         description,
                         version: env!("CARGO_PKG_VERSION").to_string(),
-                        chat_topic,
-                        chat_topic_set_by,
                         max_connections_per_ip,
+                    };
+
+                    // Include chat info only if user has permission
+                    let chat_info = if now_has_chat_topic {
+                        match ctx.db.chat.get_topic().await {
+                            Ok(topic) => Some(ChatInfo {
+                                topic: topic.topic,
+                                topic_set_by: topic.set_by,
+                            }),
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
                     };
 
                     let permissions_update = ServerMessage::PermissionsUpdated {
                         is_admin: updated_account.is_admin,
                         permissions: permission_strings,
                         server_info: Some(server_info),
+                        chat_info,
                     };
 
                     // Send to all sessions belonging to the updated user

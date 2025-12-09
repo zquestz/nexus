@@ -20,9 +20,6 @@ pub const DATA_DIR_NAME: &str = "nexusd";
 /// Database file name
 pub const DATABASE_FILENAME: &str = "nexus.db";
 
-/// Database configuration key for chat topic
-pub const CONFIG_KEY_TOPIC: &str = "topic";
-
 /// Database configuration key for server name
 pub const CONFIG_KEY_SERVER_NAME: &str = "server_name";
 
@@ -36,8 +33,15 @@ pub const CONFIG_KEY_SERVER_DESCRIPTION: &str = "server_description";
 /// Feature name for chat functionality
 pub const FEATURE_CHAT: &str = "chat";
 
-/// Database configuration key for username who set the topic
-pub const CONFIG_KEY_TOPIC_SET_BY: &str = "topic_set_by";
+// =============================================================================
+// Chat State Keys
+// =============================================================================
+
+/// Chat state key for topic
+pub const CHAT_STATE_KEY_TOPIC: &str = "topic";
+
+/// Chat state key for username who set the topic
+pub const CHAT_STATE_KEY_TOPIC_SET_BY: &str = "topic_set_by";
 
 /// Maximum number of concurrent database connections in the pool
 ///

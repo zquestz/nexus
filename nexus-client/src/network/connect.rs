@@ -120,6 +120,7 @@ async fn perform_login(
             is_admin,
             permissions,
             server_info,
+            chat_info,
             locale,
             ..
         } => Ok(LoginInfo {
@@ -129,10 +130,8 @@ async fn perform_login(
             server_name: server_info.as_ref().map(|info| info.name.clone()),
             server_description: server_info.as_ref().map(|info| info.description.clone()),
             server_version: server_info.as_ref().map(|info| info.version.clone()),
-            chat_topic: server_info.as_ref().map(|info| info.chat_topic.clone()),
-            chat_topic_set_by: server_info
-                .as_ref()
-                .map(|info| info.chat_topic_set_by.clone()),
+            chat_topic: chat_info.as_ref().map(|info| info.topic.clone()),
+            chat_topic_set_by: chat_info.as_ref().map(|info| info.topic_set_by.clone()),
             max_connections_per_ip: server_info.and_then(|info| info.max_connections_per_ip),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
