@@ -14,6 +14,7 @@
 //! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
+//! | `/sinfo` | `/s`, `/serverinfo` | *none* | Show server information |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
 //! | `/window` | `/w` | *none* | Manage chat tabs (list, close) |
 //!

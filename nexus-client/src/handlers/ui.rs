@@ -374,7 +374,7 @@ impl NexusApp {
 pub enum AvatarError {
     /// User cancelled the file picker
     Cancelled,
-    /// File type not supported (not PNG, WebP, or SVG)
+    /// File type not supported (not PNG, WebP, JPEG, or SVG)
     UnsupportedType,
     /// File exceeds maximum size
     TooLarge,
