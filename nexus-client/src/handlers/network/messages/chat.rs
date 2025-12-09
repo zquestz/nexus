@@ -4,6 +4,7 @@ use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
+use nexus_common::protocol::ServerInfo;
 
 impl NexusApp {
     /// Handle incoming chat message
@@ -63,6 +64,49 @@ impl NexusApp {
         } else {
             ChatMessage::error(t_args(
                 "err-failed-update-topic",
+                &[("error", &error.unwrap_or_default())],
+            ))
+        };
+        self.add_chat_message(connection_id, message)
+    }
+
+    /// Handle server info updated notification
+    pub fn handle_server_info_updated(
+        &mut self,
+        connection_id: usize,
+        server_info: ServerInfo,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Build system message before moving name
+        let system_message = t_args("msg-server-info-updated", &[("name", &server_info.name)]);
+
+        // Update stored server info (moves ownership)
+        conn.server_name = Some(server_info.name);
+        conn.server_description = Some(server_info.description);
+        conn.server_version = Some(server_info.version);
+        // max_connections_per_ip is only sent to admins
+        if server_info.max_connections_per_ip.is_some() {
+            conn.max_connections_per_ip = server_info.max_connections_per_ip;
+        }
+
+        self.add_chat_message(connection_id, ChatMessage::system(system_message))
+    }
+
+    /// Handle server info update response
+    pub fn handle_server_info_update_response(
+        &mut self,
+        connection_id: usize,
+        success: bool,
+        error: Option<String>,
+    ) -> Task<Message> {
+        let message = if success {
+            ChatMessage::info(t("msg-server-info-update-success"))
+        } else {
+            ChatMessage::error(t_args(
+                "err-failed-update-server-info",
                 &[("error", &error.unwrap_or_default())],
             ))
         };

@@ -167,6 +167,8 @@ msg-topic-updated = Sujet mis à jour avec succès
 
 msg-topic-cleared = Sujet effacé par { $username }
 msg-topic-set = Sujet défini par { $username } : { $topic }
+msg-server-info-updated = Configuration du serveur mise à jour : { $name }
+msg-server-info-update-success = Configuration du serveur mise à jour avec succès
 msg-topic-display = Sujet : { $topic }
 msg-user-connected = { $username } s'est connecté
 msg-user-disconnected = { $username } s'est déconnecté
@@ -178,6 +180,7 @@ msg-connection-cancelled = Connexion annulée en raison d'un certificat non conc
 # =============================================================================
 
 err-connection-broken = Erreur de connexion
+err-failed-update-server-info = Échec de la mise à jour des informations du serveur : { $error }
 err-user-kick-failed = Échec de l'expulsion de l'utilisateur
 err-no-shutdown-handle = Erreur de connexion : Pas de gestionnaire d'arrêt
 err-userlist-failed = Échec de l'actualisation de la liste des utilisateurs

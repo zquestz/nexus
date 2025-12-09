@@ -186,7 +186,7 @@ where
             handlers::handle_chat_send(message, conn_state.session_id, ctx).await?;
         }
         ClientMessage::ChatTopicUpdate { topic } => {
-            handlers::handle_chattopicupdate(topic, conn_state.session_id, ctx).await?;
+            handlers::handle_chat_topic_update(topic, conn_state.session_id, ctx).await?;
         }
         ClientMessage::Handshake { version } => {
             handlers::handle_handshake(version, &mut conn_state.handshake_complete, ctx).await?;
@@ -221,7 +221,7 @@ where
             enabled,
             permissions,
         } => {
-            handlers::handle_usercreate(
+            handlers::handle_user_create(
                 username,
                 password,
                 is_admin,
@@ -233,25 +233,25 @@ where
             .await?;
         }
         ClientMessage::UserDelete { username } => {
-            handlers::handle_userdelete(username, conn_state.session_id, ctx).await?;
+            handlers::handle_user_delete(username, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserEdit { username } => {
-            handlers::handle_useredit(username, conn_state.session_id, ctx).await?;
+            handlers::handle_user_edit(username, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserInfo { username } => {
-            handlers::handle_userinfo(username, conn_state.session_id, ctx).await?;
+            handlers::handle_user_info(username, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserKick { username } => {
-            handlers::handle_userkick(username, conn_state.session_id, ctx).await?;
+            handlers::handle_user_kick(username, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserList => {
-            handlers::handle_userlist(conn_state.session_id, ctx).await?;
+            handlers::handle_user_list(conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserMessage {
             to_username,
             message,
         } => {
-            handlers::handle_usermessage(to_username, message, conn_state.session_id, ctx).await?;
+            handlers::handle_user_message(to_username, message, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserUpdate {
             username,
@@ -270,7 +270,21 @@ where
                 requested_permissions,
                 session_id: conn_state.session_id,
             };
-            handlers::handle_userupdate(request, ctx).await?;
+            handlers::handle_user_update(request, ctx).await?;
+        }
+        ClientMessage::ServerInfoUpdate {
+            name,
+            description,
+            max_connections_per_ip,
+        } => {
+            handlers::handle_server_info_update(
+                name,
+                description,
+                max_connections_per_ip,
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
         }
     }
 

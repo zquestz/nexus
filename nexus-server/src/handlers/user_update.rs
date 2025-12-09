@@ -32,7 +32,7 @@ pub struct UserUpdateRequest {
 }
 
 /// Handle a user update request from the client
-pub async fn handle_userupdate<W>(
+pub async fn handle_user_update<W>(
     request: UserUpdateRequest,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -317,13 +317,8 @@ where
                             .contains(&Permission::ChatTopic);
 
                     // Always include name and description
-                    let name = ctx.db.config.get_server_name().await.unwrap_or_default();
-                    let description = ctx
-                        .db
-                        .config
-                        .get_server_description()
-                        .await
-                        .unwrap_or_default();
+                    let name = ctx.db.config.get_server_name().await;
+                    let description = ctx.db.config.get_server_description().await;
 
                     // Include max_connections_per_ip only for admins
                     let max_connections_per_ip = if updated_account.is_admin {
@@ -581,7 +576,7 @@ mod tests {
             requested_permissions: None,
             session_id: None, // Not logged in
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_err());
     }
@@ -610,7 +605,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -638,7 +633,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -675,7 +670,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -715,7 +710,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -749,7 +744,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(admin1_session),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -770,7 +765,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(admin2_session),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -813,7 +808,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -857,7 +852,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -900,7 +895,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -938,7 +933,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -985,7 +980,7 @@ mod tests {
             requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1041,7 +1036,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1114,7 +1109,7 @@ mod tests {
             requested_permissions: Some(vec!["user_list".to_string()]), // Bob only grants user_list
             session_id: Some(bob_session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1175,7 +1170,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1233,7 +1228,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(editor_session),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1277,7 +1272,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1308,7 +1303,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(session_id),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
@@ -1360,7 +1355,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(admin_session),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -1438,7 +1433,7 @@ mod tests {
             requested_permissions: None,
             session_id: Some(admin1_session),
         };
-        let result = handle_userupdate(request, &mut test_ctx.handler_context()).await;
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;

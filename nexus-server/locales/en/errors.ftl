@@ -92,3 +92,15 @@ err-failed-to-create-user = Failed to create user '{ $username }'
 err-account-disabled = Account '{ $username }' is disabled
 err-update-failed = Failed to update user '{ $username }'
 err-username-too-long = Username is too long (max { $max_length } characters)
+
+# Server Update Errors
+err-admin-required = Admin privileges required
+err-server-name-empty = Server name cannot be empty
+err-server-name-too-long = Server name is too long (max { $max_length } characters)
+err-server-name-contains-newlines = Server name cannot contain newlines
+err-server-name-invalid-characters = Server name contains invalid characters
+err-server-description-too-long = Server description is too long (max { $max_length } characters)
+err-server-description-contains-newlines = Server description cannot contain newlines
+err-server-description-invalid-characters = Server description contains invalid characters
+err-max-connections-per-ip-invalid = Max connections per IP must be greater than 0
+err-no-fields-to-update = No fields to update

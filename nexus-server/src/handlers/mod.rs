@@ -2,36 +2,38 @@
 
 mod broadcast;
 mod chat;
-mod chattopicupdate;
+mod chat_topic_update;
 pub mod errors;
 mod handshake;
 mod login;
-mod usercreate;
-mod userdelete;
-mod useredit;
-mod userinfo;
-mod userkick;
-mod userlist;
-mod usermessage;
-mod userupdate;
+mod server_info_update;
+mod user_create;
+mod user_delete;
+mod user_edit;
+mod user_info;
+mod user_kick;
+mod user_list;
+mod user_message;
+mod user_update;
 
 #[cfg(test)]
 pub mod testing;
 
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
-pub use chattopicupdate::handle_chattopicupdate;
+pub use chat_topic_update::handle_chat_topic_update;
 pub use errors::*;
 pub use handshake::handle_handshake;
 pub use login::{LoginRequest, handle_login};
-pub use usercreate::handle_usercreate;
-pub use userdelete::handle_userdelete;
-pub use useredit::handle_useredit;
-pub use userinfo::handle_userinfo;
-pub use userkick::handle_userkick;
-pub use userlist::handle_userlist;
-pub use usermessage::handle_usermessage;
-pub use userupdate::{UserUpdateRequest, handle_userupdate};
+pub use server_info_update::handle_server_info_update;
+pub use user_create::handle_user_create;
+pub use user_delete::handle_user_delete;
+pub use user_edit::handle_user_edit;
+pub use user_info::handle_user_info;
+pub use user_kick::handle_user_kick;
+pub use user_list::handle_user_list;
+pub use user_message::handle_user_message;
+pub use user_update::{UserUpdateRequest, handle_user_update};
 
 use std::io;
 use std::net::SocketAddr;

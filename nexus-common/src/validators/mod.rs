@@ -5,19 +5,19 @@
 //! servers use them for enforcement.
 
 mod avatar;
-mod chattopic;
+mod chat_topic;
 mod features;
 mod locale;
 mod message;
 mod password;
 mod permissions;
-mod serverdescription;
-mod servername;
+mod server_description;
+mod server_name;
 mod username;
 mod version;
 
 pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
-pub use chattopic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
+pub use chat_topic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};
 pub use message::{MAX_MESSAGE_LENGTH, MessageError, validate_message};
@@ -25,7 +25,9 @@ pub use password::{MAX_PASSWORD_LENGTH, PasswordError, validate_password};
 pub use permissions::{
     MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT, PermissionsError, validate_permissions,
 };
-pub use serverdescription::MAX_SERVER_DESCRIPTION_LENGTH;
-pub use servername::MAX_SERVER_NAME_LENGTH;
+pub use server_description::{
+    MAX_SERVER_DESCRIPTION_LENGTH, ServerDescriptionError, validate_server_description,
+};
+pub use server_name::{MAX_SERVER_NAME_LENGTH, ServerNameError, validate_server_name};
 pub use username::{MAX_USERNAME_LENGTH, UsernameError, validate_username};
 pub use version::{MAX_VERSION_LENGTH, VersionError, validate_version};

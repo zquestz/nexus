@@ -92,3 +92,16 @@ err-permissions-permission-too-long = Название разрешения сл
 err-permissions-contains-newlines = Название разрешения не может содержать переносы строк
 err-permissions-invalid-characters = Название разрешения содержит недопустимые символы
 
+# Ошибки обновления сервера
+err-admin-required = Требуются права администратора
+err-server-name-empty = Имя сервера не может быть пустым
+err-server-name-too-long = Имя сервера слишком длинное (максимум { $max_length } символов)
+err-server-name-contains-newlines = Имя сервера не может содержать переносы строк
+err-server-name-invalid-characters = Имя сервера содержит недопустимые символы
+err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } символов)
+err-server-description-contains-newlines = Описание сервера не может содержать переносы строк
+err-server-description-invalid-characters = Описание сервера содержит недопустимые символы
+err-max-connections-per-ip-invalid = Максимальное количество подключений на IP должно быть больше 0
+err-no-fields-to-update = Нет полей для обновления
+
+

@@ -166,6 +166,8 @@ msg-topic-updated = 主題更新成功
 
 msg-topic-cleared = { $username } 清除了主題
 msg-topic-set = { $username } 設定了主題：{ $topic }
+msg-server-info-updated = 伺服器設定已更新：{ $name }
+msg-server-info-update-success = 伺服器設定更新成功
 msg-topic-display = 主題：{ $topic }
 msg-user-connected = { $username } 已連線
 msg-user-disconnected = { $username } 已中斷連線
@@ -177,6 +179,7 @@ msg-connection-cancelled = 由於憑證不符，連線已取消
 # =============================================================================
 
 err-connection-broken = 連線錯誤
+err-failed-update-server-info = 更新伺服器資訊失敗：{ $error }
 err-user-kick-failed = 踢除使用者失敗
 err-no-shutdown-handle = 連線錯誤：無關閉控制代碼
 err-userlist-failed = 重新整理使用者清單失敗

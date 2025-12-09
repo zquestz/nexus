@@ -37,10 +37,10 @@ mod focus;
 mod help;
 mod list;
 mod message;
-mod serverinfo;
+mod server_info;
 mod topic;
-mod userinfo;
-mod userkick;
+mod user_info;
+mod user_kick;
 mod window;
 
 use std::collections::HashMap;
@@ -129,7 +129,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-userinfo-usage",
             permissions: &[PERMISSION_USER_INFO],
         },
-        handler: userinfo::execute,
+        handler: user_info::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -139,7 +139,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-kick-usage",
             permissions: &[PERMISSION_USER_KICK],
         },
-        handler: userkick::execute,
+        handler: user_kick::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -169,7 +169,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-serverinfo-usage",
             permissions: &[],
         },
-        handler: serverinfo::execute,
+        handler: server_info::execute,
     },
     CommandRegistration {
         info: CommandInfo {

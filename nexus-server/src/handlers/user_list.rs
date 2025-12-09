@@ -15,7 +15,7 @@ use super::{HandlerContext, err_authentication, err_not_logged_in, err_permissio
 use crate::db::Permission;
 
 /// Handle a userlist request from the client
-pub async fn handle_userlist<W>(
+pub async fn handle_user_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -122,7 +122,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to get user list without being logged in
-        let result = handle_userlist(None, &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(None, &mut test_ctx.handler_context()).await;
 
         // Should fail
         assert!(result.is_err(), "UserList should require login");
@@ -136,7 +136,7 @@ mod tests {
         let invalid_session_id = Some(999);
 
         // Try to get user list with invalid session
-        let result = handle_userlist(invalid_session_id, &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(invalid_session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail (ERR_AUTHENTICATION)
         assert!(
@@ -153,7 +153,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to get user list without permission
-        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed (send error but not disconnect)
         assert!(
@@ -177,7 +177,7 @@ mod tests {
         .await;
 
         // Get user list with permission
-        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Valid userlist request should succeed");
@@ -213,7 +213,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Admin should be able to list users
-        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(
@@ -287,7 +287,7 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;
@@ -367,7 +367,7 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_userlist(Some(session2), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;
@@ -424,7 +424,7 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_userlist(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;

@@ -166,6 +166,8 @@ msg-topic-updated = トピックが正常に更新されました
 
 msg-topic-cleared = { $username } がトピックをクリアしました
 msg-topic-set = { $username } がトピックを設定しました: { $topic }
+msg-server-info-updated = サーバー設定が更新されました: { $name }
+msg-server-info-update-success = サーバー設定が正常に更新されました
 msg-topic-display = トピック: { $topic }
 msg-user-connected = { $username } が接続しました
 msg-user-disconnected = { $username } が切断しました
@@ -177,6 +179,7 @@ msg-connection-cancelled = 証明書の不一致のため接続がキャンセ�
 # =============================================================================
 
 err-connection-broken = 接続エラー
+err-failed-update-server-info = サーバー情報の更新に失敗しました: { $error }
 err-user-kick-failed = ユーザーのキックに失敗しました
 err-no-shutdown-handle = 接続エラー: シャットダウンハンドルがありません
 err-userlist-failed = ユーザーリストの更新に失敗しました

@@ -167,6 +167,8 @@ msg-topic-updated = Onderwerp succesvol bijgewerkt
 
 msg-topic-cleared = Onderwerp gewist door { $username }
 msg-topic-set = Onderwerp ingesteld door { $username }: { $topic }
+msg-server-info-updated = Serverconfiguratie bijgewerkt: { $name }
+msg-server-info-update-success = Serverconfiguratie succesvol bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
 msg-user-connected = { $username } is verbonden
 msg-user-disconnected = { $username } is losgekoppeld
@@ -178,6 +180,7 @@ msg-connection-cancelled = Verbinding geannuleerd vanwege niet-overeenkomend cer
 # =============================================================================
 
 err-connection-broken = Verbindingsfout
+err-failed-update-server-info = Kan serverinformatie niet bijwerken: { $error }
 err-user-kick-failed = Kan gebruiker niet verwijderen
 err-no-shutdown-handle = Verbindingsfout: Geen afsluithandle
 err-userlist-failed = Kan gebruikerslijst niet vernieuwen

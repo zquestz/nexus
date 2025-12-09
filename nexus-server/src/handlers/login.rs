@@ -290,13 +290,8 @@ where
     };
 
     // Fetch server info (name/description always, topic requires permission, max_conn requires admin)
-    let name = ctx.db.config.get_server_name().await.unwrap_or_default();
-    let description = ctx
-        .db
-        .config
-        .get_server_description()
-        .await
-        .unwrap_or_default();
+    let name = ctx.db.config.get_server_name().await;
+    let description = ctx.db.config.get_server_description().await;
 
     // Fetch max connections per IP (admin only)
     let max_connections_per_ip = if authenticated_account.is_admin {

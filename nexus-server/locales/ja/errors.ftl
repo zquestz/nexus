@@ -92,3 +92,16 @@ err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max
 err-permissions-contains-newlines = 権限名に改行を含めることはできません
 err-permissions-invalid-characters = 権限名に無効な文字が含まれています
 
+# サーバー更新エラー
+err-admin-required = 管理者権限が必要です
+err-server-name-empty = サーバー名を空にすることはできません
+err-server-name-too-long = サーバー名が長すぎます（最大{ $max_length }文字）
+err-server-name-contains-newlines = サーバー名に改行を含めることはできません
+err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
+err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }文字）
+err-server-description-contains-newlines = サーバーの説明に改行を含めることはできません
+err-server-description-invalid-characters = サーバーの説明に無効な文字が含まれています
+err-max-connections-per-ip-invalid = IPあたりの最大接続数は0より大きくなければなりません
+err-no-fields-to-update = 更新するフィールドがありません
+
+

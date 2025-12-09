@@ -16,7 +16,7 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserMessage command
-pub async fn handle_usermessage<W>(
+pub async fn handle_user_message<W>(
     to_username: String,
     message: String,
     session_id: Option<u32>,
@@ -167,7 +167,7 @@ mod tests {
     async fn test_usermessage_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "alice".to_string(),
             "hello".to_string(),
             None,
@@ -196,7 +196,7 @@ mod tests {
         .await;
 
         // Try to send message without permission
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             "hello".to_string(),
             Some(1), // sender's session_id
@@ -231,7 +231,7 @@ mod tests {
         )
         .await;
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             "   ".to_string(),
             Some(1), // sender's session_id
@@ -266,7 +266,7 @@ mod tests {
 
         let long_message = "x".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             long_message,
             Some(1), // sender's session_id
@@ -299,7 +299,7 @@ mod tests {
         )
         .await;
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "sender".to_string(),
             "hello".to_string(),
             Some(1), // sender's session_id
@@ -332,7 +332,7 @@ mod tests {
         )
         .await;
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "nonexistent".to_string(),
             "hello".to_string(),
             Some(1), // sender's session_id
@@ -375,7 +375,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             "hello".to_string(),
             Some(1), // sender's session_id
@@ -420,7 +420,7 @@ mod tests {
         .await;
 
         // Send message
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             "hello world".to_string(),
             Some(1), // sender's session_id
@@ -459,7 +459,7 @@ mod tests {
         .await;
 
         // Admin sends message without explicit permission
-        let result = handle_usermessage(
+        let result = handle_user_message(
             "target".to_string(),
             "admin message".to_string(),
             Some(1), // admin's session_id

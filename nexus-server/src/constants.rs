@@ -10,6 +10,43 @@
 /// Configuration key for max connections per IP in the database
 pub const CONFIG_KEY_MAX_CONNECTIONS_PER_IP: &str = "max_connections_per_ip";
 
+/// Default maximum connections per IP address (matches migration default)
+pub const DEFAULT_MAX_CONNECTIONS_PER_IP: usize = 5;
+
+// =============================================================================
+// Database Validation Errors (defense-in-depth, operator-facing)
+// =============================================================================
+
+/// Error when max_connections_per_ip is set to zero
+pub const ERR_MAX_CONNECTIONS_ZERO: &str = "max_connections_per_ip must be greater than 0";
+
+/// Error when server name is empty
+pub const ERR_SERVER_NAME_EMPTY: &str = "Server name cannot be empty";
+
+/// Error when server name is too long
+pub const ERR_SERVER_NAME_TOO_LONG: &str = "Server name is too long";
+
+/// Error when server name contains newlines
+pub const ERR_SERVER_NAME_NEWLINES: &str = "Server name cannot contain newlines";
+
+/// Error when server name contains invalid characters
+pub const ERR_SERVER_NAME_INVALID_CHARS: &str = "Server name contains invalid characters";
+
+/// Error when server description is too long
+pub const ERR_SERVER_DESC_TOO_LONG: &str = "Server description is too long";
+
+/// Error when server description contains newlines
+pub const ERR_SERVER_DESC_NEWLINES: &str = "Server description cannot contain newlines";
+
+/// Error when server description contains invalid characters
+pub const ERR_SERVER_DESC_INVALID_CHARS: &str = "Server description contains invalid characters";
+
+/// Default server name (matches migration default)
+pub const DEFAULT_SERVER_NAME: &str = "Nexus BBS";
+
+/// Default server description (matches migration default)
+pub const DEFAULT_SERVER_DESCRIPTION: &str = "";
+
 // =============================================================================
 // Database Configuration
 // =============================================================================

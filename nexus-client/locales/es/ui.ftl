@@ -169,6 +169,8 @@ msg-topic-updated = Tema actualizado exitosamente
 
 msg-topic-cleared = Tema borrado por { $username }
 msg-topic-set = Tema establecido por { $username }: { $topic }
+msg-server-info-updated = Configuración del servidor actualizada: { $name }
+msg-server-info-update-success = Configuración del servidor actualizada exitosamente
 msg-topic-display = Tema: { $topic }
 msg-user-connected = { $username } se conectó
 msg-user-disconnected = { $username } se desconectó
@@ -180,6 +182,7 @@ msg-connection-cancelled = Conexión cancelada debido a certificado no coinciden
 # =============================================================================
 
 err-connection-broken = Error de conexión
+err-failed-update-server-info = Error al actualizar información del servidor: { $error }
 err-user-kick-failed = Error al expulsar usuario
 err-no-shutdown-handle = Error de conexión: Sin manejador de cierre
 err-userlist-failed = Error al actualizar lista de usuarios

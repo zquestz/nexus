@@ -15,6 +15,15 @@
 /// **Returns:** `(value: String)`
 pub const SQL_GET_CONFIG: &str = "SELECT value FROM config WHERE key = ?";
 
+/// Set a configuration value (update existing key)
+///
+/// **Parameters:**
+/// 1. `value: &str` - New configuration value
+/// 2. `key: &str` - Configuration key to update
+///
+/// **Note:** Only updates existing keys; does not insert new ones.
+pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
+
 // ========================================================================
 // Chat State Query Operations
 // ========================================================================

@@ -92,3 +92,16 @@ err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { 
 err-permissions-contains-newlines = De machtigingsnaam mag geen regelafbrekingen bevatten
 err-permissions-invalid-characters = De machtigingsnaam bevat ongeldige tekens
 
+# Serverupdatefouten
+err-admin-required = Beheerdersrechten vereist
+err-server-name-empty = De servernaam mag niet leeg zijn
+err-server-name-too-long = De servernaam is te lang (maximaal { $max_length } tekens)
+err-server-name-contains-newlines = De servernaam mag geen regeleinden bevatten
+err-server-name-invalid-characters = De servernaam bevat ongeldige tekens
+err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } tekens)
+err-server-description-contains-newlines = De serverbeschrijving mag geen regeleinden bevatten
+err-server-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
+err-max-connections-per-ip-invalid = Maximale verbindingen per IP moet groter zijn dan 0
+err-no-fields-to-update = Geen velden om bij te werken
+
+

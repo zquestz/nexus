@@ -14,7 +14,7 @@ use super::{
 use crate::db::Permission;
 
 /// Handle ChatTopicUpdate command
-pub async fn handle_chattopicupdate<W>(
+pub async fn handle_chat_topic_update<W>(
     topic: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -71,10 +71,10 @@ where
             .await;
     }
 
-    // Broadcast ChatTopic to all users with ChatTopic permission
+    // Broadcast ChatTopicUpdated to all users with ChatTopic permission
     ctx.user_manager
         .broadcast_to_permission(
-            ServerMessage::ChatTopic {
+            ServerMessage::ChatTopicUpdated {
                 topic,
                 username: user.username.clone(),
             },
@@ -103,7 +103,7 @@ mod tests {
     async fn test_chattopic_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             "Test topic".to_string(),
             None,
             &mut test_ctx.handler_context(),
@@ -129,7 +129,7 @@ mod tests {
         // Login user without ChatTopic permission
         let session_id = login_user(&mut test_ctx, "testuser", "password", &[], false).await;
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             "Test topic".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -165,7 +165,7 @@ mod tests {
         // Create topic that's too long (> 256 chars)
         let long_topic = "a".repeat(257);
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             long_topic,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -210,7 +210,7 @@ mod tests {
         // Create topic at exactly 256 chars
         let topic = "a".repeat(256);
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             topic.clone(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -248,7 +248,7 @@ mod tests {
         )
         .await;
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             "".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -287,7 +287,7 @@ mod tests {
         .await;
 
         // Test with \n
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             "Topic with\nnewline".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -313,7 +313,7 @@ mod tests {
         // Login admin user (admins automatically have all permissions)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_chattopicupdate(
+        let result = handle_chat_topic_update(
             "Admin topic".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),

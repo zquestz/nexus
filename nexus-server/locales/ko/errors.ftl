@@ -92,3 +92,16 @@ err-permissions-permission-too-long = 권한 이름이 너무 깁니다 (최대 
 err-permissions-contains-newlines = 권한 이름에 줄바꿈을 포함할 수 없습니다
 err-permissions-invalid-characters = 권한 이름에 잘못된 문자가 포함되어 있습니다
 
+# 서버 업데이트 오류
+err-admin-required = 관리자 권한이 필요합니다
+err-server-name-empty = 서버 이름은 비어 있을 수 없습니다
+err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max_length }자)
+err-server-name-contains-newlines = 서버 이름에 줄 바꿈을 포함할 수 없습니다
+err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
+err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length }자)
+err-server-description-contains-newlines = 서버 설명에 줄 바꿈을 포함할 수 없습니다
+err-server-description-invalid-characters = 서버 설명에 잘못된 문자가 포함되어 있습니다
+err-max-connections-per-ip-invalid = IP당 최대 연결 수는 0보다 커야 합니다
+err-no-fields-to-update = 업데이트할 필드가 없습니다
+
+

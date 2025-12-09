@@ -252,6 +252,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::UserList => "UserList",
         ClientMessage::UserMessage { .. } => "UserMessage",
         ClientMessage::UserUpdate { .. } => "UserUpdate",
+        ClientMessage::ServerInfoUpdate { .. } => "ServerInfoUpdate",
     }
 }
 
@@ -260,7 +261,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
 pub fn server_message_type(message: &ServerMessage) -> &'static str {
     match message {
         ServerMessage::ChatMessage { .. } => "ChatMessage",
-        ServerMessage::ChatTopic { .. } => "ChatTopic",
+        ServerMessage::ChatTopicUpdated { .. } => "ChatTopicUpdated",
         ServerMessage::ChatTopicUpdateResponse { .. } => "ChatTopicUpdateResponse",
         ServerMessage::Error { .. } => "Error",
         ServerMessage::HandshakeResponse { .. } => "HandshakeResponse",
@@ -280,6 +281,8 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::UserMessageResponse { .. } => "UserMessageResponse",
         ServerMessage::UserUpdated { .. } => "UserUpdated",
         ServerMessage::UserUpdateResponse { .. } => "UserUpdateResponse",
+        ServerMessage::ServerInfoUpdated { .. } => "ServerInfoUpdated",
+        ServerMessage::ServerInfoUpdateResponse { .. } => "ServerInfoUpdateResponse",
     }
 }
 

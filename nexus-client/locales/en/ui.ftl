@@ -168,6 +168,8 @@ msg-topic-updated = Topic updated successfully
 
 msg-topic-cleared = Topic cleared by { $username }
 msg-topic-set = Topic set by { $username }: { $topic }
+msg-server-info-updated = Server configuration updated: { $name }
+msg-server-info-update-success = Server configuration updated successfully
 msg-topic-display = Topic: { $topic }
 msg-user-connected = { $username } connected
 msg-user-disconnected = { $username } disconnected
@@ -179,6 +181,7 @@ msg-connection-cancelled = Connection cancelled due to certificate mismatch
 # =============================================================================
 
 err-connection-broken = Connection error
+err-failed-update-server-info = Failed to update server info: { $error }
 err-user-kick-failed = Failed to kick user
 err-no-shutdown-handle = Connection error: No shutdown handle
 err-userlist-failed = Failed to refresh user list

@@ -18,7 +18,7 @@ use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
 /// Handle a userinfo request from the client
-pub async fn handle_userinfo<W>(
+pub async fn handle_user_info<W>(
     requested_username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -182,7 +182,7 @@ mod tests {
 
         // Try to get user info without being logged in
         let result =
-            handle_userinfo("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+            handle_user_info("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserInfo should require login");
@@ -221,7 +221,7 @@ mod tests {
             .await;
 
         // Try to get user info without permission
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "alice".to_string(),
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -275,7 +275,7 @@ mod tests {
             .await;
 
         // Request info for non-existent username
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "nonexistent".to_string(),
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -379,7 +379,7 @@ mod tests {
             .await;
 
         // Request info about target as non-admin
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "target".to_string(),
             Some(requester_id),
             &mut test_ctx.handler_context(),
@@ -490,7 +490,7 @@ mod tests {
             .await;
 
         // Request info about target as admin
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "target".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -604,7 +604,7 @@ mod tests {
             .await;
 
         // Admin1 requests info about admin2
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "admin2".to_string(),
             Some(admin1_id),
             &mut test_ctx.handler_context(),
@@ -661,7 +661,7 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "Alice", "password", &[], false).await;
 
         // Request user info with different casing
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "alice".to_string(), // lowercase
             Some(1),
             &mut test_ctx.handler_context(),
@@ -738,7 +738,7 @@ mod tests {
             .await;
 
         // Request user info
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -827,7 +827,7 @@ mod tests {
             .await;
 
         // Request user info
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -862,7 +862,7 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Request user info
-        let result = handle_userinfo(
+        let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),

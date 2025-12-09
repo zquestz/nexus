@@ -167,6 +167,8 @@ msg-topic-updated = Tópico atualizado com sucesso
 
 msg-topic-cleared = Tópico limpo por { $username }
 msg-topic-set = Tópico definido por { $username }: { $topic }
+msg-server-info-updated = Configuração do servidor atualizada: { $name }
+msg-server-info-update-success = Configuração do servidor atualizada com sucesso
 msg-topic-display = Tópico: { $topic }
 msg-user-connected = { $username } ligou-se
 msg-user-disconnected = { $username } desligou-se
@@ -178,6 +180,7 @@ msg-connection-cancelled = Ligação cancelada devido a certificado não corresp
 # =============================================================================
 
 err-connection-broken = Erro de ligação
+err-failed-update-server-info = Falha ao atualizar informações do servidor: { $error }
 err-user-kick-failed = Falha ao expulsar utilizador
 err-no-shutdown-handle = Erro de ligação: Sem handle de encerramento
 err-userlist-failed = Falha ao actualizar lista de utilizadores

@@ -2,7 +2,7 @@
 
 use super::UserManager;
 use crate::db::{Permission, UserDb};
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ServerInfo, ServerMessage};
 
 impl UserManager {
     /// Broadcast a message to all connected users with proper disconnect notification
@@ -163,5 +163,37 @@ impl UserManager {
         }
 
         self.remove_disconnected(disconnected, user_db).await;
+    }
+
+    /// Broadcast ServerInfoUpdated to all connected users
+    ///
+    /// Admins receive max_connections_per_ip, non-admins receive None for that field.
+    /// This is called when server configuration is updated via ServerUpdate.
+    pub async fn broadcast_server_info_updated(
+        &self,
+        name: String,
+        description: String,
+        version: String,
+        max_connections_per_ip: u32,
+    ) {
+        let users = self.users.read().await;
+        for user in users.values() {
+            // Admins get max_connections_per_ip, non-admins don't
+            let server_info = ServerInfo {
+                name: name.clone(),
+                description: description.clone(),
+                version: version.clone(),
+                max_connections_per_ip: if user.is_admin {
+                    Some(max_connections_per_ip)
+                } else {
+                    None
+                },
+            };
+
+            let message = ServerMessage::ServerInfoUpdated { server_info };
+
+            // Ignore send errors - user will be cleaned up by their connection handler
+            let _ = user.tx.send((message, None));
+        }
     }
 }

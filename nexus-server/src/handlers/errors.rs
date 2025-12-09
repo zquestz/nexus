@@ -383,3 +383,61 @@ pub fn err_version_too_long(locale: &str, max_length: usize) -> String {
         &[("max_length", &max_length.to_string())],
     )
 }
+
+/// Get translated "admin required" error
+pub fn err_admin_required(locale: &str) -> String {
+    t(locale, "err-admin-required")
+}
+
+/// Get translated "server name empty" error
+pub fn err_server_name_empty(locale: &str) -> String {
+    t(locale, "err-server-name-empty")
+}
+
+/// Get translated "server name too long" error
+pub fn err_server_name_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-server-name-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "server name contains newlines" error
+pub fn err_server_name_contains_newlines(locale: &str) -> String {
+    t(locale, "err-server-name-contains-newlines")
+}
+
+/// Get translated "server name invalid characters" error
+pub fn err_server_name_invalid_characters(locale: &str) -> String {
+    t(locale, "err-server-name-invalid-characters")
+}
+
+/// Get translated "server description too long" error
+pub fn err_server_description_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-server-description-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "server description contains newlines" error
+pub fn err_server_description_contains_newlines(locale: &str) -> String {
+    t(locale, "err-server-description-contains-newlines")
+}
+
+/// Get translated "server description invalid characters" error
+pub fn err_server_description_invalid_characters(locale: &str) -> String {
+    t(locale, "err-server-description-invalid-characters")
+}
+
+/// Get translated "max connections per ip invalid" error
+pub fn err_max_connections_per_ip_invalid(locale: &str) -> String {
+    t(locale, "err-max-connections-per-ip-invalid")
+}
+
+/// Get translated "no fields to update" error
+pub fn err_no_fields_to_update(locale: &str) -> String {
+    t(locale, "err-no-fields-to-update")
+}

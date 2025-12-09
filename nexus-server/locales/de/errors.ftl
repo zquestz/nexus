@@ -43,6 +43,9 @@ err-topic-invalid-characters = Das Thema enthält ungültige Zeichen
 # Versionsvalidierungsfehler
 err-version-empty = Die Version darf nicht leer sein
 err-version-too-long = Die Version ist zu lang (maximal { $max_length } Zeichen)
+err-version-invalid-semver = Die Version muss im Semver-Format vorliegen (MAJOR.MINOR.PATCH)
+err-version-major-mismatch = Inkompatible Protokollversion: Server ist Version { $server_major }.x, Client ist Version { $client_major }.x
+err-version-client-too-new = Die Client-Version { $client_version } ist neuer als die Server-Version { $server_version }. Bitte aktualisieren Sie den Server oder verwenden Sie einen älteren Client.
 
 # Passwortvalidierungsfehler
 err-password-empty = Das Passwort darf nicht leer sein
@@ -88,4 +91,16 @@ err-permissions-empty-permission = Der Berechtigungsname darf nicht leer sein
 err-permissions-permission-too-long = Der Berechtigungsname ist zu lang (maximal { $max_length } Zeichen)
 err-permissions-contains-newlines = Der Berechtigungsname darf keine Zeilenumbrüche enthalten
 err-permissions-invalid-characters = Der Berechtigungsname enthält ungültige Zeichen
+
+# Server-Update-Fehler
+err-admin-required = Administratorrechte erforderlich
+err-server-name-empty = Der Servername darf nicht leer sein
+err-server-name-too-long = Der Servername ist zu lang (maximal { $max_length } Zeichen)
+err-server-name-contains-newlines = Der Servername darf keine Zeilenumbrüche enthalten
+err-server-name-invalid-characters = Der Servername enthält ungültige Zeichen
+err-server-description-too-long = Die Serverbeschreibung ist zu lang (maximal { $max_length } Zeichen)
+err-server-description-contains-newlines = Die Serverbeschreibung darf keine Zeilenumbrüche enthalten
+err-server-description-invalid-characters = Die Serverbeschreibung enthält ungültige Zeichen
+err-max-connections-per-ip-invalid = Maximale Verbindungen pro IP muss größer als 0 sein
+err-no-fields-to-update = Keine Felder zum Aktualisieren
 

@@ -20,7 +20,7 @@ use super::{
 use crate::db::{Permission, Permissions, hash_password};
 
 /// Handle a user creation request from the client
-pub async fn handle_usercreate<W>(
+pub async fn handle_user_create<W>(
     username: String,
     password: String,
     is_admin: bool,
@@ -221,7 +221,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to create user without being logged in
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -244,7 +244,7 @@ mod tests {
         let user_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to create user without permission
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -271,7 +271,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new user
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "newpassword".to_string(),
             false,
@@ -351,7 +351,7 @@ mod tests {
             .await;
 
         // Try to create user with duplicate username
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "existing".to_string(),
             "newpassword".to_string(),
             false,
@@ -395,7 +395,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new admin user
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newadmin".to_string(),
             "newpassword".to_string(),
             true, // is_admin = true
@@ -449,7 +449,7 @@ mod tests {
         .await;
 
         // Create a new user (can only grant permissions creator has)
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -506,7 +506,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a new user with specific permissions
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -645,7 +645,7 @@ mod tests {
             .await;
 
         // Try to create an admin user as non-admin
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newadmin".to_string(),
             "password".to_string(),
             true, // is_admin = true
@@ -712,7 +712,7 @@ mod tests {
             .await;
 
         // Try to create a user with UserDelete permission (which creator doesn't have)
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -742,7 +742,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create user with empty username
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "".to_string(),
             "password123".to_string(),
             false,
@@ -764,7 +764,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create user with empty password
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "".to_string(),
             false,
@@ -786,7 +786,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Admin can grant ALL permissions even if not explicitly listed
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "newuser".to_string(),
             "password".to_string(),
             false,
@@ -861,7 +861,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a disabled user
-        let result = handle_usercreate(
+        let result = handle_user_create(
             "disableduser".to_string(),
             "password".to_string(),
             false,

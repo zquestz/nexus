@@ -93,3 +93,15 @@ err-permissions-permission-too-long = El nombre del permiso es demasiado largo (
 err-permissions-contains-newlines = El nombre del permiso no puede contener saltos de línea
 err-permissions-invalid-characters = El nombre del permiso contiene caracteres inválidos
 
+# Errores de actualización del servidor
+err-admin-required = Se requieren privilegios de administrador
+err-server-name-empty = El nombre del servidor no puede estar vacío
+err-server-name-too-long = El nombre del servidor es demasiado largo (máx. { $max_length } caracteres)
+err-server-name-contains-newlines = El nombre del servidor no puede contener saltos de línea
+err-server-name-invalid-characters = El nombre del servidor contiene caracteres inválidos
+err-server-description-too-long = La descripción del servidor es demasiado larga (máx. { $max_length } caracteres)
+err-server-description-contains-newlines = La descripción del servidor no puede contener saltos de línea
+err-server-description-invalid-characters = La descripción del servidor contiene caracteres inválidos
+err-max-connections-per-ip-invalid = Las conexiones máximas por IP deben ser mayores que 0
+err-no-fields-to-update = No hay campos para actualizar
+

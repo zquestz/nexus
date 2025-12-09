@@ -17,7 +17,7 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserDelete command
-pub async fn handle_userdelete<W>(
+pub async fn handle_user_delete<W>(
     target_username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -172,7 +172,7 @@ mod tests {
 
         // Try to delete user without being logged in
         let result =
-            handle_userdelete("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+            handle_user_delete("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserDelete should require login");
@@ -194,7 +194,7 @@ mod tests {
             .unwrap();
 
         // Try to delete user without permission
-        let result = handle_userdelete(
+        let result = handle_user_delete(
             "bob".to_string(),
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -237,7 +237,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete non-existent user
-        let result = handle_userdelete(
+        let result = handle_user_delete(
             "nonexistent".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -276,7 +276,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete self
-        let result = handle_userdelete(
+        let result = handle_user_delete(
             "admin".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -345,7 +345,7 @@ mod tests {
         .await;
 
         // Try to delete the only admin
-        let result = handle_userdelete(
+        let result = handle_user_delete(
             "only_admin".to_string(),
             Some(deleter_id),
             &mut test_ctx.handler_context(),
@@ -438,7 +438,7 @@ mod tests {
         );
 
         // Delete offline user
-        let result1 = handle_userdelete(
+        let result1 = handle_user_delete(
             "offline_user".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -457,7 +457,7 @@ mod tests {
         );
 
         // Delete online user
-        let result2 = handle_userdelete(
+        let result2 = handle_user_delete(
             "online_user".to_string(),
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -509,7 +509,7 @@ mod tests {
             .unwrap();
 
         // Delete target user
-        let result = handle_userdelete(
+        let result = handle_user_delete(
             "target".to_string(),
             Some(deleter_id),
             &mut test_ctx.handler_context(),

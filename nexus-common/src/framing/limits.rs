@@ -30,16 +30,19 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserKick", 65);
     m.insert("UserList", 19);
     m.insert("UserUpdate", 1040);
+    m.insert("ServerInfoUpdate", 410);
 
     // Server messages (limits match actual max size from validators)
     m.insert("ChatMessage", 1129);
-    m.insert("ChatTopic", 333);
+    m.insert("ChatTopicUpdated", 340);
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
     m.insert("LoginResponse", 1458);
     m.insert("PermissionsUpdated", 1396);
     m.insert("ServerBroadcast", 1133);
+    m.insert("ServerInfoUpdated", 472);
+    m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176294);
     m.insert("UserCreateResponse", 568);
     m.insert("UserDeleteResponse", 568);
@@ -132,8 +135,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 13;
-        const SERVER_MESSAGE_COUNT: usize = 21;
+        const CLIENT_MESSAGE_COUNT: usize = 14;
+        const SERVER_MESSAGE_COUNT: usize = 23;
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -287,6 +290,19 @@ mod tests {
         assert_eq!(json_size(&msg), max_payload_for_type("UserUpdate") as usize);
     }
 
+    #[test]
+    fn test_limit_server_info_update() {
+        let msg = ClientMessage::ServerInfoUpdate {
+            name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
+            description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+            max_connections_per_ip: Some(u32::MAX),
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("ServerInfoUpdate") as usize
+        );
+    }
+
     // =========================================================================
     // Server message size tests - verify limits match actual max sizes
     // =========================================================================
@@ -305,12 +321,15 @@ mod tests {
     }
 
     #[test]
-    fn test_limit_chat_topic() {
-        let msg = ServerMessage::ChatTopic {
+    fn test_limit_chat_topic_updated() {
+        let msg = ServerMessage::ChatTopicUpdated {
             topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
             username: str_of_len(MAX_USERNAME_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatTopic") as usize);
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("ChatTopicUpdated") as usize
+        );
     }
 
     #[test]
@@ -398,6 +417,34 @@ mod tests {
         assert_eq!(
             json_size(&msg),
             max_payload_for_type("PermissionsUpdated") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_server_info_updated() {
+        let msg = ServerMessage::ServerInfoUpdated {
+            server_info: ServerInfo {
+                name: str_of_len(MAX_SERVER_NAME_LENGTH),
+                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
+                version: str_of_len(MAX_VERSION_LENGTH),
+                max_connections_per_ip: Some(u32::MAX),
+            },
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("ServerInfoUpdated") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_server_info_update_response() {
+        let msg = ServerMessage::ServerInfoUpdateResponse {
+            success: false,
+            error: Some(str_of_len(512)),
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("ServerInfoUpdateResponse") as usize
         );
     }
 

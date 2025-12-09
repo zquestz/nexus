@@ -17,7 +17,7 @@ use super::{
 use crate::db::Permission;
 
 /// Handle a user edit request (returns user details for editing)
-pub async fn handle_useredit<W>(
+pub async fn handle_user_edit<W>(
     username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -160,7 +160,7 @@ mod tests {
     async fn test_useredit_get_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "alice".to_string(),
             None, // Not logged in
             &mut test_ctx.handler_context(),
@@ -185,7 +185,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "bob".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -210,7 +210,7 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "nonexistent".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -250,7 +250,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "bob".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -305,7 +305,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "admin2".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -357,7 +357,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "bob".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -385,7 +385,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to edit self
-        let result = handle_useredit(
+        let result = handle_user_edit(
             "admin".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),

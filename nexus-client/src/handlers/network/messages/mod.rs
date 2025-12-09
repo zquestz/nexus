@@ -50,7 +50,7 @@ impl NexusApp {
                 message,
             } => self.handle_chat_message(connection_id, username, message),
 
-            ServerMessage::ChatTopic { topic, username } => {
+            ServerMessage::ChatTopicUpdated { topic, username } => {
                 self.handle_chat_topic(connection_id, topic, username)
             }
 
@@ -161,6 +161,14 @@ impl NexusApp {
 
             ServerMessage::UserUpdateResponse { success, error } => {
                 self.handle_user_update_response(connection_id, success, error)
+            }
+
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                self.handle_server_info_updated(connection_id, server_info)
+            }
+
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                self.handle_server_info_update_response(connection_id, success, error)
             }
 
             // Catch-all for any unhandled message types

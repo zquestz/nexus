@@ -2,8 +2,8 @@
 
 mod args;
 mod connection;
+mod connection_tracker;
 mod constants;
-mod contracker;
 mod db;
 mod handlers;
 mod i18n;
@@ -12,8 +12,8 @@ mod users;
 
 use args::Args;
 use clap::Parser;
+use connection_tracker::ConnectionTracker;
 use constants::*;
-use contracker::ConnectionTracker;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::BufReader;

@@ -76,6 +76,15 @@ pub enum ClientMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         requested_permissions: Option<Vec<String>>,
     },
+    /// Update server configuration (admin only)
+    ServerInfoUpdate {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max_connections_per_ip: Option<u32>,
+    },
 }
 
 /// Server response messages
@@ -88,8 +97,8 @@ pub enum ServerMessage {
         username: String,
         message: String,
     },
-    /// Chat topic broadcast (sent to users with ChatTopic permission when topic changes)
-    ChatTopic { topic: String, username: String },
+    /// Chat topic updated broadcast (sent to users with ChatTopic permission when topic changes)
+    ChatTopicUpdated { topic: String, username: String },
     /// Chat topic update response
     ChatTopicUpdateResponse {
         success: bool,
@@ -172,6 +181,14 @@ pub enum ServerMessage {
         server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
         chat_info: Option<ChatInfo>,
+    },
+    /// Server configuration updated (broadcast to all connected users)
+    ServerInfoUpdated { server_info: ServerInfo },
+    /// Server info update response
+    ServerInfoUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     /// User broadcast response
     UserBroadcastResponse {
@@ -380,6 +397,16 @@ impl std::fmt::Debug for ClientMessage {
                 .field("requested_is_admin", requested_is_admin)
                 .field("requested_enabled", requested_enabled)
                 .field("requested_permissions", requested_permissions)
+                .finish(),
+            ClientMessage::ServerInfoUpdate {
+                name,
+                description,
+                max_connections_per_ip,
+            } => f
+                .debug_struct("ServerInfoUpdate")
+                .field("name", name)
+                .field("description", description)
+                .field("max_connections_per_ip", max_connections_per_ip)
                 .finish(),
         }
     }

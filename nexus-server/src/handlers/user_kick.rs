@@ -15,7 +15,7 @@ use super::{
 use crate::db::Permission;
 
 /// Handle UserKick command
-pub async fn handle_userkick<W>(
+pub async fn handle_user_kick<W>(
     target_username: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -162,7 +162,7 @@ mod tests {
 
         // Try to kick user without being logged in
         let result =
-            handle_userkick("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+            handle_user_kick("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserKick should require login");
@@ -180,7 +180,7 @@ mod tests {
 
         // Try to kick bob (should fail - no permission)
         let result =
-            handle_userkick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
@@ -216,7 +216,7 @@ mod tests {
 
         // Kick bob (should succeed)
         let result =
-            handle_userkick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Kick should succeed with permission");
 
@@ -242,7 +242,7 @@ mod tests {
 
         // Admin kicks bob (should succeed)
         let result =
-            handle_userkick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Admin should be able to kick");
 
@@ -270,7 +270,7 @@ mod tests {
         .await;
 
         // Try to kick self (should fail)
-        let result = handle_userkick(
+        let result = handle_user_kick(
             "alice".to_string(),
             Some(1),
             &mut test_ctx.handler_context(),
@@ -311,7 +311,7 @@ mod tests {
             .unwrap();
 
         // Try to kick offline user (should fail)
-        let result = handle_userkick(
+        let result = handle_user_kick(
             "offline_user".to_string(),
             Some(1),
             &mut test_ctx.handler_context(),
@@ -344,7 +344,7 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "Alice", "password", &[], false).await;
 
         // Kick using different case (should succeed)
-        let result = handle_userkick(
+        let result = handle_user_kick(
             "alice".to_string(),
             Some(1),
             &mut test_ctx.handler_context(),
@@ -377,7 +377,7 @@ mod tests {
         // For testing, we verify the logic handles multiple sessions
 
         // Kick alice (should kick all sessions)
-        let result = handle_userkick(
+        let result = handle_user_kick(
             "alice".to_string(),
             Some(1),
             &mut test_ctx.handler_context(),
@@ -415,7 +415,7 @@ mod tests {
 
         // Try to kick admin (should fail)
         let result =
-            handle_userkick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 

@@ -166,6 +166,8 @@ msg-topic-updated = Thema erfolgreich aktualisiert
 
 msg-topic-cleared = Thema gelöscht von { $username }
 msg-topic-set = Thema gesetzt von { $username }: { $topic }
+msg-server-info-updated = Serverkonfiguration aktualisiert: { $name }
+msg-server-info-update-success = Serverkonfiguration erfolgreich aktualisiert
 msg-topic-display = Thema: { $topic }
 msg-user-connected = { $username } hat sich verbunden
 msg-user-disconnected = { $username } hat sich getrennt
@@ -177,6 +179,7 @@ msg-connection-cancelled = Verbindung abgebrochen wegen Zertifikat-Nichtüberein
 # =============================================================================
 
 err-connection-broken = Verbindungsfehler
+err-failed-update-server-info = Serverinfo konnte nicht aktualisiert werden: { $error }
 err-user-kick-failed = Benutzer konnte nicht rausgeworfen werden
 err-no-shutdown-handle = Verbindungsfehler: Kein Shutdown-Handle
 err-userlist-failed = Benutzerliste konnte nicht aktualisiert werden

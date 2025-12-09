@@ -167,6 +167,8 @@ msg-topic-updated = 主题更新成功
 
 msg-topic-cleared = { $username } 清除了主题
 msg-topic-set = { $username } 设置了主题：{ $topic }
+msg-server-info-updated = 服务器配置已更新：{ $name }
+msg-server-info-update-success = 服务器配置更新成功
 msg-topic-display = 主题：{ $topic }
 msg-user-connected = { $username } 已连接
 msg-user-disconnected = { $username } 已断开连接
@@ -178,6 +180,7 @@ msg-connection-cancelled = 由于证书不匹配，连接已取消
 # =============================================================================
 
 err-connection-broken = 连接错误
+err-failed-update-server-info = 更新服务器信息失败：{ $error }
 err-user-kick-failed = 踢出用户失败
 err-no-shutdown-handle = 连接错误：无关闭句柄
 err-userlist-failed = 刷新用户列表失败

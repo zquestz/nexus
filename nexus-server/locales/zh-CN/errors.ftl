@@ -92,3 +92,16 @@ err-permissions-permission-too-long = 权限名称太长（最多{ $max_length }
 err-permissions-contains-newlines = 权限名称不能包含换行符
 err-permissions-invalid-characters = 权限名称包含无效字符
 
+# 服务器更新错误
+err-admin-required = 需要管理员权限
+err-server-name-empty = 服务器名称不能为空
+err-server-name-too-long = 服务器名称太长（最多{ $max_length }个字符）
+err-server-name-contains-newlines = 服务器名称不能包含换行符
+err-server-name-invalid-characters = 服务器名称包含无效字符
+err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字符）
+err-server-description-contains-newlines = 服务器描述不能包含换行符
+err-server-description-invalid-characters = 服务器描述包含无效字符
+err-max-connections-per-ip-invalid = 每个IP的最大连接数必须大于0
+err-no-fields-to-update = 没有要更新的字段
+
+

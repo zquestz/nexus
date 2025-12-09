@@ -166,6 +166,8 @@ msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 
 msg-topic-cleared = { $username }님이 주제를 삭제했습니다
 msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
+msg-server-info-updated = 서버 설정이 업데이트되었습니다: { $name }
+msg-server-info-update-success = 서버 설정이 성공적으로 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 msg-user-connected = { $username }님이 연결되었습니다
 msg-user-disconnected = { $username }님의 연결이 해제되었습니다
@@ -177,6 +179,7 @@ msg-connection-cancelled = 인증서 불일치로 연결이 취소되었습니�
 # =============================================================================
 
 err-connection-broken = 연결 오류
+err-failed-update-server-info = 서버 정보 업데이트 실패: { $error }
 err-user-kick-failed = 사용자 추방 실패
 err-no-shutdown-handle = 연결 오류: 종료 핸들 없음
 err-userlist-failed = 사용자 목록 새로고침 실패
