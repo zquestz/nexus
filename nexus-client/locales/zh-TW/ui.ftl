@@ -68,7 +68,7 @@ label-permissions = 權限：
 label-expected-fingerprint = 預期指紋：
 label-received-fingerprint = 收到的指紋：
 label-theme = 主題
-label-chat-font-size = 聊天字型大小
+label-chat-font-size = 字型大小：
 label-show-connection-notifications = 顯示連線通知
 label-show-timestamps = 顯示時間戳記
 label-use-24-hour-time = 使用24小時制
@@ -81,6 +81,7 @@ label-chat-topic-set-by = 主題設定者：
 label-max-connections-per-ip = 每IP最大連線數：
 label-avatar = 頭像：
 label-details = 技術詳情
+label-chat-options = 聊天選項
 
 # =============================================================================
 # Permission Display Names

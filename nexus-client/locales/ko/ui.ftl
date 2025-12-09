@@ -68,7 +68,7 @@ label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
 label-received-fingerprint = 수신된 지문:
 label-theme = 테마
-label-chat-font-size = 채팅 글꼴 크기
+label-chat-font-size = 글꼴 크기:
 label-show-connection-notifications = 연결 알림 표시
 label-show-timestamps = 타임스탬프 표시
 label-use-24-hour-time = 24시간 형식 사용
@@ -81,6 +81,7 @@ label-chat-topic-set-by = 주제 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
 label-avatar = 아바타:
 label-details = 기술 세부 정보
+label-chat-options = 채팅 옵션
 
 # =============================================================================
 # Permission Display Names

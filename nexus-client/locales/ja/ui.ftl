@@ -68,7 +68,7 @@ label-permissions = 権限:
 label-expected-fingerprint = 期待されるフィンガープリント:
 label-received-fingerprint = 受信したフィンガープリント:
 label-theme = テーマ
-label-chat-font-size = チャットフォントサイズ
+label-chat-font-size = フォントサイズ:
 label-show-connection-notifications = 接続通知を表示
 label-show-timestamps = タイムスタンプを表示
 label-use-24-hour-time = 24時間形式を使用
@@ -81,6 +81,7 @@ label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
 label-avatar = アバター:
 label-details = 技術詳細
+label-chat-options = チャットオプション
 
 # =============================================================================
 # Permission Display Names

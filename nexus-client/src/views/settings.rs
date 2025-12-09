@@ -6,8 +6,9 @@ use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, shaped_text, shaped_text_wrapped,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
+    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
+    subheading_text_style,
 };
 use crate::types::{Message, SettingsFormState};
 use iced::widget::button as btn;
@@ -168,9 +169,16 @@ pub fn settings_view(
         form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
+    // Chat subheading
+    let chat_heading = shaped_text(t("label-chat-options"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+
     form_items.extend([
         theme_row.into(),
         avatar_row.into(),
+        Space::new().height(SPACER_SIZE_SMALL).into(),
+        chat_heading.into(),
         font_size_row.into(),
         notifications_checkbox.into(),
         timestamps_checkbox.into(),

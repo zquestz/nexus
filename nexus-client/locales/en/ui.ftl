@@ -68,7 +68,7 @@ label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
 label-theme = Theme:
-label-chat-font-size = Chat Font Size:
+label-chat-font-size = Font Size:
 label-show-connection-notifications = Show connect/disconnect notifications
 label-show-timestamps = Show timestamps
 label-use-24-hour-time = Use 24-hour time
@@ -81,6 +81,7 @@ label-chat-topic-set-by = Chat Topic Set By:
 label-max-connections-per-ip = Max Connections Per IP:
 label-avatar = Avatar:
 label-details = Technical Details
+label-chat-options = Chat Options
 
 # =============================================================================
 # Permission Display Names

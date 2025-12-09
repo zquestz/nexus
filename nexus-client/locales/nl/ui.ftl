@@ -69,7 +69,7 @@ label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:
 label-theme = Thema
-label-chat-font-size = Chat lettergrootte
+label-chat-font-size = Lettergrootte:
 label-show-connection-notifications = Verbindingsmeldingen weergeven
 label-show-timestamps = Tijdstempels weergeven
 label-use-24-hour-time = 24-uursformaat gebruiken
@@ -82,6 +82,7 @@ label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
 label-avatar = Avatar:
 label-details = Technische details
+label-chat-options = Chatopties
 
 # =============================================================================
 # Permission Display Names

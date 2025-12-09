@@ -68,7 +68,7 @@ label-permissions = Разрешения:
 label-expected-fingerprint = Ожидаемый отпечаток:
 label-received-fingerprint = Полученный отпечаток:
 label-theme = Тема
-label-chat-font-size = Размер шрифта чата
+label-chat-font-size = Размер шрифта:
 label-show-connection-notifications = Показывать уведомления о подключении
 label-show-timestamps = Показывать время
 label-use-24-hour-time = Использовать 24-часовой формат
@@ -81,6 +81,7 @@ label-chat-topic-set-by = Тема установлена:
 label-max-connections-per-ip = Макс. подключений на IP:
 label-avatar = Аватар:
 label-details = Технические детали
+label-chat-options = Настройки чата
 
 # =============================================================================
 # Permission Display Names
