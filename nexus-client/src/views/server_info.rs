@@ -3,8 +3,9 @@
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, content_background_style,
-    error_text_style, shaped_text, shaped_text_wrapped,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
+    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
+    subheading_text_style,
 };
 use crate::types::{InputId, Message, ServerInfoEditState};
 use iced::widget::button as btn;
@@ -43,31 +44,34 @@ pub fn server_info_view(data: &ServerInfoData<'_>) -> Element<'static, Message> 
 
 /// Render the server info display view (read-only)
 fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Message> {
-    let title = shaped_text(t("title-server-info"))
+    // Server name as the title (fallback to generic title if no name)
+    let title_text = data.name.clone().unwrap_or_else(|| t("title-server-info"));
+    let title = shaped_text(title_text)
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
 
-    let mut content =
-        column![title, Space::new().height(SPACER_SIZE_MEDIUM),].spacing(ELEMENT_SPACING);
+    let mut content = column![title].spacing(ELEMENT_SPACING);
 
-    // Server name
-    if let Some(name) = &data.name {
-        let label = shaped_text(t("label-server-name")).size(TEXT_SIZE);
-        let value = shaped_text(name.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
-        content = content.push(info_row);
-    }
-
-    // Server description (only if non-empty)
+    // Server description directly under title (no label)
     if let Some(description) = &data.description
         && !description.is_empty()
     {
-        let label = shaped_text(t("label-server-description")).size(TEXT_SIZE);
-        let value = shaped_text(description.clone()).size(TEXT_SIZE);
-        let info_row = row![label, Space::new().width(ELEMENT_SPACING), value].align_y(Center);
-        content = content.push(info_row);
+        content = content.push(
+            shaped_text_wrapped(description.clone())
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center),
+        );
     }
+
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+
+    // Details subheading
+    let details_heading = shaped_text(t("label-details"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    content = content.push(details_heading);
 
     // Server version
     if let Some(version) = &data.version {

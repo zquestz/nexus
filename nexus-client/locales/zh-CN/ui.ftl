@@ -81,6 +81,7 @@ label-chat-topic = 聊天主题：
 label-chat-topic-set-by = 主题设置者：
 label-max-connections-per-ip = 每IP最大连接数：
 label-avatar = 头像：
+label-details = 技术详情
 
 # =============================================================================
 # Permission Display Names

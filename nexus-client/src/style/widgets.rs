@@ -250,3 +250,12 @@ pub fn muted_text_style(theme: &Theme) -> text::Style {
         color: Some(ui::muted_text_color(theme)),
     }
 }
+
+/// Subheading text style - for section headers within panels
+///
+/// Uses muted color to create visual hierarchy below the main title.
+pub fn subheading_text_style(theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(ui::muted_text_color(theme)),
+    }
+}

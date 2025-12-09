@@ -80,6 +80,7 @@ label-chat-topic = チャットトピック:
 label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
 label-avatar = アバター:
+label-details = 技術詳細
 
 # =============================================================================
 # Permission Display Names

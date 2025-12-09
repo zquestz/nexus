@@ -80,6 +80,7 @@ label-chat-topic = Tópico do Chat:
 label-chat-topic-set-by = Tópico Definido Por:
 label-max-connections-per-ip = Máx. Ligações Por IP:
 label-avatar = Ícone:
+label-details = Detalhes técnicos
 
 # =============================================================================
 # Permission Display Names

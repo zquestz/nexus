@@ -80,6 +80,7 @@ label-chat-topic = Тема чата:
 label-chat-topic-set-by = Тема установлена:
 label-max-connections-per-ip = Макс. подключений на IP:
 label-avatar = Аватар:
+label-details = Технические детали
 
 # =============================================================================
 # Permission Display Names

@@ -81,6 +81,7 @@ label-chat-topic = Chat Onderwerp:
 label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
 label-avatar = Avatar:
+label-details = Technische details
 
 # =============================================================================
 # Permission Display Names

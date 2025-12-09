@@ -31,6 +31,9 @@ pub const BOLD_FONT: Font = Font {
 /// Title text size (e.g., form headers)
 pub const TITLE_SIZE: f32 = 20.0;
 
+/// Subheading text size (e.g., section headers within panels)
+pub const SUBHEADING_SIZE: f32 = 16.0;
+
 /// Standard text and input field size
 pub const TEXT_SIZE: f32 = 14.0;
 

@@ -1,7 +1,7 @@
 # Nexus BBS
 
 [![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/zquestz/nexus)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/zquestz/nexus)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
@@ -25,7 +25,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (12 permissions)
 - Multi-server bookmarks with auto-connect
-- Admin panel for user management (create/edit/delete)
+- Admin panel for user management (create/edit/delete) and server configuration
 - SQLite database with Argon2id password hashing
 - Cross-platform GUI with 30 themes (22 built-in Iced + 8 custom Celestial themes)
 - User avatars (custom images or auto-generated identicons)

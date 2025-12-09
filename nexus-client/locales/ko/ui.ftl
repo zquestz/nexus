@@ -80,6 +80,7 @@ label-chat-topic = 채팅 주제:
 label-chat-topic-set-by = 주제 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
 label-avatar = 아바타:
+label-details = 기술 세부 정보
 
 # =============================================================================
 # Permission Display Names

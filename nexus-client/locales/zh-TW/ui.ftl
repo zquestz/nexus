@@ -80,6 +80,7 @@ label-chat-topic = 聊天主題：
 label-chat-topic-set-by = 主題設定者：
 label-max-connections-per-ip = 每IP最大連線數：
 label-avatar = 頭像：
+label-details = 技術詳情
 
 # =============================================================================
 # Permission Display Names
