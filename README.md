@@ -130,14 +130,10 @@ The `.ico` icon is automatically embedded in the executable. The binary will be 
 
 **MSI Installer (Optional):**
 
-You can generate an MSI installer, though the installer may fail to launch:
-
 ```bash
 cargo install cargo-bundle
-cargo bundle --target x86_64-pc-windows-msvc --format msi --release
+cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
 ```
-
-**Note:** The MSI generation works, but the resulting installer often fails to launch the application. For distribution, use the standalone executable or create a custom installer with WiX/InnoSetup.
 
 See `nexus-client/assets/windows/README.md` for icon generation instructions.
 
@@ -147,21 +143,9 @@ See `nexus-client/assets/windows/README.md` for icon generation instructions.
 # Run all tests
 cargo test --workspace
 
-# Run with coverage
-cargo test --workspace -- --nocapture
-
 # Lint with strict warnings
 cargo clippy --workspace --all-targets -- -D warnings
 ```
-
-**Test Coverage:**
-
-- 200 server tests
-- 80 client tests
-- 170 common tests
-- 4 integration tests
-- 1 doctest
-- Total: 455 tests
 
 ## Database & Configuration
 
