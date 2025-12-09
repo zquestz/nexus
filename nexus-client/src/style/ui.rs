@@ -1,7 +1,7 @@
 //! UI colors derived from Iced's theme palette
 //!
 //! These functions pull colors from the theme's extended palette,
-//! ensuring compatibility with all 22 built-in themes.
+//! ensuring compatibility with all 30 themes (22 built-in Iced + 8 custom Celestial).
 //!
 //! For chat-specific colors, see the `chat` module.
 

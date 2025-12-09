@@ -2,7 +2,7 @@
 //!
 //! Provides consistent styling for Iced widgets across the application.
 //! All styles derive from Iced's theme palette for compatibility with
-//! all 22 built-in themes.
+//! all 30 themes (22 built-in Iced + 8 custom Celestial).
 
 use super::ui;
 use iced::widget::{button, container, text};

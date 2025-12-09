@@ -19,7 +19,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - **Mandatory TLS encryption** with auto-generated self-signed certificates
 - **SemVer protocol versioning** - backward-compatible version negotiation during handshake
 - **UPnP port forwarding** for automatic NAT traversal (optional)
-- **Internationalization (i18n)** - 12 languages supported (auto-detects system locale)
+- **Internationalization (i18n)** - 13 languages supported (auto-detects system locale)
 - **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
@@ -160,7 +160,7 @@ Platform paths:
 
 ## Internationalization
 
-Both server and client support 12 languages with automatic locale detection:
+Both server and client support 13 languages with automatic locale detection:
 
 - English (en) - Default fallback
 - Spanish (es), French (fr), German (de), Italian (it), Dutch (nl)
