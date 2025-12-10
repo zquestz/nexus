@@ -9,6 +9,9 @@ use super::theme::ThemePreference;
 /// Maximum avatar size in bytes (128KB)
 pub const AVATAR_MAX_SIZE: usize = 128 * 1024;
 
+/// Maximum server image size in bytes (512KB)
+pub const SERVER_IMAGE_MAX_SIZE: usize = 512 * 1024;
+
 /// Minimum allowed chat font size
 pub const CHAT_FONT_SIZE_MIN: u8 = 9;
 
@@ -26,7 +29,7 @@ pub const CHAT_FONT_SIZES: &[u8] = &[9, 10, 11, 12, 13, 14, 15, 16];
 // =============================================================================
 
 /// User preferences for the application
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
     /// UI theme preference
     #[serde(default)]
@@ -74,6 +77,27 @@ impl Default for Settings {
 // =============================================================================
 // Default Functions (for serde)
 // =============================================================================
+
+// Manual Debug implementation to avoid printing large avatar data URIs
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Settings")
+            .field("theme", &self.theme)
+            .field("chat_font_size", &self.chat_font_size)
+            .field(
+                "show_connection_notifications",
+                &self.show_connection_notifications,
+            )
+            .field("show_timestamps", &self.show_timestamps)
+            .field("use_24_hour_time", &self.use_24_hour_time)
+            .field("show_seconds", &self.show_seconds)
+            .field(
+                "avatar",
+                &self.avatar.as_ref().map(|a| format!("<{} bytes>", a.len())),
+            )
+            .finish()
+    }
+}
 
 fn default_chat_font_size() -> u8 {
     CHAT_FONT_SIZE_DEFAULT

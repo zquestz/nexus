@@ -107,7 +107,6 @@ pub fn settings_view(
     let seconds_row = row![Space::new().width(20), seconds_checkbox];
 
     // Avatar section
-    let avatar_label = shaped_text(t("label-avatar")).size(TEXT_SIZE);
     let avatar_preview: Element<'static, Message> = if let Some(av) = avatar {
         av.render(AVATAR_PREVIEW_SIZE)
     } else if let Some(default) = default_avatar {
@@ -136,7 +135,7 @@ pub fn settings_view(
     };
 
     let avatar_buttons = row![pick_avatar_button, clear_avatar_button].spacing(ELEMENT_SPACING);
-    let avatar_row = row![avatar_label, avatar_preview, avatar_buttons]
+    let avatar_row = row![avatar_preview, avatar_buttons]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
 
@@ -179,11 +178,17 @@ pub fn settings_view(
         .size(SUBHEADING_SIZE)
         .style(subheading_text_style);
 
+    // Avatar subheading
+    let avatar_heading = shaped_text(t("label-avatar"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+
     form_items.extend([
-        avatar_row.into(),
-        Space::new().height(SPACER_SIZE_SMALL).into(),
         appearance_heading.into(),
         theme_row.into(),
+        Space::new().height(SPACER_SIZE_SMALL).into(),
+        avatar_heading.into(),
+        avatar_row.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         chat_heading.into(),
         font_size_row.into(),

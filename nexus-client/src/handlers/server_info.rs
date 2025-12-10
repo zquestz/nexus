@@ -5,11 +5,15 @@ use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
     self, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, ServerDescriptionError,
-    ServerNameError,
+    ServerImageError, ServerNameError,
 };
+use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
+use crate::config::settings::SERVER_IMAGE_MAX_SIZE;
 use crate::i18n::{t, t_args};
+use crate::image::{ImagePickerError, decode_data_uri_max_width};
+use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{InputId, Message, ServerInfoEditState};
 
 impl NexusApp {
@@ -37,6 +41,7 @@ impl NexusApp {
             conn.server_name.as_deref(),
             conn.server_description.as_deref(),
             conn.max_connections_per_ip,
+            &conn.server_image,
         ));
 
         // Focus the name input
@@ -111,11 +116,27 @@ impl NexusApp {
             return Task::none();
         }
 
+        // Validate server image if not empty
+        if !edit_state.image.is_empty()
+            && let Err(e) = validators::validate_server_image(&edit_state.image)
+        {
+            let error_msg = match e {
+                ServerImageError::TooLarge => t("err-server-image-too-large"),
+                ServerImageError::InvalidFormat => t("err-server-image-invalid-format"),
+                ServerImageError::UnsupportedType => t("err-server-image-unsupported-type"),
+            };
+            if let Some(edit) = &mut conn.server_info_edit {
+                edit.error = Some(error_msg);
+            }
+            return Task::none();
+        }
+
         // Check if there are any changes
         if !edit_state.has_changes(
             conn.server_name.as_deref(),
             conn.server_description.as_deref(),
             conn.max_connections_per_ip,
+            &conn.server_image,
         ) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -143,10 +164,17 @@ impl NexusApp {
                 None
             };
 
+        let image = if edit_state.image != conn.server_image {
+            Some(edit_state.image.clone())
+        } else {
+            None
+        };
+
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
             max_connections_per_ip,
+            image,
         };
 
         if let Err(e) = conn.tx.send(msg) {
@@ -202,6 +230,131 @@ impl NexusApp {
         {
             edit_state.max_connections_per_ip = Some(max_connections);
         }
+        Task::none()
+    }
+
+    // ==================== Image Handlers ====================
+
+    /// Handle pick server image button press
+    ///
+    /// Opens a file picker dialog to select an image file.
+    pub fn handle_pick_server_image_pressed(&mut self) -> Task<Message> {
+        // Clear any previous error when starting a new pick
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.error = None;
+        }
+
+        Task::perform(
+            async {
+                let handle = AsyncFileDialog::new()
+                    .add_filter("Images", &["png", "jpg", "jpeg", "webp", "svg"])
+                    .pick_file()
+                    .await;
+
+                match handle {
+                    Some(file) => {
+                        let path = file.path();
+                        let extension = path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+
+                        // Determine MIME type from extension
+                        let mime_type = match extension.as_str() {
+                            "png" => "image/png",
+                            "jpg" | "jpeg" => "image/jpeg",
+                            "webp" => "image/webp",
+                            "svg" => "image/svg+xml",
+                            _ => return Err(ImagePickerError::UnsupportedType),
+                        };
+
+                        // Read file contents
+                        let bytes = file.read().await;
+
+                        // Check file size
+                        if bytes.len() > SERVER_IMAGE_MAX_SIZE {
+                            return Err(ImagePickerError::TooLarge);
+                        }
+
+                        // Validate file content matches expected format
+                        if !crate::image::validate_image_bytes(&bytes, mime_type) {
+                            return Err(ImagePickerError::UnsupportedType);
+                        }
+
+                        // Encode as data URI
+                        use base64::Engine;
+                        let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
+
+                        Ok(data_uri)
+                    }
+                    None => Err(ImagePickerError::Cancelled),
+                }
+            },
+            Message::EditServerInfoImageLoaded,
+        )
+    }
+
+    /// Handle server image loaded from file picker
+    pub fn handle_edit_server_info_image_loaded(
+        &mut self,
+        result: Result<String, ImagePickerError>,
+    ) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+        let Some(edit_state) = &mut conn.server_info_edit else {
+            return Task::none();
+        };
+
+        match result {
+            Ok(data_uri) => {
+                let cached = decode_data_uri_max_width(&data_uri, SERVER_IMAGE_MAX_CACHE_WIDTH);
+                if cached.is_some() {
+                    edit_state.image = data_uri;
+                    edit_state.cached_image = cached;
+                    edit_state.error = None;
+                } else {
+                    edit_state.error = Some(t("err-server-image-decode-failed"));
+                }
+            }
+            Err(ImagePickerError::Cancelled) => {
+                // User cancelled, do nothing
+            }
+            Err(ImagePickerError::TooLarge) => {
+                edit_state.error = Some(t("err-server-image-too-large"));
+            }
+            Err(ImagePickerError::UnsupportedType) => {
+                edit_state.error = Some(t("err-server-image-unsupported-type"));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle clear server image button press
+    pub fn handle_clear_server_image_pressed(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+        let Some(edit_state) = &mut conn.server_info_edit else {
+            return Task::none();
+        };
+
+        edit_state.image = String::new();
+        edit_state.cached_image = None;
+        edit_state.error = None;
+
         Task::none()
     }
 }

@@ -83,6 +83,9 @@ label-avatar = アバター:
 label-details = 技術詳細
 label-chat-options = チャットオプション
 label-appearance = 外観
+label-image = 画像
+label-general = 一般
+label-limits = 制限
 
 # =============================================================================
 # Permission Display Names
@@ -219,8 +222,9 @@ err-username-too-long = ユーザー名が長すぎます（最大{ $max }文字
 err-username-invalid = ユーザー名に無効な文字が含まれています
 err-password-too-long = パスワードが長すぎます（最大{ $max }文字）
 err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
-err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、またはSVGを使用してください。
+err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、JPEG、またはSVGを使用してください。
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。
+err-avatar-decode-failed = アバターのデコードに失敗しました。ファイルが破損している可能性があります。
 err-server-name-empty = サーバー名は空にできません
 err-server-name-too-long = サーバー名が長すぎます（最大{ $max }文字）
 err-server-name-contains-newlines = サーバー名に改行を含めることはできません
@@ -349,3 +353,11 @@ cmd-serverinfo-end = サーバー情報終了
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = 画像を選択
+button-clear-image = クリア
+label-server-image = サーバー画像:
+err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
+err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
+err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）
+err-server-image-decode-failed = 画像のデコードに失敗しました。ファイルが破損している可能性があります。
+err-failed-read-image = 画像の読み込みに失敗しました: { $error }

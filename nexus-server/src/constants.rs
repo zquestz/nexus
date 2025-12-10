@@ -41,11 +41,23 @@ pub const ERR_SERVER_DESC_NEWLINES: &str = "Server description cannot contain ne
 /// Error when server description contains invalid characters
 pub const ERR_SERVER_DESC_INVALID_CHARS: &str = "Server description contains invalid characters";
 
+/// Error when server image is too large
+pub const ERR_SERVER_IMAGE_TOO_LARGE: &str = "Server image is too large";
+
+/// Error when server image has invalid format
+pub const ERR_SERVER_IMAGE_INVALID_FORMAT: &str = "Server image has invalid format";
+
+/// Error when server image has unsupported type
+pub const ERR_SERVER_IMAGE_UNSUPPORTED_TYPE: &str = "Server image has unsupported type";
+
 /// Default server name (matches migration default)
 pub const DEFAULT_SERVER_NAME: &str = "Nexus BBS";
 
 /// Default server description (matches migration default)
 pub const DEFAULT_SERVER_DESCRIPTION: &str = "";
+
+/// Default server image (matches migration default)
+pub const DEFAULT_SERVER_IMAGE: &str = "";
 
 // =============================================================================
 // Database Configuration
@@ -62,6 +74,9 @@ pub const CONFIG_KEY_SERVER_NAME: &str = "server_name";
 
 /// Database configuration key for server description
 pub const CONFIG_KEY_SERVER_DESCRIPTION: &str = "server_description";
+
+/// Database configuration key for server image
+pub const CONFIG_KEY_SERVER_IMAGE: &str = "server_image";
 
 // =============================================================================
 // Feature Names

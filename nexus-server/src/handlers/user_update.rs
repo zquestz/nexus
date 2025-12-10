@@ -310,28 +310,23 @@ where
                         .map(|p| p.as_str().to_string())
                         .collect();
 
-                    // Build ServerInfo based on new permissions
+                    // Check if user now has chat topic permission
                     let now_has_chat_topic = updated_account.is_admin
                         || final_permissions
                             .permissions
                             .contains(&Permission::ChatTopic);
 
-                    // Always include name and description
-                    let name = ctx.db.config.get_server_name().await;
-                    let description = ctx.db.config.get_server_description().await;
-
-                    // Include max_connections_per_ip only for admins
-                    let max_connections_per_ip = if updated_account.is_admin {
-                        Some(ctx.db.config.get_max_connections_per_ip().await as u32)
+                    // Only send max_connections_per_ip if user is now admin
+                    // (other server info fields like name/description/image don't change with permissions)
+                    let server_info = if updated_account.is_admin {
+                        Some(ServerInfo {
+                            max_connections_per_ip: Some(
+                                ctx.db.config.get_max_connections_per_ip().await as u32,
+                            ),
+                            ..Default::default()
+                        })
                     } else {
                         None
-                    };
-
-                    let server_info = ServerInfo {
-                        name,
-                        description,
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                        max_connections_per_ip,
                     };
 
                     // Include chat info only if user has permission
@@ -350,7 +345,7 @@ where
                     let permissions_update = ServerMessage::PermissionsUpdated {
                         is_admin: updated_account.is_admin,
                         permissions: permission_strings,
-                        server_info: Some(server_info),
+                        server_info,
                         chat_info,
                     };
 

@@ -3,15 +3,16 @@
 use std::collections::HashMap;
 
 use super::layout::scrollable_panel;
+use crate::avatar::generate_identicon;
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
+use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
     TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING, chat, shaped_text,
 };
 use crate::types::Message;
-use crate::user_avatar::{CachedAvatar, generate_identicon};
 use iced::widget::button as btn;
 use iced::widget::{Space, button, column, row};
 use iced::{Center, Color, Element, Fill, Theme};
@@ -29,7 +30,7 @@ pub fn user_info_view<'a>(
     is_admin: bool,
     permissions: &[String],
     current_username: &str,
-    avatar_cache: &'a HashMap<String, CachedAvatar>,
+    avatar_cache: &'a HashMap<String, CachedImage>,
 ) -> Element<'a, Message> {
     let has_edit_permission = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
 
@@ -114,7 +115,7 @@ fn build_user_info_content<'a>(
     mut content: iced::widget::Column<'a, Message>,
     user: &UserInfoDetailed,
     theme: &Theme,
-    avatar_cache: &'a HashMap<String, CachedAvatar>,
+    avatar_cache: &'a HashMap<String, CachedImage>,
 ) -> iced::widget::Column<'a, Message> {
     // Header row: Avatar + Username (title-sized, red for admins)
     let is_admin = user.is_admin.unwrap_or(false);

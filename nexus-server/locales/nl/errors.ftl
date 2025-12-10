@@ -104,4 +104,6 @@ err-server-description-invalid-characters = De serverbeschrijving bevat ongeldig
 err-max-connections-per-ip-invalid = Maximale verbindingen per IP moet groter zijn dan 0
 err-no-fields-to-update = Geen velden om bij te werken
 
-
+err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
+err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
+err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)

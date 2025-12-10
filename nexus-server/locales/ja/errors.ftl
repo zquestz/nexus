@@ -104,4 +104,6 @@ err-server-description-invalid-characters = サーバーの説明に無効な文
 err-max-connections-per-ip-invalid = IPあたりの最大接続数は0より大きくなければなりません
 err-no-fields-to-update = 更新するフィールドがありません
 
-
+err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
+err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
+err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）

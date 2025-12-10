@@ -1,5 +1,8 @@
 //! Chat message handlers
 
+use crate::image::decode_data_uri_max_width;
+use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
@@ -83,13 +86,28 @@ impl NexusApp {
         // Build system message
         let system_message = t("msg-server-info-updated");
 
-        // Update stored server info (moves ownership)
-        conn.server_name = Some(server_info.name);
-        conn.server_description = Some(server_info.description);
-        conn.server_version = Some(server_info.version);
+        // Update only the server info fields that were provided
+        if let Some(name) = server_info.name {
+            conn.server_name = Some(name);
+        }
+        if let Some(description) = server_info.description {
+            conn.server_description = Some(description);
+        }
+        if let Some(version) = server_info.version {
+            conn.server_version = Some(version);
+        }
         // max_connections_per_ip is only sent to admins
         if server_info.max_connections_per_ip.is_some() {
             conn.max_connections_per_ip = server_info.max_connections_per_ip;
+        }
+        // Update server image and cached version if provided
+        if let Some(image) = server_info.image {
+            conn.server_image = image.clone();
+            conn.cached_server_image = if image.is_empty() {
+                None
+            } else {
+                decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            };
         }
 
         self.add_chat_message(connection_id, ChatMessage::system(system_message))

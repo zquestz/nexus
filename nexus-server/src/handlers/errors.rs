@@ -432,6 +432,21 @@ pub fn err_server_description_invalid_characters(locale: &str) -> String {
     t(locale, "err-server-description-invalid-characters")
 }
 
+/// Get translated "server image too large" error
+pub fn err_server_image_too_large(locale: &str) -> String {
+    t(locale, "err-server-image-too-large")
+}
+
+/// Get translated "server image invalid format" error
+pub fn err_server_image_invalid_format(locale: &str) -> String {
+    t(locale, "err-server-image-invalid-format")
+}
+
+/// Get translated "server image unsupported type" error
+pub fn err_server_image_unsupported_type(locale: &str) -> String {
+    t(locale, "err-server-image-unsupported-type")
+}
+
 /// Get translated "max connections per ip invalid" error
 pub fn err_max_connections_per_ip_invalid(locale: &str) -> String {
     t(locale, "err-max-connections-per-ip-invalid")

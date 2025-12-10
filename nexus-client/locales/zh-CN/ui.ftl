@@ -84,6 +84,9 @@ label-avatar = 头像：
 label-details = 技术详情
 label-chat-options = 聊天选项
 label-appearance = 外观
+label-image = 图片
+label-general = 常规
+label-limits = 限制
 
 # =============================================================================
 # Permission Display Names
@@ -220,8 +223,9 @@ err-username-too-long = 用户名过长（最多{ $max }个字符）
 err-username-invalid = 用户名包含无效字符
 err-password-too-long = 密码过长（最多{ $max }个字符）
 err-topic-too-long = 主题过长（{ $length }个字符，最多{ $max }个字符）
-err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP或SVG。
+err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP、JPEG或SVG。
 err-avatar-too-large = 头像过大。最大大小为{ $max_kb }KB。
+err-avatar-decode-failed = 无法解码头像。文件可能已损坏。
 err-server-name-empty = 服务器名称不能为空
 err-server-name-too-long = 服务器名称过长（最多{ $max }个字符）
 err-server-name-contains-newlines = 服务器名称不能包含换行符
@@ -350,3 +354,11 @@ cmd-serverinfo-end = 服务器信息结束
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = 选择图片
+button-clear-image = 清除
+label-server-image = 服务器图片:
+err-server-image-too-large = 服务器图片太大（最大512KB）
+err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
+err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）
+err-server-image-decode-failed = 无法解码图片。文件可能已损坏。
+err-failed-read-image = 读取图片失败: { $error }

@@ -2,6 +2,8 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
+use crate::image::decode_data_uri_max_width;
+use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{
     ActivePanel, ChatTab, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
     UserManagementState,
@@ -233,6 +235,12 @@ impl NexusApp {
             server_name: conn.server_name,
             server_description: conn.server_description,
             server_version: conn.server_version,
+            server_image: conn.server_image.clone(),
+            cached_server_image: if conn.server_image.is_empty() {
+                None
+            } else {
+                decode_data_uri_max_width(&conn.server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            },
             chat_topic: chat_topic.clone(),
             chat_topic_set_by: chat_topic_set_by.clone(),
             max_connections_per_ip: conn.max_connections_per_ip,

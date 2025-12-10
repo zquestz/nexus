@@ -104,3 +104,6 @@ err-server-description-invalid-characters = Die Serverbeschreibung enthält ung�
 err-max-connections-per-ip-invalid = Maximale Verbindungen pro IP muss größer als 0 sein
 err-no-fields-to-update = Keine Felder zum Aktualisieren
 
+err-server-image-too-large = Das Serverbild ist zu groß (maximal 512KB)
+err-server-image-invalid-format = Ungültiges Serverbild-Format (muss eine Data-URI mit Base64-Kodierung sein)
+err-server-image-unsupported-type = Nicht unterstützter Serverbild-Typ (nur PNG, WebP, JPEG oder SVG)

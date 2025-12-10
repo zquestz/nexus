@@ -1,6 +1,7 @@
 //! User list panel (right sidebar)
 
 use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
+use crate::avatar::generate_identicon;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -14,7 +15,6 @@ use crate::style::{
     user_toolbar_separator_style,
 };
 use crate::types::{Message, ServerConnection};
-use crate::user_avatar::generate_identicon;
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
 use iced::{Center, Color, Element, Fill, Theme};
 

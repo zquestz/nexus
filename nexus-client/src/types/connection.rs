@@ -8,7 +8,7 @@ use super::{
     ActivePanel, ChatMessage, ChatTab, ScrollState, ServerInfoEditState, UserInfo,
     UserManagementState,
 };
-use crate::user_avatar::CachedAvatar;
+use crate::image::CachedImage;
 
 /// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
 type WrappedShutdownHandle =
@@ -46,6 +46,10 @@ pub struct ServerConnection {
     pub server_description: Option<String>,
     /// Server version (from ServerInfo)
     pub server_version: Option<String>,
+    /// Server image data URI (from ServerInfo, empty string if not set)
+    pub server_image: String,
+    /// Cached server image for rendering (decoded from server_image)
+    pub cached_server_image: Option<CachedImage>,
     /// Current chat topic (None if no topic set)
     pub chat_topic: Option<String>,
     /// Username who set the current chat topic
@@ -83,7 +87,7 @@ pub struct ServerConnection {
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
     /// Cached avatar handles for rendering (prevents flickering)
-    pub avatar_cache: HashMap<String, CachedAvatar>,
+    pub avatar_cache: HashMap<String, CachedImage>,
     /// Server info edit state (Some when editing, None otherwise)
     pub server_info_edit: Option<ServerInfoEditState>,
     /// Currently active panel in the main content area (per-connection)
@@ -111,6 +115,8 @@ pub struct NetworkConnection {
     pub server_description: Option<String>,
     /// Server version (if provided in ServerInfo)
     pub server_version: Option<String>,
+    /// Server image (if provided in ServerInfo)
+    pub server_image: String,
     /// Chat topic received on login (if user has ChatTopic permission)
     pub chat_topic: Option<String>,
     /// Username who set the chat topic

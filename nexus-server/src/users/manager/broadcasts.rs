@@ -175,19 +175,21 @@ impl UserManager {
         description: String,
         version: String,
         max_connections_per_ip: u32,
+        image: String,
     ) {
         let users = self.users.read().await;
         for user in users.values() {
             // Admins get max_connections_per_ip, non-admins don't
             let server_info = ServerInfo {
-                name: name.clone(),
-                description: description.clone(),
-                version: version.clone(),
+                name: Some(name.clone()),
+                description: Some(description.clone()),
+                version: Some(version.clone()),
                 max_connections_per_ip: if user.is_admin {
                     Some(max_connections_per_ip)
                 } else {
                     None
                 },
+                image: Some(image.clone()),
             };
 
             let message = ServerMessage::ServerInfoUpdated { server_info };

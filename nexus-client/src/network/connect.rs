@@ -127,9 +127,15 @@ async fn perform_login(
             session_id: id,
             is_admin: is_admin.unwrap_or(false),
             permissions: permissions.unwrap_or_default(),
-            server_name: server_info.as_ref().map(|info| info.name.clone()),
-            server_description: server_info.as_ref().map(|info| info.description.clone()),
-            server_version: server_info.as_ref().map(|info| info.version.clone()),
+            server_name: server_info.as_ref().and_then(|info| info.name.clone()),
+            server_description: server_info
+                .as_ref()
+                .and_then(|info| info.description.clone()),
+            server_version: server_info.as_ref().and_then(|info| info.version.clone()),
+            server_image: server_info
+                .as_ref()
+                .and_then(|info| info.image.clone())
+                .unwrap_or_default(),
             chat_topic: chat_info.as_ref().map(|info| info.topic.clone()),
             chat_topic_set_by: chat_info.as_ref().map(|info| info.topic_set_by.clone()),
             max_connections_per_ip: server_info.and_then(|info| info.max_connections_per_ip),

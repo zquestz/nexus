@@ -19,7 +19,9 @@ const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "user_list",
     "user_message",
 ];
-use crate::user_avatar::{CachedAvatar, decode_data_uri, generate_identicon};
+use crate::avatar::generate_identicon;
+use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_square};
+use crate::style::{AVATAR_MAX_CACHE_SIZE, SERVER_IMAGE_MAX_CACHE_WIDTH};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 /// User edit flow state (two-stage process)
@@ -205,9 +207,24 @@ pub struct SettingsFormState {
     /// Error message to display (e.g., avatar load failure)
     pub error: Option<String>,
     /// Cached avatar for stable rendering (decoded from config.settings.avatar)
-    pub cached_avatar: Option<CachedAvatar>,
+    pub cached_avatar: Option<CachedImage>,
     /// Default avatar for settings preview when no custom avatar is set
-    pub default_avatar: CachedAvatar,
+    pub default_avatar: CachedImage,
+}
+
+// Manual Debug implementation because CachedImage doesn't implement Debug
+impl std::fmt::Debug for SettingsFormState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettingsFormState")
+            .field("original_config", &self.original_config)
+            .field("error", &self.error)
+            .field(
+                "cached_avatar",
+                &self.cached_avatar.as_ref().map(|_| "<cached>"),
+            )
+            .field("default_avatar", &"<cached>")
+            .finish()
+    }
 }
 
 // =============================================================================
@@ -218,7 +235,7 @@ pub struct SettingsFormState {
 ///
 /// Stores the form values for editing server configuration.
 /// Only admins can access this form.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServerInfoEditState {
     /// Server name (editable)
     pub name: String,
@@ -226,8 +243,29 @@ pub struct ServerInfoEditState {
     pub description: String,
     /// Max connections per IP (editable, uses NumberInput)
     pub max_connections_per_ip: Option<u32>,
+    /// Server image data URI (editable, empty string means no image)
+    pub image: String,
+    /// Cached image for preview (decoded from image field)
+    pub cached_image: Option<CachedImage>,
     /// Error message to display
     pub error: Option<String>,
+}
+
+// Manual Debug implementation because CachedImage doesn't implement Debug
+impl std::fmt::Debug for ServerInfoEditState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerInfoEditState")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("max_connections_per_ip", &self.max_connections_per_ip)
+            .field("image", &format!("<{} bytes>", self.image.len()))
+            .field(
+                "cached_image",
+                &self.cached_image.as_ref().map(|_| "<cached>"),
+            )
+            .field("error", &self.error)
+            .finish()
+    }
 }
 
 impl ServerInfoEditState {
@@ -236,11 +274,21 @@ impl ServerInfoEditState {
         name: Option<&str>,
         description: Option<&str>,
         max_connections_per_ip: Option<u32>,
+        image: &str,
     ) -> Self {
+        // Decode image for preview
+        let cached_image = if image.is_empty() {
+            None
+        } else {
+            decode_data_uri_max_width(image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+        };
+
         Self {
             name: name.unwrap_or("").to_string(),
             description: description.unwrap_or("").to_string(),
             max_connections_per_ip,
+            image: image.to_string(),
+            cached_image,
             error: None,
         }
     }
@@ -251,11 +299,13 @@ impl ServerInfoEditState {
         original_name: Option<&str>,
         original_description: Option<&str>,
         original_max_connections: Option<u32>,
+        original_image: &str,
     ) -> bool {
         let name_changed = self.name != original_name.unwrap_or("");
         let desc_changed = self.description != original_description.unwrap_or("");
         let max_conn_changed = self.max_connections_per_ip != original_max_connections;
-        name_changed || desc_changed || max_conn_changed
+        let image_changed = self.image != original_image;
+        name_changed || desc_changed || max_conn_changed || image_changed
     }
 }
 
@@ -267,7 +317,7 @@ impl SettingsFormState {
             .settings
             .avatar
             .as_ref()
-            .and_then(|data_uri| decode_data_uri(data_uri));
+            .and_then(|data_uri| decode_data_uri_square(data_uri, AVATAR_MAX_CACHE_SIZE));
         // Generate default avatar for settings preview
         let default_avatar = generate_identicon("default");
 

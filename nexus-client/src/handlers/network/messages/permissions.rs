@@ -2,6 +2,8 @@
 
 use crate::NexusApp;
 use crate::i18n::t;
+use crate::image::decode_data_uri_max_width;
+use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
@@ -29,12 +31,29 @@ impl NexusApp {
         conn.is_admin = is_admin;
         conn.permissions = permissions;
 
-        // Update server info fields from the server's authoritative data
+        // Update only the server info fields that were provided
+        // (PermissionsUpdated only sends fields that change with permissions, like max_connections_per_ip)
         if let Some(info) = server_info {
-            conn.server_name = Some(info.name);
-            conn.server_description = Some(info.description);
-            conn.server_version = Some(info.version);
-            conn.max_connections_per_ip = info.max_connections_per_ip;
+            if let Some(name) = info.name {
+                conn.server_name = Some(name);
+            }
+            if let Some(description) = info.description {
+                conn.server_description = Some(description);
+            }
+            if let Some(version) = info.version {
+                conn.server_version = Some(version);
+            }
+            if info.max_connections_per_ip.is_some() {
+                conn.max_connections_per_ip = info.max_connections_per_ip;
+            }
+            if let Some(image) = info.image {
+                conn.server_image = image.clone();
+                conn.cached_server_image = if image.is_empty() {
+                    None
+                } else {
+                    decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+                };
+            }
         }
 
         // Update chat info separately

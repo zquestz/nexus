@@ -165,6 +165,16 @@ pub const USER_INFO_AVATAR_SPACING: f32 = 12.0;
 /// SVGs are not resized (vector graphics scale without quality loss).
 pub const AVATAR_MAX_CACHE_SIZE: u32 = 64;
 
+/// Server image preview size in edit mode (matches avatar preview size)
+pub const SERVER_IMAGE_PREVIEW_SIZE: f32 = 48.0;
+
+/// Maximum width to cache server images at (matches form width minus padding)
+///
+/// Server images are resized to this width before caching to save memory.
+/// Height scales proportionally to preserve aspect ratio.
+/// SVGs are not resized (vector graphics scale without quality loss).
+pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
+
 // ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================

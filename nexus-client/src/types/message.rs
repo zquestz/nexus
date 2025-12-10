@@ -6,7 +6,7 @@ use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 
 use super::{ChatTab, NetworkConnection, ServerMessage};
-use crate::handlers::ui::AvatarError;
+use crate::image::ImagePickerError;
 
 /// Messages that drive the application state machine
 #[derive(Debug, Clone)]
@@ -93,12 +93,18 @@ pub enum Message {
     EditUserPressed,
     /// Server info edit: Description field changed
     EditServerInfoDescriptionChanged(String),
+    /// Server info edit: Image loaded from file picker (data URI or error)
+    EditServerInfoImageLoaded(Result<String, ImagePickerError>),
     /// Server info edit: Max connections per IP field changed
     EditServerInfoMaxConnectionsChanged(u32),
     /// Server info edit: Name field changed
     EditServerInfoNameChanged(String),
     /// Server info edit: Edit button pressed (enter edit mode)
     EditServerInfoPressed,
+    /// Server info edit: Pick image button pressed
+    PickServerImagePressed,
+    /// Server info edit: Clear image button pressed
+    ClearServerImagePressed,
     /// Keyboard or mouse event
     Event(iced::Event),
     /// Keyboard: Navigate to next chat tab (Ctrl+Tab)
@@ -152,7 +158,7 @@ pub enum Message {
     /// Settings panel: Connection notifications checkbox toggled
     ConnectionNotificationsToggled(bool),
     /// Settings panel: Avatar loaded from file picker (data URI or error)
-    AvatarLoaded(Result<String, AvatarError>),
+    AvatarLoaded(Result<String, ImagePickerError>),
     /// Settings panel: Pick avatar button pressed
     PickAvatarPressed,
     /// Settings panel: Save button pressed (persist to disk)

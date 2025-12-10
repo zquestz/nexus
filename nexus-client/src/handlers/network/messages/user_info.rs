@@ -1,11 +1,11 @@
 //! User info response handlers
 
 use crate::NexusApp;
+use crate::avatar::{compute_avatar_hash, get_or_create_avatar};
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
-use crate::user_avatar::{compute_avatar_hash, get_or_create_avatar};
 use chrono::Local;
 use iced::Task;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};

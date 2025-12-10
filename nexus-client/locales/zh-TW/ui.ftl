@@ -83,6 +83,9 @@ label-avatar = 頭像：
 label-details = 技術詳情
 label-chat-options = 聊天選項
 label-appearance = 外觀
+label-image = 圖片
+label-general = 一般
+label-limits = 限制
 
 # =============================================================================
 # Permission Display Names
@@ -219,8 +222,9 @@ err-username-too-long = 使用者名稱過長（最多{ $max }個字元）
 err-username-invalid = 使用者名稱包含無效字元
 err-password-too-long = 密碼過長（最多{ $max }個字元）
 err-topic-too-long = 主題過長（{ $length }個字元，最多{ $max }個字元）
-err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP或SVG。
+err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP、JPEG或SVG。
 err-avatar-too-large = 頭像過大。最大大小為{ $max_kb }KB。
+err-avatar-decode-failed = 無法解碼頭像。檔案可能已損壞。
 err-server-name-empty = 伺服器名稱不能為空
 err-server-name-too-long = 伺服器名稱過長（最多{ $max }個字元）
 err-server-name-contains-newlines = 伺服器名稱不能包含換行符
@@ -349,3 +353,11 @@ cmd-serverinfo-end = 伺服器資訊結束
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = 選擇圖片
+button-clear-image = 清除
+label-server-image = 伺服器圖片:
+err-server-image-too-large = 伺服器圖片太大（最大512KB）
+err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
+err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-server-image-decode-failed = 無法解碼圖片。檔案可能已損壞。
+err-failed-read-image = 讀取圖片失敗: { $error }

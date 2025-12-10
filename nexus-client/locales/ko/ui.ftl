@@ -83,6 +83,9 @@ label-avatar = 아바타:
 label-details = 기술 세부 정보
 label-chat-options = 채팅 옵션
 label-appearance = 외관
+label-image = 이미지
+label-general = 일반
+label-limits = 제한
 
 # =============================================================================
 # Permission Display Names
@@ -219,8 +222,9 @@ err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max }자
 err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있습니다
 err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
 err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
-err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP 또는 SVG를 사용하세요.
+err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP, JPEG 또는 SVG를 사용하세요.
 err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.
+err-avatar-decode-failed = 아바타를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
 err-server-name-empty = 서버 이름은 비워둘 수 없습니다
 err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max }자)
 err-server-name-contains-newlines = 서버 이름에 줄바꿈을 포함할 수 없습니다
@@ -349,3 +353,11 @@ cmd-serverinfo-end = 서버 정보 끝
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = 이미지 선택
+button-clear-image = 지우기
+label-server-image = 서버 이미지:
+err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
+err-server-image-invalid-format = 서버 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
+err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
+err-server-image-decode-failed = 이미지를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
+err-failed-read-image = 이미지 읽기 실패: { $error }

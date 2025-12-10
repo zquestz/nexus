@@ -104,4 +104,6 @@ err-server-description-invalid-characters = 서버 설명에 잘못된 문자가
 err-max-connections-per-ip-invalid = IP당 최대 연결 수는 0보다 커야 합니다
 err-no-fields-to-update = 업데이트할 필드가 없습니다
 
-
+err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
+err-server-image-invalid-format = 서버 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
+err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)

@@ -30,18 +30,19 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserKick", 65);
     m.insert("UserList", 19);
     m.insert("UserUpdate", 1040);
-    m.insert("ServerInfoUpdate", 410);
+    m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
     // Server messages (limits match actual max size from validators)
+    // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
     m.insert("ChatMessage", 1129);
     m.insert("ChatTopicUpdated", 340);
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 1458);
-    m.insert("PermissionsUpdated", 1396);
+    m.insert("LoginResponse", 701469); // includes ServerInfo with image
+    m.insert("PermissionsUpdated", 701407); // includes ServerInfo with image
     m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 472);
+    m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176294);
     m.insert("UserCreateResponse", 568);
@@ -95,8 +96,8 @@ mod tests {
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
         MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
-        MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
-        MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
+        MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -296,6 +297,7 @@ mod tests {
             name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
             description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
             max_connections_per_ip: Some(u32::MAX),
+            image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -379,10 +381,11 @@ mod tests {
                     .collect(),
             ),
             server_info: Some(ServerInfo {
-                name: str_of_len(MAX_SERVER_NAME_LENGTH),
-                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
-                version: str_of_len(MAX_VERSION_LENGTH),
+                name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
+                description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -404,10 +407,11 @@ mod tests {
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
             server_info: Some(ServerInfo {
-                name: str_of_len(MAX_SERVER_NAME_LENGTH),
-                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
-                version: str_of_len(MAX_VERSION_LENGTH),
+                name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
+                description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -424,10 +428,11 @@ mod tests {
     fn test_limit_server_info_updated() {
         let msg = ServerMessage::ServerInfoUpdated {
             server_info: ServerInfo {
-                name: str_of_len(MAX_SERVER_NAME_LENGTH),
-                description: str_of_len(MAX_SERVER_DESCRIPTION_LENGTH),
-                version: str_of_len(MAX_VERSION_LENGTH),
+                name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
+                description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
             },
         };
         assert_eq!(

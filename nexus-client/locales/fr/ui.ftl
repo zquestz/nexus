@@ -84,6 +84,9 @@ label-avatar = Icône :
 label-details = Détails techniques
 label-chat-options = Options de chat
 label-appearance = Apparence
+label-image = Image
+label-general = Général
+label-limits = Limites
 
 # =============================================================================
 # Permission Display Names
@@ -220,8 +223,9 @@ err-username-too-long = Le nom d'utilisateur est trop long (max { $max } caract�
 err-username-invalid = Le nom d'utilisateur contient des caractères invalides
 err-password-too-long = Le mot de passe est trop long (max { $max } caractères)
 err-topic-too-long = Le sujet est trop long ({ $length } caractères, max { $max })
-err-avatar-unsupported-type = Type de fichier non pris en charge. Utilisez PNG, WebP ou SVG.
+err-avatar-unsupported-type = Type de fichier non pris en charge. Utilisez PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Icône trop grande. La taille maximale est de { $max_kb }Ko.
+err-avatar-decode-failed = Échec du décodage de l'image. Le fichier est peut-être corrompu.
 err-server-name-empty = Le nom du serveur ne peut pas être vide
 err-server-name-too-long = Le nom du serveur est trop long (max { $max } caractères)
 err-server-name-contains-newlines = Le nom du serveur ne peut pas contenir de sauts de ligne
@@ -368,3 +372,11 @@ cmd-serverinfo-end = Fin des informations du serveur
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = Choisir une image
+button-clear-image = Effacer
+label-server-image = Image du serveur :
+err-server-image-too-large = L'image du serveur est trop grande (maximum 512 Ko)
+err-server-image-invalid-format = Format d'image du serveur invalide (doit être une URI de données avec encodage base64)
+err-server-image-unsupported-type = Type d'image du serveur non pris en charge (PNG, WebP, JPEG ou SVG uniquement)
+err-server-image-decode-failed = Échec du décodage de l'image. Le fichier est peut-être corrompu.
+err-failed-read-image = Échec de la lecture de l'image : { $error }

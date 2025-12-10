@@ -84,6 +84,9 @@ label-avatar = Avatar:
 label-details = Technische details
 label-chat-options = Chatopties
 label-appearance = Uiterlijk
+label-image = Afbeelding
+label-general = Algemeen
+label-limits = Limieten
 
 # =============================================================================
 # Permission Display Names
@@ -220,8 +223,9 @@ err-username-too-long = Gebruikersnaam is te lang (max { $max } tekens)
 err-username-invalid = Gebruikersnaam bevat ongeldige tekens
 err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
 err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
-err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP of SVG.
+err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP, JPEG of SVG.
 err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.
+err-avatar-decode-failed = Kan avatar niet decoderen. Het bestand is mogelijk beschadigd.
 err-server-name-empty = Servernaam mag niet leeg zijn
 err-server-name-too-long = Servernaam is te lang (max { $max } tekens)
 err-server-name-contains-newlines = Servernaam mag geen regeleinden bevatten
@@ -368,3 +372,11 @@ cmd-serverinfo-end = Einde serverinformatie
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+button-choose-image = Afbeelding kiezen
+button-clear-image = Wissen
+label-server-image = Serverafbeelding:
+err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
+err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
+err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-server-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
+err-failed-read-image = Kan afbeelding niet lezen: { $error }

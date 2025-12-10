@@ -276,11 +276,13 @@ where
             name,
             description,
             max_connections_per_ip,
+            image,
         } => {
             handlers::handle_server_info_update(
                 name,
                 description,
                 max_connections_per_ip,
+                image,
                 conn_state.session_id,
                 ctx,
             )

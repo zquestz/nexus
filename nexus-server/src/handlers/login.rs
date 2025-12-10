@@ -289,9 +289,10 @@ where
             .collect()
     };
 
-    // Fetch server info (name/description always, topic requires permission, max_conn requires admin)
+    // Fetch server info (name/description/image always, topic requires permission, max_conn requires admin)
     let name = ctx.db.config.get_server_name().await;
     let description = ctx.db.config.get_server_description().await;
+    let image = ctx.db.config.get_server_image().await;
 
     // Fetch max connections per IP (admin only)
     let max_connections_per_ip = if authenticated_account.is_admin {
@@ -301,10 +302,11 @@ where
     };
 
     let server_info = Some(ServerInfo {
-        name,
-        description,
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        name: Some(name),
+        description: Some(description),
+        version: Some(env!("CARGO_PKG_VERSION").to_string()),
         max_connections_per_ip,
+        image: Some(image),
     });
 
     // Fetch chat info only if user has ChatTopic permission
@@ -796,8 +798,16 @@ mod tests {
                 assert!(success, "Login should succeed");
                 assert!(server_info.is_some(), "Should include server_info");
                 let info = server_info.unwrap();
-                assert_eq!(info.name, "Nexus BBS", "Should include server name");
-                assert_eq!(info.description, "", "Should include server description");
+                assert_eq!(
+                    info.name,
+                    Some("Nexus BBS".to_string()),
+                    "Should include server name"
+                );
+                assert_eq!(
+                    info.description,
+                    Some("".to_string()),
+                    "Should include server description"
+                );
                 assert!(
                     info.max_connections_per_ip.is_none(),
                     "Non-admin should not receive max_connections_per_ip"
@@ -863,8 +873,16 @@ mod tests {
                 assert!(success, "Login should succeed");
                 assert!(server_info.is_some(), "Should include server_info");
                 let info = server_info.unwrap();
-                assert_eq!(info.name, "Nexus BBS", "Should include server name");
-                assert_eq!(info.description, "", "Should include server description");
+                assert_eq!(
+                    info.name,
+                    Some("Nexus BBS".to_string()),
+                    "Should include server name"
+                );
+                assert_eq!(
+                    info.description,
+                    Some("".to_string()),
+                    "Should include server description"
+                );
                 assert!(
                     info.max_connections_per_ip.is_none(),
                     "Non-admin should not receive max_connections_per_ip"

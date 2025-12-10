@@ -6,15 +6,16 @@ use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
-    self, ServerDescriptionError, ServerNameError, validate_server_description,
-    validate_server_name,
+    self, ServerDescriptionError, ServerImageError, ServerNameError, validate_server_description,
+    validate_server_image, validate_server_name,
 };
 
 use super::{
     HandlerContext, err_admin_required, err_authentication, err_database,
     err_max_connections_per_ip_invalid, err_no_fields_to_update, err_not_logged_in,
     err_server_description_contains_newlines, err_server_description_invalid_characters,
-    err_server_description_too_long, err_server_name_contains_newlines, err_server_name_empty,
+    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
+    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
     err_server_name_invalid_characters, err_server_name_too_long,
 };
 
@@ -23,6 +24,7 @@ pub async fn handle_server_info_update<W>(
     name: Option<String>,
     description: Option<String>,
     max_connections_per_ip: Option<u32>,
+    image: Option<String>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -59,7 +61,11 @@ where
     }
 
     // Check that at least one field is being updated
-    if name.is_none() && description.is_none() && max_connections_per_ip.is_none() {
+    if name.is_none()
+        && description.is_none()
+        && max_connections_per_ip.is_none()
+        && image.is_none()
+    {
         return ctx
             .send_error(
                 &err_no_fields_to_update(ctx.locale),
@@ -114,6 +120,19 @@ where
             .await;
     }
 
+    // Validate image if provided (empty string is allowed to clear image)
+    if let Some(ref img) = image
+        && !img.is_empty()
+        && let Err(e) = validate_server_image(img)
+    {
+        let error_msg = match e {
+            ServerImageError::TooLarge => err_server_image_too_large(ctx.locale),
+            ServerImageError::InvalidFormat => err_server_image_invalid_format(ctx.locale),
+            ServerImageError::UnsupportedType => err_server_image_unsupported_type(ctx.locale),
+        };
+        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+    }
+
     // Apply updates to database
     if let Some(ref n) = name
         && let Err(e) = ctx.db.config.set_server_name(n).await
@@ -142,10 +161,20 @@ where
             .await;
     }
 
+    if let Some(ref img) = image
+        && let Err(e) = ctx.db.config.set_server_image(img).await
+    {
+        eprintln!("Database error setting server image: {}", e);
+        return ctx
+            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .await;
+    }
+
     // Fetch current server info for broadcast
     let current_name = ctx.db.config.get_server_name().await;
     let current_description = ctx.db.config.get_server_description().await;
     let current_max_connections = ctx.db.config.get_max_connections_per_ip().await as u32;
+    let current_image = ctx.db.config.get_server_image().await;
     let server_version = env!("CARGO_PKG_VERSION").to_string();
 
     // Broadcast ServerInfoUpdated to all connected users
@@ -156,6 +185,7 @@ where
             current_description,
             server_version,
             current_max_connections,
+            current_image,
         )
         .await;
 
@@ -180,6 +210,7 @@ mod tests {
 
         let result = handle_server_info_update(
             Some("New Name".to_string()),
+            None,
             None,
             None,
             None,
@@ -210,6 +241,7 @@ mod tests {
             Some("New Name".to_string()),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -235,6 +267,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_server_info_update(
+            None,
             None,
             None,
             None,
@@ -266,6 +299,7 @@ mod tests {
             Some("".to_string()),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -293,6 +327,7 @@ mod tests {
         let long_name = "a".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
         let result = handle_server_info_update(
             Some(long_name),
+            None,
             None,
             None,
             Some(session_id),
@@ -324,6 +359,7 @@ mod tests {
             None,
             Some(long_desc),
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -352,6 +388,7 @@ mod tests {
             None,
             None,
             Some(0),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -381,6 +418,7 @@ mod tests {
 
         let result = handle_server_info_update(
             Some("My New Server".to_string()),
+            None,
             None,
             None,
             Some(session_id),
@@ -415,6 +453,7 @@ mod tests {
             None,
             Some("Welcome to my server!".to_string()),
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -447,6 +486,7 @@ mod tests {
             None,
             None,
             Some(10),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -479,6 +519,7 @@ mod tests {
             Some("Full Update Server".to_string()),
             Some("All fields updated".to_string()),
             Some(15),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -526,6 +567,7 @@ mod tests {
             None,
             Some("".to_string()),
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -545,5 +587,184 @@ mod tests {
         // Verify description was cleared
         let saved_desc = test_ctx.db.config.get_server_description().await;
         assert_eq!(saved_desc, "");
+    }
+
+    // =========================================================================
+    // Server Image Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_server_info_update_image_success() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let result = handle_server_info_update(
+            None,
+            None,
+            None,
+            Some(image.to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify image was saved
+        let saved_image = test_ctx.db.config.get_server_image().await;
+        assert_eq!(saved_image, image);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_image_empty_allowed() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // First set an image
+        test_ctx
+            .db
+            .config
+            .set_server_image("data:image/png;base64,iVBORw0KGgo=")
+            .await
+            .unwrap();
+
+        // Then clear it
+        let result = handle_server_info_update(
+            None,
+            None,
+            None,
+            Some("".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify image was cleared
+        let saved_image = test_ctx.db.config.get_server_image().await;
+        assert_eq!(saved_image, "");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_image_too_large_fails() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create an image that exceeds the limit
+        let prefix = "data:image/png;base64,";
+        let padding = "A".repeat(validators::MAX_SERVER_IMAGE_DATA_URI_LENGTH);
+        let large_image = format!("{}{}", prefix, padding);
+
+        let result = handle_server_info_update(
+            None,
+            None,
+            None,
+            Some(large_image),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, err_server_image_too_large(DEFAULT_TEST_LOCALE));
+                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_image_invalid_format_fails() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let result = handle_server_info_update(
+            None,
+            None,
+            None,
+            Some("not a data uri".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(
+                    message,
+                    err_server_image_invalid_format(DEFAULT_TEST_LOCALE)
+                );
+                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_image_unsupported_type_fails() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // GIF is not supported
+        let result = handle_server_info_update(
+            None,
+            None,
+            None,
+            Some("data:image/gif;base64,R0lGODlh".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(
+                    message,
+                    err_server_image_unsupported_type(DEFAULT_TEST_LOCALE)
+                );
+                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
     }
 }

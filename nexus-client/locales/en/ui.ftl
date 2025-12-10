@@ -16,6 +16,8 @@ button-accept-new-certificate = Accept New Certificate
 button-close = Close
 button-choose-avatar = Choose Avatar
 button-clear-avatar = Clear
+button-choose-image = Choose Image
+button-clear-image = Clear
 
 # =============================================================================
 # Titles
@@ -80,9 +82,13 @@ label-chat-topic = Chat Topic:
 label-chat-topic-set-by = Chat Topic Set By:
 label-max-connections-per-ip = Max Connections Per IP:
 label-avatar = Avatar:
+label-server-image = Server Image:
 label-details = Technical Details
 label-chat-options = Chat Options
 label-appearance = Appearance
+label-image = Image
+label-general = General
+label-limits = Limits
 
 # =============================================================================
 # Permission Display Names
@@ -221,8 +227,9 @@ err-username-too-long = Username is too long (max { $max } characters)
 err-username-invalid = Username contains invalid characters
 err-password-too-long = Password is too long (max { $max } characters)
 err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
-err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, or SVG.
+err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, JPEG, or SVG.
 err-avatar-too-large = Avatar too large. Maximum size is { $max_kb }KB.
+err-avatar-decode-failed = Failed to decode avatar. The file may be corrupted.
 err-server-name-empty = Server name cannot be empty
 err-server-name-too-long = Server name is too long (max { $max } characters)
 err-server-name-contains-newlines = Server name cannot contain newlines
@@ -231,6 +238,11 @@ err-server-description-too-long = Description is too long (max { $max } characte
 err-server-description-contains-newlines = Description cannot contain newlines
 err-server-description-invalid-characters = Description contains invalid characters
 err-failed-send-update = Failed to send update: { $error }
+err-server-image-too-large = Server image is too large (max 512KB)
+err-server-image-invalid-format = Invalid server image format (must be a data URI with base64 encoding)
+err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
+err-server-image-decode-failed = Failed to decode image. The file may be corrupted.
+err-failed-read-image = Failed to read image: { $error }
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

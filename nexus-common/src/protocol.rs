@@ -84,6 +84,9 @@ pub enum ClientMessage {
         description: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         max_connections_per_ip: Option<u32>,
+        /// Server image (logo/banner) as base64-encoded data URI
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
     },
 }
 
@@ -245,17 +248,23 @@ pub enum ServerMessage {
 }
 
 /// Server information sent to clients on login
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServerInfo {
     /// Server name
-    pub name: String,
-    /// Server description (empty string if not set)
-    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Server description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Server version
-    pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
     /// Maximum connections allowed per IP address (admin only)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_connections_per_ip: Option<u32>,
+    /// Server image (logo/banner) as base64-encoded data URI
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 /// Chat room information (topic, etc.)
@@ -402,12 +411,27 @@ impl std::fmt::Debug for ClientMessage {
                 name,
                 description,
                 max_connections_per_ip,
-            } => f
-                .debug_struct("ServerInfoUpdate")
-                .field("name", name)
-                .field("description", description)
-                .field("max_connections_per_ip", max_connections_per_ip)
-                .finish(),
+                image,
+            } => {
+                let mut s = f.debug_struct("ServerInfoUpdate");
+                s.field("name", name)
+                    .field("description", description)
+                    .field("max_connections_per_ip", max_connections_per_ip);
+                // Truncate large images in debug output
+                if let Some(img) = image {
+                    if img.len() > 100 {
+                        s.field(
+                            "image",
+                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                        );
+                    } else {
+                        s.field("image", &Some(img));
+                    }
+                } else {
+                    s.field("image", &None::<String>);
+                }
+                s.finish()
+            }
         }
     }
 }

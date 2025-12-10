@@ -104,4 +104,6 @@ err-server-description-invalid-characters = Описание сервера со
 err-max-connections-per-ip-invalid = Максимальное количество подключений на IP должно быть больше 0
 err-no-fields-to-update = Нет полей для обновления
 
-
+err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
+err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)
+err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)

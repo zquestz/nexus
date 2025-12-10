@@ -104,4 +104,6 @@ err-server-description-invalid-characters = 服务器描述包含无效字符
 err-max-connections-per-ip-invalid = 每个IP的最大连接数必须大于0
 err-no-fields-to-update = 没有要更新的字段
 
-
+err-server-image-too-large = 服务器图片太大（最大512KB）
+err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
+err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）

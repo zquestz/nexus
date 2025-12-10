@@ -2,16 +2,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod avatar;
 mod commands;
 mod config;
 mod fonts;
 mod handlers;
 mod i18n;
 mod icon;
+mod image;
 mod network;
 mod style;
 mod types;
-mod user_avatar;
 mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -273,9 +274,13 @@ impl NexusApp {
 
             // Server info
             Message::CancelEditServerInfo => self.handle_cancel_edit_server_info(),
+            Message::ClearServerImagePressed => self.handle_clear_server_image_pressed(),
             Message::CloseServerInfo => self.handle_close_server_info(),
             Message::EditServerInfoDescriptionChanged(description) => {
                 self.handle_edit_server_info_description_changed(description)
+            }
+            Message::EditServerInfoImageLoaded(result) => {
+                self.handle_edit_server_info_image_loaded(result)
             }
             Message::EditServerInfoMaxConnectionsChanged(max_connections) => {
                 self.handle_edit_server_info_max_connections_changed(max_connections)
@@ -284,6 +289,7 @@ impl NexusApp {
                 self.handle_edit_server_info_name_changed(name)
             }
             Message::EditServerInfoPressed => self.handle_edit_server_info_pressed(),
+            Message::PickServerImagePressed => self.handle_pick_server_image_pressed(),
             Message::ShowServerInfo => self.handle_show_server_info(),
             Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),
 
