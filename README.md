@@ -25,10 +25,11 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (12 permissions)
 - Multi-server bookmarks with auto-connect
-- Admin panel for user management (create/edit/delete) and server configuration
+- Admin panel for user management (create/edit/delete) and server configuration (name, description, image)
 - SQLite database with Argon2id password hashing
 - Cross-platform GUI with 30 themes (22 built-in Iced + 8 custom Celestial themes)
 - User avatars (custom images or auto-generated identicons)
+- Server images (logo/banner displayed in Server Info panel, 512KB max)
 - Settings panel with theme picker, chat font size, avatar, and notification preferences
 - Universal IP binding (IPv4 and IPv6)
 
