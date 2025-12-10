@@ -112,6 +112,12 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     // Check if user has permission to view user list
     let can_view_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
+    // Get server name from active connection
+    let server_name = config
+        .active_connection
+        .and_then(|id| config.connections.get(&id))
+        .and_then(|conn| conn.server_name.as_deref());
+
     // Top toolbar
     let toolbar = build_toolbar(ToolbarState {
         show_bookmarks: config.ui_state.show_bookmarks,
@@ -121,6 +127,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         is_admin,
         permissions,
         can_view_user_list,
+        server_name,
     });
 
     // Left panel: Server list (use hidden_panel when not visible to preserve layout stability)
@@ -241,8 +248,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
 
     let toolbar = container(
         row![
-            // Title
-            shaped_text(t("title-nexus-bbs")).size(TOOLBAR_TITLE_SIZE),
+            // Title: server name when connected, "Nexus BBS" otherwise
+            shaped_text(state.toolbar_title()).size(TOOLBAR_TITLE_SIZE),
             // Main icon group (Chat, Broadcast, User Create, User Edit)
             row![
                 // Chat button - always visible when connected
