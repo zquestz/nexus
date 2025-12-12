@@ -8,7 +8,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
-use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
+use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{read_client_message_with_timeout, send_server_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
@@ -111,7 +111,17 @@ where
                         break;
                     }
                     Err(e) => {
-                        eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, peer_addr, e);
+                        // Invalid magic and timeouts are common (scanners, dropped connections)
+                        // Only log in debug mode to reduce noise
+                        let is_common_error = matches!(
+                            e,
+                            FrameError::InvalidMagic | FrameError::FrameTimeout
+                        );
+
+                        if !is_common_error || debug {
+                            eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, peer_addr, e);
+                        }
+
                         // Try to send error before disconnecting
                         let error_msg = ServerMessage::Error {
                             message: err_invalid_message_format(&conn_state.locale),

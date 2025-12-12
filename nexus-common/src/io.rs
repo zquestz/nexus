@@ -157,17 +157,17 @@ where
 /// Returns `Ok(None)` if the connection was cleanly closed.
 pub async fn read_client_message_with_timeout<R>(
     reader: &mut FrameReader<R>,
-) -> io::Result<Option<ReceivedClientMessage>>
+) -> Result<Option<ReceivedClientMessage>, FrameError>
 where
     R: AsyncReadExt + Unpin,
 {
     let frame = match reader.read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT).await {
         Ok(Some(frame)) => frame,
         Ok(None) => return Ok(None),
-        Err(e) => return Err(e.into()),
+        Err(e) => return Err(e),
     };
 
-    parse_client_frame(frame)
+    parse_client_frame(frame).map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
 /// Parse a raw frame into a `ReceivedClientMessage`
