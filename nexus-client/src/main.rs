@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use iced::widget::{Id, operation};
 use iced::{Element, Subscription, Task, Theme};
 
-use style::{WINDOW_HEIGHT, WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_WIDTH_MIN};
+use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
 use types::{
     BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
     ServerConnection, SettingsFormState, UiState, ViewConfig,
@@ -31,13 +31,25 @@ use types::{
 /// Configures the Iced application with window settings, fonts, and theme,
 /// then starts the event loop.
 pub fn main() -> iced::Result {
+    // Load config early to get saved window position/size
+    let config = config::Config::load();
+    let window_size = iced::Size::new(config.settings.window_width, config.settings.window_height);
+    let window_position = match (config.settings.window_x, config.settings.window_y) {
+        (Some(x), Some(y)) => {
+            iced::window::Position::Specific(iced::Point::new(x as f32, y as f32))
+        }
+        _ => iced::window::Position::default(),
+    };
+
     iced::application(NexusApp::new, NexusApp::update, NexusApp::view)
         .title(WINDOW_TITLE)
         .theme(NexusApp::theme)
         .subscription(NexusApp::subscription)
         .window(iced::window::Settings {
-            size: iced::Size::new(WINDOW_WIDTH, WINDOW_HEIGHT),
+            size: window_size,
             min_size: Some(iced::Size::new(WINDOW_WIDTH_MIN, WINDOW_HEIGHT_MIN)),
+            position: window_position,
+            exit_on_close_request: false,
             ..Default::default()
         })
         .font(fonts::SAUCECODE_PRO_MONO)
@@ -149,6 +161,33 @@ impl NexusApp {
             Message::NextChatTab => self.handle_next_chat_tab(),
             Message::PrevChatTab => self.handle_prev_chat_tab(),
             Message::TabPressed => self.handle_tab_navigation(),
+            Message::WindowCloseRequested(id) => {
+                // Query window size and position, then save and close
+                iced::window::size(id).then(move |size| {
+                    iced::window::position(id).map(move |point| Message::WindowSaveAndClose {
+                        id,
+                        width: size.width,
+                        height: size.height,
+                        x: point.map(|p| p.x as i32),
+                        y: point.map(|p| p.y as i32),
+                    })
+                })
+            }
+            Message::WindowSaveAndClose {
+                id,
+                width,
+                height,
+                x,
+                y,
+            } => {
+                // Save window dimensions and position
+                self.config.settings.window_width = width;
+                self.config.settings.window_height = height;
+                self.config.settings.window_x = x;
+                self.config.settings.window_y = y;
+                let _ = self.config.save();
+                iced::window::close(id)
+            }
 
             // Connection management
             Message::ConnectPressed => self.handle_connect_pressed(),
@@ -312,12 +351,17 @@ impl NexusApp {
         }
     }
 
-    /// Set up subscriptions for keyboard events and network streams
+    /// Set up subscriptions for keyboard events, window events, and network streams
     ///
-    /// Creates subscriptions for keyboard events and network message streams
-    /// for each active connection.
+    /// Creates subscriptions for keyboard events, window resize/move/close events,
+    /// and network message streams for each active connection.
     fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![iced::event::listen().map(Message::Event)];
+        let mut subscriptions = vec![
+            // Keyboard and general events
+            iced::event::listen().map(Message::Event),
+            // Window close requests (we handle saving before exit)
+            iced::window::close_requests().map(Message::WindowCloseRequested),
+        ];
 
         // Subscribe to all active connections
         for conn in self.connections.values() {

@@ -1,5 +1,7 @@
 //! User preference settings
 
+use crate::style::{WINDOW_HEIGHT, WINDOW_WIDTH};
+
 use super::theme::ThemePreference;
 
 // =============================================================================
@@ -58,6 +60,22 @@ pub struct Settings {
     /// User avatar as data URI (e.g., "data:image/png;base64,...")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+
+    /// Window width in pixels
+    #[serde(default = "default_window_width")]
+    pub window_width: f32,
+
+    /// Window height in pixels
+    #[serde(default = "default_window_height")]
+    pub window_height: f32,
+
+    /// Window X position (None = system default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_x: Option<i32>,
+
+    /// Window Y position (None = system default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_y: Option<i32>,
 }
 
 impl Default for Settings {
@@ -70,6 +88,10 @@ impl Default for Settings {
             use_24_hour_time: false,
             show_seconds: default_true(),
             avatar: None,
+            window_width: default_window_width(),
+            window_height: default_window_height(),
+            window_x: None,
+            window_y: None,
         }
     }
 }
@@ -107,6 +129,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_window_width() -> f32 {
+    WINDOW_WIDTH
+}
+
+fn default_window_height() -> f32 {
+    WINDOW_HEIGHT
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -125,6 +155,10 @@ mod tests {
         assert!(!settings.use_24_hour_time);
         assert!(settings.show_seconds);
         assert!(settings.avatar.is_none());
+        assert_eq!(settings.window_width, WINDOW_WIDTH);
+        assert_eq!(settings.window_height, WINDOW_HEIGHT);
+        assert!(settings.window_x.is_none());
+        assert!(settings.window_y.is_none());
     }
 
     #[test]

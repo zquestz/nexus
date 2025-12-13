@@ -207,4 +207,14 @@ pub enum Message {
     ValidateCreateUser,
     /// User edit panel: Validate edit user form (on Enter when form incomplete)
     ValidateEditUser,
+    /// Window: Close requested - query size and position
+    WindowCloseRequested(iced::window::Id),
+    /// Window: Save settings and close (internal - after querying size and position)
+    WindowSaveAndClose {
+        id: iced::window::Id,
+        width: f32,
+        height: f32,
+        x: Option<i32>,
+        y: Option<i32>,
+    },
 }
