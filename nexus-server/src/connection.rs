@@ -254,8 +254,8 @@ where
         ClientMessage::UserKick { username } => {
             handlers::handle_user_kick(username, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserList => {
-            handlers::handle_user_list(conn_state.session_id, ctx).await?;
+        ClientMessage::UserList { all } => {
+            handlers::handle_user_list(all, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserMessage {
             to_username,

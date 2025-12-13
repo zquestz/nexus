@@ -2,7 +2,10 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, UserEditState};
+use crate::types::{
+    ActivePanel, ChatMessage, ChatTab, InputId, Message, PendingRequests, ResponseRouting,
+    UserEditState,
+};
 use crate::views::constants::PERMISSION_USER_INFO;
 use iced::Task;
 
@@ -137,7 +140,7 @@ impl NexusApp {
             conn.user_management.create_error = None;
 
             // Send message and handle errors
-            if let Err(e) = conn.tx.send(msg) {
+            if let Err(e) = conn.send(msg) {
                 conn.user_management.create_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
                 return Task::none();
@@ -239,7 +242,7 @@ impl NexusApp {
             let msg = ClientMessage::UserDelete { username };
 
             // Send message and handle errors
-            if let Err(e) = conn.tx.send(msg) {
+            if let Err(e) = conn.send(msg) {
                 return self.add_user_management_error(
                     conn_id,
                     format!("{}: {}", t("err-send-failed"), e),
@@ -368,7 +371,7 @@ impl NexusApp {
             conn.user_management.edit_error = None;
 
             // Send message and handle errors
-            if let Err(e) = conn.tx.send(msg) {
+            if let Err(e) = conn.send(msg) {
                 conn.user_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
                 return Task::none();
             }
@@ -457,7 +460,7 @@ impl NexusApp {
             conn.user_management.edit_error = None;
 
             // Send message and handle errors
-            if let Err(e) = conn.tx.send(msg) {
+            if let Err(e) = conn.send(msg) {
                 conn.user_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
                 return Task::none();
             }
@@ -524,7 +527,7 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
             // Send UserKick request to server
-            if let Err(e) = conn.tx.send(ClientMessage::UserKick { username }) {
+            if let Err(e) = conn.send(ClientMessage::UserKick { username }) {
                 let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
             }
@@ -569,10 +572,18 @@ impl NexusApp {
             conn.user_info_data = None;
             conn.active_panel = ActivePanel::UserInfo;
 
-            // Send UserInfo request to server
-            if let Err(e) = conn.tx.send(ClientMessage::UserInfo { username }) {
-                let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                conn.user_info_data = Some(Err(error_msg));
+            // Send UserInfo request to server and track it
+            match conn.send(ClientMessage::UserInfo {
+                username: username.clone(),
+            }) {
+                Ok(message_id) => {
+                    conn.pending_requests
+                        .track(message_id, ResponseRouting::PopulateUserInfoPanel(username));
+                }
+                Err(e) => {
+                    let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                    conn.user_info_data = Some(Err(error_msg));
+                }
             }
         }
         Task::none()

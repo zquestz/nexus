@@ -2,7 +2,7 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
+use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError, UsernameError};
@@ -66,15 +66,20 @@ pub fn execute(
         message,
     };
 
-    if let Err(e) = conn.tx.send(msg) {
-        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-    }
+    let message_id = match conn.send(msg) {
+        Ok(id) => id,
+        Err(e) => {
+            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+    };
 
-    // Mark that we want to switch to this user's tab on successful delivery
-    // Need to re-borrow as mutable
+    // Track this request so we can switch to the user's tab on successful delivery
     if let Some(conn) = app.connections.get_mut(&connection_id) {
-        conn.pending_message_tab = Some(username.clone());
+        conn.pending_requests.track(
+            message_id,
+            ResponseRouting::OpenMessageTab(username.clone()),
+        );
     }
 
     Task::none()

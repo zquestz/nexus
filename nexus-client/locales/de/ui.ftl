@@ -341,7 +341,10 @@ cmd-broadcast-usage = Verwendung: /{ $command } <nachricht>
 cmd-clear-desc = Chat-Verlauf für aktuellen Tab löschen
 cmd-clear-usage = Verwendung: /{ $command }
 cmd-window-desc = Chat-Tabs verwalten
-cmd-window-usage = Verwendung: /{ $command } [next|prev|close [benutzername]]
+cmd-window-usage = Verwendung: /{ $command } [weiter|zurück|schließen [benutzername]]
+cmd-window-arg-next = weiter
+cmd-window-arg-prev = zurück
+cmd-window-arg-close = schließen
 cmd-window-list = Offene Tabs: { $tabs } ({ $count } { $count ->
     [one] Tab
    *[other] Tabs
@@ -351,14 +354,22 @@ cmd-window-not-found = Tab nicht gefunden: { $name }
 cmd-focus-desc = Server-Chat oder Nachrichtenfenster eines Benutzers fokussieren
 cmd-focus-usage = Verwendung: /{ $command } [benutzername]
 cmd-focus-not-found = Benutzer nicht gefunden: { $name }
-cmd-list-desc = Verbundene Benutzer anzeigen
-cmd-list-usage = Verwendung: /{ $command }
+cmd-list-desc = Verbundene/alle Benutzer anzeigen
+cmd-list-arg-all = alle
+cmd-list-usage = Verwendung: /{ $command } [alle]
 cmd-list-empty = Keine Benutzer verbunden
 cmd-list-output = Benutzer online: { $users } ({ $count } { $count ->
     [one] Benutzer
    *[other] Benutzer
 })
+cmd-list-all-no-permission = Sie benötigen die Berechtigung user_edit oder user_delete, um alle Benutzer aufzulisten
+cmd-list-all-output = Benutzer: { $users } ({ $count } { $count ->
+    [one] Benutzer
+   *[other] Benutzer
+})
 cmd-help-usage = Verwendung: /{ $command } [befehl]
+cmd-topic-arg-set = setzen
+cmd-topic-arg-clear = löschen
 cmd-topic-permission-denied = Sie haben keine Berechtigung, das Thema zu bearbeiten
 cmd-serverinfo-desc = Server-Informationen anzeigen
 cmd-serverinfo-usage = Verwendung: /{ $command }

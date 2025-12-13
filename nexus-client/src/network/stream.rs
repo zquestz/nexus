@@ -10,10 +10,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, mpsc};
 
 use nexus_common::framing::MessageId;
-use nexus_common::io::{read_server_message, send_client_message};
+use nexus_common::io::{read_server_message, send_client_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::i18n::t;
+use crate::types::connection::CommandSender;
 use crate::types::{Message, NetworkConnection};
 
 use super::constants::STREAM_CHANNEL_SIZE;
@@ -22,6 +23,9 @@ use super::types::{LoginInfo, Reader, Writer};
 /// Type alias for the connection registry
 type ConnectionRegistry =
     Arc<Mutex<HashMap<usize, mpsc::UnboundedReceiver<(MessageId, ServerMessage)>>>>;
+
+/// Type alias for the command channel receiver
+type CommandReceiver = mpsc::UnboundedReceiver<(MessageId, ClientMessage)>;
 
 /// Global registry for network receivers
 pub static NETWORK_RECEIVERS: Lazy<ConnectionRegistry> =
@@ -54,7 +58,8 @@ pub(super) async fn setup_communication_channels(
     fingerprint: String,
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ClientMessage>();
+    // Command channel includes MessageId for request-response correlation
+    let (cmd_tx, cmd_rx): (CommandSender, CommandReceiver) = mpsc::unbounded_channel();
     let (msg_tx, msg_rx) = mpsc::unbounded_channel::<(MessageId, ServerMessage)>();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -87,7 +92,7 @@ pub(super) async fn setup_communication_channels(
 fn spawn_network_task(
     mut reader: Reader,
     mut writer: Writer,
-    mut cmd_rx: mpsc::UnboundedReceiver<ClientMessage>,
+    mut cmd_rx: CommandReceiver,
     msg_tx: mpsc::UnboundedSender<(MessageId, ServerMessage)>,
     mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
@@ -107,9 +112,9 @@ fn spawn_network_task(
                         Err(_) => break, // Error reading
                     }
                 }
-                // Send to server using new framing format
-                Some(msg) = cmd_rx.recv() => {
-                    if send_client_message(&mut writer, &msg).await.is_err() {
+                // Send to server using the message ID provided by caller
+                Some((message_id, msg)) = cmd_rx.recv() => {
+                    if send_client_message_with_id(&mut writer, &msg, message_id).await.is_err() {
                         break;
                     }
                 }

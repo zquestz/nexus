@@ -334,7 +334,7 @@ impl NexusApp {
                     },
                 };
 
-                if let Err(e) = conn.tx.send(msg) {
+                if let Err(e) = conn.send(msg) {
                     let error_msg = format!("{}: {}", t("err-send-failed"), e);
                     return self.add_chat_error(conn_id, error_msg);
                 }

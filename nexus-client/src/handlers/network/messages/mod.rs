@@ -17,6 +17,7 @@ pub use user_admin::UserEditResponseData;
 use crate::NexusApp;
 use crate::types::Message;
 use iced::Task;
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 
 impl NexusApp {
@@ -26,10 +27,11 @@ impl NexusApp {
     pub fn handle_server_message_received(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         msg: ServerMessage,
     ) -> Task<Message> {
         if self.connections.contains_key(&connection_id) {
-            self.handle_server_message(connection_id, msg)
+            self.handle_server_message(connection_id, message_id, msg)
         } else {
             Task::none()
         }
@@ -41,6 +43,7 @@ impl NexusApp {
     pub fn handle_server_message(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         msg: ServerMessage,
     ) -> Task<Message> {
         match msg {
@@ -125,7 +128,7 @@ impl NexusApp {
                 success,
                 error,
                 user,
-            } => self.handle_user_info_response(connection_id, success, error, user),
+            } => self.handle_user_info_response(connection_id, message_id, success, error, user),
 
             ServerMessage::UserKickResponse { success, error } => {
                 self.handle_user_kick_response(connection_id, success, error)
@@ -135,7 +138,7 @@ impl NexusApp {
                 success,
                 error: _,
                 users,
-            } => self.handle_user_list_response(connection_id, success, users),
+            } => self.handle_user_list_response(connection_id, message_id, success, users),
 
             ServerMessage::UserMessage {
                 from_username,
@@ -151,7 +154,7 @@ impl NexusApp {
             ),
 
             ServerMessage::UserMessageResponse { success, error } => {
-                self.handle_user_message_response(connection_id, success, error)
+                self.handle_user_message_response(connection_id, message_id, success, error)
             }
 
             ServerMessage::UserUpdated {

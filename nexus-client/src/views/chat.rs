@@ -9,6 +9,8 @@ use crate::style::{
     tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
+use iced::widget::scrollable::{Direction, Scrollbar};
+use iced::widget::text::Wrapping;
 use iced::widget::{
     Column, Id, button, column, container, rich_text, row, scrollable, span, text::Rich,
     text_input, tooltip,
@@ -148,7 +150,9 @@ fn styled_message<'a>(
         .on_link_click(Message::OpenUrl)
         .size(style.font_size)
         .line_height(CHAT_LINE_HEIGHT)
-        .font(MONOSPACE_FONT);
+        .font(MONOSPACE_FONT)
+        .wrapping(Wrapping::WordOrGlyph)
+        .width(Fill);
 
     text_widget.into()
 }
@@ -490,6 +494,7 @@ pub fn chat_view<'a>(
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages)
         .on_scroll(Message::ChatScrolled)
+        .direction(Direction::Vertical(Scrollbar::default()))
         .width(Fill)
         .height(Fill);
 

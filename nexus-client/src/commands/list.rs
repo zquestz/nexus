@@ -2,29 +2,77 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
+use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
+use crate::views::constants::{PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
 use iced::Task;
+use nexus_common::protocol::ClientMessage;
 
 /// Execute the /list command
 ///
 /// Displays the currently connected users from the cached user list.
-/// Usage: /list
+/// Usage: /list [all]
+///
+/// The `all` argument requires user_edit OR user_delete permission and
+/// sends a request to the server to get all users (including offline).
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // /list takes no arguments
-    if !args.is_empty() {
+    // Check for optional "all" argument (translated)
+    let all_keyword = t("cmd-list-arg-all");
+    let request_all = if args.is_empty() {
+        false
+    } else if args.len() == 1 && args[0].to_lowercase() == all_keyword.to_lowercase() {
+        true
+    } else {
         let error_msg = t_args("cmd-list-usage", &[("command", invoked_name)]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    };
+
+    // If requesting all users, check permissions and send server request
+    if request_all {
+        let Some(conn) = app.connections.get(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if user has user_edit OR user_delete permission
+        let has_edit = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+        let has_delete =
+            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_DELETE);
+
+        if !has_edit && !has_delete {
+            let error_msg = t("cmd-list-all-no-permission");
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+
+        // Send request to server for all users
+        let msg = ClientMessage::UserList { all: true };
+        let message_id = match conn.send(msg) {
+            Ok(id) => id,
+            Err(e) => {
+                let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            }
+        };
+
+        // Track this request so the response handler knows to display results in chat
+        let conn = app
+            .connections
+            .get_mut(&connection_id)
+            .expect("connection exists");
+        conn.pending_requests
+            .track(message_id, ResponseRouting::DisplayListInChat);
+
+        return Task::none();
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };
 
+    // Default behavior: show cached online users
     if conn.online_users.is_empty() {
         return app.add_chat_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
     }

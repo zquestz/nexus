@@ -5,9 +5,12 @@ use crate::avatar::{compute_avatar_hash, get_or_create_avatar};
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, ChatMessage, ChatTab, Message, UserInfo as ClientUserInfo};
+use crate::types::{
+    ActivePanel, ChatMessage, ChatTab, Message, ResponseRouting, UserInfo as ClientUserInfo,
+};
 use chrono::Local;
 use iced::Task;
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
 
 /// Indentation for user info display lines
@@ -16,35 +19,62 @@ const INFO_INDENT: &str = "  ";
 impl NexusApp {
     /// Handle user info response
     ///
-    /// If the UserInfo panel is open and waiting for data, populate it.
-    /// Otherwise (e.g., from /info command), show the result in chat.
+    /// Routes response based on message_id tracking:
+    /// - If tracked as UserInfoPanel(username) → populate panel if username matches
+    /// - If tracked as UserInfoChat → display in chat (from `/info` command)
+    /// - Otherwise → discard (stale/untracked response)
     pub fn handle_user_info_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         error: Option<String>,
         user: Option<UserInfoDetailed>,
     ) -> Task<Message> {
-        // Check if UserInfo panel is open and waiting for data
-        let panel_waiting = self.connections.get(&connection_id).is_some_and(|conn| {
-            conn.active_panel == ActivePanel::UserInfo && conn.user_info_data.is_none()
-        });
+        // Check if this response corresponds to a tracked request
+        let routing = self
+            .connections
+            .get_mut(&connection_id)
+            .and_then(|conn| conn.pending_requests.remove(&message_id));
 
-        if panel_waiting {
-            // Populate the panel with the response
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                if success {
-                    if let Some(user_data) = user {
-                        conn.user_info_data = Some(Ok(user_data));
+        // Determine how to route this response
+        let is_chat_request = matches!(routing, Some(ResponseRouting::DisplayUserInfoInChat));
+
+        // If this was a panel request, only populate if panel is still open, waiting,
+        // AND the username matches (to handle rapid clicks on different users)
+        if let Some(ResponseRouting::PopulateUserInfoPanel(requested_username)) = routing {
+            let panel_waiting = self.connections.get(&connection_id).is_some_and(|conn| {
+                conn.active_panel == ActivePanel::UserInfo && conn.user_info_data.is_none()
+            });
+
+            // Check if username matches (case-insensitive)
+            let username_matches = match &user {
+                Some(u) => requested_username.to_lowercase() == u.username.to_lowercase(),
+                None => true, // Error responses don't have user data, accept them
+            };
+
+            if panel_waiting && username_matches {
+                // Populate the panel with the response
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    if success {
+                        if let Some(user_data) = user {
+                            conn.user_info_data = Some(Ok(user_data));
+                        }
+                    } else {
+                        conn.user_info_data = Some(Err(error.unwrap_or_default()));
                     }
-                } else {
-                    conn.user_info_data = Some(Err(error.unwrap_or_default()));
                 }
             }
+            // Panel request but panel closed, has data, or username mismatch - discard silently
             return Task::none();
         }
 
-        // Panel not open - show in chat (from /info command)
+        // If not a chat request, discard (unknown/stale response)
+        if !is_chat_request {
+            return Task::none();
+        }
+
+        // Show in chat (from /info command)
         if !success {
             return self
                 .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
@@ -175,6 +205,7 @@ impl NexusApp {
     pub fn handle_user_list_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         users: Option<Vec<ProtocolUserInfo>>,
     ) -> Task<Message> {
@@ -182,12 +213,26 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Check if this response corresponds to a tracked request
+        let routing = conn.pending_requests.remove(&message_id);
+
         if !success {
             return Task::none();
         }
 
-        let user_list: Vec<ClientUserInfo> = users
-            .unwrap_or_default()
+        let users_vec = users.unwrap_or_default();
+
+        // If this was a /list all request, display in chat instead of caching
+        if matches!(routing, Some(ResponseRouting::DisplayListInChat)) {
+            return self.display_all_users_list(connection_id, users_vec);
+        }
+
+        // Normal case: update the online_users cache
+        let conn = self
+            .connections
+            .get_mut(&connection_id)
+            .expect("connection exists");
+        let user_list: Vec<ClientUserInfo> = users_vec
             .into_iter()
             .map(|u| {
                 let avatar_hash = compute_avatar_hash(u.avatar.as_deref());
@@ -212,6 +257,39 @@ impl NexusApp {
             conn.expanded_user = None;
         }
         Task::none()
+    }
+
+    /// Display all users list in chat (for /list all command)
+    fn display_all_users_list(
+        &mut self,
+        connection_id: usize,
+        users: Vec<ProtocolUserInfo>,
+    ) -> Task<Message> {
+        if users.is_empty() {
+            return self.add_chat_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
+        }
+
+        // Build IRC-style user list: @admin user1 user2
+        let user_count = users.len();
+        let user_list: String = users
+            .iter()
+            .map(|user| {
+                if user.is_admin {
+                    format!("@{}", user.username)
+                } else {
+                    user.username.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Format: "All users: @alice bob charlie (3 users)"
+        let message = t_args(
+            "cmd-list-all-output",
+            &[("users", &user_list), ("count", &user_count.to_string())],
+        );
+
+        self.add_chat_message(connection_id, ChatMessage::info(message))
     }
 
     /// Handle user updated notification

@@ -15,7 +15,12 @@ use super::{HandlerContext, err_authentication, err_not_logged_in, err_permissio
 use crate::db::Permission;
 
 /// Handle a userlist request from the client
+///
+/// If `all` is false (default), returns only online users.
+/// If `all` is true, returns all users from database (online + offline).
+/// The `all` option requires additional permissions: user_edit OR user_delete.
 pub async fn handle_user_list<W>(
+    all: bool,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -51,15 +56,29 @@ where
             .await;
     }
 
+    // If requesting all users, check for additional permissions (user_edit OR user_delete)
+    if all
+        && !requesting_user.has_permission(Permission::UserEdit)
+        && !requesting_user.has_permission(Permission::UserDelete)
+    {
+        eprintln!(
+            "UserList all from {} (user: {}) without user_edit or user_delete permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        return ctx
+            .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
+            .await;
+    }
+
     // Fetch all connected users
-    let all_users = ctx.user_manager.get_all_users().await;
+    let online_users = ctx.user_manager.get_all_users().await;
 
     // Deduplicate by username and aggregate sessions
     // Use is_admin from UserManager instead of querying DB for each user
     // Avatar uses "latest login wins" - track login_time for avatar selection
     let mut user_map: HashMap<String, UserAggregateData> = HashMap::new();
 
-    for user in all_users {
+    for user in online_users {
         user_map
             .entry(user.username.clone())
             .and_modify(
@@ -82,6 +101,29 @@ where
                 user.avatar.clone(),
                 user.login_time, // Track login time for avatar selection
             ));
+    }
+
+    // If `all` requested, merge in offline users from database
+    if all {
+        match ctx.db.users.get_all_users().await {
+            Ok(db_users) => {
+                for db_user in db_users {
+                    // Only add users not already in the map (i.e., offline users)
+                    user_map.entry(db_user.username.clone()).or_insert((
+                        db_user.created_at, // Use created_at as login_time for offline users
+                        db_user.is_admin,
+                        vec![],        // No session IDs (offline)
+                        String::new(), // No locale (offline)
+                        None,          // No avatar (offline)
+                        0,             // No avatar login time
+                    ));
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch all users from database: {}", e);
+                // Continue with just online users rather than failing entirely
+            }
+        }
     }
 
     // Build deduplicated user info list
@@ -122,7 +164,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to get user list without being logged in
-        let result = handle_user_list(None, &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(false, None, &mut test_ctx.handler_context()).await;
 
         // Should fail
         assert!(result.is_err(), "UserList should require login");
@@ -136,7 +178,8 @@ mod tests {
         let invalid_session_id = Some(999);
 
         // Try to get user list with invalid session
-        let result = handle_user_list(invalid_session_id, &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, invalid_session_id, &mut test_ctx.handler_context()).await;
 
         // Should fail (ERR_AUTHENTICATION)
         assert!(
@@ -153,7 +196,8 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to get user list without permission
-        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed (send error but not disconnect)
         assert!(
@@ -177,7 +221,8 @@ mod tests {
         .await;
 
         // Get user list with permission
-        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(result.is_ok(), "Valid userlist request should succeed");
@@ -213,7 +258,8 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Admin should be able to list users
-        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(
@@ -287,7 +333,8 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;
@@ -367,7 +414,7 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_user_list(Some(session2), &mut test_ctx.handler_context()).await;
+        let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;
@@ -424,7 +471,8 @@ mod tests {
             .await;
 
         // Get user list
-        let result = handle_user_list(Some(session_id), &mut test_ctx.handler_context()).await;
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx.client).await;
@@ -433,6 +481,191 @@ mod tests {
                 let users = users.unwrap();
                 assert_eq!(users.len(), 1);
                 assert_eq!(users[0].avatar, None, "Avatar should be None");
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    // =========================================================================
+    // /list all tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_userlist_all_requires_additional_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH UserList permission but WITHOUT user_edit or user_delete
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserList],
+            false,
+        )
+        .await;
+
+        // Try to get all users - should fail due to missing permission
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+
+        // Should succeed (send error but not disconnect)
+        assert!(
+            result.is_ok(),
+            "Should send error message but not disconnect"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_with_user_edit_permission() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH UserList AND user_edit permissions
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserList, db::Permission::UserEdit],
+            false,
+        )
+        .await;
+
+        // Get all users - should succeed
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok(), "UserList all with user_edit should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_with_user_delete_permission() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH UserList AND user_delete permissions
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserList, db::Permission::UserDelete],
+            false,
+        )
+        .await;
+
+        // Get all users - should succeed
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(
+            result.is_ok(),
+            "UserList all with user_delete should succeed"
+        );
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_includes_offline_users() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create an offline user in the database (not logged in)
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let perms = db::Permissions::new();
+        test_ctx
+            .db
+            .users
+            .create_user("offline_bob", &hashed, false, true, &perms)
+            .await
+            .unwrap();
+
+        // Create an online user with necessary permissions
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserList, db::Permission::UserEdit],
+            false,
+        )
+        .await;
+
+        // Get all users (including offline)
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse {
+                success,
+                error,
+                users,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let users = users.unwrap();
+                assert_eq!(users.len(), 2, "Should have 2 users (1 online, 1 offline)");
+
+                // Find the offline user
+                let offline_user = users.iter().find(|u| u.username == "offline_bob");
+                assert!(offline_user.is_some(), "Offline user should be in list");
+                let offline_user = offline_user.unwrap();
+                assert!(
+                    offline_user.session_ids.is_empty(),
+                    "Offline user should have no session IDs"
+                );
+                assert!(
+                    offline_user.avatar.is_none(),
+                    "Offline user should have no avatar"
+                );
+
+                // Find the online user
+                let online_user = users.iter().find(|u| u.username == "alice");
+                assert!(online_user.is_some(), "Online user should be in list");
+                let online_user = online_user.unwrap();
+                assert!(
+                    !online_user.session_ids.is_empty(),
+                    "Online user should have session IDs"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_admin_bypass() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Admin should be able to list all users without explicit user_edit/user_delete
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Get all users - should succeed (admin bypass)
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok(), "Admin should be able to list all users");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, .. } => {
+                assert!(success);
             }
             _ => panic!("Expected UserListResponse"),
         }

@@ -1,11 +1,12 @@
 //! Server connection types
 
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 use super::{
-    ActivePanel, ChatMessage, ChatTab, ScrollState, ServerInfoEditState, UserInfo,
+    ActivePanel, ChatMessage, ChatTab, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
     UserManagementState,
 };
 use crate::image::CachedImage;
@@ -13,6 +14,9 @@ use crate::image::CachedImage;
 /// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
 type WrappedShutdownHandle =
     std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
+
+/// Type alias for the command channel sender (includes message ID)
+pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
 
 /// Active connection to a server
 ///
@@ -69,7 +73,7 @@ pub struct ServerConnection {
     /// Username of expanded user in user list (None if no user expanded)
     pub expanded_user: Option<String>,
     /// Channel for sending commands to server
-    pub tx: mpsc::UnboundedSender<ClientMessage>,
+    tx: CommandSender,
     /// Handle for graceful shutdown
     pub shutdown_handle: WrappedShutdownHandle,
     /// Current chat message input
@@ -78,8 +82,8 @@ pub struct ServerConnection {
     pub broadcast_message: String,
     /// Scroll state per chat tab (offset and auto-scroll flag)
     pub scroll_states: HashMap<ChatTab, ScrollState>,
-    /// Pending tab switch after successful message delivery (from /msg command)
-    pub pending_message_tab: Option<String>,
+    /// Pending requests that need response routing
+    pub pending_requests: HashMap<MessageId, ResponseRouting>,
     /// Error message for broadcast operations
     pub broadcast_error: Option<String>,
     /// User management panel state
@@ -94,11 +98,85 @@ pub struct ServerConnection {
     pub active_panel: ActivePanel,
 }
 
+impl ServerConnection {
+    /// Send a message to the server
+    ///
+    /// Generates a new message ID and sends the message through the channel.
+    /// Returns the message ID on success for optional tracking.
+    pub fn send(&self, message: ClientMessage) -> Result<MessageId, String> {
+        let message_id = MessageId::new();
+        self.tx
+            .send((message_id, message))
+            .map_err(|e| e.to_string())?;
+        Ok(message_id)
+    }
+
+    /// Create a new ServerConnection with the given parameters
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        bookmark_index: Option<usize>,
+        session_id: u32,
+        username: String,
+        display_name: String,
+        connection_id: usize,
+        is_admin: bool,
+        permissions: Vec<String>,
+        locale: String,
+        server_name: Option<String>,
+        server_description: Option<String>,
+        server_version: Option<String>,
+        server_image: String,
+        cached_server_image: Option<CachedImage>,
+        chat_topic: Option<String>,
+        chat_topic_set_by: Option<String>,
+        max_connections_per_ip: Option<u32>,
+        tx: CommandSender,
+        shutdown_handle: WrappedShutdownHandle,
+    ) -> Self {
+        Self {
+            bookmark_index,
+            session_id,
+            username,
+            display_name,
+            connection_id,
+            is_admin,
+            permissions,
+            locale,
+            server_name,
+            server_description,
+            server_version,
+            server_image,
+            cached_server_image,
+            chat_topic,
+            chat_topic_set_by,
+            max_connections_per_ip,
+            active_chat_tab: ChatTab::Server,
+            chat_messages: Vec::new(),
+            user_messages: HashMap::new(),
+            unread_tabs: HashSet::new(),
+            online_users: Vec::new(),
+            expanded_user: None,
+            tx,
+            shutdown_handle,
+            message_input: String::new(),
+            broadcast_message: String::new(),
+            scroll_states: HashMap::new(),
+            pending_requests: HashMap::new(),
+            broadcast_error: None,
+            user_management: UserManagementState::default(),
+            user_info_data: None,
+            avatar_cache: HashMap::new(),
+            server_info_edit: None,
+            active_panel: ActivePanel::None,
+        }
+    }
+}
+
 /// Network connection handle returned by connect_to_server()
 #[derive(Debug, Clone)]
 pub struct NetworkConnection {
     /// Channel for sending messages to server
-    pub tx: mpsc::UnboundedSender<nexus_common::protocol::ClientMessage>,
+    pub tx: CommandSender,
     /// Session ID from server
     pub session_id: u32,
     /// Unique connection identifier

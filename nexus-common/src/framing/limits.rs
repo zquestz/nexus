@@ -28,7 +28,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserEdit", 65);
     m.insert("UserInfo", 65);
     m.insert("UserKick", 65);
-    m.insert("UserList", 19);
+    m.insert("UserList", 31);
     m.insert("UserUpdate", 1040);
     m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
@@ -260,7 +260,8 @@ mod tests {
 
     #[test]
     fn test_limit_user_list() {
-        let msg = ClientMessage::UserList;
+        // Use all: false since "false" (5 chars) is longer than "true" (4 chars)
+        let msg = ClientMessage::UserList { all: false };
         assert_eq!(json_size(&msg), max_payload_for_type("UserList") as usize);
     }
 

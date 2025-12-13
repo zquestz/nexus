@@ -344,17 +344,28 @@ cmd-clear-usage = Gebruik: /{ $command }
 cmd-focus-desc = Focus op serverchat of berichtenvenster van een gebruiker
 cmd-focus-usage = Gebruik: /{ $command } [gebruikersnaam]
 cmd-focus-not-found = Gebruiker niet gevonden: { $name }
-cmd-list-desc = Verbonden gebruikers weergeven
-cmd-list-usage = Gebruik: /{ $command }
+cmd-list-desc = Verbonden/alle gebruikers weergeven
+cmd-list-arg-all = alle
+cmd-list-usage = Gebruik: /{ $command } [alle]
 cmd-list-empty = Geen gebruikers verbonden
 cmd-list-output = Gebruikers online: { $users } ({ $count } { $count ->
     [one] gebruiker
    *[other] gebruikers
 })
+cmd-list-all-no-permission = Je hebt user_edit of user_delete toestemming nodig om alle gebruikers te bekijken
+cmd-list-all-output = Gebruikers: { $users } ({ $count } { $count ->
+    [one] gebruiker
+   *[other] gebruikers
+})
 cmd-help-usage = Gebruik: /{ $command } [commando]
+cmd-topic-arg-set = instellen
+cmd-topic-arg-clear = wissen
 cmd-topic-permission-denied = Je hebt geen toestemming om het onderwerp te bewerken
 cmd-window-desc = Beheer chat-tabbladen
-cmd-window-usage = Gebruik: /{ $command } [next|prev|close [gebruikersnaam]]
+cmd-window-usage = Gebruik: /{ $command } [volgende|vorige|sluiten [gebruikersnaam]]
+cmd-window-arg-next = volgende
+cmd-window-arg-prev = vorige
+cmd-window-arg-close = sluiten
 cmd-window-list = Open tabbladen: { $tabs } ({ $count } { $count ->
     [one] tabblad
    *[other] tabbladen

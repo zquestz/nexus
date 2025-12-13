@@ -104,7 +104,7 @@ impl NexusApp {
 
         let msg = ClientMessage::UserBroadcast { message };
 
-        if let Err(e) = conn.tx.send(msg) {
+        if let Err(e) = conn.send(msg) {
             let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);
             return self.add_broadcast_error(conn_id, error_msg);
         }

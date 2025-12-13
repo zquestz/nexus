@@ -122,6 +122,30 @@ impl UserDb {
         ))
     }
 
+    /// Get all users from the database (sorted alphabetically by username)
+    ///
+    /// Used by the `/list all` command for user management.
+    pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
+        let rows: Vec<(i64, String, String, bool, bool, i64)> =
+            sqlx::query_as(SQL_SELECT_ALL_USERS)
+                .fetch_all(&self.pool)
+                .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
+                    id,
+                    username,
+                    hashed_password,
+                    is_admin,
+                    enabled,
+                    created_at,
+                },
+            )
+            .collect())
+    }
+
     // ========================================================================
     // Permission Methods
     // ========================================================================

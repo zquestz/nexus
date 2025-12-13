@@ -345,6 +345,8 @@ cmd-kick-desc = Kick a user from the server
 cmd-kick-usage = Usage: /{ $command } <username>
 cmd-topic-desc = View or manage the chat topic
 cmd-topic-usage = Usage: /{ $command } [set|clear] [topic]
+cmd-topic-arg-set = set
+cmd-topic-arg-clear = clear
 cmd-topic-set-usage = Usage: /{ $command } set <topic>
 cmd-topic-none = No topic is set
 cmd-topic-permission-denied = You don't have permission to edit the topic
@@ -355,15 +357,24 @@ cmd-clear-usage = Usage: /{ $command }
 cmd-focus-desc = Focus server chat or a user's message tab
 cmd-focus-usage = Usage: /{ $command } [username]
 cmd-focus-not-found = User not found: { $name }
-cmd-list-desc = Show connected users
-cmd-list-usage = Usage: /{ $command }
+cmd-list-desc = Show connected/all users
+cmd-list-arg-all = all
+cmd-list-usage = Usage: /{ $command } [all]
 cmd-list-empty = No users connected
 cmd-list-output = Users online: { $users } ({ $count } { $count ->
     [one] user
    *[other] users
 })
+cmd-list-all-no-permission = You need user_edit or user_delete permission to list all users
+cmd-list-all-output = Users: { $users } ({ $count } { $count ->
+    [one] user
+   *[other] users
+})
 cmd-window-desc = Manage chat tabs
 cmd-window-usage = Usage: /{ $command } [next|prev|close [username]]
+cmd-window-arg-next = next
+cmd-window-arg-prev = prev
+cmd-window-arg-close = close
 cmd-window-list = Open tabs: { $tabs } ({ $count } { $count ->
     [one] tab
    *[other] tabs

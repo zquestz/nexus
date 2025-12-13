@@ -4,20 +4,17 @@ use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
+
 use crate::types::{
-    ActivePanel, ChatTab, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
-    UserManagementState,
+    ActivePanel, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
 use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
-use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc::UnboundedSender;
 
 /// Result of creating and registering a connection
 struct ConnectionRegistration {
-    tx: UnboundedSender<ClientMessage>,
     chat_topic: Option<String>,
     chat_topic_set_by: Option<String>,
     should_request_userlist: bool,
@@ -72,7 +69,7 @@ impl NexusApp {
 
                 // Request user list if we have permission
                 if let Err(error_msg) =
-                    self.request_initial_userlist(&reg.tx, reg.should_request_userlist)
+                    self.request_initial_userlist(connection_id, reg.should_request_userlist)
                 {
                     self.connection_form.error = Some(error_msg);
                     self.connections.remove(&connection_id);
@@ -148,7 +145,7 @@ impl NexusApp {
 
                 // Request initial user list
                 if let Err(error_msg) =
-                    self.request_initial_userlist(&reg.tx, reg.should_request_userlist)
+                    self.request_initial_userlist(connection_id, reg.should_request_userlist)
                 {
                     self.connections.remove(&connection_id);
                     self.active_connection = None;
@@ -217,52 +214,37 @@ impl NexusApp {
         display_name: String,
     ) -> Option<ConnectionRegistration> {
         let shutdown_handle = conn.shutdown?;
-        let conn_tx = conn.tx.clone();
         let chat_topic = conn.chat_topic.clone();
         let chat_topic_set_by = conn.chat_topic_set_by.clone();
         let should_request_userlist =
             conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
-        let server_conn = ServerConnection {
+        let cached_server_image = if conn.server_image.is_empty() {
+            None
+        } else {
+            decode_data_uri_max_width(&conn.server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+        };
+
+        let server_conn = ServerConnection::new(
             bookmark_index,
-            session_id: conn.session_id,
+            conn.session_id,
             username,
             display_name,
-            connection_id: conn.connection_id,
-            is_admin: conn.is_admin,
-            permissions: conn.permissions,
-            locale: conn.locale,
-            server_name: conn.server_name,
-            server_description: conn.server_description,
-            server_version: conn.server_version,
-            server_image: conn.server_image.clone(),
-            cached_server_image: if conn.server_image.is_empty() {
-                None
-            } else {
-                decode_data_uri_max_width(&conn.server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
-            },
-            chat_topic: chat_topic.clone(),
-            chat_topic_set_by: chat_topic_set_by.clone(),
-            max_connections_per_ip: conn.max_connections_per_ip,
-            active_chat_tab: ChatTab::Server,
-            chat_messages: Vec::new(),
-            user_messages: HashMap::new(),
-            unread_tabs: HashSet::new(),
-            online_users: Vec::new(),
-            expanded_user: None,
-            tx: conn.tx,
+            conn.connection_id,
+            conn.is_admin,
+            conn.permissions,
+            conn.locale,
+            conn.server_name,
+            conn.server_description,
+            conn.server_version,
+            conn.server_image.clone(),
+            cached_server_image,
+            chat_topic.clone(),
+            chat_topic_set_by.clone(),
+            conn.max_connections_per_ip,
+            conn.tx,
             shutdown_handle,
-            message_input: String::new(),
-            broadcast_message: String::new(),
-            scroll_states: HashMap::new(),
-            pending_message_tab: None,
-            broadcast_error: None,
-            user_management: UserManagementState::default(),
-            user_info_data: None,
-            avatar_cache: HashMap::new(),
-            server_info_edit: None,
-            active_panel: ActivePanel::None,
-        };
+        );
 
         self.connections.insert(conn.connection_id, server_conn);
         self.active_connection = Some(conn.connection_id);
@@ -271,7 +253,6 @@ impl NexusApp {
         self.ui_state.active_panel = ActivePanel::None;
 
         Some(ConnectionRegistration {
-            tx: conn_tx,
             chat_topic,
             chat_topic_set_by,
             should_request_userlist,
@@ -296,14 +277,15 @@ impl NexusApp {
     }
 
     /// Request initial user list if the user has permission
-    ///
-    /// Returns `Ok(())` on success, or `Err(error_message)` if the channel send failed.
     fn request_initial_userlist(
         &self,
-        conn_tx: &UnboundedSender<ClientMessage>,
+        connection_id: usize,
         should_request: bool,
     ) -> Result<(), String> {
-        if should_request && let Err(e) = conn_tx.send(ClientMessage::UserList) {
+        if should_request
+            && let Some(conn) = self.connections.get(&connection_id)
+            && let Err(e) = conn.send(ClientMessage::UserList { all: false })
+        {
             return Err(format!("{}: {}", t("err-connection-broken"), e));
         }
         Ok(())

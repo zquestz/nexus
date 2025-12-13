@@ -79,7 +79,7 @@ impl NexusApp {
         // (it may be stale from missed join/leave events while permission was revoked)
         if !had_user_list
             && has_user_list
-            && let Err(e) = conn.tx.send(ClientMessage::UserList)
+            && let Err(e) = conn.send(ClientMessage::UserList { all: false })
         {
             // Channel send failed - add error to chat
             let error_msg = format!("{}: {}", t("err-userlist-failed"), e);

@@ -79,6 +79,16 @@ pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_has
 pub const SQL_SELECT_USER_BY_ID: &str =
     "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
 
+/// Select all users (for user management listing)
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, enabled, created_at)`
+///
+/// **Note:** Used by `/list all` command for user management.
+/// Results are sorted alphabetically by username (case-insensitive).
+pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users ORDER BY LOWER(username)";
+
 /// Check if user is admin
 ///
 /// **Parameters:**

@@ -56,7 +56,12 @@ pub enum ClientMessage {
     /// Kick/disconnect a user
     UserKick { username: String },
     /// Request list of connected users
-    UserList,
+    UserList {
+        /// If true, include all users from database (not just online)
+        /// Requires user_list AND (user_edit OR user_delete) permissions
+        #[serde(default)]
+        all: bool,
+    },
     /// Send a private message to a user
     UserMessage {
         to_username: String,
@@ -382,7 +387,9 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("UserKick")
                 .field("username", username)
                 .finish(),
-            ClientMessage::UserList => f.debug_struct("UserList").finish(),
+            ClientMessage::UserList { all } => {
+                f.debug_struct("UserList").field("all", all).finish()
+            }
             ClientMessage::UserMessage {
                 to_username,
                 message,

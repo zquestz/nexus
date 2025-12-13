@@ -177,7 +177,7 @@ impl NexusApp {
             image,
         };
 
-        if let Err(e) = conn.tx.send(msg) {
+        if let Err(e) = conn.send(msg) {
             if let Some(edit) = &mut conn.server_info_edit {
                 edit.error = Some(t_args(
                     "err-failed-send-update",

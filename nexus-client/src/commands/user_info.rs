@@ -2,7 +2,7 @@
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
+use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, UsernameError};
@@ -46,9 +46,18 @@ pub fn execute(
         username: username.clone(),
     };
 
-    if let Err(e) = conn.tx.send(msg) {
-        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+    let message_id = match conn.send(msg) {
+        Ok(id) => id,
+        Err(e) => {
+            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+    };
+
+    // Track this request so the response goes to chat, not the panel
+    if let Some(conn) = app.connections.get_mut(&connection_id) {
+        conn.pending_requests
+            .track(message_id, ResponseRouting::DisplayUserInfoInChat);
     }
 
     Task::none()

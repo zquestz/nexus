@@ -25,62 +25,63 @@ pub fn execute(
         return show_topic(app, connection_id);
     }
 
-    match args[0].to_lowercase().as_str() {
-        "set" => {
-            // Check chat_topic_edit permission
-            if !has_topic_edit_permission(app, connection_id) {
-                return app.add_chat_message(
-                    connection_id,
-                    ChatMessage::error(t("cmd-topic-permission-denied")),
-                );
-            }
+    // Get translated subcommand keywords
+    let set_keyword = t("cmd-topic-arg-set").to_lowercase();
+    let clear_keyword = t("cmd-topic-arg-clear").to_lowercase();
+    let arg = args[0].to_lowercase();
 
-            if args.len() < 2 {
-                let error_msg = t_args("cmd-topic-set-usage", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
-            let topic = args[1..].join(" ");
-
-            // Validate topic content
-            if let Err(e) = validators::validate_chat_topic(&topic) {
-                let error_msg = match e {
-                    ChatTopicError::TooLong => t_args(
-                        "err-topic-too-long",
-                        &[
-                            ("length", &topic.len().to_string()),
-                            ("max", &validators::MAX_CHAT_TOPIC_LENGTH.to_string()),
-                        ],
-                    ),
-                    ChatTopicError::ContainsNewlines => t("err-message-contains-newlines"),
-                    ChatTopicError::InvalidCharacters => t("err-message-invalid-characters"),
-                };
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
-
-            set_topic(app, connection_id, topic)
+    if arg == set_keyword {
+        // Check chat_topic_edit permission
+        if !has_topic_edit_permission(app, connection_id) {
+            return app.add_chat_message(
+                connection_id,
+                ChatMessage::error(t("cmd-topic-permission-denied")),
+            );
         }
-        "clear" => {
-            // /topic clear takes no additional arguments
-            if args.len() > 1 {
-                let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
 
-            // Check chat_topic_edit permission
-            if !has_topic_edit_permission(app, connection_id) {
-                return app.add_chat_message(
-                    connection_id,
-                    ChatMessage::error(t("cmd-topic-permission-denied")),
-                );
-            }
-
-            set_topic(app, connection_id, String::new())
+        if args.len() < 2 {
+            let error_msg = t_args("cmd-topic-set-usage", &[("command", invoked_name)]);
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
         }
-        _ => {
-            // Unknown subcommand - show usage
+        let topic = args[1..].join(" ");
+
+        // Validate topic content
+        if let Err(e) = validators::validate_chat_topic(&topic) {
+            let error_msg = match e {
+                ChatTopicError::TooLong => t_args(
+                    "err-topic-too-long",
+                    &[
+                        ("length", &topic.len().to_string()),
+                        ("max", &validators::MAX_CHAT_TOPIC_LENGTH.to_string()),
+                    ],
+                ),
+                ChatTopicError::ContainsNewlines => t("err-message-contains-newlines"),
+                ChatTopicError::InvalidCharacters => t("err-message-invalid-characters"),
+            };
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+
+        set_topic(app, connection_id, topic)
+    } else if arg == clear_keyword {
+        // /topic clear takes no additional arguments
+        if args.len() > 1 {
             let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
-            app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
         }
+
+        // Check chat_topic_edit permission
+        if !has_topic_edit_permission(app, connection_id) {
+            return app.add_chat_message(
+                connection_id,
+                ChatMessage::error(t("cmd-topic-permission-denied")),
+            );
+        }
+
+        set_topic(app, connection_id, String::new())
+    } else {
+        // Unknown subcommand - show usage
+        let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
+        app.add_chat_message(connection_id, ChatMessage::error(error_msg))
     }
 }
 
@@ -126,7 +127,7 @@ fn set_topic(app: &mut NexusApp, connection_id: usize, topic: String) -> Task<Me
 
     let msg = ClientMessage::ChatTopicUpdate { topic };
 
-    if let Err(e) = conn.tx.send(msg) {
+    if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }

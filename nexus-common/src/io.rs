@@ -249,7 +249,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::UserEdit { .. } => "UserEdit",
         ClientMessage::UserInfo { .. } => "UserInfo",
         ClientMessage::UserKick { .. } => "UserKick",
-        ClientMessage::UserList => "UserList",
+        ClientMessage::UserList { .. } => "UserList",
         ClientMessage::UserMessage { .. } => "UserMessage",
         ClientMessage::UserUpdate { .. } => "UserUpdate",
         ClientMessage::ServerInfoUpdate { .. } => "ServerInfoUpdate",
@@ -310,7 +310,10 @@ mod tests {
             }),
             "Handshake"
         );
-        assert_eq!(client_message_type(&ClientMessage::UserList), "UserList");
+        assert_eq!(
+            client_message_type(&ClientMessage::UserList { all: false }),
+            "UserList"
+        );
     }
 
     #[test]

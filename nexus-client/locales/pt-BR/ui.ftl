@@ -333,8 +333,10 @@ cmd-userinfo-usage = Uso: /{ $command } <usuário>
 cmd-kick-desc = Expulsar um usuário do servidor
 cmd-kick-usage = Uso: /{ $command } <usuário>
 cmd-topic-desc = Ver ou gerenciar o tópico do chat
-cmd-topic-usage = Uso: /{ $command } [set|clear] [tópico]
-cmd-topic-set-usage = Uso: /{ $command } set <tópico>
+cmd-topic-usage = Uso: /{ $command } [definir|limpar] [tópico]
+cmd-topic-arg-set = definir
+cmd-topic-arg-clear = limpar
+cmd-topic-set-usage = Uso: /{ $command } definir <tópico>
 cmd-topic-none = Nenhum tópico definido
 cmd-broadcast-desc = Enviar uma mensagem para todos os usuários
 cmd-broadcast-usage = Uso: /{ $command } <mensagem>
@@ -343,17 +345,26 @@ cmd-clear-usage = Uso: /{ $command }
 cmd-focus-desc = Focar no chat do servidor ou janela de mensagens de um usuário
 cmd-focus-usage = Uso: /{ $command } [usuário]
 cmd-focus-not-found = Usuário não encontrado: { $name }
-cmd-list-desc = Mostrar usuários conectados
-cmd-list-usage = Uso: /{ $command }
+cmd-list-desc = Mostrar usuários conectados/todos
+cmd-list-arg-all = todos
+cmd-list-usage = Uso: /{ $command } [todos]
 cmd-list-empty = Nenhum usuário conectado
 cmd-list-output = Usuários online: { $users } ({ $count } { $count ->
+    [one] usuário
+   *[other] usuários
+})
+cmd-list-all-no-permission = Você precisa da permissão user_edit ou user_delete para listar todos os usuários
+cmd-list-all-output = Usuários: { $users } ({ $count } { $count ->
     [one] usuário
    *[other] usuários
 })
 cmd-help-usage = Uso: /{ $command } [comando]
 cmd-topic-permission-denied = Você não tem permissão para editar o tópico
 cmd-window-desc = Gerenciar abas de chat
-cmd-window-usage = Uso: /{ $command } [next|prev|close [usuário]]
+cmd-window-usage = Uso: /{ $command } [próximo|anterior|fechar [usuário]]
+cmd-window-arg-next = próximo
+cmd-window-arg-prev = anterior
+cmd-window-arg-close = fechar
 cmd-window-list = Abas abertas: { $tabs } ({ $count } { $count ->
     [one] aba
    *[other] abas

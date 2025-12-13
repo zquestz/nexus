@@ -344,17 +344,28 @@ cmd-clear-usage = Utilisation : /{ $command }
 cmd-focus-desc = Focaliser le chat serveur ou la fenêtre de messages d'un utilisateur
 cmd-focus-usage = Utilisation : /{ $command } [utilisateur]
 cmd-focus-not-found = Utilisateur non trouvé : { $name }
-cmd-list-desc = Afficher les utilisateurs connectés
-cmd-list-usage = Utilisation : /{ $command }
+cmd-list-desc = Afficher les utilisateurs connectés/tous
+cmd-list-arg-all = tous
+cmd-list-usage = Utilisation : /{ $command } [tous]
 cmd-list-empty = Aucun utilisateur connecté
 cmd-list-output = Utilisateurs en ligne : { $users } ({ $count } { $count ->
     [one] utilisateur
    *[other] utilisateurs
 })
+cmd-list-all-no-permission = Vous avez besoin de la permission user_edit ou user_delete pour lister tous les utilisateurs
+cmd-list-all-output = Utilisateurs : { $users } ({ $count } { $count ->
+    [one] utilisateur
+   *[other] utilisateurs
+})
 cmd-help-usage = Utilisation : /{ $command } [commande]
+cmd-topic-arg-set = définir
+cmd-topic-arg-clear = effacer
 cmd-topic-permission-denied = Vous n'avez pas la permission de modifier le sujet
 cmd-window-desc = Gérer les onglets de chat
-cmd-window-usage = Utilisation : /{ $command } [next|prev|close [utilisateur]]
+cmd-window-usage = Utilisation : /{ $command } [suivant|précédent|fermer [utilisateur]]
+cmd-window-arg-next = suivant
+cmd-window-arg-prev = précédent
+cmd-window-arg-close = fermer
 cmd-window-list = Onglets ouverts : { $tabs } ({ $count } { $count ->
     [one] onglet
    *[other] onglets

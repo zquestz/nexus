@@ -1,10 +1,11 @@
 //! Type definitions for the Nexus client
 
 mod bookmark;
-mod connection;
+pub mod connection;
 mod display;
 mod form;
 mod message;
+mod pending;
 mod ui;
 mod view_config;
 
@@ -17,6 +18,7 @@ pub use form::{
 };
 pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;
+pub use pending::{PendingRequests, ResponseRouting};
 pub use ui::{
     ActivePanel, FingerprintMismatch, FingerprintMismatchDetails, InputId, ScrollableId, UiState,
 };

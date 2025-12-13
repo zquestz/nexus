@@ -2,9 +2,10 @@
 
 use crate::NexusApp;
 use crate::i18n::t_args;
-use crate::types::{ChatMessage, ChatTab, Message};
+use crate::types::{ChatMessage, ChatTab, Message, ResponseRouting};
 use chrono::Local;
 use iced::Task;
+use nexus_common::framing::MessageId;
 
 impl NexusApp {
     /// Handle incoming private message
@@ -49,18 +50,19 @@ impl NexusApp {
     pub fn handle_user_message_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        // Check for pending tab switch (from /msg command)
-        let pending_tab = self
+        // Check if this response corresponds to a tracked request
+        let routing = self
             .connections
             .get_mut(&connection_id)
-            .and_then(|conn| conn.pending_message_tab.take());
+            .and_then(|conn| conn.pending_requests.remove(&message_id));
 
         if success {
-            // Switch to tab if we had a pending switch
-            if let Some(username) = pending_tab {
+            // Switch to tab if this was a /msg command
+            if let Some(ResponseRouting::OpenMessageTab(username)) = routing {
                 return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(username)));
             }
             return Task::none();

@@ -346,17 +346,28 @@ cmd-clear-usage = Uso: /{ $command }
 cmd-focus-desc = Enfocar chat del servidor o ventana de mensajes de un usuario
 cmd-focus-usage = Uso: /{ $command } [usuario]
 cmd-focus-not-found = Usuario no encontrado: { $name }
-cmd-list-desc = Mostrar usuarios conectados
-cmd-list-usage = Uso: /{ $command }
+cmd-list-desc = Mostrar usuarios conectados/todos
+cmd-list-arg-all = todos
+cmd-list-usage = Uso: /{ $command } [todos]
 cmd-list-empty = No hay usuarios conectados
 cmd-list-output = Usuarios en línea: { $users } ({ $count } { $count ->
     [one] usuario
    *[other] usuarios
 })
+cmd-list-all-no-permission = Necesitas permiso user_edit o user_delete para listar todos los usuarios
+cmd-list-all-output = Usuarios: { $users } ({ $count } { $count ->
+    [one] usuario
+   *[other] usuarios
+})
 cmd-help-usage = Uso: /{ $command } [comando]
+cmd-topic-arg-set = establecer
+cmd-topic-arg-clear = limpiar
 cmd-topic-permission-denied = No tienes permiso para editar el tema
 cmd-window-desc = Gestionar pestañas de chat
-cmd-window-usage = Uso: /{ $command } [next|prev|close [usuario]]
+cmd-window-usage = Uso: /{ $command } [siguiente|anterior|cerrar [usuario]]
+cmd-window-arg-next = siguiente
+cmd-window-arg-prev = anterior
+cmd-window-arg-close = cerrar
 cmd-window-list = Pestañas abiertas: { $tabs } ({ $count } { $count ->
     [one] pestaña
    *[other] pestañas

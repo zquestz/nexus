@@ -68,7 +68,7 @@ where
     };
 
     // Prevent self-editing (cheap check before DB query)
-    if requesting_user.username.eq_ignore_ascii_case(&username) {
+    if requesting_user.username.to_lowercase() == username.to_lowercase() {
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_self(ctx.locale)),

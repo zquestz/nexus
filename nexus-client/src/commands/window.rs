@@ -5,6 +5,15 @@ use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message};
 use iced::Task;
 
+/// Get translated subcommand keywords
+fn get_keywords() -> (String, String, String) {
+    (
+        t("cmd-window-arg-next").to_lowercase(),
+        t("cmd-window-arg-prev").to_lowercase(),
+        t("cmd-window-arg-close").to_lowercase(),
+    )
+}
+
 /// Execute the /window command
 ///
 /// Manages chat tabs.
@@ -29,52 +38,50 @@ pub fn execute(
         return list_tabs(app, connection_id);
     }
 
-    match args[0].to_lowercase().as_str() {
-        "next" => {
-            if args.len() > 1 {
-                let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
-            Task::done(Message::NextChatTab)
-        }
-        "prev" | "previous" => {
-            if args.len() > 1 {
-                let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
-            }
-            Task::done(Message::PrevChatTab)
-        }
-        "close" => {
-            if args.len() == 1 {
-                // /window close - close current tab
-                close_current_tab(app, connection_id)
-            } else if args.len() == 2 {
-                // /window close <username> - close specific tab
-                let target = &args[1];
-                let target_lower = target.to_lowercase();
+    let (next_keyword, prev_keyword, close_keyword) = get_keywords();
+    let arg = args[0].to_lowercase();
 
-                // Find matching tab (case-insensitive)
-                let matching_user = conn
-                    .user_messages
-                    .keys()
-                    .find(|username| username.to_lowercase() == target_lower)
-                    .cloned();
+    if arg == next_keyword {
+        if args.len() > 1 {
+            let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+        Task::done(Message::NextChatTab)
+    } else if arg == prev_keyword {
+        if args.len() > 1 {
+            let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
+            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        }
+        Task::done(Message::PrevChatTab)
+    } else if arg == close_keyword {
+        if args.len() == 1 {
+            // /window close - close current tab
+            close_current_tab(app, connection_id)
+        } else if args.len() == 2 {
+            // /window close <username> - close specific tab
+            let target = &args[1];
+            let target_lower = target.to_lowercase();
 
-                if let Some(username) = matching_user {
-                    Task::done(Message::CloseUserMessageTab(username))
-                } else {
-                    let error_msg = t_args("cmd-window-not-found", &[("name", target.as_str())]);
-                    app.add_chat_message(connection_id, ChatMessage::error(error_msg))
-                }
+            // Find matching tab (case-insensitive)
+            let matching_user = conn
+                .user_messages
+                .keys()
+                .find(|username| username.to_lowercase() == target_lower)
+                .cloned();
+
+            if let Some(username) = matching_user {
+                Task::done(Message::CloseUserMessageTab(username))
             } else {
-                let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
+                let error_msg = t_args("cmd-window-not-found", &[("name", target.as_str())]);
                 app.add_chat_message(connection_id, ChatMessage::error(error_msg))
             }
-        }
-        _ => {
+        } else {
             let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
             app.add_chat_message(connection_id, ChatMessage::error(error_msg))
         }
+    } else {
+        let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
+        app.add_chat_message(connection_id, ChatMessage::error(error_msg))
     }
 }
 

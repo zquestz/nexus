@@ -47,7 +47,7 @@ pub fn execute(
 
     let msg = ClientMessage::UserBroadcast { message };
 
-    if let Err(e) = conn.tx.send(msg) {
+    if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
