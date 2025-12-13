@@ -116,8 +116,8 @@ pub const NO_SPACING: f32 = 0.0;
 /// User list item spacing
 pub const USER_LIST_ITEM_SPACING: f32 = 3.0;
 
-/// User list column spacing
-pub const USER_LIST_SPACING: f32 = 8.0;
+/// User list column spacing (matches server list section spacing)
+pub const USER_LIST_SPACING: f32 = 5.0;
 
 // ============================================================================
 // Dimensions

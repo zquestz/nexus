@@ -61,11 +61,11 @@ pub const SERVER_LIST_TEXT_SIZE: f32 = 13.0;
 /// Server list small text size (empty states, action buttons)
 pub const SERVER_LIST_SMALL_TEXT_SIZE: f32 = 11.0;
 
-/// User list title size
-pub const USER_LIST_TITLE_SIZE: f32 = 16.0;
+/// User list title size (matches server list SECTION_TITLE_SIZE)
+pub const USER_LIST_TITLE_SIZE: f32 = 14.0;
 
-/// User list username text size
-pub const USER_LIST_TEXT_SIZE: f32 = 12.0;
+/// User list username text size (matches server list SERVER_LIST_TEXT_SIZE)
+pub const USER_LIST_TEXT_SIZE: f32 = 13.0;
 
 /// User list small text size (empty states)
 pub const USER_LIST_SMALL_TEXT_SIZE: f32 = 11.0;
