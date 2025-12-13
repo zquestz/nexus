@@ -111,9 +111,10 @@ impl NexusApp {
             Ok(conn) => {
                 let connection_id = conn.connection_id;
 
-                // Clear the connecting lock for this bookmark
+                // Clear the connecting lock and any previous error for this bookmark
                 if let Some(idx) = bookmark_index {
                     self.connecting_bookmarks.remove(&idx);
+                    self.bookmark_errors.remove(&idx);
                 }
 
                 // Verify and save certificate fingerprint
