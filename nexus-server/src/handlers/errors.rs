@@ -476,3 +476,52 @@ pub fn err_max_connections_per_ip_invalid(locale: &str) -> String {
 pub fn err_no_fields_to_update(locale: &str) -> String {
     t(locale, "err-no-fields-to-update")
 }
+
+/// Get translated "news not found" error
+pub fn err_news_not_found(locale: &str, id: i64) -> String {
+    t_args(locale, "err-news-not-found", &[("id", &id.to_string())])
+}
+
+/// Get translated "news body too long" error
+pub fn err_news_body_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-news-body-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "news body invalid characters" error
+pub fn err_news_body_invalid_characters(locale: &str) -> String {
+    t(locale, "err-news-body-invalid-characters")
+}
+
+/// Get translated "news image too large" error
+pub fn err_news_image_too_large(locale: &str) -> String {
+    t(locale, "err-news-image-too-large")
+}
+
+/// Get translated "news image invalid format" error
+pub fn err_news_image_invalid_format(locale: &str) -> String {
+    t(locale, "err-news-image-invalid-format")
+}
+
+/// Get translated "news image unsupported type" error
+pub fn err_news_image_unsupported_type(locale: &str) -> String {
+    t(locale, "err-news-image-unsupported-type")
+}
+
+/// Get translated "news empty content" error (neither body nor image provided)
+pub fn err_news_empty_content(locale: &str) -> String {
+    t(locale, "err-news-empty-content")
+}
+
+/// Get translated "cannot edit admin news" error
+pub fn err_cannot_edit_admin_news(locale: &str) -> String {
+    t(locale, "err-cannot-edit-admin-news")
+}
+
+/// Get translated "cannot delete admin news" error
+pub fn err_cannot_delete_admin_news(locale: &str) -> String {
+    t(locale, "err-cannot-delete-admin-news")
+}

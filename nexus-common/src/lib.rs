@@ -30,6 +30,10 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
+/// - `news_create`: Create news posts
+/// - `news_delete`: Delete any news post (without: only own posts)
+/// - `news_edit`: Edit any news post (without: only own posts)
+/// - `news_list`: View news posts
 /// - `user_broadcast`: Send broadcast messages to all users
 /// - `user_create`: Create new user accounts
 /// - `user_delete`: Delete user accounts
@@ -43,6 +47,10 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
+    "news_create",
+    "news_delete",
+    "news_edit",
+    "news_list",
     "user_broadcast",
     "user_create",
     "user_delete",
@@ -79,8 +87,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (12)
-        assert_eq!(ALL_PERMISSIONS.len(), 12);
+        // Verify we have the expected number of permissions (16)
+        assert_eq!(ALL_PERMISSIONS.len(), 16);
     }
 
     #[test]

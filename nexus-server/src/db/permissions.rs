@@ -31,6 +31,14 @@ pub enum Permission {
     UserKick,
     /// Permission to send messages to users
     UserMessage,
+    /// Permission to view news posts
+    NewsList,
+    /// Permission to create news posts
+    NewsCreate,
+    /// Permission to edit any news post (without: only own posts)
+    NewsEdit,
+    /// Permission to delete any news post (without: only own posts)
+    NewsDelete,
 }
 
 impl Permission {
@@ -63,6 +71,10 @@ impl Permission {
             "user_edit" => Some(Permission::UserEdit),
             "user_kick" => Some(Permission::UserKick),
             "user_message" => Some(Permission::UserMessage),
+            "news_list" => Some(Permission::NewsList),
+            "news_create" => Some(Permission::NewsCreate),
+            "news_edit" => Some(Permission::NewsEdit),
+            "news_delete" => Some(Permission::NewsDelete),
             _ => None,
         }
     }
@@ -150,6 +162,10 @@ mod tests {
         assert_eq!(Permission::UserEdit.as_str(), "user_edit");
         assert_eq!(Permission::UserKick.as_str(), "user_kick");
         assert_eq!(Permission::UserMessage.as_str(), "user_message");
+        assert_eq!(Permission::NewsList.as_str(), "news_list");
+        assert_eq!(Permission::NewsCreate.as_str(), "news_create");
+        assert_eq!(Permission::NewsEdit.as_str(), "news_edit");
+        assert_eq!(Permission::NewsDelete.as_str(), "news_delete");
     }
 
     #[test]
@@ -184,6 +200,16 @@ mod tests {
         assert_eq!(
             Permission::parse("user_message"),
             Some(Permission::UserMessage)
+        );
+        assert_eq!(Permission::parse("news_list"), Some(Permission::NewsList));
+        assert_eq!(
+            Permission::parse("news_create"),
+            Some(Permission::NewsCreate)
+        );
+        assert_eq!(Permission::parse("news_edit"), Some(Permission::NewsEdit));
+        assert_eq!(
+            Permission::parse("news_delete"),
+            Some(Permission::NewsDelete)
         );
     }
 
@@ -257,6 +283,10 @@ mod tests {
             Permission::ChatSend,
             Permission::ChatTopic,
             Permission::ChatTopicEdit,
+            Permission::NewsCreate,
+            Permission::NewsDelete,
+            Permission::NewsEdit,
+            Permission::NewsList,
             Permission::UserBroadcast,
             Permission::UserCreate,
             Permission::UserDelete,

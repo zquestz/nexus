@@ -111,3 +111,14 @@ err-no-fields-to-update = Geen velden om bij te werken
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
 err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
 err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+
+# Nieuwsfouten
+err-news-not-found = Nieuwsbericht #{ $id } niet gevonden
+err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } tekens)
+err-news-body-invalid-characters = Nieuwstekst bevat ongeldige tekens
+err-news-image-too-large = Nieuwsafbeelding is te groot (maximaal 512KB)
+err-news-image-invalid-format = Ongeldig nieuwsafbeeldingsformaat (moet een data-URI met base64-codering zijn)
+err-news-image-unsupported-type = Niet-ondersteund nieuwsafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-news-empty-content = Nieuws moet tekstinhoud of een afbeelding hebben
+err-cannot-edit-admin-news = Alleen beheerders kunnen nieuws bewerken dat door beheerders is geplaatst
+err-cannot-delete-admin-news = Alleen beheerders kunnen nieuws verwijderen dat door beheerders is geplaatst

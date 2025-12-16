@@ -111,3 +111,14 @@ err-no-fields-to-update = Keine Felder zum Aktualisieren
 err-server-image-too-large = Das Serverbild ist zu groß (maximal 512KB)
 err-server-image-invalid-format = Ungültiges Serverbild-Format (muss eine Data-URI mit Base64-Kodierung sein)
 err-server-image-unsupported-type = Nicht unterstützter Serverbild-Typ (nur PNG, WebP, JPEG oder SVG)
+
+# News-Fehler
+err-news-not-found = News-Eintrag #{ $id } nicht gefunden
+err-news-body-too-long = News-Text ist zu lang (maximal { $max_length } Zeichen)
+err-news-body-invalid-characters = News-Text enthält ungültige Zeichen
+err-news-image-too-large = News-Bild ist zu groß (maximal 512KB)
+err-news-image-invalid-format = Ungültiges News-Bild-Format (muss eine Data-URI mit Base64-Kodierung sein)
+err-news-image-unsupported-type = Nicht unterstützter News-Bild-Typ (nur PNG, WebP, JPEG oder SVG)
+err-news-empty-content = News muss entweder Textinhalt oder ein Bild haben
+err-cannot-edit-admin-news = Nur Administratoren können von Administratoren erstellte News bearbeiten
+err-cannot-delete-admin-news = Nur Administratoren können von Administratoren erstellte News löschen

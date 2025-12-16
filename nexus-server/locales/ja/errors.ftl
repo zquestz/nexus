@@ -111,3 +111,14 @@ err-no-fields-to-update = 更新するフィールドがありません
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
 err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
 err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）
+
+# ニュースエラー
+err-news-not-found = ニュース #{ $id } が見つかりません
+err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_length }文字）
+err-news-body-invalid-characters = ニュース本文に無効な文字が含まれています
+err-news-image-too-large = ニュース画像が大きすぎます（最大512KB）
+err-news-image-invalid-format = ニュース画像の形式が無効です（base64エンコードのデータURIである必要があります）
+err-news-image-unsupported-type = サポートされていないニュース画像タイプです（PNG、WebP、JPEG、SVGのみ）
+err-news-empty-content = ニュースにはテキストまたは画像が必要です
+err-cannot-edit-admin-news = 管理者が投稿したニュースを編集できるのは管理者のみです
+err-cannot-delete-admin-news = 管理者が投稿したニュースを削除できるのは管理者のみです

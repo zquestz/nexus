@@ -253,6 +253,12 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::UserMessage { .. } => "UserMessage",
         ClientMessage::UserUpdate { .. } => "UserUpdate",
         ClientMessage::ServerInfoUpdate { .. } => "ServerInfoUpdate",
+        ClientMessage::NewsList => "NewsList",
+        ClientMessage::NewsShow { .. } => "NewsShow",
+        ClientMessage::NewsCreate { .. } => "NewsCreate",
+        ClientMessage::NewsEdit { .. } => "NewsEdit",
+        ClientMessage::NewsUpdate { .. } => "NewsUpdate",
+        ClientMessage::NewsDelete { .. } => "NewsDelete",
     }
 }
 
@@ -283,6 +289,13 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::UserUpdateResponse { .. } => "UserUpdateResponse",
         ServerMessage::ServerInfoUpdated { .. } => "ServerInfoUpdated",
         ServerMessage::ServerInfoUpdateResponse { .. } => "ServerInfoUpdateResponse",
+        ServerMessage::NewsListResponse { .. } => "NewsListResponse",
+        ServerMessage::NewsShowResponse { .. } => "NewsShowResponse",
+        ServerMessage::NewsCreateResponse { .. } => "NewsCreateResponse",
+        ServerMessage::NewsEditResponse { .. } => "NewsEditResponse",
+        ServerMessage::NewsUpdateResponse { .. } => "NewsUpdateResponse",
+        ServerMessage::NewsDeleteResponse { .. } => "NewsDeleteResponse",
+        ServerMessage::NewsUpdated { .. } => "NewsUpdated",
     }
 }
 

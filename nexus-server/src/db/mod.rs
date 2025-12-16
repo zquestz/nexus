@@ -4,6 +4,7 @@ use crate::constants::*;
 
 pub mod chat;
 pub mod config;
+pub mod news;
 pub mod password;
 pub mod permissions;
 pub mod sql;
@@ -14,6 +15,7 @@ pub mod testing;
 
 pub use chat::ChatDb;
 pub use config::ConfigDb;
+pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 pub use users::UserDb;
@@ -27,6 +29,7 @@ pub struct Database {
     pub users: UserDb,
     pub config: ConfigDb,
     pub chat: ChatDb,
+    pub news: NewsDb,
 }
 
 impl Database {
@@ -35,7 +38,8 @@ impl Database {
         Self {
             users: UserDb::new(pool.clone()),
             config: ConfigDb::new(pool.clone()),
-            chat: ChatDb::new(pool),
+            chat: ChatDb::new(pool.clone()),
+            news: NewsDb::new(pool),
         }
     }
 }

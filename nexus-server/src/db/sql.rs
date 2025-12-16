@@ -216,3 +216,86 @@ pub const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
          is_admin = 0
          OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
      )";
+
+// ========================================================================
+// News Query Operations
+// ========================================================================
+
+/// Select all news items ordered by creation time (oldest first)
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(id, body, image, author_id, author_username, author_is_admin, created_at, updated_at)`
+///
+/// **Note:** Joins with users table to get author information.
+/// Results are sorted by created_at ascending (oldest first).
+pub const SQL_SELECT_ALL_NEWS: &str = "
+    SELECT 
+        n.id,
+        n.body,
+        n.image,
+        n.author_id,
+        u.username as author_username,
+        u.is_admin as author_is_admin,
+        n.created_at,
+        n.updated_at
+    FROM news n
+    JOIN users u ON n.author_id = u.id
+    ORDER BY n.created_at ASC";
+
+/// Select a single news item by ID
+///
+/// **Parameters:**
+/// 1. `id: i64` - News item ID
+///
+/// **Returns:** `(id, body, image, author_id, author_username, author_is_admin, created_at, updated_at)`
+///
+/// **Note:** Joins with users table to get author information.
+pub const SQL_SELECT_NEWS_BY_ID: &str = "
+    SELECT 
+        n.id,
+        n.body,
+        n.image,
+        n.author_id,
+        u.username as author_username,
+        u.is_admin as author_is_admin,
+        n.created_at,
+        n.updated_at
+    FROM news n
+    JOIN users u ON n.author_id = u.id
+    WHERE n.id = ?";
+
+/// Insert a new news item
+///
+/// **Parameters:**
+/// 1. `body: Option<&str>` - Markdown body text (nullable)
+/// 2. `image: Option<&str>` - Image data URI (nullable)
+/// 3. `author_id: i64` - Author's user ID
+/// 4. `created_at: &str` - ISO 8601 timestamp
+///
+/// **Returns:** `last_insert_rowid()` - The new news item's ID
+///
+/// **Note:** At least one of body or image must be non-null (enforced by CHECK constraint).
+pub const SQL_INSERT_NEWS: &str = "
+    INSERT INTO news (body, image, author_id, created_at)
+    VALUES (?, ?, ?, ?)";
+
+/// Update a news item
+///
+/// **Parameters:**
+/// 1. `body: Option<&str>` - New markdown body text (nullable)
+/// 2. `image: Option<&str>` - New image data URI (nullable)
+/// 3. `updated_at: &str` - ISO 8601 timestamp
+/// 4. `id: i64` - News item ID
+///
+/// **Note:** At least one of body or image must be non-null (enforced by CHECK constraint).
+pub const SQL_UPDATE_NEWS: &str = "
+    UPDATE news
+    SET body = ?, image = ?, updated_at = ?
+    WHERE id = ?";
+
+/// Delete a news item
+///
+/// **Parameters:**
+/// 1. `id: i64` - News item ID
+pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";

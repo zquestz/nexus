@@ -85,6 +85,9 @@ pub const CONFIG_KEY_SERVER_IMAGE: &str = "server_image";
 /// Feature name for chat functionality
 pub const FEATURE_CHAT: &str = "chat";
 
+/// Feature name for news functionality
+pub const FEATURE_NEWS: &str = "news";
+
 // =============================================================================
 // Chat State Keys
 // =============================================================================

@@ -111,3 +111,14 @@ err-no-fields-to-update = 没有要更新的字段
 err-server-image-too-large = 服务器图片太大（最大512KB）
 err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
 err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）
+
+# 新闻错误
+err-news-not-found = 新闻 #{ $id } 未找到
+err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字符）
+err-news-body-invalid-characters = 新闻内容包含无效字符
+err-news-image-too-large = 新闻图片太大（最大512KB）
+err-news-image-invalid-format = 新闻图片格式无效（必须是base64编码的数据URI）
+err-news-image-unsupported-type = 不支持的新闻图片类型（仅支持PNG、WebP、JPEG或SVG）
+err-news-empty-content = 新闻必须包含文本内容或图片
+err-cannot-edit-admin-news = 只有管理员才能编辑管理员发布的新闻
+err-cannot-delete-admin-news = 只有管理员才能删除管理员发布的新闻

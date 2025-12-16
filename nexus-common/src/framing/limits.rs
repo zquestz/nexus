@@ -32,6 +32,14 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserUpdate", 1318);
     m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
+    // News client messages
+    m.insert("NewsList", 19);
+    m.insert("NewsShow", 32);
+    m.insert("NewsCreate", 704150); // body (4096) + image (700000) + overhead
+    m.insert("NewsEdit", 30);
+    m.insert("NewsUpdate", 704170); // id + body (4096) + image (700000) + overhead
+    m.insert("NewsDelete", 32);
+
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
     m.insert("ChatMessage", 1129);
@@ -57,6 +65,15 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserMessageResponse", 569);
     m.insert("UserUpdated", 176347);
     m.insert("UserUpdateResponse", 614);
+
+    // News server messages
+    m.insert("NewsListResponse", 0); // unlimited (server-trusted, can have many items)
+    m.insert("NewsShowResponse", 704500); // single NewsItem with body + image
+    m.insert("NewsCreateResponse", 704500); // single NewsItem with body + image
+    m.insert("NewsEditResponse", 704500); // single NewsItem with body + image
+    m.insert("NewsUpdateResponse", 704500); // single NewsItem with body + image
+    m.insert("NewsDeleteResponse", 100);
+    m.insert("NewsUpdated", 50); // action enum + id
 
     m
 });
@@ -136,8 +153,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 14;
-        const SERVER_MESSAGE_COUNT: usize = 23;
+        const CLIENT_MESSAGE_COUNT: usize = 20; // Added 6 News client messages
+        const SERVER_MESSAGE_COUNT: usize = 30; // Added 7 News server messages
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;

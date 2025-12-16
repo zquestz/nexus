@@ -11,6 +11,7 @@ use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
     err_topic_contains_newlines, err_topic_invalid_characters, err_topic_too_long,
 };
+use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
 /// Handle ChatTopicUpdate command
@@ -71,9 +72,10 @@ where
             .await;
     }
 
-    // Broadcast ChatTopicUpdated to all users with ChatTopic permission
+    // Broadcast ChatTopicUpdated to all users with chat feature and ChatTopic permission
     ctx.user_manager
-        .broadcast_to_permission(
+        .broadcast_to_feature(
+            FEATURE_CHAT,
             ServerMessage::ChatTopicUpdated {
                 topic,
                 username: user.username.clone(),

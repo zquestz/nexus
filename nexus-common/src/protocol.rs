@@ -96,6 +96,33 @@ pub enum ClientMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         image: Option<String>,
     },
+    /// Request list of all news items (oldest to newest)
+    NewsList,
+    /// Request a single news item by ID
+    NewsShow { id: i64 },
+    /// Create a new news item (requires news_create permission)
+    NewsCreate {
+        /// Markdown body text (optional if image is provided)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+        /// Image as base64-encoded data URI (optional if body is provided)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
+    },
+    /// Request news item details for editing
+    NewsEdit { id: i64 },
+    /// Update a news item
+    NewsUpdate {
+        id: i64,
+        /// Markdown body text (optional if image is provided)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+        /// Image as base64-encoded data URI (optional if body is provided)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
+    },
+    /// Delete a news item
+    NewsDelete { id: i64 },
 }
 
 /// Server response messages
@@ -261,6 +288,56 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         username: Option<String>,
     },
+    /// News list response
+    NewsListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        items: Option<Vec<NewsItem>>,
+    },
+    /// News show response (single item)
+    NewsShowResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    /// News create response
+    NewsCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    /// News edit response (returns current item for editing)
+    NewsEditResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    /// News update response
+    NewsUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    /// News delete response
+    NewsDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+    },
+    /// News updated broadcast (sent to users with news_list permission)
+    NewsUpdated { action: NewsAction, id: i64 },
 }
 
 /// Server information sent to clients on login
@@ -303,6 +380,35 @@ pub struct UserInfo {
     /// User's avatar as a data URI (ephemeral, from most recent login)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+}
+
+/// News action type for NewsUpdated broadcast
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NewsAction {
+    Created,
+    Updated,
+    Deleted,
+}
+
+/// A news item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsItem {
+    pub id: i64,
+    /// Markdown body text (None if image-only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// Image as base64-encoded data URI (None if text-only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// Username of the author
+    pub author: String,
+    /// Whether the author is an admin (for display purposes)
+    pub author_is_admin: bool,
+    /// Creation timestamp (ISO 8601)
+    pub created_at: String,
+    /// Last update timestamp (ISO 8601), None if never edited
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 /// Detailed information about a user (for UserInfo command)
@@ -450,6 +556,48 @@ impl std::fmt::Debug for ClientMessage {
                     s.field("image", &None::<String>);
                 }
                 s.finish()
+            }
+            ClientMessage::NewsList => f.debug_struct("NewsList").finish(),
+            ClientMessage::NewsShow { id } => f.debug_struct("NewsShow").field("id", id).finish(),
+            ClientMessage::NewsCreate { body, image } => {
+                let mut s = f.debug_struct("NewsCreate");
+                s.field("body", body);
+                // Truncate large images in debug output
+                if let Some(img) = image {
+                    if img.len() > 100 {
+                        s.field(
+                            "image",
+                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                        );
+                    } else {
+                        s.field("image", &Some(img));
+                    }
+                } else {
+                    s.field("image", &None::<String>);
+                }
+                s.finish()
+            }
+            ClientMessage::NewsEdit { id } => f.debug_struct("NewsEdit").field("id", id).finish(),
+            ClientMessage::NewsUpdate { id, body, image } => {
+                let mut s = f.debug_struct("NewsUpdate");
+                s.field("id", id).field("body", body);
+                // Truncate large images in debug output
+                if let Some(img) = image {
+                    if img.len() > 100 {
+                        s.field(
+                            "image",
+                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                        );
+                    } else {
+                        s.field("image", &Some(img));
+                    }
+                } else {
+                    s.field("image", &None::<String>);
+                }
+                s.finish()
+            }
+            ClientMessage::NewsDelete { id } => {
+                f.debug_struct("NewsDelete").field("id", id).finish()
             }
         }
     }

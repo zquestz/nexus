@@ -300,6 +300,24 @@ where
             )
             .await?;
         }
+        ClientMessage::NewsList => {
+            handlers::handle_news_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::NewsShow { id } => {
+            handlers::handle_news_show(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::NewsCreate { body, image } => {
+            handlers::handle_news_create(body, image, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::NewsEdit { id } => {
+            handlers::handle_news_edit(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::NewsUpdate { id, body, image } => {
+            handlers::handle_news_update(id, body, image, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::NewsDelete { id } => {
+            handlers::handle_news_delete(id, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

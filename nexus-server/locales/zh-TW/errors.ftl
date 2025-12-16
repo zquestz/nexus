@@ -111,3 +111,14 @@ err-no-fields-to-update = 沒有要更新的欄位
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
 err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）
+
+# 新聞錯誤
+err-news-not-found = 找不到新聞 #{ $id }
+err-news-body-too-long = 新聞內容太長（最多{ $max_length }個字元）
+err-news-body-invalid-characters = 新聞內容包含無效字元
+err-news-image-too-large = 新聞圖片太大（最大512KB）
+err-news-image-invalid-format = 新聞圖片格式無效（必須是base64編碼的資料URI）
+err-news-image-unsupported-type = 不支援的新聞圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-news-empty-content = 新聞必須包含文字內容或圖片
+err-cannot-edit-admin-news = 只有管理員可以編輯管理員發布的新聞
+err-cannot-delete-admin-news = 只有管理員可以刪除管理員發布的新聞

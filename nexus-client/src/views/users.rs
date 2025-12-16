@@ -174,7 +174,8 @@ fn list_view<'a>(
                     // Edit button (icon style like bookmark edit)
                     // Hidden for self (server rejects self-edit anyway)
                     // Hidden for admin users when current user is not admin
-                    let can_edit_this_user = can_edit && !is_self && (conn.is_admin || !user.is_admin);
+                    let can_edit_this_user =
+                        can_edit && !is_self && (conn.is_admin || !user.is_admin);
                     if can_edit_this_user {
                         let edit_btn = tooltip(
                             transparent_edit_button(
@@ -194,7 +195,8 @@ fn list_view<'a>(
                     // Delete button (danger style like disconnect)
                     // Hidden for self (server rejects self-delete anyway)
                     // Hidden for admin users when current user is not admin
-                    let can_delete_this_user = can_delete && !is_self && (conn.is_admin || !user.is_admin);
+                    let can_delete_this_user =
+                        can_delete && !is_self && (conn.is_admin || !user.is_admin);
                     if can_delete_this_user {
                         let delete_btn = tooltip(
                             danger_delete_button(

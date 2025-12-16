@@ -111,3 +111,14 @@ err-server-image-invalid-format = Invalid server image format (must be a data UR
 err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
 err-max-connections-per-ip-invalid = Max connections per IP must be greater than 0
 err-no-fields-to-update = No fields to update
+
+# News Errors
+err-news-not-found = News item #{ $id } not found
+err-news-body-too-long = News body is too long (max { $max_length } characters)
+err-news-body-invalid-characters = News body contains invalid characters
+err-news-image-too-large = News image is too large (max 512KB)
+err-news-image-invalid-format = Invalid news image format (must be a data URI with base64 encoding)
+err-news-image-unsupported-type = Unsupported news image type (PNG, WebP, JPEG, or SVG only)
+err-news-empty-content = News must have either text content or an image
+err-cannot-edit-admin-news = Only admins can edit news posted by admins
+err-cannot-delete-admin-news = Only admins can delete news posted by admins

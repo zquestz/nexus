@@ -111,3 +111,14 @@ err-no-fields-to-update = Нет полей для обновления
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
 err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)
 err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)
+
+# Ошибки новостей
+err-news-not-found = Новость #{ $id } не найдена
+err-news-body-too-long = Текст новости слишком длинный (максимум { $max_length } символов)
+err-news-body-invalid-characters = Текст новости содержит недопустимые символы
+err-news-image-too-large = Изображение новости слишком большое (максимум 512КБ)
+err-news-image-invalid-format = Недопустимый формат изображения новости (должен быть data URI с кодировкой base64)
+err-news-image-unsupported-type = Неподдерживаемый тип изображения новости (только PNG, WebP, JPEG или SVG)
+err-news-empty-content = Новость должна содержать текст или изображение
+err-cannot-edit-admin-news = Только администраторы могут редактировать новости, опубликованные администраторами
+err-cannot-delete-admin-news = Только администраторы могут удалять новости, опубликованные администраторами

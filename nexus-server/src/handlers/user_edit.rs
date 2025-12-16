@@ -449,7 +449,10 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::UserEditResponse { success, error, .. } => {
-                assert!(!success, "Non-admin should not be able to fetch admin details");
+                assert!(
+                    !success,
+                    "Non-admin should not be able to fetch admin details"
+                );
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(

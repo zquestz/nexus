@@ -112,3 +112,14 @@ err-no-fields-to-update = No hay campos para actualizar
 err-server-image-too-large = La imagen del servidor es demasiado grande (máx. 512KB)
 err-server-image-invalid-format = Formato de imagen del servidor inválido (debe ser una URI de datos con codificación base64)
 err-server-image-unsupported-type = Tipo de imagen del servidor no compatible (solo PNG, WebP, JPEG o SVG)
+
+# Errores de noticias
+err-news-not-found = Noticia #{ $id } no encontrada
+err-news-body-too-long = El contenido de la noticia es demasiado largo (máx. { $max_length } caracteres)
+err-news-body-invalid-characters = El contenido de la noticia contiene caracteres inválidos
+err-news-image-too-large = La imagen de la noticia es demasiado grande (máx. 512KB)
+err-news-image-invalid-format = Formato de imagen de noticia inválido (debe ser una URI de datos con codificación base64)
+err-news-image-unsupported-type = Tipo de imagen de noticia no compatible (solo PNG, WebP, JPEG o SVG)
+err-news-empty-content = La noticia debe tener contenido de texto o una imagen
+err-cannot-edit-admin-news = Solo los administradores pueden editar noticias publicadas por administradores
+err-cannot-delete-admin-news = Solo los administradores pueden eliminar noticias publicadas por administradores
