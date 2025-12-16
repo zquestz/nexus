@@ -183,7 +183,7 @@ pub fn alternating_row_style(is_even: bool) -> impl Fn(&Theme) -> container::Sty
 pub fn modal_overlay_style(theme: &Theme) -> container::Style {
     let bg = theme.palette().background;
     container::Style {
-        background: Some(Background::Color(Color::from_rgba(bg.r, bg.g, bg.b, 0.8))),
+        background: Some(Background::Color(Color::from_rgba(bg.r, bg.g, bg.b, 0.9))),
         ..Default::default()
     }
 }
