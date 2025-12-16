@@ -35,6 +35,8 @@ err-current-password-incorrect = A palavra-passe actual está incorrecta
 err-cannot-create-admin = Apenas administradores podem criar utilizadores administradores
 err-cannot-kick-self = Não pode expulsar-se a si mesmo
 err-cannot-kick-admin = Não é possível expulsar utilizadores administradores
+err-cannot-delete-admin = Apenas administradores podem eliminar utilizadores administradores
+err-cannot-edit-admin = Apenas administradores podem editar utilizadores administradores
 err-cannot-message-self = Não pode enviar mensagens a si mesmo
 err-cannot-disable-last-admin = Não é possível desativar o último administrador
 

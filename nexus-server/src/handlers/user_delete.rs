@@ -10,9 +10,10 @@ use nexus_common::validators::{self, UsernameError};
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_last_admin,
-    err_cannot_delete_self, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found, err_username_empty, err_username_invalid, err_username_too_long,
+    HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_admin,
+    err_cannot_delete_last_admin, err_cannot_delete_self, err_database, err_not_logged_in,
+    err_permission_denied, err_user_not_found, err_username_empty, err_username_invalid,
+    err_username_too_long,
 };
 use crate::db::Permission;
 
@@ -102,6 +103,20 @@ where
                 .await;
         }
     };
+
+    // Prevent non-admins from deleting admin users
+    if target_user.is_admin && !requesting_user_session.is_admin {
+        eprintln!(
+            "UserDelete from {} (user: {}) trying to delete admin user",
+            ctx.peer_addr, requesting_user_session.username
+        );
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(err_cannot_delete_admin(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Handle online user disconnection (all sessions)
     let online_users = ctx
@@ -331,15 +346,102 @@ mod tests {
     async fn test_userdelete_cannot_delete_last_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create one admin user
-        let password = "password";
-        let hashed = db::hash_password(password).unwrap();
-        let _admin = test_ctx
+        // Create two admins - admin1 will try to delete admin2
+        let admin1_id = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
+        let _admin2_id = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
+
+        // Admin1 deletes admin2 (should succeed, admin1 still exists)
+        let result = handle_user_delete(
+            "admin2".to_string(),
+            Some(admin1_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Admin should be able to delete other admin");
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Should successfully delete admin2");
+                assert!(error.is_none());
+                assert_eq!(username, Some("admin2".to_string()));
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        // Create a new test context for the last admin test
+        let mut test_ctx2 = create_test_context().await;
+
+        // Create single admin (the only admin)
+        let _only_admin_id = login_user(&mut test_ctx2, "only_admin", "password", &[], true).await;
+
+        // Create a target non-admin user
+        test_ctx2
             .db
             .users
-            .create_user("only_admin", &hashed, true, true, &db::Permissions::new())
+            .create_user("target", "hash", false, true, &db::Permissions::new())
             .await
             .unwrap();
+
+        // First verify admin can delete non-admin (to confirm permissions work)
+        // But we want to test the last admin protection, so we need another admin to try to delete the only admin
+
+        // Create another admin to attempt deletion
+        let _admin2_id = login_user(&mut test_ctx2, "admin2", "password", &[], true).await;
+
+        // Admin2 tries to delete only_admin (should fail - last admin protection)
+        // But wait, now there are two admins... Let's restructure this test
+
+        // Actually, the last admin protection is in the database layer.
+        // Let's test it properly: have the only admin try to delete themselves
+        // But self-delete is blocked earlier. So we need admin2 to delete admin1,
+        // then admin1 (now the only admin) tries to get deleted by someone.
+
+        // Simpler approach: just verify the database protection directly
+        // The delete_user function returns false if it would delete the last admin
+        let only_admin = test_ctx2
+            .db
+            .users
+            .get_user_by_username("only_admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Delete admin2 first so only_admin becomes the last admin
+        let admin2 = test_ctx2
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
+        let deleted = test_ctx2.db.users.delete_user(admin2.id).await.unwrap();
+        assert!(deleted, "Should delete admin2");
+
+        // Now try to delete the last admin via the database directly
+        let deleted = test_ctx2.db.users.delete_user(only_admin.id).await.unwrap();
+        assert!(!deleted, "Should not be able to delete the last admin");
+
+        // Verify only_admin still exists
+        let remaining = test_ctx2
+            .db
+            .users
+            .get_user_by_username("only_admin")
+            .await
+            .unwrap();
+        assert!(remaining.is_some(), "Last admin should still exist");
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_non_admin_cannot_delete_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create non-admin user with UserDelete permission
         let deleter_id = login_user(
@@ -351,45 +453,38 @@ mod tests {
         )
         .await;
 
-        // Try to delete the only admin
+        // Non-admin tries to delete admin (should fail)
         let result = handle_user_delete(
-            "only_admin".to_string(),
+            "admin".to_string(),
             Some(deleter_id),
             &mut test_ctx.handler_context(),
         )
         .await;
 
-        // Should send error response (not disconnect)
-        assert!(
-            result.is_ok(),
-            "Should send error response when trying to delete last admin"
-        );
+        assert!(result.is_ok(), "Should send error response, not disconnect");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
-                assert!(!success, "Response should indicate failure");
+                assert!(!success, "Non-admin should not be able to delete admin");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(
-                    error_msg.contains("Cannot delete"),
-                    "Error should mention cannot delete"
+                    error_msg.contains("admin"),
+                    "Error should mention admin restriction"
                 );
             }
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Verify only admin still exists in database
-        let remaining_admin = test_ctx
+        // Verify admin still exists
+        let admin = test_ctx
             .db
             .users
-            .get_user_by_username("only_admin")
+            .get_user_by_username("admin")
             .await
             .unwrap();
-        assert!(remaining_admin.is_some(), "Cannot delete the last admin");
+        assert!(admin.is_some(), "Admin should still exist");
     }
 
     #[tokio::test]

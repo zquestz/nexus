@@ -103,6 +103,16 @@ pub fn err_cannot_kick_admin(locale: &str) -> String {
     t(locale, "err-cannot-kick-admin")
 }
 
+/// Get translated "cannot delete admin" error
+pub fn err_cannot_delete_admin(locale: &str) -> String {
+    t(locale, "err-cannot-delete-admin")
+}
+
+/// Get translated "cannot edit admin" error
+pub fn err_cannot_edit_admin(locale: &str) -> String {
+    t(locale, "err-cannot-edit-admin")
+}
+
 /// Get translated "cannot kick self" error
 pub fn err_cannot_kick_self(locale: &str) -> String {
     t(locale, "err-cannot-kick-self")

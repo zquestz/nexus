@@ -11,10 +11,10 @@ use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameEr
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_disabled_by_admin, err_authentication,
-    err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_self,
-    err_current_password_incorrect, err_current_password_required, err_database, err_not_logged_in,
-    err_password_empty, err_password_too_long, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_admin,
+    err_cannot_edit_self, err_current_password_incorrect, err_current_password_required,
+    err_database, err_not_logged_in, err_password_empty, err_password_too_long,
+    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_update_failed, err_user_not_found, err_username_empty,
     err_username_exists, err_username_invalid, err_username_too_long,
@@ -156,6 +156,40 @@ where
             return ctx
                 .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
                 .await;
+        }
+
+        // Prevent non-admins from editing admin users
+        // Look up target user to check their admin status
+        if !requesting_user.is_admin {
+            match ctx.db.users.get_user_by_username(&request.username).await {
+                Ok(Some(target_user)) if target_user.is_admin => {
+                    eprintln!(
+                        "UserUpdate from {} (user: {}) trying to edit admin user",
+                        ctx.peer_addr, requesting_user.username
+                    );
+                    let response = ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_cannot_edit_admin(ctx.locale)),
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
+                }
+                Ok(Some(_)) => {} // Target is not admin, proceed
+                Ok(None) => {
+                    let response = ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_user_not_found(ctx.locale, &request.username)),
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
+                }
+                Err(e) => {
+                    eprintln!("Database error getting target user: {}", e);
+                    return ctx
+                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                        .await;
+                }
+            }
         }
     }
 
@@ -1515,7 +1549,116 @@ mod tests {
     async fn test_userupdate_cannot_disable_last_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as the only admin
+        // Create two admins
+        let admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
+        let _admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
+
+        // Admin1 disables admin2 (should succeed, admin1 still exists)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "admin2".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false),
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success, "Should successfully disable admin2");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Now admin1 is the only admin. Create another admin to try to disable admin1.
+        let _admin3_session = login_user(&mut test_ctx, "admin3", "password", &[], true).await;
+
+        // Admin3 tries to disable admin1 (should fail - last admin protection)
+        // But wait, admin3 is also an admin now, so there are two admins again.
+        // The test needs to be that admin3 tries to disable themselves when they're the last.
+        // Actually, let's test the database layer directly for last admin protection.
+
+        // Re-enable admin2 first
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "admin2".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(true),
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        let _ = read_server_message(&mut test_ctx.client).await;
+
+        // Demote admin2 and admin3 so admin1 is the only admin
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "admin2".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false),
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        let _ = read_server_message(&mut test_ctx.client).await;
+
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "admin3".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false),
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin1_session),
+        };
+        let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        let _ = read_server_message(&mut test_ctx.client).await;
+
+        // Now admin1 is the only admin. Admin1 tries to disable themselves (should fail - self-edit)
+        // But self-edit is blocked. So we test the database protection directly.
+        let admin1 = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin1")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Try to disable the last admin via database
+        let result = test_ctx
+            .db
+            .users
+            .update_user(&admin1.username, None, None, None, Some(false), None)
+            .await
+            .unwrap();
+        assert!(!result, "Should not be able to disable the last admin");
+
+        // Verify admin1 is still enabled
+        let admin1_after = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(admin1_after.enabled, "Last admin should still be enabled");
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_edit_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a non-admin user with user_edit permission
@@ -1546,14 +1689,14 @@ mod tests {
             })
             .await;
 
-        // Editor tries to disable admin (the last admin) - should fail
+        // Non-admin editor tries to edit admin - should fail
         let request = UserUpdateRequest {
             current_password: None,
             username: "admin".to_string(),
             requested_username: None,
-            requested_password: None,
+            requested_password: Some("newpassword".to_string()),
             requested_is_admin: None,
-            requested_enabled: Some(false), // Try to disable last admin
+            requested_enabled: None,
             requested_permissions: None,
             session_id: Some(editor_session),
         };
@@ -1563,10 +1706,12 @@ mod tests {
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
-                assert!(!success, "Should not allow disabling last admin");
-                assert_eq!(
-                    error,
-                    Some(err_cannot_disable_last_admin(DEFAULT_TEST_LOCALE))
+                assert!(!success, "Non-admin should not be able to edit admin");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("admin"),
+                    "Error should mention admin restriction"
                 );
             }
             _ => panic!("Expected UserUpdateResponse"),

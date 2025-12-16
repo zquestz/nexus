@@ -35,6 +35,8 @@ err-current-password-incorrect = Current password is incorrect
 err-cannot-create-admin = Only admins can create admin users
 err-cannot-kick-self = You cannot kick yourself
 err-cannot-kick-admin = Cannot kick admin users
+err-cannot-delete-admin = Only admins can delete admin users
+err-cannot-edit-admin = Only admins can edit admin users
 err-cannot-message-self = You cannot message yourself
 err-cannot-disable-last-admin = Cannot disable the last admin
 

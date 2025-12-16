@@ -35,6 +35,8 @@ err-current-password-incorrect = 当前密码不正确
 err-cannot-create-admin = 只有管理员才能创建管理员用户
 err-cannot-kick-self = 您无法踢出自己
 err-cannot-kick-admin = 无法踢出管理员用户
+err-cannot-delete-admin = 只有管理员才能删除管理员用户
+err-cannot-edit-admin = 只有管理员才能编辑管理员用户
 err-cannot-message-self = 您无法给自己发消息
 err-cannot-disable-last-admin = 无法禁用最后一个管理员
 

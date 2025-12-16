@@ -10,9 +10,9 @@ use nexus_common::validators::{self, UsernameError};
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_cannot_edit_self, err_database, err_not_logged_in,
-    err_permission_denied, err_user_not_found, err_username_empty, err_username_invalid,
-    err_username_too_long,
+    HandlerContext, err_authentication, err_cannot_edit_admin, err_cannot_edit_self, err_database,
+    err_not_logged_in, err_permission_denied, err_user_not_found, err_username_empty,
+    err_username_invalid, err_username_too_long,
 };
 use crate::db::Permission;
 
@@ -118,6 +118,23 @@ where
                 .await;
         }
     };
+
+    // Prevent non-admins from viewing admin user details for editing
+    if target_user.is_admin && !requesting_user.is_admin {
+        eprintln!(
+            "UserEdit from {} (user: {}) trying to edit admin user",
+            ctx.peer_addr, requesting_user.username
+        );
+        let response = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some(err_cannot_edit_admin(ctx.locale)),
+            username: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Fetch user permissions for response
     let user_permissions = match ctx.db.users.get_user_permissions(target_user.id).await {
@@ -398,6 +415,47 @@ mod tests {
             ServerMessage::UserEditResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error, Some(err_cannot_edit_self(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected UserEditResponse with error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_useredit_non_admin_cannot_edit_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Login as non-admin user with UserEdit permission
+        let session_id = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit],
+            false,
+        )
+        .await;
+
+        // Non-admin tries to fetch admin details for editing - should fail
+        let result = handle_user_edit(
+            "admin".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response, not disconnect");
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserEditResponse { success, error, .. } => {
+                assert!(!success, "Non-admin should not be able to fetch admin details");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("admin"),
+                    "Error should mention admin restriction"
+                );
             }
             _ => panic!("Expected UserEditResponse with error"),
         }
