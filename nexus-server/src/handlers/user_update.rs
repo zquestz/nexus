@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_userupdate_cannot_edit_self() {
+    async fn test_userupdate_cannot_edit_self_username() {
         let mut test_ctx = create_test_context().await;
 
         // Login as admin
@@ -696,6 +696,99 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_edit_self_admin_status() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to change own admin status (even with current_password, this should be rejected)
+        let request = UserUpdateRequest {
+            current_password: Some("password".to_string()),
+            username: "admin".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false), // Trying to demote self
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_edit_self_enabled_status() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to change own enabled status
+        let request = UserUpdateRequest {
+            current_password: Some("password".to_string()),
+            username: "admin".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false), // Trying to disable self
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_edit_self_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as regular user (non-admin)
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // Try to change own permissions
+        let request = UserUpdateRequest {
+            current_password: Some("password".to_string()),
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["user_edit".to_string()]), // Trying to give self more permissions
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
