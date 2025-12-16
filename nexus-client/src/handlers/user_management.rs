@@ -3,8 +3,8 @@
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, InputId, Message, PendingRequests, ResponseRouting,
-    UserManagementMode,
+    ActivePanel, ChatMessage, ChatTab, InputId, Message, PasswordChangeState, PendingRequests,
+    ResponseRouting, UserManagementMode,
 };
 use crate::views::constants::PERMISSION_USER_INFO;
 use iced::Task;
@@ -537,6 +537,7 @@ impl NexusApp {
 
         let msg = ClientMessage::UserUpdate {
             username: original_username,
+            current_password: None,
             requested_username,
             requested_password,
             requested_is_admin,
@@ -644,8 +645,9 @@ impl NexusApp {
                 return Task::none();
             }
 
-            // Clear previous data and open the panel (shows loading state)
+            // Clear previous data and password change state, then open the panel (shows loading state)
             conn.user_info_data = None;
+            conn.password_change_state = None;
             conn.active_panel = ActivePanel::UserInfo;
 
             // Send UserInfo request to server and track it
@@ -663,5 +665,339 @@ impl NexusApp {
             }
         }
         Task::none()
+    }
+
+    // ==================== Password Change ====================
+
+    /// Enter password change mode - opens as its own panel
+    pub fn handle_change_password_pressed(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Initialize password change state and switch to the panel
+        conn.password_change_state = Some(PasswordChangeState::new());
+        conn.active_panel = ActivePanel::ChangePassword;
+
+        // Focus the current password field and track it
+        self.focused_field = InputId::ChangePasswordCurrent;
+        operation::focus(Id::from(InputId::ChangePasswordCurrent))
+    }
+
+    /// Handle current password field change
+    pub fn handle_change_password_current_changed(&mut self, value: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        if let Some(state) = &mut conn.password_change_state {
+            state.current_password = value;
+        }
+
+        // Track focused field for Tab navigation
+        self.focused_field = InputId::ChangePasswordCurrent;
+        Task::none()
+    }
+
+    /// Handle new password field change
+    pub fn handle_change_password_new_changed(&mut self, value: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        if let Some(state) = &mut conn.password_change_state {
+            state.new_password = value;
+        }
+
+        // Track focused field for Tab navigation
+        self.focused_field = InputId::ChangePasswordNew;
+        Task::none()
+    }
+
+    /// Handle confirm password field change
+    pub fn handle_change_password_confirm_changed(&mut self, value: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        if let Some(state) = &mut conn.password_change_state {
+            state.confirm_password = value;
+        }
+
+        // Track focused field for Tab navigation
+        self.focused_field = InputId::ChangePasswordConfirm;
+        Task::none()
+    }
+
+    /// Handle Tab pressed in password change form
+    ///
+    /// Checks which field is actually focused using async operations,
+    /// then moves to the next field in sequence.
+    pub fn handle_change_password_tab_pressed(&mut self) -> Task<Message> {
+        // Check focus state of all three password fields in parallel
+        let check_current = operation::is_focused(Id::from(InputId::ChangePasswordCurrent));
+        let check_new = operation::is_focused(Id::from(InputId::ChangePasswordNew));
+        let check_confirm = operation::is_focused(Id::from(InputId::ChangePasswordConfirm));
+
+        // Batch the checks and combine results
+        Task::batch([
+            check_current.map(|focused| (0, focused)),
+            check_new.map(|focused| (1, focused)),
+            check_confirm.map(|focused| (2, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let current_focused = results.iter().any(|(i, f)| *i == 0 && *f);
+            let new_focused = results.iter().any(|(i, f)| *i == 1 && *f);
+            let confirm_focused = results.iter().any(|(i, f)| *i == 2 && *f);
+            Message::ChangePasswordFocusResult(current_focused, new_focused, confirm_focused)
+        })
+    }
+
+    /// Handle focus check result for password change Tab navigation
+    pub fn handle_change_password_focus_result(
+        &mut self,
+        current_focused: bool,
+        new_focused: bool,
+        confirm_focused: bool,
+    ) -> Task<Message> {
+        // Determine next field based on which is currently focused
+        let next_field = if current_focused {
+            InputId::ChangePasswordNew
+        } else if new_focused {
+            InputId::ChangePasswordConfirm
+        } else if confirm_focused {
+            // Wrap around to first field
+            InputId::ChangePasswordCurrent
+        } else {
+            // None focused, start at first field
+            InputId::ChangePasswordCurrent
+        };
+
+        self.focused_field = next_field;
+        operation::focus(Id::from(next_field))
+    }
+
+    /// Cancel password change and return to chat
+    pub fn handle_change_password_cancel_pressed(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Clear password change state and return to chat
+        conn.password_change_state = None;
+        conn.active_panel = ActivePanel::None;
+
+        Task::none()
+    }
+
+    /// Submit password change form
+    pub fn handle_change_password_save_pressed(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get form values
+        let (current_password, new_password, confirm_password) =
+            if let Some(state) = &conn.password_change_state {
+                (
+                    state.current_password.clone(),
+                    state.new_password.clone(),
+                    state.confirm_password.clone(),
+                )
+            } else {
+                return Task::none();
+            };
+
+        // Validate: current password required
+        if current_password.is_empty() {
+            if let Some(state) = &mut conn.password_change_state {
+                state.error = Some(t("err-current-password-required"));
+            }
+            self.focused_field = InputId::ChangePasswordCurrent;
+            return operation::focus(Id::from(InputId::ChangePasswordCurrent));
+        }
+
+        // Validate: new password required
+        if new_password.is_empty() {
+            if let Some(state) = &mut conn.password_change_state {
+                state.error = Some(t("err-new-password-required"));
+            }
+            self.focused_field = InputId::ChangePasswordNew;
+            return operation::focus(Id::from(InputId::ChangePasswordNew));
+        }
+
+        // Validate: confirm password required
+        if confirm_password.is_empty() {
+            if let Some(state) = &mut conn.password_change_state {
+                state.error = Some(t("err-confirm-password-required"));
+            }
+            self.focused_field = InputId::ChangePasswordConfirm;
+            return operation::focus(Id::from(InputId::ChangePasswordConfirm));
+        }
+
+        // Validate: passwords must match
+        if new_password != confirm_password {
+            if let Some(state) = &mut conn.password_change_state {
+                state.error = Some(t("err-passwords-do-not-match"));
+            }
+            self.focused_field = InputId::ChangePasswordNew;
+            return operation::focus(Id::from(InputId::ChangePasswordNew));
+        }
+
+        // Validate: new password format
+        if let Err(e) = validators::validate_password(&new_password) {
+            if let Some(state) = &mut conn.password_change_state {
+                state.error = Some(match e {
+                    PasswordError::Empty => t("err-new-password-required"),
+                    PasswordError::TooLong => t_args(
+                        "err-password-too-long",
+                        &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                });
+            }
+            self.focused_field = InputId::ChangePasswordNew;
+            return operation::focus(Id::from(InputId::ChangePasswordNew));
+        }
+
+        // Get username for the request
+        let username = conn.username.clone();
+
+        // Send UserUpdate with current_password for self-edit
+        let msg = ClientMessage::UserUpdate {
+            username,
+            current_password: Some(current_password),
+            requested_username: None,
+            requested_password: Some(new_password),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+        };
+
+        // Clear any previous error
+        if let Some(state) = &mut conn.password_change_state {
+            state.error = None;
+        }
+
+        // Send message and track for response routing
+        match conn.send(msg) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::PasswordChangeResult);
+            }
+            Err(e) => {
+                if let Some(state) = &mut conn.password_change_state {
+                    state.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                }
+            }
+        }
+
+        Task::none()
+    }
+
+    // ==================== User Management Tab Navigation ====================
+
+    /// Handle Tab pressed in user management create form
+    ///
+    /// Checks which field is actually focused using async operations,
+    /// then moves to the next field in sequence.
+    pub fn handle_user_management_create_tab_pressed(&mut self) -> Task<Message> {
+        // Check focus state of both create form fields in parallel
+        let check_username = operation::is_focused(Id::from(InputId::AdminUsername));
+        let check_password = operation::is_focused(Id::from(InputId::AdminPassword));
+
+        // Batch the checks and combine results
+        Task::batch([
+            check_username.map(|focused| (0, focused)),
+            check_password.map(|focused| (1, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let username_focused = results.iter().any(|(i, f)| *i == 0 && *f);
+            let password_focused = results.iter().any(|(i, f)| *i == 1 && *f);
+            Message::UserManagementCreateFocusResult(username_focused, password_focused)
+        })
+    }
+
+    /// Handle focus check result for user management create Tab navigation
+    pub fn handle_user_management_create_focus_result(
+        &mut self,
+        username_focused: bool,
+        password_focused: bool,
+    ) -> Task<Message> {
+        // Determine next field based on which is currently focused
+        let next_field = if username_focused {
+            InputId::AdminPassword
+        } else if password_focused {
+            // Wrap around to first field
+            InputId::AdminUsername
+        } else {
+            // None focused, start at first field
+            InputId::AdminUsername
+        };
+
+        self.focused_field = next_field;
+        operation::focus(Id::from(next_field))
+    }
+
+    /// Handle Tab pressed in user management edit form
+    ///
+    /// Checks which field is actually focused using async operations,
+    /// then moves to the next field in sequence.
+    pub fn handle_user_management_edit_tab_pressed(&mut self) -> Task<Message> {
+        // Check focus state of both edit form fields in parallel
+        let check_username = operation::is_focused(Id::from(InputId::EditNewUsername));
+        let check_password = operation::is_focused(Id::from(InputId::EditNewPassword));
+
+        // Batch the checks and combine results
+        Task::batch([
+            check_username.map(|focused| (0, focused)),
+            check_password.map(|focused| (1, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let username_focused = results.iter().any(|(i, f)| *i == 0 && *f);
+            let password_focused = results.iter().any(|(i, f)| *i == 1 && *f);
+            Message::UserManagementEditFocusResult(username_focused, password_focused)
+        })
+    }
+
+    /// Handle focus check result for user management edit Tab navigation
+    pub fn handle_user_management_edit_focus_result(
+        &mut self,
+        username_focused: bool,
+        password_focused: bool,
+    ) -> Task<Message> {
+        // Determine next field based on which is currently focused
+        let next_field = if username_focused {
+            InputId::EditNewPassword
+        } else if password_focused {
+            // Wrap around to first field
+            InputId::EditNewUsername
+        } else {
+            // None focused, start at first field
+            InputId::EditNewUsername
+        };
+
+        self.focused_field = next_field;
+        operation::focus(Id::from(next_field))
     }
 }

@@ -17,6 +17,9 @@ button-accept-new-certificate = Nieuw Certificaat Accepteren
 button-close = Sluiten
 button-choose-avatar = Avatar Kiezen
 button-clear-avatar = Wissen
+button-choose-image = Afbeelding Kiezen
+button-clear-image = Wissen
+button-change-password = Wachtwoord Wijzigen
 
 # =============================================================================
 # Titles
@@ -41,6 +44,7 @@ title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
 title-server-info = Server Info
 title-user-info = Gebruiker Info
 title-about = Over
+title-change-password = Wachtwoord Wijzigen
 
 # =============================================================================
 # Placeholders
@@ -54,6 +58,9 @@ placeholder-server-name = Servernaam
 placeholder-username-optional = Gebruikersnaam (optioneel)
 placeholder-password-optional = Wachtwoord (optioneel)
 placeholder-password-keep-current = Wachtwoord
+placeholder-current-password = Huidig Wachtwoord
+placeholder-new-password = Nieuw Wachtwoord
+placeholder-confirm-password = Bevestig Wachtwoord
 placeholder-message = Typ een bericht...
 placeholder-no-permission = Geen toestemming
 placeholder-broadcast-message = Voer broadcastbericht in...
@@ -173,6 +180,7 @@ msg-user-deleted = Gebruiker succesvol verwijderd
 msg-user-updated = Gebruiker succesvol bijgewerkt
 msg-permissions-updated = Je machtigingen zijn bijgewerkt
 msg-topic-updated = Onderwerp succesvol bijgewerkt
+msg-password-changed = Wachtwoord succesvol gewijzigd
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -228,6 +236,10 @@ err-username-empty = Gebruikersnaam mag niet leeg zijn
 err-username-too-long = Gebruikersnaam is te lang (max { $max } tekens)
 err-username-invalid = Gebruikersnaam bevat ongeldige tekens
 err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
+err-passwords-do-not-match = Wachtwoorden komen niet overeen
+err-current-password-required = Huidig wachtwoord is vereist
+err-new-password-required = Nieuw wachtwoord is vereist
+err-confirm-password-required = Bevestig uw nieuwe wachtwoord
 err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
 err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP, JPEG of SVG.
 err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.

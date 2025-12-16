@@ -70,6 +70,9 @@ pub enum ClientMessage {
     /// Update a user account
     UserUpdate {
         username: String,
+        /// Current password (required when user is changing their own password)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_password: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         requested_username: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -400,6 +403,7 @@ impl std::fmt::Debug for ClientMessage {
                 .finish(),
             ClientMessage::UserUpdate {
                 username,
+                current_password: _,
                 requested_username,
                 requested_password: _,
                 requested_is_admin,

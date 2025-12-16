@@ -46,6 +46,42 @@ pub enum Message {
 
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
     CancelFingerprintMismatch,
+    /// Password change: Cancel button pressed (return to user info view)
+    ChangePasswordCancelPressed,
+    /// Password change: Confirm password field changed
+    ChangePasswordConfirmChanged(String),
+    /// Password change: Current password field changed
+    ChangePasswordCurrentChanged(String),
+    /// Password change: New password field changed
+    ChangePasswordNewChanged(String),
+    /// Password change: Change Password button pressed (enter password change mode)
+    ChangePasswordPressed,
+    /// Password change: Save button pressed (submit form)
+    ChangePasswordSavePressed,
+    /// Password change: Tab pressed, check focus and move to next field
+    ChangePasswordTabPressed,
+    /// Password change: Focus check result for Tab navigation (current, new, confirm)
+    ChangePasswordFocusResult(bool, bool, bool),
+    /// Bookmark edit: Tab pressed, check focus and move to next field
+    BookmarkEditTabPressed,
+    /// Bookmark edit: Focus check result for Tab navigation (name, address, port, username, password)
+    BookmarkEditFocusResult(bool, bool, bool, bool, bool),
+    /// Connection form: Tab pressed, check focus and move to next field
+    ConnectionFormTabPressed,
+    /// Connection form: Focus check result for Tab navigation (name, address, port, username, password)
+    ConnectionFormFocusResult(bool, bool, bool, bool, bool),
+    /// User management create: Tab pressed, check focus and move to next field
+    UserManagementCreateTabPressed,
+    /// User management create: Focus check result for Tab navigation (username, password)
+    UserManagementCreateFocusResult(bool, bool),
+    /// User management edit: Tab pressed, check focus and move to next field
+    UserManagementEditTabPressed,
+    /// User management edit: Focus check result for Tab navigation (username, password)
+    UserManagementEditFocusResult(bool, bool),
+    /// Server info edit: Tab pressed, check focus and move to next field
+    ServerInfoEditTabPressed,
+    /// Server info edit: Focus check result for Tab navigation (name, description)
+    ServerInfoEditFocusResult(bool, bool),
     /// Chat: Message input field changed
     ChatInputChanged(String),
     /// Chat scrollable: scroll position changed

@@ -265,6 +265,7 @@ where
         }
         ClientMessage::UserUpdate {
             username,
+            current_password,
             requested_username,
             requested_password,
             requested_is_admin,
@@ -273,6 +274,7 @@ where
         } => {
             let request = handlers::UserUpdateRequest {
                 username,
+                current_password,
                 requested_username,
                 requested_password,
                 requested_is_admin,

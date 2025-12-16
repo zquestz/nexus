@@ -88,6 +88,16 @@ pub fn err_cannot_edit_self(locale: &str) -> String {
     t(locale, "err-cannot-edit-self")
 }
 
+/// Get translated "current password incorrect" error
+pub fn err_current_password_incorrect(locale: &str) -> String {
+    t(locale, "err-current-password-incorrect")
+}
+
+/// Get translated "current password required" error
+pub fn err_current_password_required(locale: &str) -> String {
+    t(locale, "err-current-password-required")
+}
+
 /// Get translated "cannot kick admin" error
 pub fn err_cannot_kick_admin(locale: &str) -> String {
     t(locale, "err-cannot-kick-admin")

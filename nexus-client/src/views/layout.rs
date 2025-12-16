@@ -5,7 +5,7 @@ use super::constants::{
     PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::server_info::{ServerInfoData, server_info_view};
-use super::user_info::user_info_view;
+use super::user_info::{password_change_view, user_info_view};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -544,8 +544,15 @@ fn server_content_view<'a>(
                 conn.is_admin,
                 &conn.permissions,
                 &conn.username,
-                &conn.avatar_cache
+                &conn.avatar_cache,
             )
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
+        ActivePanel::ChangePassword => stack![
+            chat,
+            password_change_view(conn.password_change_state.as_ref())
         ]
         .width(Fill)
         .height(Fill)

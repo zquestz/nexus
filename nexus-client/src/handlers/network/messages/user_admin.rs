@@ -4,8 +4,10 @@ use nexus_common::framing::MessageId;
 
 use crate::NexusApp;
 use crate::i18n::t;
+use crate::types::InputId;
 use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting};
 use iced::Task;
+use iced::widget::{Id, operation};
 
 /// Data from a UserEditResponse message
 pub struct UserEditResponseData {
@@ -157,6 +159,8 @@ impl NexusApp {
     ///
     /// If tracked via ResponseRouting::UserManagementUpdateResult, returns to list view
     /// and refreshes the user list on success.
+    /// If tracked via ResponseRouting::PasswordChangeResult, closes the password change form
+    /// on success, or shows error in the form on failure.
     pub fn handle_user_update_response(
         &mut self,
         connection_id: usize,
@@ -168,10 +172,24 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Check if this was a tracked request from user management panel
+        // Check if this was a tracked request from user management panel or password change
         let routing = conn.pending_requests.remove(&message_id);
 
         if success {
+            // Handle password change success
+            if matches!(routing, Some(ResponseRouting::PasswordChangeResult)) {
+                // Clear password change state and return to chat
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    conn.password_change_state = None;
+                    conn.active_panel = ActivePanel::None;
+                }
+                // Show success message in chat
+                return self.add_chat_message(
+                    connection_id,
+                    ChatMessage::system(t("msg-password-changed")),
+                );
+            }
+
             // Show success message in chat
             let task =
                 self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")));
@@ -185,7 +203,20 @@ impl NexusApp {
         }
 
         // On error, show in the appropriate place
-        if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
+        if matches!(routing, Some(ResponseRouting::PasswordChangeResult)) {
+            // Show error in password change form
+            if let Some(conn) = self.connections.get_mut(&connection_id)
+                && let Some(state) = &mut conn.password_change_state
+            {
+                state.error = Some(error.unwrap_or_default());
+                // Clear password fields on error for security
+                state.current_password.clear();
+                state.new_password.clear();
+                state.confirm_password.clear();
+            }
+            // Focus the current password field again
+            return Task::batch([operation::focus(Id::from(InputId::ChangePasswordCurrent))]);
+        } else if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
             // Show error in edit form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.edit_error = Some(error.unwrap_or_default());

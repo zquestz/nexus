@@ -12,6 +12,8 @@ pub enum ActivePanel {
     About,
     /// Broadcast panel
     Broadcast,
+    /// Change Password panel
+    ChangePassword,
     /// Settings panel
     Settings,
     /// Server Info panel
@@ -126,6 +128,12 @@ pub enum InputId {
     BroadcastMessage,
     /// Chat: Message input
     ChatInput,
+    /// Password change: Current password input
+    ChangePasswordCurrent,
+    /// Password change: New password input
+    ChangePasswordNew,
+    /// Password change: Confirm password input
+    ChangePasswordConfirm,
 }
 
 impl From<InputId> for Id {
@@ -149,6 +157,9 @@ impl From<InputId> for Id {
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
             InputId::BroadcastMessage => "InputId::BroadcastMessage",
             InputId::ChatInput => "InputId::ChatInput",
+            InputId::ChangePasswordCurrent => "InputId::ChangePasswordCurrent",
+            InputId::ChangePasswordNew => "InputId::ChangePasswordNew",
+            InputId::ChangePasswordConfirm => "InputId::ChangePasswordConfirm",
         })
     }
 }

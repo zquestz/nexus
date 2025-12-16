@@ -18,6 +18,7 @@ button-choose-avatar = Choose Avatar
 button-clear-avatar = Clear
 button-choose-image = Choose Image
 button-clear-image = Clear
+button-change-password = Change Password
 
 # =============================================================================
 # Titles
@@ -42,6 +43,7 @@ title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
 title-user-info = User Info
 title-about = About
+title-change-password = Change Password
 
 # =============================================================================
 # Placeholders
@@ -55,6 +57,9 @@ placeholder-server-name = Server Name
 placeholder-username-optional = Username (optional)
 placeholder-password-optional = Password (optional)
 placeholder-password-keep-current = Password
+placeholder-current-password = Current Password
+placeholder-new-password = New Password
+placeholder-confirm-password = Confirm Password
 placeholder-message = Type a message...
 placeholder-no-permission = No permission
 placeholder-broadcast-message = Enter broadcast message...
@@ -175,6 +180,7 @@ msg-user-deleted = User deleted successfully
 msg-user-updated = User updated successfully
 msg-permissions-updated = Your permissions have been updated
 msg-topic-updated = Topic updated successfully
+msg-password-changed = Password changed successfully
 
 
 
@@ -232,6 +238,10 @@ err-username-empty = Username cannot be empty
 err-username-too-long = Username is too long (max { $max } characters)
 err-username-invalid = Username contains invalid characters
 err-password-too-long = Password is too long (max { $max } characters)
+err-passwords-do-not-match = Passwords do not match
+err-current-password-required = Current password is required
+err-new-password-required = New password is required
+err-confirm-password-required = Please confirm your new password
 err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
 err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, JPEG, or SVG.
 err-avatar-too-large = Avatar too large. Maximum size is { $max_kb }KB.

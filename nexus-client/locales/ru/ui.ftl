@@ -16,6 +16,9 @@ button-accept-new-certificate = Принять новый сертификат
 button-close = Закрыть
 button-choose-avatar = Выбрать аватар
 button-clear-avatar = Очистить
+button-choose-image = Выбрать изображение
+button-clear-image = Очистить
+button-change-password = Изменить пароль
 
 # =============================================================================
 # Titles
@@ -40,6 +43,7 @@ title-fingerprint-mismatch = Отпечаток сертификата не со
 title-server-info = Информация о сервере
 title-user-info = Информация о пользователе
 title-about = О программе
+title-change-password = Изменить пароль
 
 # =============================================================================
 # Placeholders
@@ -53,6 +57,9 @@ placeholder-server-name = Имя сервера
 placeholder-username-optional = Имя пользователя (необязательно)
 placeholder-password-optional = Пароль (необязательно)
 placeholder-password-keep-current = Пароль
+placeholder-current-password = Текущий пароль
+placeholder-new-password = Новый пароль
+placeholder-confirm-password = Подтвердите пароль
 placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
 placeholder-broadcast-message = Введите сообщение рассылки...
@@ -172,6 +179,7 @@ msg-user-deleted = Пользователь успешно удалён
 msg-user-updated = Пользователь успешно обновлён
 msg-permissions-updated = Ваши разрешения были обновлены
 msg-topic-updated = Тема успешно обновлена
+msg-password-changed = Пароль успешно изменён
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -227,6 +235,10 @@ err-username-empty = Имя пользователя не может быть п
 err-username-too-long = Имя пользователя слишком длинное (макс { $max } символов)
 err-username-invalid = Имя пользователя содержит недопустимые символы
 err-password-too-long = Пароль слишком длинный (макс { $max } символов)
+err-passwords-do-not-match = Пароли не совпадают
+err-current-password-required = Текущий пароль обязателен
+err-new-password-required = Новый пароль обязателен
+err-confirm-password-required = Пожалуйста, подтвердите новый пароль
 err-topic-too-long = Тема слишком длинная ({ $length } символов, макс { $max })
 err-avatar-unsupported-type = Неподдерживаемый тип файла. Используйте PNG, WebP, JPEG или SVG.
 err-avatar-too-large = Аватар слишком большой. Максимальный размер { $max_kb }КБ.

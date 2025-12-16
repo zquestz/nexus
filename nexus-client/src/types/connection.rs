@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 use super::{
-    ActivePanel, ChatMessage, ChatTab, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
-    UserManagementState,
+    ActivePanel, ChatMessage, ChatTab, PasswordChangeState, ResponseRouting, ScrollState,
+    ServerInfoEditState, UserInfo, UserManagementState,
 };
 use crate::image::CachedImage;
 
@@ -90,6 +90,8 @@ pub struct ServerConnection {
     pub user_management: UserManagementState,
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
+    /// Password change form state (Some when changing password, None otherwise)
+    pub password_change_state: Option<PasswordChangeState>,
     /// Cached avatar handles for rendering (prevents flickering)
     pub avatar_cache: HashMap<String, CachedImage>,
     /// Server info edit state (Some when editing, None otherwise)
@@ -165,6 +167,7 @@ impl ServerConnection {
             broadcast_error: None,
             user_management: UserManagementState::default(),
             user_info_data: None,
+            password_change_state: None,
             avatar_cache: HashMap::new(),
             server_info_edit: None,
             active_panel: ActivePanel::None,

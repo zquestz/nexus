@@ -16,6 +16,9 @@ button-accept-new-certificate = 新しい証明書を受け入れる
 button-close = 閉じる
 button-choose-avatar = アバターを選択
 button-clear-avatar = クリア
+button-choose-image = 画像を選択
+button-clear-image = クリア
+button-change-password = パスワードを変更
 
 # =============================================================================
 # Titles
@@ -40,6 +43,7 @@ title-fingerprint-mismatch = 証明書のフィンガープリントが一致し
 title-server-info = サーバー情報
 title-user-info = ユーザー情報
 title-about = アプリについて
+title-change-password = パスワードを変更
 
 # =============================================================================
 # Placeholders
@@ -53,6 +57,9 @@ placeholder-server-name = サーバー名
 placeholder-username-optional = ユーザー名（任意）
 placeholder-password-optional = パスワード（任意）
 placeholder-password-keep-current = パスワード
+placeholder-current-password = 現在のパスワード
+placeholder-new-password = 新しいパスワード
+placeholder-confirm-password = パスワードを確認
 placeholder-message = メッセージを入力...
 placeholder-no-permission = 権限がありません
 placeholder-broadcast-message = ブロードキャストメッセージを入力...
@@ -172,6 +179,7 @@ msg-user-deleted = ユーザーを正常に削除しました
 msg-user-updated = ユーザーを正常に更新しました
 msg-permissions-updated = 権限が更新されました
 msg-topic-updated = トピックが正常に更新されました
+msg-password-changed = パスワードが正常に変更されました
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -227,6 +235,10 @@ err-username-empty = ユーザー名は空にできません
 err-username-too-long = ユーザー名が長すぎます（最大{ $max }文字）
 err-username-invalid = ユーザー名に無効な文字が含まれています
 err-password-too-long = パスワードが長すぎます（最大{ $max }文字）
+err-passwords-do-not-match = パスワードが一致しません
+err-current-password-required = 現在のパスワードは必須です
+err-new-password-required = 新しいパスワードは必須です
+err-confirm-password-required = 新しいパスワードを確認してください
 err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
 err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、JPEG、またはSVGを使用してください。
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。

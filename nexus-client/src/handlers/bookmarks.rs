@@ -197,6 +197,75 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Tab Navigation ====================
+
+    /// Handle Tab pressed in bookmark edit form
+    ///
+    /// Checks which field is actually focused using async operations,
+    /// then moves to the next field in sequence.
+    pub fn handle_bookmark_edit_tab_pressed(&mut self) -> Task<Message> {
+        // Check focus state of all five bookmark fields in parallel
+        let check_name = operation::is_focused(Id::from(InputId::BookmarkName));
+        let check_address = operation::is_focused(Id::from(InputId::BookmarkAddress));
+        let check_port = operation::is_focused(Id::from(InputId::BookmarkPort));
+        let check_username = operation::is_focused(Id::from(InputId::BookmarkUsername));
+        let check_password = operation::is_focused(Id::from(InputId::BookmarkPassword));
+
+        // Batch the checks and combine results
+        Task::batch([
+            check_name.map(|focused| (0, focused)),
+            check_address.map(|focused| (1, focused)),
+            check_port.map(|focused| (2, focused)),
+            check_username.map(|focused| (3, focused)),
+            check_password.map(|focused| (4, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let name_focused = results.iter().any(|(i, f)| *i == 0 && *f);
+            let address_focused = results.iter().any(|(i, f)| *i == 1 && *f);
+            let port_focused = results.iter().any(|(i, f)| *i == 2 && *f);
+            let username_focused = results.iter().any(|(i, f)| *i == 3 && *f);
+            let password_focused = results.iter().any(|(i, f)| *i == 4 && *f);
+            Message::BookmarkEditFocusResult(
+                name_focused,
+                address_focused,
+                port_focused,
+                username_focused,
+                password_focused,
+            )
+        })
+    }
+
+    /// Handle focus check result for bookmark edit Tab navigation
+    pub fn handle_bookmark_edit_focus_result(
+        &mut self,
+        name_focused: bool,
+        address_focused: bool,
+        port_focused: bool,
+        username_focused: bool,
+        password_focused: bool,
+    ) -> Task<Message> {
+        // Determine next field based on which is currently focused
+        let next_field = if name_focused {
+            InputId::BookmarkAddress
+        } else if address_focused {
+            InputId::BookmarkPort
+        } else if port_focused {
+            InputId::BookmarkUsername
+        } else if username_focused {
+            InputId::BookmarkPassword
+        } else if password_focused {
+            // Wrap around to first field
+            InputId::BookmarkName
+        } else {
+            // None focused, start at first field
+            InputId::BookmarkName
+        };
+
+        self.focused_field = next_field;
+        operation::focus(Id::from(next_field))
+    }
+
     // ==================== Private Helpers ====================
 
     /// Validate bookmark fields

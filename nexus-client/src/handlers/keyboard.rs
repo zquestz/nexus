@@ -77,8 +77,12 @@ impl NexusApp {
                                 return self.update(Message::UserManagementUpdatePressed);
                             }
                         }
-                        UserManagementMode::List | UserManagementMode::ConfirmDelete { .. } => {
-                            // List/ConfirmDelete: No Enter action
+                        UserManagementMode::List => {
+                            // List mode: Close the panel
+                            return self.update(Message::CancelUserManagement);
+                        }
+                        UserManagementMode::ConfirmDelete { .. } => {
+                            // ConfirmDelete: No Enter action (user must click button)
                         }
                     }
                 }
@@ -107,6 +111,20 @@ impl NexusApp {
             } else if self.active_panel() == ActivePanel::UserInfo {
                 // On user info screen, close the panel
                 return self.update(Message::CloseUserInfo);
+            } else if self.active_panel() == ActivePanel::ChangePassword {
+                // On change password screen, submit if all fields are filled
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                    && let Some(state) = &conn.password_change_state
+                {
+                    let can_save = !state.current_password.is_empty()
+                        && !state.new_password.is_empty()
+                        && !state.confirm_password.is_empty();
+                    if can_save {
+                        return self.update(Message::ChangePasswordSavePressed);
+                    }
+                }
+                return Task::none();
             } else if self.active_connection.is_none() {
                 // On connection screen, try to connect
                 let can_connect = !self.connection_form.server_address.trim().is_empty()
@@ -148,6 +166,9 @@ impl NexusApp {
                         return self.update(Message::CloseServerInfo);
                     }
                     ActivePanel::UserInfo => return self.update(Message::CloseUserInfo),
+                    ActivePanel::ChangePassword => {
+                        return self.update(Message::ChangePasswordCancelPressed);
+                    }
                     ActivePanel::None => {}
                 }
             }
@@ -218,17 +239,8 @@ impl NexusApp {
     /// Handle Tab key navigation across different screens
     pub fn handle_tab_navigation(&mut self) -> Task<Message> {
         if self.bookmark_edit.mode != BookmarkEditMode::None {
-            // On bookmark edit screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::BookmarkName => InputId::BookmarkAddress,
-                InputId::BookmarkAddress => InputId::BookmarkPort,
-                InputId::BookmarkPort => InputId::BookmarkUsername,
-                InputId::BookmarkUsername => InputId::BookmarkPassword,
-                InputId::BookmarkPassword => InputId::BookmarkName,
-                _ => InputId::BookmarkName,
-            };
-            self.focused_field = next_field;
-            return operation::focus(Id::from(next_field));
+            // On bookmark edit screen, check actual focus and cycle
+            return self.update(Message::BookmarkEditTabPressed);
         } else if self.active_panel() == ActivePanel::UserManagement {
             // On user management screen, handle Tab based on mode
             if let Some(conn_id) = self.active_connection
@@ -236,43 +248,28 @@ impl NexusApp {
             {
                 match &conn.user_management.mode {
                     UserManagementMode::Create => {
-                        // Create mode: Cycle through username and password
-                        let next_field = match self.focused_field {
-                            InputId::AdminUsername => InputId::AdminPassword,
-                            InputId::AdminPassword => InputId::AdminUsername,
-                            _ => InputId::AdminUsername,
-                        };
-                        self.focused_field = next_field;
-                        return operation::focus(Id::from(next_field));
+                        // Create mode: Check actual focus and cycle
+                        return self.update(Message::UserManagementCreateTabPressed);
                     }
                     UserManagementMode::Edit { .. } => {
-                        // Edit mode: Cycle through edit fields
-                        let next_field = match self.focused_field {
-                            InputId::EditNewUsername => InputId::EditNewPassword,
-                            InputId::EditNewPassword => InputId::EditNewUsername,
-                            _ => InputId::EditNewUsername,
-                        };
-                        self.focused_field = next_field;
-                        return operation::focus(Id::from(next_field));
+                        // Edit mode: Check actual focus and cycle
+                        return self.update(Message::UserManagementEditTabPressed);
                     }
                     UserManagementMode::List | UserManagementMode::ConfirmDelete { .. } => {
                         // List/ConfirmDelete: No Tab navigation
                     }
                 }
             }
+        } else if self.active_panel() == ActivePanel::ChangePassword {
+            // Change password panel: check actual focus and cycle through fields
+            return self.update(Message::ChangePasswordTabPressed);
         } else if self.active_panel() == ActivePanel::ServerInfo {
-            // Server info edit screen: cycle through name and description fields
+            // Server info edit screen: check actual focus and cycle
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
                 && conn.server_info_edit.is_some()
             {
-                let next_field = match self.focused_field {
-                    InputId::EditServerInfoName => InputId::EditServerInfoDescription,
-                    InputId::EditServerInfoDescription => InputId::EditServerInfoName,
-                    _ => InputId::EditServerInfoName,
-                };
-                self.focused_field = next_field;
-                return operation::focus(Id::from(next_field));
+                return self.update(Message::ServerInfoEditTabPressed);
             }
         } else if self.active_panel() == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
@@ -286,17 +283,8 @@ impl NexusApp {
             self.focused_field = InputId::ChatInput;
             return operation::focus(Id::from(InputId::ChatInput));
         } else if self.active_connection.is_none() {
-            // On connection screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::ServerName => InputId::ServerAddress,
-                InputId::ServerAddress => InputId::Port,
-                InputId::Port => InputId::Username,
-                InputId::Username => InputId::Password,
-                InputId::Password => InputId::ServerName,
-                _ => InputId::ServerName,
-            };
-            self.focused_field = next_field;
-            return operation::focus(Id::from(next_field));
+            // On connection screen, check actual focus and cycle
+            return self.update(Message::ConnectionFormTabPressed);
         }
         Task::none()
     }

@@ -16,6 +16,9 @@ button-accept-new-certificate = Aceitar Novo Certificado
 button-close = Fechar
 button-choose-avatar = Escolher Ícone
 button-clear-avatar = Limpar
+button-choose-image = Escolher Imagem
+button-clear-image = Limpar
+button-change-password = Alterar Senha
 
 # =============================================================================
 # Titles
@@ -40,6 +43,7 @@ title-fingerprint-mismatch = Impressão Digital do Certificado Não Corresponde!
 title-server-info = Info do Servidor
 title-user-info = Info do Usuário
 title-about = Sobre
+title-change-password = Alterar Senha
 
 # =============================================================================
 # Placeholders
@@ -53,6 +57,9 @@ placeholder-server-name = Nome do Servidor
 placeholder-username-optional = Nome de usuário (opcional)
 placeholder-password-optional = Senha (opcional)
 placeholder-password-keep-current = Senha
+placeholder-current-password = Senha Atual
+placeholder-new-password = Nova Senha
+placeholder-confirm-password = Confirmar Senha
 placeholder-message = Digite uma mensagem...
 placeholder-no-permission = Sem permissão
 placeholder-broadcast-message = Digite a mensagem de difusão...
@@ -172,6 +179,7 @@ msg-user-deleted = Usuário excluído com sucesso
 msg-user-updated = Usuário atualizado com sucesso
 msg-permissions-updated = Suas permissões foram atualizadas
 msg-topic-updated = Tópico atualizado com sucesso
+msg-password-changed = Senha alterada com sucesso
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -227,6 +235,10 @@ err-username-empty = O nome de usuário não pode estar vazio
 err-username-too-long = O nome de usuário é muito longo (máx { $max } caracteres)
 err-username-invalid = O nome de usuário contém caracteres inválidos
 err-password-too-long = A senha é muito longa (máx { $max } caracteres)
+err-passwords-do-not-match = As senhas não correspondem
+err-current-password-required = A senha atual é obrigatória
+err-new-password-required = A nova senha é obrigatória
+err-confirm-password-required = Por favor, confirme sua nova senha
 err-topic-too-long = O tópico é muito longo ({ $length } caracteres, máx { $max })
 err-avatar-unsupported-type = Tipo de arquivo não suportado. Use PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Ícone muito grande. O tamanho máximo é { $max_kb }KB.

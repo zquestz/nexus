@@ -3,6 +3,36 @@
 use crate::config::Config;
 use nexus_common::protocol::UserInfo;
 
+// =============================================================================
+// Password Change State
+// =============================================================================
+
+/// Password change form state (for User Info panel)
+///
+/// Tracks the form fields when a user is changing their own password.
+#[derive(Debug, Clone, Default)]
+pub struct PasswordChangeState {
+    /// Current password (required for verification)
+    pub current_password: String,
+    /// New password
+    pub new_password: String,
+    /// Confirm new password (must match new_password)
+    pub confirm_password: String,
+    /// Error message to display
+    pub error: Option<String>,
+}
+
+impl PasswordChangeState {
+    /// Create a new empty password change state
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+// =============================================================================
+// User Management State
+// =============================================================================
+
 /// Default permissions for new users
 ///
 /// These permissions are enabled by default when creating a new user:

@@ -17,6 +17,9 @@ button-accept-new-certificate = Accepter le Nouveau Certificat
 button-close = Fermer
 button-choose-avatar = Choisir une Icône
 button-clear-avatar = Effacer
+button-choose-image = Choisir une Image
+button-clear-image = Effacer
+button-change-password = Changer le Mot de Passe
 
 # =============================================================================
 # Titles
@@ -41,6 +44,7 @@ title-fingerprint-mismatch = Empreinte du certificat non concordante !
 title-server-info = Infos Serveur
 title-user-info = Infos Utilisateur
 title-about = À propos
+title-change-password = Changer le Mot de Passe
 
 # =============================================================================
 # Placeholders
@@ -54,6 +58,9 @@ placeholder-server-name = Nom du serveur
 placeholder-username-optional = Nom d'utilisateur (optionnel)
 placeholder-password-optional = Mot de passe (optionnel)
 placeholder-password-keep-current = Mot de passe
+placeholder-current-password = Mot de Passe Actuel
+placeholder-new-password = Nouveau Mot de Passe
+placeholder-confirm-password = Confirmer le Mot de Passe
 placeholder-message = Tapez un message...
 placeholder-no-permission = Pas de permission
 placeholder-broadcast-message = Entrez le message de diffusion...
@@ -173,6 +180,7 @@ msg-user-deleted = Utilisateur supprimé avec succès
 msg-user-updated = Utilisateur mis à jour avec succès
 msg-permissions-updated = Vos permissions ont été mises à jour
 msg-topic-updated = Sujet mis à jour avec succès
+msg-password-changed = Mot de passe changé avec succès
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -228,6 +236,10 @@ err-username-empty = Le nom d'utilisateur ne peut pas être vide
 err-username-too-long = Le nom d'utilisateur est trop long (max { $max } caractères)
 err-username-invalid = Le nom d'utilisateur contient des caractères invalides
 err-password-too-long = Le mot de passe est trop long (max { $max } caractères)
+err-passwords-do-not-match = Les mots de passe ne correspondent pas
+err-current-password-required = Le mot de passe actuel est requis
+err-new-password-required = Le nouveau mot de passe est requis
+err-confirm-password-required = Veuillez confirmer votre nouveau mot de passe
 err-topic-too-long = Le sujet est trop long ({ $length } caractères, max { $max })
 err-avatar-unsupported-type = Type de fichier non pris en charge. Utilisez PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Icône trop grande. La taille maximale est de { $max_kb }Ko.

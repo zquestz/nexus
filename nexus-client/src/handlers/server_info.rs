@@ -357,4 +357,49 @@ impl NexusApp {
 
         Task::none()
     }
+
+    // ==================== Tab Navigation ====================
+
+    /// Handle Tab pressed in server info edit form
+    ///
+    /// Checks which field is actually focused using async operations,
+    /// then moves to the next field in sequence.
+    pub fn handle_server_info_edit_tab_pressed(&mut self) -> Task<Message> {
+        // Check focus state of both server info edit fields in parallel
+        let check_name = operation::is_focused(Id::from(InputId::EditServerInfoName));
+        let check_description = operation::is_focused(Id::from(InputId::EditServerInfoDescription));
+
+        // Batch the checks and combine results
+        Task::batch([
+            check_name.map(|focused| (0, focused)),
+            check_description.map(|focused| (1, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let name_focused = results.iter().any(|(i, f)| *i == 0 && *f);
+            let description_focused = results.iter().any(|(i, f)| *i == 1 && *f);
+            Message::ServerInfoEditFocusResult(name_focused, description_focused)
+        })
+    }
+
+    /// Handle focus check result for server info edit Tab navigation
+    pub fn handle_server_info_edit_focus_result(
+        &mut self,
+        name_focused: bool,
+        description_focused: bool,
+    ) -> Task<Message> {
+        // Determine next field based on which is currently focused
+        let next_field = if name_focused {
+            InputId::EditServerInfoDescription
+        } else if description_focused {
+            // Wrap around to first field
+            InputId::EditServerInfoName
+        } else {
+            // None focused, start at first field
+            InputId::EditServerInfoName
+        };
+
+        self.focused_field = next_field;
+        operation::focus(Id::from(next_field))
+    }
 }

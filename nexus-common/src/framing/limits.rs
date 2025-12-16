@@ -29,7 +29,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserInfo", 65);
     m.insert("UserKick", 65);
     m.insert("UserList", 31);
-    m.insert("UserUpdate", 1040);
+    m.insert("UserUpdate", 1318);
     m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
     // Server messages (limits match actual max size from validators)
@@ -279,6 +279,7 @@ mod tests {
     fn test_limit_user_update() {
         let msg = ClientMessage::UserUpdate {
             username: str_of_len(MAX_USERNAME_LENGTH),
+            current_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             requested_username: Some(str_of_len(MAX_USERNAME_LENGTH)),
             requested_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             requested_is_admin: Some(true),

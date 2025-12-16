@@ -9,12 +9,13 @@ use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING, chat, shaped_text,
+    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING,
+    chat, error_text_style, shaped_text, shaped_text_wrapped,
 };
-use crate::types::Message;
+use crate::types::{InputId, Message, PasswordChangeState};
 use iced::widget::button as btn;
-use iced::widget::{Space, button, column, row};
+use iced::widget::{Id, Space, button, column, row, text_input};
 use iced::{Center, Color, Element, Fill, Theme};
 use nexus_common::protocol::UserInfoDetailed;
 
@@ -35,6 +36,12 @@ pub fn user_info_view<'a>(
     let has_edit_permission = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
 
     let mut content = column![].spacing(ELEMENT_SPACING);
+
+    // Check if viewing self (for Change Password button)
+    let viewing_self = data
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .is_some_and(|user| user.username.to_lowercase() == current_username.to_lowercase());
 
     match data {
         None => {
@@ -59,13 +66,23 @@ pub fn user_info_view<'a>(
         }
     }
 
-    // Build buttons row - spacer, then Edit (if permitted) + Close on the right
+    // Build buttons row - spacer, then buttons on the right
     let mut buttons = row![Space::new().width(Fill)].spacing(ELEMENT_SPACING);
+
+    // Add Change Password button if viewing self and data loaded
+    if viewing_self {
+        buttons = buttons.push(
+            button(shaped_text(t("button-change-password")).size(TEXT_SIZE))
+                .on_press(Message::ChangePasswordPressed)
+                .padding(BUTTON_PADDING)
+                .style(btn::secondary),
+        );
+    }
 
     // Add edit button if user has permission, data loaded, and not viewing self
     if has_edit_permission
         && let Some(Ok(user)) = data
-        && user.username.to_lowercase() != current_username.to_lowercase()
+        && !viewing_self
     {
         buttons = buttons.push(
             button(shaped_text(t("button-edit")).size(TEXT_SIZE))
@@ -83,6 +100,100 @@ pub fn user_info_view<'a>(
     );
 
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+    content = content.push(buttons);
+
+    let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
+}
+
+/// Render the password change panel
+pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, Message> {
+    let Some(state) = state else {
+        // Should not happen, but handle gracefully
+        return column![].into();
+    };
+
+    let mut content = column![].spacing(ELEMENT_SPACING);
+
+    // Title (centered)
+    let title = shaped_text(t("title-change-password"))
+        .size(TITLE_SIZE)
+        .width(Fill)
+        .align_x(Center);
+    content = content.push(title);
+
+    // Error message (if any) - shown under title, centered
+    if let Some(error) = &state.error {
+        content = content.push(
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style),
+        );
+        content = content.push(Space::new().height(SPACER_SIZE_SMALL));
+    } else {
+        content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+    }
+
+    // Current password field
+    let current_password_input =
+        text_input(&t("placeholder-current-password"), &state.current_password)
+            .id(Id::from(InputId::ChangePasswordCurrent))
+            .on_input(Message::ChangePasswordCurrentChanged)
+            .on_submit(Message::ChangePasswordSavePressed)
+            .secure(true)
+            .padding(BUTTON_PADDING)
+            .width(Fill);
+    content = content.push(current_password_input);
+
+    // New password field
+    let new_password_input = text_input(&t("placeholder-new-password"), &state.new_password)
+        .id(Id::from(InputId::ChangePasswordNew))
+        .on_input(Message::ChangePasswordNewChanged)
+        .on_submit(Message::ChangePasswordSavePressed)
+        .secure(true)
+        .padding(BUTTON_PADDING)
+        .width(Fill);
+    content = content.push(new_password_input);
+
+    // Confirm password field
+    let confirm_password_input =
+        text_input(&t("placeholder-confirm-password"), &state.confirm_password)
+            .id(Id::from(InputId::ChangePasswordConfirm))
+            .on_input(Message::ChangePasswordConfirmChanged)
+            .on_submit(Message::ChangePasswordSavePressed)
+            .secure(true)
+            .padding(BUTTON_PADDING)
+            .width(Fill);
+    content = content.push(confirm_password_input);
+
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+
+    // Check if all fields are filled for enabling Save button
+    let can_save = !state.current_password.is_empty()
+        && !state.new_password.is_empty()
+        && !state.confirm_password.is_empty();
+
+    // Buttons row
+    let save_button = button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING);
+    let save_button = if can_save {
+        save_button.on_press(Message::ChangePasswordSavePressed)
+    } else {
+        save_button
+    };
+
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::ChangePasswordCancelPressed)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+        save_button,
+    ]
+    .spacing(ELEMENT_SPACING);
+
     content = content.push(buttons);
 
     let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);

@@ -16,6 +16,9 @@ button-accept-new-certificate = 새 인증서 수락
 button-close = 닫기
 button-choose-avatar = 아바타 선택
 button-clear-avatar = 지우기
+button-choose-image = 이미지 선택
+button-clear-image = 지우기
+button-change-password = 비밀번호 변경
 
 # =============================================================================
 # Titles
@@ -40,6 +43,7 @@ title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
 title-server-info = 서버 정보
 title-user-info = 사용자 정보
 title-about = 정보
+title-change-password = 비밀번호 변경
 
 # =============================================================================
 # Placeholders
@@ -53,6 +57,9 @@ placeholder-server-name = 서버 이름
 placeholder-username-optional = 사용자 이름 (선택)
 placeholder-password-optional = 비밀번호 (선택)
 placeholder-password-keep-current = 비밀번호
+placeholder-current-password = 현재 비밀번호
+placeholder-new-password = 새 비밀번호
+placeholder-confirm-password = 비밀번호 확인
 placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
 placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요...
@@ -172,6 +179,7 @@ msg-user-deleted = 사용자가 성공적으로 삭제되었습니다
 msg-user-updated = 사용자가 성공적으로 업데이트되었습니다
 msg-permissions-updated = 권한이 업데이트되었습니다
 msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
+msg-password-changed = 비밀번호가 성공적으로 변경되었습니다
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -227,6 +235,10 @@ err-username-empty = 사용자 이름은 비워둘 수 없습니다
 err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max }자)
 err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있습니다
 err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
+err-passwords-do-not-match = 비밀번호가 일치하지 않습니다
+err-current-password-required = 현재 비밀번호는 필수입니다
+err-new-password-required = 새 비밀번호는 필수입니다
+err-confirm-password-required = 새 비밀번호를 확인해 주세요
 err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP, JPEG 또는 SVG를 사용하세요.
 err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.

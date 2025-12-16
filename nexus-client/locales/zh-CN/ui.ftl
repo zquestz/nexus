@@ -16,6 +16,9 @@ button-accept-new-certificate = 接受新证书
 button-close = 关闭
 button-choose-avatar = 选择头像
 button-clear-avatar = 清除
+button-choose-image = 选择图片
+button-clear-image = 清除
+button-change-password = 修改密码
 
 # =============================================================================
 # Titles
@@ -40,6 +43,7 @@ title-fingerprint-mismatch = 证书指纹不匹配！
 title-server-info = 服务器信息
 title-user-info = 用户信息
 title-about = 关于
+title-change-password = 修改密码
 
 
 # =============================================================================
@@ -54,6 +58,9 @@ placeholder-server-name = 服务器名称
 placeholder-username-optional = 用户名（可选）
 placeholder-password-optional = 密码（可选）
 placeholder-password-keep-current = 密码
+placeholder-current-password = 当前密码
+placeholder-new-password = 新密码
+placeholder-confirm-password = 确认密码
 placeholder-message = 输入消息...
 placeholder-no-permission = 无权限
 placeholder-broadcast-message = 输入广播消息...
@@ -173,6 +180,7 @@ msg-user-deleted = 用户已成功删除
 msg-user-updated = 用户已成功更新
 msg-permissions-updated = 您的权限已更新
 msg-topic-updated = 主题更新成功
+msg-password-changed = 密码修改成功
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -228,6 +236,10 @@ err-username-empty = 用户名不能为空
 err-username-too-long = 用户名过长（最多{ $max }个字符）
 err-username-invalid = 用户名包含无效字符
 err-password-too-long = 密码过长（最多{ $max }个字符）
+err-passwords-do-not-match = 密码不匹配
+err-current-password-required = 当前密码是必填的
+err-new-password-required = 新密码是必填的
+err-confirm-password-required = 请确认您的新密码
 err-topic-too-long = 主题过长（{ $length }个字符，最多{ $max }个字符）
 err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP、JPEG或SVG。
 err-avatar-too-large = 头像过大。最大大小为{ $max_kb }KB。

@@ -32,6 +32,8 @@ pub enum ResponseRouting {
     UserManagementUpdateResult,
     /// User management delete result (return to list on success)
     UserManagementDeleteResult,
+    /// Password change result (close panel on success, show error on failure)
+    PasswordChangeResult,
 }
 
 /// Extension trait for tracking pending requests

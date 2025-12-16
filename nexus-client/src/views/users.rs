@@ -249,8 +249,7 @@ fn list_view<'a>(
     // Footer buttons
     let close_button = button(shaped_text(t("button-close")).size(TEXT_SIZE))
         .on_press(Message::CancelUserManagement)
-        .padding(BUTTON_PADDING)
-        .style(btn::secondary);
+        .padding(BUTTON_PADDING);
 
     // Create user button (icon style like add bookmark)
     let create_btn: Option<Element<'a, Message>> = if can_create {

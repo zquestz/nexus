@@ -12,17 +12,19 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_disabled_by_admin, err_authentication,
     err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_self,
-    err_database, err_not_logged_in, err_password_empty, err_password_too_long,
-    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_current_password_incorrect, err_current_password_required, err_database, err_not_logged_in,
+    err_password_empty, err_password_too_long, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_update_failed, err_user_not_found, err_username_empty,
     err_username_exists, err_username_invalid, err_username_too_long,
 };
-use crate::db::{Permission, Permissions, hash_password};
+use crate::db::{Permission, Permissions, hash_password, verify_password};
 
 /// User update request parameters
 pub struct UserUpdateRequest {
     pub username: String,
+    pub current_password: Option<String>,
     pub requested_username: Option<String>,
     pub requested_password: Option<String>,
     pub requested_is_admin: Option<bool>,
@@ -77,24 +79,79 @@ where
         }
     };
 
-    // Prevent self-editing (cheap check before DB query, case-insensitive)
-    if request.username.to_lowercase() == requesting_user.username.to_lowercase() {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_cannot_edit_self(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
+    // Check if this is a self-edit (user changing their own password)
+    let is_self_edit = request.username.to_lowercase() == requesting_user.username.to_lowercase();
 
-    // Check UserEdit permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::UserEdit) {
-        eprintln!(
-            "UserUpdate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-            .await;
+    if is_self_edit {
+        // Self-edit: only password change is allowed
+        // Reject if trying to change anything other than password
+        if request.requested_username.is_some()
+            || request.requested_is_admin.is_some()
+            || request.requested_enabled.is_some()
+            || request.requested_permissions.is_some()
+        {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_cannot_edit_self(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
+        }
+
+        // Password change requires current_password
+        let Some(ref current_password) = request.current_password else {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_current_password_required(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
+        };
+
+        // Verify current password against database
+        let password_hash = match ctx.db.users.get_user_by_username(&request.username).await {
+            Ok(Some(user)) => user.hashed_password,
+            Ok(None) => {
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_user_not_found(ctx.locale, &request.username)),
+                };
+                return ctx.send_message(&response).await;
+            }
+            Err(e) => {
+                eprintln!("Database error getting user: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                    .await;
+            }
+        };
+
+        // Verify the current password
+        match verify_password(current_password, &password_hash) {
+            Ok(true) => {} // Password correct, continue
+            Ok(false) => {
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_current_password_incorrect(ctx.locale)),
+                };
+                return ctx.send_message(&response).await;
+            }
+            Err(e) => {
+                eprintln!("Error verifying password: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                    .await;
+            }
+        }
+    } else {
+        // Editing another user: check UserEdit permission
+        if !requesting_user.has_permission(Permission::UserEdit) {
+            eprintln!(
+                "UserUpdate from {} (user: {}) without permission",
+                ctx.peer_addr, requesting_user.username
+            );
+            return ctx
+                .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
+                .await;
+        }
     }
 
     // Validate new username format if it's being changed
@@ -119,7 +176,8 @@ where
     // in update_user() SQL query to prevent race conditions
 
     // Verify admin flag modification privilege (use is_admin from UserManager)
-    if request.requested_is_admin.is_some() && !requesting_user.is_admin {
+    // Skip for self-edit since we already rejected admin changes above
+    if !is_self_edit && request.requested_is_admin.is_some() && !requesting_user.is_admin {
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
             .await;
@@ -282,8 +340,13 @@ where
             };
             ctx.send_message(&response).await?;
 
-            // Notify all sessions of the updated user about their new permissions
-            // Get the updated user's account to read final permissions
+            // Only send PermissionsUpdated if admin, enabled, or permissions changed
+            // (not for password-only or username-only changes)
+            let permissions_changed = request.requested_is_admin.is_some()
+                || request.requested_enabled.is_some()
+                || request.requested_permissions.is_some();
+
+            // Get the updated user's account
             // Use the final username (in case it changed)
             let final_username = request
                 .requested_username
@@ -296,7 +359,8 @@ where
                 if let Ok(final_permissions) =
                     ctx.db.users.get_user_permissions(updated_account.id).await
                 {
-                    // Update cached permissions in UserManager for all sessions of this user
+                    // Always update cached permissions in UserManager for all sessions of this user
+                    // (even if we don't broadcast, keeps cache in sync)
                     ctx.user_manager
                         .update_permissions(
                             updated_account.id,
@@ -304,59 +368,62 @@ where
                         )
                         .await;
 
-                    let permission_strings: Vec<String> = final_permissions
-                        .permissions
-                        .iter()
-                        .map(|p| p.as_str().to_string())
-                        .collect();
-
-                    // Check if user now has chat topic permission
-                    let now_has_chat_topic = updated_account.is_admin
-                        || final_permissions
+                    // Only notify the user if their permissions/admin/enabled status changed
+                    if permissions_changed {
+                        let permission_strings: Vec<String> = final_permissions
                             .permissions
-                            .contains(&Permission::ChatTopic);
+                            .iter()
+                            .map(|p| p.as_str().to_string())
+                            .collect();
 
-                    // Only send max_connections_per_ip if user is now admin
-                    // (other server info fields like name/description/image don't change with permissions)
-                    let server_info = if updated_account.is_admin {
-                        Some(ServerInfo {
-                            max_connections_per_ip: Some(
-                                ctx.db.config.get_max_connections_per_ip().await as u32,
-                            ),
-                            ..Default::default()
-                        })
-                    } else {
-                        None
-                    };
+                        // Check if user now has chat topic permission
+                        let now_has_chat_topic = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::ChatTopic);
 
-                    // Include chat info only if user has permission
-                    let chat_info = if now_has_chat_topic {
-                        match ctx.db.chat.get_topic().await {
-                            Ok(topic) => Some(ChatInfo {
-                                topic: topic.topic,
-                                topic_set_by: topic.set_by,
-                            }),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    };
+                        // Only send max_connections_per_ip if user is now admin
+                        // (other server info fields like name/description/image don't change with permissions)
+                        let server_info = if updated_account.is_admin {
+                            Some(ServerInfo {
+                                max_connections_per_ip: Some(
+                                    ctx.db.config.get_max_connections_per_ip().await as u32,
+                                ),
+                                ..Default::default()
+                            })
+                        } else {
+                            None
+                        };
 
-                    let permissions_update = ServerMessage::PermissionsUpdated {
-                        is_admin: updated_account.is_admin,
-                        permissions: permission_strings,
-                        server_info,
-                        chat_info,
-                    };
+                        // Include chat info only if user has permission
+                        let chat_info = if now_has_chat_topic {
+                            match ctx.db.chat.get_topic().await {
+                                Ok(topic) => Some(ChatInfo {
+                                    topic: topic.topic,
+                                    topic_set_by: topic.set_by,
+                                }),
+                                Err(_) => None,
+                            }
+                        } else {
+                            None
+                        };
 
-                    // Send to all sessions belonging to the updated user
-                    ctx.user_manager
-                        .broadcast_to_username(
-                            &updated_account.username,
-                            &permissions_update,
-                            &ctx.db.users,
-                        )
-                        .await;
+                        let permissions_update = ServerMessage::PermissionsUpdated {
+                            is_admin: updated_account.is_admin,
+                            permissions: permission_strings,
+                            server_info,
+                            chat_info,
+                        };
+
+                        // Send to all sessions belonging to the updated user
+                        ctx.user_manager
+                            .broadcast_to_username(
+                                &updated_account.username,
+                                &permissions_update,
+                                &ctx.db.users,
+                            )
+                            .await;
+                    }
                 }
 
                 // If user was disabled, disconnect all their active sessions
@@ -563,6 +630,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "alice".to_string(),
             requested_username: Some("alice2".to_string()),
             requested_password: None,
@@ -592,6 +660,7 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: Some("bob2".to_string()),
             requested_password: None,
@@ -620,6 +689,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin".to_string(),
             requested_username: Some("admin2".to_string()),
             requested_password: None,
@@ -642,6 +712,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userupdate_self_password_change_success() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as alice (login_user creates the user with the given password)
+        let session_id = login_user(&mut test_ctx, "alice", "oldpassword", &[], false).await;
+
+        // Change own password with correct current password
+        let request = UserUpdateRequest {
+            current_password: Some("oldpassword".to_string()),
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(success, "Expected success, got error: {:?}", error);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_self_password_change_wrong_current_password() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as alice (login_user creates the user with the given password)
+        let session_id = login_user(&mut test_ctx, "alice", "correctpassword", &[], false).await;
+
+        // Try to change password with wrong current password
+        let request = UserUpdateRequest {
+            current_password: Some("wrongpassword".to_string()),
+            username: "alice".to_string(),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_current_password_incorrect(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_self_password_change_missing_current_password() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to change own password without providing current password
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "admin".to_string(),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_current_password_required(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_userupdate_admin_can_edit() {
         let mut test_ctx = create_test_context().await;
 
@@ -657,6 +826,7 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: Some("bobby".to_string()),
             requested_password: None,
@@ -697,6 +867,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "nonexistent".to_string(),
             requested_username: Some("newname".to_string()),
             requested_password: None,
@@ -731,6 +902,7 @@ mod tests {
 
         // Admin1 demotes Admin2 (should succeed, admin1 still exists)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin2".to_string(),
             requested_username: None,
             requested_password: None,
@@ -752,6 +924,7 @@ mod tests {
 
         // Now admin2 tries to demote admin1 (should fail - no permission)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin1".to_string(),
             requested_username: None,
             requested_password: None,
@@ -795,6 +968,7 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: Some("robert".to_string()),
             requested_password: None,
@@ -839,6 +1013,7 @@ mod tests {
 
         // Try to make bob an admin
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: None,
             requested_password: None,
@@ -882,6 +1057,7 @@ mod tests {
 
         // Try to rename bob to alice (should fail)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: Some("alice".to_string()),
             requested_password: None,
@@ -920,6 +1096,7 @@ mod tests {
 
         // Change alice's password
         let request = UserUpdateRequest {
+            current_password: None,
             username: "alice".to_string(),
             requested_username: None,
             requested_password: Some("newpassword".to_string()),
@@ -967,6 +1144,7 @@ mod tests {
 
         // Give bob some permissions
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1023,6 +1201,7 @@ mod tests {
 
         // Try to edit alice with empty password (should not change password)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "alice".to_string(),
             requested_username: None,
             requested_password: Some("".to_string()), // Empty password
@@ -1096,6 +1275,7 @@ mod tests {
         // Bob tries to update Alice, removing user_info and chat_send (permissions Bob doesn't have)
         // Bob tries to set Alice's permissions to just user_list (which Bob has)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "alice".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1157,6 +1337,7 @@ mod tests {
 
         // Try to disable self (will be caught by self-edit check)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1215,6 +1396,7 @@ mod tests {
 
         // Editor tries to disable admin (the last admin) - should fail
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1259,6 +1441,7 @@ mod tests {
 
         // Disable bob
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1290,6 +1473,7 @@ mod tests {
 
         // Re-enable bob
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1342,6 +1526,7 @@ mod tests {
 
         // Admin disables bob
         let request = UserUpdateRequest {
+            current_password: None,
             username: "bob".to_string(),
             requested_username: None,
             requested_password: None,
@@ -1420,6 +1605,7 @@ mod tests {
 
         // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
         let request = UserUpdateRequest {
+            current_password: None,
             username: "admin2".to_string(),
             requested_username: None,
             requested_password: None,
