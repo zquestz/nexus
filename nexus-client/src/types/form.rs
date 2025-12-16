@@ -183,6 +183,7 @@ impl UserManagementState {
         self.mode = UserManagementMode::List;
         self.clear_create_form();
         self.edit_error = None;
+        self.list_error = None;
     }
 
     /// Clear the create user form fields
