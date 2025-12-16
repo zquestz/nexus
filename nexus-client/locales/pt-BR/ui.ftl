@@ -25,10 +25,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = Conectar ao Servidor
 title-add-bookmark = Adicionar Favorito
 title-edit-server = Editar Servidor
-title-broadcast-message = Mensagem de Difusão
+title-broadcast-message = Difusão
 title-user-create = Criar Usuário
 title-user-edit = Editar Usuário
 title-update-user = Atualizar Usuário
+title-user-management = Gerenciar Usuários
+title-confirm-delete = Confirmar Exclusão
 title-connected = Conectados
 title-settings = Configurações
 title-bookmarks = Favoritos
@@ -50,7 +52,7 @@ placeholder-server-address = Endereço do Servidor
 placeholder-server-name = Nome do Servidor
 placeholder-username-optional = Nome de usuário (opcional)
 placeholder-password-optional = Senha (opcional)
-placeholder-password-keep-current = Senha (deixe vazio para manter a atual)
+placeholder-password-keep-current = Senha
 placeholder-message = Digite uma mensagem...
 placeholder-no-permission = Sem permissão
 placeholder-broadcast-message = Digite a mensagem de difusão...
@@ -110,8 +112,7 @@ permission-user_message = Mensagem de Usuário
 
 tooltip-chat = Chat
 tooltip-broadcast = Difusão
-tooltip-user-create = Criar Usuário
-tooltip-user-edit = Editar Usuário
+tooltip-manage-users = Gerenciar Usuários
 tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
 tooltip-settings = Configurações
@@ -126,6 +127,8 @@ tooltip-message = Mensagem
 tooltip-kick = Expulsar
 tooltip-close = Fechar
 tooltip-add-bookmark = Adicionar Favorito
+tooltip-create-user = Criar Usuário
+tooltip-delete = Excluir
 
 # =============================================================================
 # Empty States
@@ -135,6 +138,8 @@ empty-select-server = Selecione um servidor da lista
 empty-no-connections = Sem conexões
 empty-no-bookmarks = Sem favoritos
 empty-no-users = Nenhum usuário online
+user-management-loading = Carregando usuários...
+user-management-no-users = Nenhum usuário encontrado
 
 # =============================================================================
 # Chat Tab Labels
@@ -176,6 +181,7 @@ msg-topic-cleared = Tópico limpo por { $username }
 msg-topic-set = Tópico definido por { $username }: { $topic }
 msg-server-info-updated = Configuração do servidor atualizada
 msg-topic-display = Tópico: { $topic }
+confirm-delete-user = Tem certeza de que deseja excluir o usuário '{ $username }'?
 msg-user-connected = { $username } conectou
 msg-user-disconnected = { $username } desconectou
 msg-disconnected = Desconectado: { $error }

@@ -69,7 +69,7 @@ pub fn user_info_view<'a>(
     {
         buttons = buttons.push(
             button(shaped_text(t("button-edit")).size(TEXT_SIZE))
-                .on_press(Message::ToggleEditUser(Some(user.username.clone())))
+                .on_press(Message::UserManagementEditClicked(user.username.clone()))
                 .padding(BUTTON_PADDING)
                 .style(btn::secondary),
         );

@@ -216,11 +216,26 @@ impl NexusApp {
         // Check if this response corresponds to a tracked request
         let routing = conn.pending_requests.remove(&message_id);
 
-        if !success {
+        let users_vec = users.unwrap_or_default();
+
+        // If this was a user management list request, populate the panel
+        if matches!(routing, Some(ResponseRouting::PopulateUserManagementList)) {
+            if !success {
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    conn.user_management.all_users = Some(Err(t("err-userlist-failed")));
+                }
+                return Task::none();
+            }
+
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.user_management.all_users = Some(Ok(users_vec));
+            }
             return Task::none();
         }
 
-        let users_vec = users.unwrap_or_default();
+        if !success {
+            return Task::none();
+        }
 
         // If this was a /list all request, display in chat instead of caching
         if matches!(routing, Some(ResponseRouting::DisplayListInChat)) {

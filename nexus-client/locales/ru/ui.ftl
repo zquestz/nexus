@@ -25,10 +25,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = Подключение к серверу
 title-add-bookmark = Добавить закладку
 title-edit-server = Редактировать сервер
-title-broadcast-message = Сообщение рассылки
+title-broadcast-message = Рассылка
 title-user-create = Создать пользователя
 title-user-edit = Редактировать пользователя
 title-update-user = Обновить пользователя
+title-user-management = Управление Пользователями
+title-confirm-delete = Подтвердить Удаление
 title-connected = Подключённые
 title-settings = Настройки
 title-bookmarks = Закладки
@@ -50,7 +52,7 @@ placeholder-server-address = Адрес сервера
 placeholder-server-name = Имя сервера
 placeholder-username-optional = Имя пользователя (необязательно)
 placeholder-password-optional = Пароль (необязательно)
-placeholder-password-keep-current = Пароль (оставьте пустым для сохранения текущего)
+placeholder-password-keep-current = Пароль
 placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
 placeholder-broadcast-message = Введите сообщение рассылки...
@@ -110,8 +112,7 @@ permission-user_message = Сообщение Пользователю
 
 tooltip-chat = Чат
 tooltip-broadcast = Рассылка
-tooltip-user-create = Создать пользователя
-tooltip-user-edit = Редактировать пользователя
+tooltip-manage-users = Управление Пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
 tooltip-settings = Настройки
@@ -126,6 +127,8 @@ tooltip-message = Сообщение
 tooltip-kick = Выгнать
 tooltip-close = Закрыть
 tooltip-add-bookmark = Добавить закладку
+tooltip-create-user = Создать пользователя
+tooltip-delete = Удалить
 
 # =============================================================================
 # Empty States
@@ -135,6 +138,8 @@ empty-select-server = Выберите сервер из списка
 empty-no-connections = Нет подключений
 empty-no-bookmarks = Нет закладок
 empty-no-users = Нет пользователей онлайн
+user-management-loading = Загрузка пользователей...
+user-management-no-users = Пользователи не найдены
 
 # =============================================================================
 # Chat Tab Labels
@@ -176,6 +181,7 @@ msg-topic-cleared = Тема очищена пользователем { $userna
 msg-topic-set = Тема установлена пользователем { $username }: { $topic }
 msg-server-info-updated = Конфигурация сервера обновлена
 msg-topic-display = Тема: { $topic }
+confirm-delete-user = Вы уверены, что хотите удалить пользователя '{ $username }'?
 msg-user-connected = { $username } подключился
 msg-user-disconnected = { $username } отключился
 msg-disconnected = Отключено: { $error }

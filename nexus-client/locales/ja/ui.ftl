@@ -25,10 +25,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = サーバーに接続
 title-add-bookmark = ブックマークを追加
 title-edit-server = サーバーを編集
-title-broadcast-message = ブロードキャストメッセージ
+title-broadcast-message = ブロードキャスト
 title-user-create = ユーザー作成
 title-user-edit = ユーザー編集
 title-update-user = ユーザー更新
+title-user-management = ユーザー管理
+title-confirm-delete = 削除確認
 title-connected = 接続中
 title-settings = 設定
 title-bookmarks = ブックマーク
@@ -50,7 +52,7 @@ placeholder-server-address = サーバーアドレス
 placeholder-server-name = サーバー名
 placeholder-username-optional = ユーザー名（任意）
 placeholder-password-optional = パスワード（任意）
-placeholder-password-keep-current = パスワード（現在のまま維持する場合は空白）
+placeholder-password-keep-current = パスワード
 placeholder-message = メッセージを入力...
 placeholder-no-permission = 権限がありません
 placeholder-broadcast-message = ブロードキャストメッセージを入力...
@@ -110,8 +112,7 @@ permission-user_message = ユーザーメッセージ
 
 tooltip-chat = チャット
 tooltip-broadcast = ブロードキャスト
-tooltip-user-create = ユーザー作成
-tooltip-user-edit = ユーザー編集
+tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
 tooltip-settings = 設定
@@ -126,6 +127,8 @@ tooltip-message = メッセージ
 tooltip-kick = キック
 tooltip-close = 閉じる
 tooltip-add-bookmark = ブックマークを追加
+tooltip-create-user = ユーザー作成
+tooltip-delete = 削除
 
 # =============================================================================
 # Empty States
@@ -135,6 +138,8 @@ empty-select-server = リストからサーバーを選択してください
 empty-no-connections = 接続なし
 empty-no-bookmarks = ブックマークなし
 empty-no-users = オンラインユーザーなし
+user-management-loading = ユーザーを読み込み中...
+user-management-no-users = ユーザーが見つかりません
 
 # =============================================================================
 # Chat Tab Labels
@@ -176,6 +181,7 @@ msg-topic-cleared = { $username } がトピックをクリアしました
 msg-topic-set = { $username } がトピックを設定しました: { $topic }
 msg-server-info-updated = サーバー設定が更新されました
 msg-topic-display = トピック: { $topic }
+confirm-delete-user = ユーザー '{ $username }' を削除してもよろしいですか？
 msg-user-connected = { $username } が接続しました
 msg-user-disconnected = { $username } が切断しました
 msg-disconnected = 切断されました: { $error }

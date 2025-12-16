@@ -25,10 +25,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = 서버에 연결
 title-add-bookmark = 북마크 추가
 title-edit-server = 서버 편집
-title-broadcast-message = 브로드캐스트 메시지
+title-broadcast-message = 브로드캐스트
 title-user-create = 사용자 생성
 title-user-edit = 사용자 편집
 title-update-user = 사용자 업데이트
+title-user-management = 사용자 관리
+title-confirm-delete = 삭제 확인
 title-connected = 연결됨
 title-settings = 설정
 title-bookmarks = 북마크
@@ -50,7 +52,7 @@ placeholder-server-address = 서버 주소
 placeholder-server-name = 서버 이름
 placeholder-username-optional = 사용자 이름 (선택)
 placeholder-password-optional = 비밀번호 (선택)
-placeholder-password-keep-current = 비밀번호 (현재 유지하려면 비워두세요)
+placeholder-password-keep-current = 비밀번호
 placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
 placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요...
@@ -110,8 +112,7 @@ permission-user_message = 사용자 메시지
 
 tooltip-chat = 채팅
 tooltip-broadcast = 브로드캐스트
-tooltip-user-create = 사용자 생성
-tooltip-user-edit = 사용자 편집
+tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
 tooltip-settings = 설정
@@ -126,6 +127,8 @@ tooltip-message = 메시지
 tooltip-kick = 추방
 tooltip-close = 닫기
 tooltip-add-bookmark = 북마크 추가
+tooltip-create-user = 사용자 생성
+tooltip-delete = 삭제
 
 # =============================================================================
 # Empty States
@@ -135,6 +138,8 @@ empty-select-server = 목록에서 서버를 선택하세요
 empty-no-connections = 연결 없음
 empty-no-bookmarks = 북마크 없음
 empty-no-users = 온라인 사용자 없음
+user-management-loading = 사용자 로딩 중...
+user-management-no-users = 사용자를 찾을 수 없습니다
 
 # =============================================================================
 # Chat Tab Labels
@@ -176,6 +181,7 @@ msg-topic-cleared = { $username }님이 주제를 삭제했습니다
 msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
 msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
+confirm-delete-user = '{ $username }' 사용자를 삭제하시겠습니까?
 msg-user-connected = { $username }님이 연결되었습니다
 msg-user-disconnected = { $username }님의 연결이 해제되었습니다
 msg-disconnected = 연결 해제됨: { $error }

@@ -76,6 +76,9 @@ pub const TOOLTIP_BACKGROUND_PADDING: f32 = 6.0;
 /// Small padding (general use)
 pub const SMALL_PADDING: f32 = 5.0;
 
+/// Scrollbar padding (right padding for content next to scrollbar)
+pub const SCROLLBAR_PADDING: f32 = 12.0;
+
 // ============================================================================
 // Spacing
 // ============================================================================

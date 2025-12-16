@@ -1,9 +1,9 @@
 //! UI panel management and toggles
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, InputId, Message};
+use crate::types::{ActivePanel, Message};
 use iced::Task;
-use iced::widget::{Id, markdown, operation};
+use iced::widget::markdown;
 
 impl NexusApp {
     // ==================== Active Panel Helpers ====================
@@ -87,50 +87,6 @@ impl NexusApp {
     /// Close User Info panel
     pub fn handle_close_user_info(&mut self) -> Task<Message> {
         self.handle_show_chat_view()
-    }
-
-    // ==================== Panel Toggles ====================
-
-    /// Show Add User panel (does nothing if already shown)
-    pub fn handle_toggle_add_user(&mut self) -> Task<Message> {
-        if self.active_panel() == ActivePanel::AddUser {
-            return Task::none();
-        }
-
-        self.set_active_panel(ActivePanel::AddUser);
-
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
-
-        conn.user_management.clear_add_user();
-        self.focused_field = InputId::AdminUsername;
-        operation::focus(Id::from(InputId::AdminUsername))
-    }
-
-    /// Show Edit User panel (does nothing if already shown)
-    ///
-    /// If `username` is provided, pre-fills the username field.
-    pub fn handle_toggle_edit_user(&mut self, username: Option<String>) -> Task<Message> {
-        if self.active_panel() == ActivePanel::EditUser {
-            return Task::none();
-        }
-
-        self.set_active_panel(ActivePanel::EditUser);
-
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
-
-        conn.user_management.start_editing(username);
-        self.focused_field = InputId::EditUsername;
-        operation::focus(Id::from(InputId::EditUsername))
     }
 
     // ==================== Sidebar Toggles ====================

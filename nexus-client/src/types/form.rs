@@ -1,6 +1,7 @@
 //! Connection and user management form state
 
 use crate::config::Config;
+use nexus_common::protocol::UserInfo;
 
 /// Default permissions for new users
 ///
@@ -24,15 +25,16 @@ use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_squar
 use crate::style::{AVATAR_MAX_CACHE_SIZE, SERVER_IMAGE_MAX_CACHE_WIDTH};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
-/// User edit flow state (two-stage process)
-#[derive(Debug, Clone, PartialEq)]
-pub enum UserEditState {
-    /// Not editing anyone
-    None,
-    /// Stage 1: Selecting which user to edit (username input only)
-    SelectingUser { username: String },
-    /// Stage 2: Editing user details (full form with current values)
-    EditingUser {
+/// User management panel mode
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum UserManagementMode {
+    /// Showing list of all users
+    #[default]
+    List,
+    /// Creating a new user
+    Create,
+    /// Editing an existing user
+    Edit {
         /// Original username (for the UserUpdate request)
         original_username: String,
         /// New username (editable field, pre-filled with original)
@@ -45,6 +47,11 @@ pub enum UserEditState {
         enabled: bool,
         /// Permissions (editable)
         permissions: Vec<(String, bool)>,
+    },
+    /// Confirming deletion of a user
+    ConfirmDelete {
+        /// Username to delete
+        username: String,
     },
 }
 
@@ -98,27 +105,33 @@ impl ConnectionFormState {
 /// User management panel state (per-connection)
 #[derive(Debug, Clone)]
 pub struct UserManagementState {
-    /// Username for add user form
+    /// Current mode (list, create, edit, confirm delete)
+    pub mode: UserManagementMode,
+    /// All users from database (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
+    pub all_users: Option<Result<Vec<UserInfo>, String>>,
+    /// Username for create user form
     pub username: String,
-    /// Password for add user form
+    /// Password for create user form
     pub password: String,
-    /// Admin flag for add user form
+    /// Admin flag for create user form
     pub is_admin: bool,
-    /// Enabled flag for add user form
+    /// Enabled flag for create user form
     pub enabled: bool,
-    /// Permissions for add user form
+    /// Permissions for create user form
     pub permissions: Vec<(String, bool)>,
-    /// Current edit user state
-    pub edit_state: UserEditState,
     /// Error message for create user form
     pub create_error: Option<String>,
     /// Error message for edit user form
     pub edit_error: Option<String>,
+    /// Error message for list view (e.g., delete failed)
+    pub list_error: Option<String>,
 }
 
 impl Default for UserManagementState {
     fn default() -> Self {
         Self {
+            mode: UserManagementMode::List,
+            all_users: None,
             username: String::new(),
             password: String::new(),
             is_admin: false,
@@ -127,16 +140,23 @@ impl Default for UserManagementState {
                 .iter()
                 .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
-            edit_state: UserEditState::None,
             create_error: None,
             edit_error: None,
+            list_error: None,
         }
     }
 }
 
 impl UserManagementState {
-    /// Clear the add user form fields
-    pub fn clear_add_user(&mut self) {
+    /// Reset to list mode and clear all form state
+    pub fn reset_to_list(&mut self) {
+        self.mode = UserManagementMode::List;
+        self.clear_create_form();
+        self.edit_error = None;
+    }
+
+    /// Clear the create user form fields
+    pub fn clear_create_form(&mut self) {
         self.username.clear();
         self.password.clear();
         self.is_admin = false;
@@ -147,23 +167,14 @@ impl UserManagementState {
         self.create_error = None;
     }
 
-    /// Clear the edit user state
-    pub fn clear_edit_user(&mut self) {
-        self.edit_state = UserEditState::None;
-        self.edit_error = None;
+    /// Enter create mode
+    pub fn enter_create_mode(&mut self) {
+        self.clear_create_form();
+        self.mode = UserManagementMode::Create;
     }
 
-    /// Start editing a user (stage 1: enter username)
-    ///
-    /// If `username` is provided, pre-fills the username field.
-    pub fn start_editing(&mut self, username: Option<String>) {
-        self.edit_state = UserEditState::SelectingUser {
-            username: username.unwrap_or_default(),
-        };
-    }
-
-    /// Load a user for editing (stage 2: full form with current values from server)
-    pub fn load_user_for_editing(
+    /// Enter edit mode for a user (with pre-populated values from server)
+    pub fn enter_edit_mode(
         &mut self,
         username: String,
         is_admin: bool,
@@ -177,11 +188,11 @@ impl UserManagementState {
             .collect();
 
         // Mark permissions that the user has
-        for (perm_name, enabled) in &mut perm_map {
-            *enabled = permissions.contains(perm_name);
+        for (perm_name, perm_enabled) in &mut perm_map {
+            *perm_enabled = permissions.contains(perm_name);
         }
 
-        self.edit_state = UserEditState::EditingUser {
+        self.mode = UserManagementMode::Edit {
             original_username: username.clone(),
             new_username: username,
             new_password: String::new(),
@@ -189,6 +200,12 @@ impl UserManagementState {
             enabled,
             permissions: perm_map,
         };
+        self.edit_error = None;
+    }
+
+    /// Enter confirm delete mode for a user
+    pub fn enter_confirm_delete_mode(&mut self, username: String) {
+        self.mode = UserManagementMode::ConfirmDelete { username };
     }
 }
 

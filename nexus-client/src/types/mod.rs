@@ -14,7 +14,8 @@ pub use bookmark::{BookmarkEditMode, BookmarkEditState, ServerBookmark};
 pub use connection::{NetworkConnection, ServerConnection};
 pub use display::{ChatMessage, ChatTab, MessageType, ScrollState, UserInfo};
 pub use form::{
-    ConnectionFormState, ServerInfoEditState, SettingsFormState, UserEditState, UserManagementState,
+    ConnectionFormState, ServerInfoEditState, SettingsFormState, UserManagementMode,
+    UserManagementState,
 };
 pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;

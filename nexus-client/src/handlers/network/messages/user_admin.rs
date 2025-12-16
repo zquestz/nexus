@@ -1,8 +1,10 @@
 //! User administration response handlers
 
+use nexus_common::framing::MessageId;
+
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{ActivePanel, ChatMessage, Message};
+use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting};
 use iced::Task;
 
 /// Data from a UserEditResponse message
@@ -17,115 +19,230 @@ pub struct UserEditResponseData {
 
 impl NexusApp {
     /// Handle user create response
+    ///
+    /// If tracked via ResponseRouting::UserManagementCreateResult, returns to list view
+    /// and refreshes the user list on success.
     pub fn handle_user_create_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        if success {
-            // Close add user panel on success
-            if let Some(conn) = self.connections.get_mut(&connection_id)
-                && conn.active_panel == ActivePanel::AddUser
-            {
-                conn.active_panel = ActivePanel::None;
-                conn.user_management.clear_add_user();
-            }
-
-            // add_chat_message handles scrolling when this is the active connection
-            return self
-                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")));
-        }
-
-        // On error, keep panel open and show error in form
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
-        conn.user_management.create_error = Some(error.unwrap_or_default());
+
+        // Check if this was a tracked request from user management panel
+        let routing = conn.pending_requests.remove(&message_id);
+
+        if success {
+            // Show success message in chat
+            let task =
+                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")));
+
+            // If from user management panel, return to list and refresh
+            if matches!(routing, Some(ResponseRouting::UserManagementCreateResult)) {
+                return Task::batch([task, self.return_to_user_management_list(connection_id)]);
+            }
+
+            return task;
+        }
+
+        // On error, show in the appropriate place
+        if matches!(routing, Some(ResponseRouting::UserManagementCreateResult)) {
+            // Show error in create form
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.user_management.create_error = Some(error.unwrap_or_default());
+            }
+        } else {
+            // Show error in chat
+            return self
+                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+        }
+
         Task::none()
     }
 
     /// Handle user delete response
+    ///
+    /// If tracked via ResponseRouting::UserManagementDeleteResult, stays on list view
+    /// and refreshes the user list on success.
     pub fn handle_user_delete_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        if success {
-            // Close edit panel on success
-            if let Some(conn) = self.connections.get_mut(&connection_id)
-                && conn.active_panel == ActivePanel::EditUser
-            {
-                conn.active_panel = ActivePanel::None;
-                conn.user_management.clear_edit_user();
-            }
-
-            // add_chat_message handles scrolling when this is the active connection
-            return self
-                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")));
-        }
-
-        // On error, keep panel open and show error in form
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
-        conn.user_management.edit_error = Some(error.unwrap_or_default());
+
+        // Check if this was a tracked request from user management panel
+        let routing = conn.pending_requests.remove(&message_id);
+
+        if success {
+            // Show success message in chat
+            let task =
+                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")));
+
+            // If from user management panel, refresh the list
+            if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
+                return Task::batch([task, self.refresh_user_management_list_for(connection_id)]);
+            }
+
+            return task;
+        }
+
+        // On error, show in the appropriate place
+        if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
+            // Show error on list view
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.user_management.list_error = Some(error.unwrap_or_default());
+            }
+        } else {
+            // Show error in chat
+            return self
+                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+        }
+
         Task::none()
     }
 
-    /// Handle user edit response (stage 2 - loading user details)
+    /// Handle user edit response (loading user details for editing)
+    ///
+    /// If tracked via ResponseRouting::PopulateUserManagementEdit, populates the edit form.
     pub fn handle_user_edit_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         data: UserEditResponseData,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
+        // Check if this was a tracked request from user management panel
+        let routing = conn.pending_requests.remove(&message_id);
+
         if data.success {
-            // Load the user details into edit form (stage 2)
-            conn.user_management.load_user_for_editing(
-                data.username.unwrap_or_default(),
-                data.is_admin.unwrap_or(false),
-                data.enabled.unwrap_or(true),
-                data.permissions.unwrap_or_default(),
-            );
+            // If from user management panel, load the user details into edit form
+            if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
+                conn.user_management.enter_edit_mode(
+                    data.username.unwrap_or_default(),
+                    data.is_admin.unwrap_or(false),
+                    data.enabled.unwrap_or(true),
+                    data.permissions.unwrap_or_default(),
+                );
+            }
         } else {
-            // On error, keep panel open and show error in form
-            conn.user_management.edit_error = Some(data.error.unwrap_or_default());
+            // On error, show in the appropriate place
+            if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
+                // Show error on list view
+                conn.user_management.list_error = Some(data.error.unwrap_or_default());
+            } else {
+                // Show error in chat
+                return self.add_chat_message(
+                    connection_id,
+                    ChatMessage::error(data.error.unwrap_or_default()),
+                );
+            }
         }
 
         Task::none()
     }
 
     /// Handle user update response
+    ///
+    /// If tracked via ResponseRouting::UserManagementUpdateResult, returns to list view
+    /// and refreshes the user list on success.
     pub fn handle_user_update_response(
         &mut self,
         connection_id: usize,
+        message_id: MessageId,
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
-        if success {
-            // Close edit panel on success
-            if let Some(conn) = self.connections.get_mut(&connection_id)
-                && conn.active_panel == ActivePanel::EditUser
-            {
-                conn.active_panel = ActivePanel::None;
-                conn.user_management.clear_edit_user();
-            }
-
-            // add_chat_message handles scrolling when this is the active connection
-            return self
-                .add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")));
-        }
-
-        // On error, keep panel open and show error in form
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
-        conn.user_management.edit_error = Some(error.unwrap_or_default());
+
+        // Check if this was a tracked request from user management panel
+        let routing = conn.pending_requests.remove(&message_id);
+
+        if success {
+            // Show success message in chat
+            let task =
+                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")));
+
+            // If from user management panel, return to list and refresh
+            if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
+                return Task::batch([task, self.return_to_user_management_list(connection_id)]);
+            }
+
+            return task;
+        }
+
+        // On error, show in the appropriate place
+        if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
+            // Show error in edit form
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.user_management.edit_error = Some(error.unwrap_or_default());
+            }
+        } else {
+            // Show error in chat
+            return self
+                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+        }
+
+        Task::none()
+    }
+
+    // ==================== Helper Functions ====================
+
+    /// Return to user management list view and refresh the list
+    fn return_to_user_management_list(&mut self, connection_id: usize) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Reset to list mode
+        conn.user_management.reset_to_list();
+
+        // Refresh the user list
+        self.refresh_user_management_list_for(connection_id)
+    }
+
+    /// Refresh user management list for a specific connection
+    fn refresh_user_management_list_for(&mut self, connection_id: usize) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Only refresh if we're in the user management panel
+        if conn.active_panel != ActivePanel::UserManagement {
+            return Task::none();
+        }
+
+        // Clear user list to show loading state
+        conn.user_management.all_users = None;
+
+        // Request user list from server
+        use crate::types::PendingRequests;
+        use nexus_common::protocol::ClientMessage;
+
+        match conn.send(ClientMessage::UserList { all: true }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::PopulateUserManagementList);
+            }
+            Err(e) => {
+                conn.user_management.all_users =
+                    Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+            }
+        }
+
         Task::none()
     }
 }

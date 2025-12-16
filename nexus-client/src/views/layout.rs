@@ -1,7 +1,8 @@
 //! Main application layout and toolbar
 
 use super::constants::{
-    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE,
+    PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::server_info::{ServerInfoData, server_info_view};
 use super::user_info::user_info_view;
@@ -238,13 +239,10 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
             .permissions
             .iter()
             .any(|p| p == PERMISSION_USER_BROADCAST);
-    let has_user_create = state.is_admin
-        || state
-            .permissions
-            .iter()
-            .any(|p| p == PERMISSION_USER_CREATE);
-    let has_user_edit =
-        state.is_admin || state.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+    let has_user_management = state.is_admin
+        || state.permissions.iter().any(|p| {
+            p == PERMISSION_USER_CREATE || p == PERMISSION_USER_EDIT || p == PERMISSION_USER_DELETE
+        });
 
     let toolbar = container(
         row![
@@ -302,38 +300,15 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .gap(TOOLTIP_GAP)
                     .padding(TOOLTIP_PADDING)
                 },
-                // User Create button
-                if state.is_connected && has_user_create {
-                    tooltip(
-                        button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
-                            .on_press(Message::ToggleAddUser)
-                            .style(toolbar_button_style(active_panel == ActivePanel::AddUser)),
-                        container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
-                            .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(tooltip_container_style),
-                        tooltip::Position::Bottom,
-                    )
-                    .gap(TOOLTIP_GAP)
-                    .padding(TOOLTIP_PADDING)
-                } else {
-                    tooltip(
-                        button(icon::user_plus().size(TOOLBAR_ICON_SIZE))
-                            .style(disabled_icon_button_style),
-                        container(shaped_text(t("tooltip-user-create")).size(TOOLTIP_TEXT_SIZE))
-                            .padding(TOOLTIP_BACKGROUND_PADDING)
-                            .style(tooltip_container_style),
-                        tooltip::Position::Bottom,
-                    )
-                    .gap(TOOLTIP_GAP)
-                    .padding(TOOLTIP_PADDING)
-                },
-                // User Edit button
-                if state.is_connected && has_user_edit {
+                // User Management button
+                if state.is_connected && has_user_management {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
-                            .on_press(Message::ToggleEditUser(None))
-                            .style(toolbar_button_style(active_panel == ActivePanel::EditUser)),
-                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
+                            .on_press(Message::ToggleUserManagement)
+                            .style(toolbar_button_style(
+                                active_panel == ActivePanel::UserManagement,
+                            )),
+                        container(shaped_text(t("tooltip-manage-users")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,
@@ -344,7 +319,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
                             .style(disabled_icon_button_style),
-                        container(shaped_text(t("tooltip-user-edit")).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-manage-users")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,
@@ -529,12 +504,10 @@ fn server_content_view<'a>(
             .width(Fill)
             .height(Fill)
             .into(),
-        ActivePanel::AddUser | ActivePanel::EditUser => {
-            stack![chat, users_view(conn, user_management, active_panel)]
-                .width(Fill)
-                .height(Fill)
-                .into()
-        }
+        ActivePanel::UserManagement => stack![chat, users_view(conn, user_management, &theme)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::Settings => stack![
             chat,
             settings_view(

@@ -29,6 +29,8 @@ title-broadcast-message = Rundnachricht
 title-user-create = Benutzer erstellen
 title-user-edit = Benutzer bearbeiten
 title-update-user = Benutzer aktualisieren
+title-user-management = Benutzer verwalten
+title-confirm-delete = Löschen bestätigen
 title-connected = Verbunden
 title-settings = Einstellungen
 title-bookmarks = Lesezeichen
@@ -50,7 +52,7 @@ placeholder-server-address = Serveradresse
 placeholder-server-name = Servername
 placeholder-username-optional = Benutzername (optional)
 placeholder-password-optional = Passwort (optional)
-placeholder-password-keep-current = Passwort (leer lassen um aktuelles zu behalten)
+placeholder-password-keep-current = Passwort
 placeholder-message = Nachricht eingeben...
 placeholder-no-permission = Keine Berechtigung
 placeholder-broadcast-message = Rundnachricht eingeben...
@@ -110,8 +112,7 @@ permission-user_message = Benutzernachricht
 
 tooltip-chat = Chat
 tooltip-broadcast = Rundnachricht
-tooltip-user-create = Benutzer erstellen
-tooltip-user-edit = Benutzer bearbeiten
+tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
 tooltip-settings = Einstellungen
@@ -126,6 +127,8 @@ tooltip-message = Nachricht
 tooltip-kick = Rauswerfen
 tooltip-close = Schließen
 tooltip-add-bookmark = Lesezeichen hinzufügen
+tooltip-create-user = Benutzer erstellen
+tooltip-delete = Löschen
 
 # =============================================================================
 # Empty States
@@ -135,6 +138,8 @@ empty-select-server = Wählen Sie einen Server aus der Liste
 empty-no-connections = Keine Verbindungen
 empty-no-bookmarks = Keine Lesezeichen
 empty-no-users = Keine Benutzer online
+user-management-loading = Benutzer werden geladen...
+user-management-no-users = Keine Benutzer gefunden
 
 # =============================================================================
 # Chat Tab Labels
@@ -176,6 +181,7 @@ msg-topic-cleared = Thema gelöscht von { $username }
 msg-topic-set = Thema gesetzt von { $username }: { $topic }
 msg-server-info-updated = Serverkonfiguration aktualisiert
 msg-topic-display = Thema: { $topic }
+confirm-delete-user = Möchten Sie den Benutzer '{ $username }' wirklich löschen?
 msg-user-connected = { $username } hat sich verbunden
 msg-user-disconnected = { $username } hat sich getrennt
 msg-disconnected = Getrennt: { $error }

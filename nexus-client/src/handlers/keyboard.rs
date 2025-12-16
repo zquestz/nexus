@@ -1,7 +1,7 @@
 //! Keyboard navigation
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, UserEditState};
+use crate::types::{ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, UserManagementMode};
 use iced::keyboard::{self, key};
 use iced::widget::{Id, operation};
 use iced::{Event, Task};
@@ -57,36 +57,29 @@ impl NexusApp {
                 if can_save {
                     return self.update(Message::SaveBookmark);
                 }
-            } else if self.active_panel() == ActivePanel::AddUser {
-                // On add user screen, try to create user
+            } else if self.active_panel() == ActivePanel::UserManagement {
+                // On user management screen, handle Enter based on mode
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
                 {
-                    let can_create = !conn.user_management.username.trim().is_empty()
-                        && !conn.user_management.password.trim().is_empty();
-                    if can_create {
-                        return self.update(Message::CreateUserPressed);
-                    }
-                }
-            } else if self.active_panel() == ActivePanel::EditUser {
-                // On edit user screen, handle Enter for both stages
-                if let Some(conn_id) = self.active_connection
-                    && let Some(conn) = self.connections.get(&conn_id)
-                {
-                    match &conn.user_management.edit_state {
-                        UserEditState::SelectingUser { username } => {
-                            // Stage 1: Submit edit request
-                            if !username.trim().is_empty() {
-                                return self.update(Message::EditUserPressed);
+                    match &conn.user_management.mode {
+                        UserManagementMode::Create => {
+                            // Create mode: Submit create request
+                            let can_create = !conn.user_management.username.trim().is_empty()
+                                && !conn.user_management.password.trim().is_empty();
+                            if can_create {
+                                return self.update(Message::UserManagementCreatePressed);
                             }
                         }
-                        UserEditState::EditingUser { new_username, .. } => {
-                            // Stage 2: Submit update
+                        UserManagementMode::Edit { new_username, .. } => {
+                            // Edit mode: Submit update
                             if !new_username.trim().is_empty() {
-                                return self.update(Message::UpdateUserPressed);
+                                return self.update(Message::UserManagementUpdatePressed);
                             }
                         }
-                        UserEditState::None => {}
+                        UserManagementMode::List | UserManagementMode::ConfirmDelete { .. } => {
+                            // List/ConfirmDelete: No Enter action
+                        }
                     }
                 }
             } else if self.active_panel() == ActivePanel::Broadcast {
@@ -138,8 +131,10 @@ impl NexusApp {
                 // Cancel active panel
                 match self.active_panel() {
                     ActivePanel::About => return self.update(Message::CloseAbout),
-                    ActivePanel::AddUser => return self.update(Message::CancelAddUser),
-                    ActivePanel::EditUser => return self.update(Message::CancelEditUser),
+                    ActivePanel::UserManagement => {
+                        // In user management, Escape returns to list (or closes if on list)
+                        return self.update(Message::CancelUserManagement);
+                    }
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
                     ActivePanel::Settings => return self.update(Message::CancelSettings),
                     ActivePanel::ServerInfo => {
@@ -234,28 +229,24 @@ impl NexusApp {
             };
             self.focused_field = next_field;
             return operation::focus(Id::from(next_field));
-        } else if self.active_panel() == ActivePanel::AddUser {
-            // On add user screen, cycle through fields
-            let next_field = match self.focused_field {
-                InputId::AdminUsername => InputId::AdminPassword,
-                InputId::AdminPassword => InputId::AdminUsername,
-                _ => InputId::AdminUsername,
-            };
-            self.focused_field = next_field;
-            return operation::focus(Id::from(next_field));
-        } else if self.active_panel() == ActivePanel::EditUser {
-            // On edit user screen, handle both stages
+        } else if self.active_panel() == ActivePanel::UserManagement {
+            // On user management screen, handle Tab based on mode
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
             {
-                match &conn.user_management.edit_state {
-                    UserEditState::SelectingUser { .. } => {
-                        // Stage 1: Only username field
-                        self.focused_field = InputId::EditUsername;
-                        return operation::focus(Id::from(InputId::EditUsername));
+                match &conn.user_management.mode {
+                    UserManagementMode::Create => {
+                        // Create mode: Cycle through username and password
+                        let next_field = match self.focused_field {
+                            InputId::AdminUsername => InputId::AdminPassword,
+                            InputId::AdminPassword => InputId::AdminUsername,
+                            _ => InputId::AdminUsername,
+                        };
+                        self.focused_field = next_field;
+                        return operation::focus(Id::from(next_field));
                     }
-                    UserEditState::EditingUser { .. } => {
-                        // Stage 2: Cycle through edit fields
+                    UserManagementMode::Edit { .. } => {
+                        // Edit mode: Cycle through edit fields
                         let next_field = match self.focused_field {
                             InputId::EditNewUsername => InputId::EditNewPassword,
                             InputId::EditNewPassword => InputId::EditNewUsername,
@@ -264,7 +255,9 @@ impl NexusApp {
                         self.focused_field = next_field;
                         return operation::focus(Id::from(next_field));
                     }
-                    UserEditState::None => {}
+                    UserManagementMode::List | UserManagementMode::ConfirmDelete { .. } => {
+                        // List/ConfirmDelete: No Tab navigation
+                    }
                 }
             }
         } else if self.active_panel() == ActivePanel::ServerInfo {

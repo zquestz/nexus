@@ -3,7 +3,7 @@
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING,
+    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING, SCROLLBAR_PADDING,
     SECTION_TITLE_SIZE, SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
@@ -200,6 +200,16 @@ fn bookmarks_section<'a>(
         }
     }
 
+    // Add right padding to make room for scrollbar
+    let bookmarks_column = container(bookmarks_column)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: SCROLLBAR_PADDING,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .width(Fill);
+
     // Add bookmark button
     let add_icon = container(icon::bookmark().size(SIDEBAR_ACTION_ICON_SIZE))
         .width(SIDEBAR_ACTION_ICON_SIZE)
@@ -226,7 +236,12 @@ fn bookmarks_section<'a>(
         Element::from(add_btn),
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)
-    .padding(FORM_PADDING)
+    .padding(iced::Padding {
+        top: FORM_PADDING,
+        right: FORM_PADDING - SCROLLBAR_PADDING,
+        bottom: FORM_PADDING,
+        left: FORM_PADDING,
+    })
 }
 
 // ============================================================================

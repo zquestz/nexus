@@ -5,14 +5,14 @@ use crate::avatar::generate_identicon;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
-    SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING,
-    USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH, USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING,
-    USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE, alternating_row_style, chat,
-    disabled_icon_button_style, icon_button_with_hover_style, muted_text_style, shaped_text,
-    sidebar_panel_style, tooltip_container_style, ui, user_list_item_button_style,
-    user_toolbar_separator_style,
+    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
+    SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
+    USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
+    alternating_row_style, chat, disabled_icon_button_style, icon_button_with_hover_style,
+    muted_text_style, shaped_text, sidebar_panel_style, tooltip_container_style, ui,
+    user_list_item_button_style, user_toolbar_separator_style,
 };
 use crate::types::{Message, ServerConnection};
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
@@ -266,9 +266,24 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         }
     }
 
+    // Add right padding to make room for scrollbar
+    let users_column = container(users_column)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: SCROLLBAR_PADDING,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .width(Fill);
+
     let panel = column![title, scrollable(users_column).height(Fill),]
         .spacing(USER_LIST_SPACING)
-        .padding(FORM_PADDING)
+        .padding(iced::Padding {
+            top: FORM_PADDING,
+            right: FORM_PADDING - SCROLLBAR_PADDING,
+            bottom: FORM_PADDING,
+            left: FORM_PADDING,
+        })
         .width(USER_LIST_PANEL_WIDTH);
 
     container(panel)

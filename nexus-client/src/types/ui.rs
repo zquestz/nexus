@@ -10,10 +10,6 @@ pub enum ActivePanel {
     None,
     /// About panel
     About,
-    /// Add User panel
-    AddUser,
-    /// Edit User panel
-    EditUser,
     /// Broadcast panel
     Broadcast,
     /// Settings panel
@@ -22,6 +18,8 @@ pub enum ActivePanel {
     ServerInfo,
     /// User Info panel (triggered by info icon click)
     UserInfo,
+    /// User Management panel (create, edit, delete users)
+    UserManagement,
 }
 
 /// UI visibility state for toggleable panels
@@ -116,11 +114,9 @@ pub enum InputId {
     AdminUsername,
     /// Admin panel: Password input
     AdminPassword,
-    /// Edit user panel: Username input (stage 1)
-    EditUsername,
-    /// Edit user panel: New username input (stage 2)
+    /// Edit user panel: New username input
     EditNewUsername,
-    /// Edit user panel: New password input (stage 2)
+    /// Edit user panel: New password input
     EditNewPassword,
     /// Server info edit: Name input
     EditServerInfoName,
@@ -147,7 +143,6 @@ impl From<InputId> for Id {
             InputId::BookmarkPassword => "InputId::BookmarkPassword",
             InputId::AdminUsername => "InputId::AdminUsername",
             InputId::AdminPassword => "InputId::AdminPassword",
-            InputId::EditUsername => "InputId::EditUsername",
             InputId::EditNewUsername => "InputId::EditNewUsername",
             InputId::EditNewPassword => "InputId::EditNewPassword",
             InputId::EditServerInfoName => "InputId::EditServerInfoName",

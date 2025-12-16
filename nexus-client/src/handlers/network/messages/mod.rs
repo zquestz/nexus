@@ -93,11 +93,11 @@ impl NexusApp {
             }
 
             ServerMessage::UserCreateResponse { success, error } => {
-                self.handle_user_create_response(connection_id, success, error)
+                self.handle_user_create_response(connection_id, message_id, success, error)
             }
 
             ServerMessage::UserDeleteResponse { success, error } => {
-                self.handle_user_delete_response(connection_id, success, error)
+                self.handle_user_delete_response(connection_id, message_id, success, error)
             }
 
             ServerMessage::UserDisconnected {
@@ -114,6 +114,7 @@ impl NexusApp {
                 permissions,
             } => self.handle_user_edit_response(
                 connection_id,
+                message_id,
                 UserEditResponseData {
                     success,
                     error,
@@ -163,7 +164,7 @@ impl NexusApp {
             } => self.handle_user_updated(connection_id, previous_username, user),
 
             ServerMessage::UserUpdateResponse { success, error } => {
-                self.handle_user_update_response(connection_id, success, error)
+                self.handle_user_update_response(connection_id, message_id, success, error)
             }
 
             ServerMessage::ServerInfoUpdated { server_info } => {

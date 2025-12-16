@@ -26,10 +26,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = Verbinden met server
 title-add-bookmark = Bladwijzer toevoegen
 title-edit-server = Server bewerken
-title-broadcast-message = Broadcastbericht
+title-broadcast-message = Broadcast
 title-user-create = Gebruiker aanmaken
 title-user-edit = Gebruiker bewerken
 title-update-user = Gebruiker bijwerken
+title-user-management = Gebruikers Beheren
+title-confirm-delete = Verwijdering Bevestigen
 title-connected = Verbonden
 title-settings = Instellingen
 title-bookmarks = Bladwijzers
@@ -51,7 +53,7 @@ placeholder-server-address = Serveradres
 placeholder-server-name = Servernaam
 placeholder-username-optional = Gebruikersnaam (optioneel)
 placeholder-password-optional = Wachtwoord (optioneel)
-placeholder-password-keep-current = Wachtwoord (leeg laten om huidige te behouden)
+placeholder-password-keep-current = Wachtwoord
 placeholder-message = Typ een bericht...
 placeholder-no-permission = Geen toestemming
 placeholder-broadcast-message = Voer broadcastbericht in...
@@ -111,8 +113,7 @@ permission-user_message = Gebruikersbericht
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
-tooltip-user-create = Gebruiker aanmaken
-tooltip-user-edit = Gebruiker bewerken
+tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
 tooltip-settings = Instellingen
@@ -127,6 +128,8 @@ tooltip-message = Bericht
 tooltip-kick = Verwijderen
 tooltip-add-bookmark = Bladwijzer Toevoegen
 tooltip-close = Sluiten
+tooltip-create-user = Gebruiker Aanmaken
+tooltip-delete = Verwijderen
 
 # =============================================================================
 # Empty States
@@ -136,6 +139,8 @@ empty-select-server = Selecteer een server uit de lijst
 empty-no-connections = Geen verbindingen
 empty-no-bookmarks = Geen bladwijzers
 empty-no-users = Geen gebruikers online
+user-management-loading = Gebruikers laden...
+user-management-no-users = Geen gebruikers gevonden
 
 # =============================================================================
 # Chat Tab Labels
@@ -177,6 +182,7 @@ msg-topic-cleared = Onderwerp gewist door { $username }
 msg-topic-set = Onderwerp ingesteld door { $username }: { $topic }
 msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
+confirm-delete-user = Weet je zeker dat je gebruiker '{ $username }' wilt verwijderen?
 msg-user-connected = { $username } is verbonden
 msg-user-disconnected = { $username } is losgekoppeld
 msg-disconnected = Verbinding verbroken: { $error }

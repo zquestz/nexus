@@ -245,36 +245,52 @@ impl NexusApp {
                 self.handle_user_message_icon_clicked(username)
             }
 
-            // User management - Add user
-            Message::AdminEnabledToggled(enabled) => self.handle_admin_enabled_toggled(enabled),
-            Message::AdminIsAdminToggled(is_admin) => self.handle_admin_is_admin_toggled(is_admin),
-            Message::AdminPasswordChanged(password) => self.handle_admin_password_changed(password),
-            Message::AdminPermissionToggled(permission, enabled) => {
-                self.handle_admin_permission_toggled(permission, enabled)
+            // User management
+            Message::CancelUserManagement => self.handle_cancel_user_management(),
+            Message::ToggleUserManagement => self.handle_toggle_user_management(),
+            Message::UserManagementShowCreate => self.handle_user_management_show_create(),
+            Message::UserManagementUsernameChanged(username) => {
+                self.handle_user_management_username_changed(username)
             }
-            Message::AdminUsernameChanged(username) => self.handle_admin_username_changed(username),
-            Message::CancelAddUser => self.handle_cancel_add_user(),
-            Message::CreateUserPressed => self.handle_create_user_pressed(),
-            Message::DeleteUserPressed(username) => self.handle_delete_user_pressed(username),
-            Message::ValidateCreateUser => self.handle_validate_create_user(),
-
-            // User management - Edit user
-            Message::CancelEditUser => self.handle_cancel_edit_user(),
-            Message::EditEnabledToggled(enabled) => self.handle_edit_enabled_toggled(enabled),
-            Message::EditIsAdminToggled(is_admin) => self.handle_edit_is_admin_toggled(is_admin),
-            Message::EditNewPasswordChanged(new_password) => {
-                self.handle_edit_new_password_changed(new_password)
+            Message::UserManagementPasswordChanged(password) => {
+                self.handle_user_management_password_changed(password)
             }
-            Message::EditNewUsernameChanged(new_username) => {
-                self.handle_edit_new_username_changed(new_username)
+            Message::UserManagementIsAdminToggled(is_admin) => {
+                self.handle_user_management_is_admin_toggled(is_admin)
             }
-            Message::EditPermissionToggled(permission, enabled) => {
-                self.handle_edit_permission_toggled(permission, enabled)
+            Message::UserManagementEnabledToggled(enabled) => {
+                self.handle_user_management_enabled_toggled(enabled)
             }
-            Message::EditUsernameChanged(username) => self.handle_edit_username_changed(username),
-            Message::EditUserPressed => self.handle_edit_user_pressed(),
-            Message::UpdateUserPressed => self.handle_update_user_pressed(),
-            Message::ValidateEditUser => self.handle_validate_edit_user(),
+            Message::UserManagementPermissionToggled(permission, enabled) => {
+                self.handle_user_management_permission_toggled(permission, enabled)
+            }
+            Message::UserManagementCreatePressed => self.handle_user_management_create_pressed(),
+            Message::UserManagementEditClicked(username) => {
+                self.handle_user_management_edit_clicked(username)
+            }
+            Message::UserManagementDeleteClicked(username) => {
+                self.handle_user_management_delete_clicked(username)
+            }
+            Message::UserManagementConfirmDelete => self.handle_user_management_confirm_delete(),
+            Message::UserManagementCancelDelete => self.handle_user_management_cancel_delete(),
+            Message::UserManagementEditUsernameChanged(username) => {
+                self.handle_user_management_edit_username_changed(username)
+            }
+            Message::UserManagementEditPasswordChanged(password) => {
+                self.handle_user_management_edit_password_changed(password)
+            }
+            Message::UserManagementEditIsAdminToggled(is_admin) => {
+                self.handle_user_management_edit_is_admin_toggled(is_admin)
+            }
+            Message::UserManagementEditEnabledToggled(enabled) => {
+                self.handle_user_management_edit_enabled_toggled(enabled)
+            }
+            Message::UserManagementEditPermissionToggled(permission, enabled) => {
+                self.handle_user_management_edit_permission_toggled(permission, enabled)
+            }
+            Message::UserManagementUpdatePressed => self.handle_user_management_update_pressed(),
+            Message::ValidateUserManagementCreate => self.handle_validate_user_management_create(),
+            Message::ValidateUserManagementEdit => self.handle_validate_user_management_edit(),
 
             // Broadcast
             Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),
@@ -284,10 +300,8 @@ impl NexusApp {
 
             // UI toggles
             Message::ShowChatView => self.handle_show_chat_view(),
-            Message::ToggleAddUser => self.handle_toggle_add_user(),
             Message::ToggleBookmarks => self.handle_toggle_bookmarks(),
             Message::ToggleBroadcast => self.handle_toggle_broadcast(),
-            Message::ToggleEditUser(username) => self.handle_toggle_edit_user(username),
             Message::ToggleUserList => self.handle_toggle_user_list(),
 
             // Settings

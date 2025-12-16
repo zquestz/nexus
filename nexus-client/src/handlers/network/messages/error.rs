@@ -1,7 +1,7 @@
 //! Error message handler
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, ChatMessage, Message};
+use crate::types::{ActivePanel, ChatMessage, Message, UserManagementMode};
 use iced::Task;
 
 // Protocol command names (must match server exactly)
@@ -52,7 +52,8 @@ impl NexusApp {
         };
 
         (cmd == CMD_USER_EDIT || cmd == CMD_USER_UPDATE)
-            && conn.active_panel == ActivePanel::EditUser
+            && conn.active_panel == ActivePanel::UserManagement
+            && matches!(conn.user_management.mode, UserManagementMode::Edit { .. })
     }
 
     /// Check if error should be shown in server info edit form

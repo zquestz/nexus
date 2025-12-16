@@ -45,25 +45,21 @@ where
         }
     };
 
-    // Check UserList permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::UserList) {
-        eprintln!(
-            "UserList from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
-            .await;
-    }
+    // Permission check depends on whether requesting all users or just online users
+    // - all: true -> requires user_create OR user_edit OR user_delete (for user management panel)
+    // - all: false -> requires user_list (for online user list)
+    let has_permission = if all {
+        requesting_user.has_permission(Permission::UserCreate)
+            || requesting_user.has_permission(Permission::UserEdit)
+            || requesting_user.has_permission(Permission::UserDelete)
+    } else {
+        requesting_user.has_permission(Permission::UserList)
+    };
 
-    // If requesting all users, check for additional permissions (user_edit OR user_delete)
-    if all
-        && !requesting_user.has_permission(Permission::UserEdit)
-        && !requesting_user.has_permission(Permission::UserDelete)
-    {
+    if !has_permission {
         eprintln!(
-            "UserList all from {} (user: {}) without user_edit or user_delete permission",
-            ctx.peer_addr, requesting_user.username
+            "UserList (all={}) from {} (user: {}) without permission",
+            all, ctx.peer_addr, requesting_user.username
         );
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
@@ -521,12 +517,12 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserList AND user_edit permissions
+        // Create user WITH user_edit permission (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::UserList, db::Permission::UserEdit],
+            &[db::Permission::UserEdit],
             false,
         )
         .await;
@@ -551,12 +547,12 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserList AND user_delete permissions
+        // Create user WITH user_delete permission (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::UserList, db::Permission::UserDelete],
+            &[db::Permission::UserDelete],
             false,
         )
         .await;
@@ -595,12 +591,12 @@ mod tests {
             .await
             .unwrap();
 
-        // Create an online user with necessary permissions
+        // Create an online user with necessary permissions (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::UserList, db::Permission::UserEdit],
+            &[db::Permission::UserEdit],
             false,
         )
         .await;
@@ -649,12 +645,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userlist_all_with_user_create_permission() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH user_create permission (user_list not needed for all: true)
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserCreate],
+            false,
+        )
+        .await;
+
+        // Get all users - should succeed
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(
+            result.is_ok(),
+            "UserList all with user_create should succeed"
+        );
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_userlist_all_admin_bypass() {
         use crate::handlers::testing::read_server_message;
 
         let mut test_ctx = create_test_context().await;
 
-        // Admin should be able to list all users without explicit user_edit/user_delete
+        // Admin should be able to list all users without explicit user_edit/user_delete/user_create
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Get all users - should succeed (admin bypass)

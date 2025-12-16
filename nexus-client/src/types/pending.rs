@@ -22,6 +22,16 @@ pub enum ResponseRouting {
     DisplayUserInfoInChat,
     /// Populate user info panel if username matches (from info icon click)
     PopulateUserInfoPanel(String),
+    /// Populate user management list (from panel open)
+    PopulateUserManagementList,
+    /// Populate user management edit form (from edit button click)
+    PopulateUserManagementEdit,
+    /// User management create result (return to list on success)
+    UserManagementCreateResult,
+    /// User management update result (return to list on success)
+    UserManagementUpdateResult,
+    /// User management delete result (return to list on success)
+    UserManagementDeleteResult,
 }
 
 /// Extension trait for tracking pending requests

@@ -15,16 +15,6 @@ pub enum Message {
     AcceptNewFingerprint,
     /// Connection form: Add bookmark checkbox toggled
     AddBookmarkToggled(bool),
-    /// Admin panel: Enabled checkbox toggled
-    AdminEnabledToggled(bool),
-    /// Admin panel: Is Admin checkbox toggled
-    AdminIsAdminToggled(bool),
-    /// Admin panel: Password field changed
-    AdminPasswordChanged(String),
-    /// Admin panel: Permission checkbox toggled
-    AdminPermissionToggled(String, bool),
-    /// Admin panel: Username field changed
-    AdminUsernameChanged(String),
     /// Bookmark editor: Address field changed
     BookmarkAddressChanged(String),
     /// Bookmark editor: Auto-connect checkbox toggled
@@ -45,16 +35,15 @@ pub enum Message {
     BookmarkUsernameChanged(String),
     /// Broadcast: Message input changed
     BroadcastMessageChanged(String),
-    /// User add panel: Cancel button pressed
-    CancelAddUser,
+    /// User management: Cancel button pressed (return to list or close panel)
+    CancelUserManagement,
     /// Bookmark editor: Cancel button pressed
     CancelBookmarkEdit,
     /// Broadcast panel: Cancel button pressed
     CancelBroadcast,
     /// Server info edit: Cancel button pressed (exit edit mode)
     CancelEditServerInfo,
-    /// User edit panel: Cancel button pressed
-    CancelEditUser,
+
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
     CancelFingerprintMismatch,
     /// Chat: Message input field changed
@@ -69,28 +58,11 @@ pub enum Message {
     ConnectToBookmark(usize),
     /// Network: Connection attempt completed
     ConnectionResult(Result<NetworkConnection, String>),
-    /// Admin panel: Create User button pressed
-    CreateUserPressed,
     /// Delete a bookmark by index
     DeleteBookmark(usize),
-    /// Admin panel: Delete User button pressed
-    DeleteUserPressed(String),
     /// Disconnect from server by connection_id
     DisconnectFromServer(usize),
-    /// User edit panel: Enabled checkbox toggled
-    EditEnabledToggled(bool),
-    /// User edit panel: Is Admin checkbox toggled
-    EditIsAdminToggled(bool),
-    /// User edit panel: New password field changed
-    EditNewPasswordChanged(String),
-    /// User edit panel: New username field changed
-    EditNewUsernameChanged(String),
-    /// User edit panel: Permission checkbox toggled
-    EditPermissionToggled(String, bool),
-    /// User edit panel: Username field changed (stage 1)
-    EditUsernameChanged(String),
-    /// User edit panel: Edit button pressed (stage 1)
-    EditUserPressed,
+
     /// Server info edit: Description field changed
     EditServerInfoDescriptionChanged(String),
     /// Server info edit: Image loaded from file picker (data URI or error)
@@ -141,14 +113,12 @@ pub enum Message {
     SwitchToConnection(usize),
     /// Keyboard: Tab key pressed
     TabPressed,
-    /// Toolbar: Toggle Add User panel
-    ToggleAddUser,
     /// Toolbar: Toggle bookmarks sidebar
     ToggleBookmarks,
     /// Toolbar: Toggle Broadcast panel
     ToggleBroadcast,
-    /// Toolbar: Toggle Edit User panel (optionally pre-populate username)
-    ToggleEditUser(Option<String>),
+    /// Toolbar: Toggle User Management panel
+    ToggleUserManagement,
     /// Settings panel: Cancel button pressed (restore original settings)
     CancelSettings,
     /// Settings panel: Chat font size selected from picker
@@ -187,8 +157,40 @@ pub enum Message {
     Use24HourTimeToggled(bool),
     /// Toolbar: Toggle user list sidebar
     ToggleUserList,
-    /// User edit panel: Update button pressed (stage 2)
-    UpdateUserPressed,
+    /// User management: Create user form - username field changed
+    UserManagementUsernameChanged(String),
+    /// User management: Create user form - password field changed
+    UserManagementPasswordChanged(String),
+    /// User management: Create user form - is admin checkbox toggled
+    UserManagementIsAdminToggled(bool),
+    /// User management: Create user form - enabled checkbox toggled
+    UserManagementEnabledToggled(bool),
+    /// User management: Create user form - permission checkbox toggled
+    UserManagementPermissionToggled(String, bool),
+    /// User management: Create user button pressed
+    UserManagementCreatePressed,
+    /// User management: Edit button clicked on user in list
+    UserManagementEditClicked(String),
+    /// User management: Delete button clicked on user in list
+    UserManagementDeleteClicked(String),
+    /// User management: Confirm delete button pressed in modal
+    UserManagementConfirmDelete,
+    /// User management: Cancel delete (close modal)
+    UserManagementCancelDelete,
+    /// User management: Create new user button clicked (switch to create form)
+    UserManagementShowCreate,
+    /// User management: Edit form - new username field changed
+    UserManagementEditUsernameChanged(String),
+    /// User management: Edit form - new password field changed
+    UserManagementEditPasswordChanged(String),
+    /// User management: Edit form - is admin checkbox toggled
+    UserManagementEditIsAdminToggled(bool),
+    /// User management: Edit form - enabled checkbox toggled
+    UserManagementEditEnabledToggled(bool),
+    /// User management: Edit form - permission checkbox toggled
+    UserManagementEditPermissionToggled(String, bool),
+    /// User management: Update user button pressed (in edit form)
+    UserManagementUpdatePressed,
     /// Server info edit: Update button pressed (save changes)
     UpdateServerInfoPressed,
     /// User list: Info icon clicked on expanded user
@@ -203,10 +205,10 @@ pub enum Message {
     UsernameChanged(String),
     /// Broadcast: Validate broadcast form (on Enter when empty)
     ValidateBroadcast,
-    /// Admin panel: Validate create user form (on Enter when form incomplete)
-    ValidateCreateUser,
-    /// User edit panel: Validate edit user form (on Enter when form incomplete)
-    ValidateEditUser,
+    /// User management: Validate create user form (on Enter when form incomplete)
+    ValidateUserManagementCreate,
+    /// User management: Validate edit user form (on Enter when form incomplete)
+    ValidateUserManagementEdit,
     /// Window: Close requested - query size and position
     WindowCloseRequested(iced::window::Id),
     /// Window: Save settings and close (internal - after querying size and position)

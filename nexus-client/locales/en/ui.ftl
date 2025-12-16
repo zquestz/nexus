@@ -27,10 +27,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = Connect to Server
 title-add-bookmark = Add Bookmark
 title-edit-server = Edit Server
-title-broadcast-message = Broadcast Message
+title-broadcast-message = Broadcast
 title-user-create = User Create
 title-user-edit = User Edit
 title-update-user = Update User
+title-user-management = Manage Users
+title-confirm-delete = Confirm Delete
 title-connected = Connected
 title-settings = Settings
 title-bookmarks = Bookmarks
@@ -52,7 +54,7 @@ placeholder-server-address = Server Address
 placeholder-server-name = Server Name
 placeholder-username-optional = Username (optional)
 placeholder-password-optional = Password (optional)
-placeholder-password-keep-current = Password (leave empty to keep current)
+placeholder-password-keep-current = Password
 placeholder-message = Type a message...
 placeholder-no-permission = No permission
 placeholder-broadcast-message = Enter broadcast message...
@@ -113,8 +115,7 @@ permission-user_message = User Message
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
-tooltip-user-create = User Create
-tooltip-user-edit = User Edit
+tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
 tooltip-settings = Settings
@@ -129,6 +130,8 @@ tooltip-message = Message
 tooltip-kick = Kick
 tooltip-close = Close
 tooltip-add-bookmark = Add Bookmark
+tooltip-create-user = Create User
+tooltip-delete = Delete
 
 # =============================================================================
 # Empty States
@@ -138,6 +141,8 @@ empty-select-server = Select a server from the list
 empty-no-connections = No connections
 empty-no-bookmarks = No bookmarks
 empty-no-users = No users online
+user-management-loading = Loading users...
+user-management-no-users = No users found
 
 # =============================================================================
 # Chat Tab Labels
@@ -181,6 +186,7 @@ msg-topic-cleared = Topic cleared by { $username }
 msg-topic-set = Topic set by { $username }: { $topic }
 msg-server-info-updated = Server configuration updated
 msg-topic-display = Topic: { $topic }
+confirm-delete-user = Are you sure you want to delete user '{ $username }'?
 msg-user-connected = { $username } connected
 msg-user-disconnected = { $username } disconnected
 msg-disconnected = Disconnected: { $error }

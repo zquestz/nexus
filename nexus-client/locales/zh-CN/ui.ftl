@@ -25,10 +25,12 @@ title-nexus-bbs = Nexus BBS
 title-connect-to-server = 连接到服务器
 title-add-bookmark = 添加书签
 title-edit-server = 编辑服务器
-title-broadcast-message = 广播消息
+title-broadcast-message = 广播
 title-user-create = 创建用户
 title-user-edit = 编辑用户
 title-update-user = 更新用户
+title-user-management = 用户管理
+title-confirm-delete = 确认删除
 title-connected = 已连接
 title-settings = 设置
 title-bookmarks = 书签
@@ -51,7 +53,7 @@ placeholder-server-address = 服务器地址
 placeholder-server-name = 服务器名称
 placeholder-username-optional = 用户名（可选）
 placeholder-password-optional = 密码（可选）
-placeholder-password-keep-current = 密码（留空保持当前密码）
+placeholder-password-keep-current = 密码
 placeholder-message = 输入消息...
 placeholder-no-permission = 无权限
 placeholder-broadcast-message = 输入广播消息...
@@ -111,8 +113,7 @@ permission-user_message = 用户消息
 
 tooltip-chat = 聊天
 tooltip-broadcast = 广播
-tooltip-user-create = 创建用户
-tooltip-user-edit = 编辑用户
+tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
 tooltip-settings = 设置
@@ -127,6 +128,8 @@ tooltip-message = 消息
 tooltip-kick = 踢出
 tooltip-close = 关闭
 tooltip-add-bookmark = 添加书签
+tooltip-create-user = 创建用户
+tooltip-delete = 删除
 
 # =============================================================================
 # Empty States
@@ -136,6 +139,8 @@ empty-select-server = 从列表中选择服务器
 empty-no-connections = 无连接
 empty-no-bookmarks = 无书签
 empty-no-users = 无在线用户
+user-management-loading = 正在加载用户...
+user-management-no-users = 未找到用户
 
 # =============================================================================
 # Chat Tab Labels
@@ -177,6 +182,7 @@ msg-topic-cleared = { $username } 清除了主题
 msg-topic-set = { $username } 设置了主题：{ $topic }
 msg-server-info-updated = 服务器配置已更新
 msg-topic-display = 主题：{ $topic }
+confirm-delete-user = 您确定要删除用户 '{ $username }' 吗？
 msg-user-connected = { $username } 已连接
 msg-user-disconnected = { $username } 已断开连接
 msg-disconnected = 已断开连接：{ $error }
