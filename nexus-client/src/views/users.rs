@@ -223,16 +223,16 @@ fn list_view<'a>(
 
     let scroll_content = scroll_content_inner;
 
-    // Title (constrained to FORM_MAX_WIDTH, centered)
+    // Title (constrained to content width, centered)
     let title = container(
         shaped_text(t("title-user-management"))
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center),
     )
-    .width(FORM_MAX_WIDTH);
+    .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
 
-    // Error message (shown below title if present, constrained to FORM_MAX_WIDTH, centered)
+    // Error message (shown below title if present, constrained to content width, centered)
     let error_element: Option<Element<'a, Message>> =
         user_management.list_error.as_ref().map(|error| {
             container(
@@ -242,7 +242,7 @@ fn list_view<'a>(
                     .align_x(Center)
                     .style(error_text_style),
             )
-            .width(FORM_MAX_WIDTH)
+            .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
             .into()
         });
 
@@ -284,17 +284,11 @@ fn list_view<'a>(
     } else {
         row![Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
     };
-    let footer = container(footer_row).max_width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
-
-    let padded_footer = row![
-        Space::new().width(SCROLLBAR_PADDING),
-        footer,
-        Space::new().width(SCROLLBAR_PADDING),
-    ];
+    let footer = container(footer_row).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
 
     // Scrollable content with symmetric padding for scrollbar space
     // Inner content matches footer width, spacers provide scrollbar room
-    let scroll_inner = container(scroll_content).max_width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
+    let scroll_inner = container(scroll_content).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
 
     let padded_scroll_content = row![
         Space::new().width(SCROLLBAR_PADDING),
@@ -312,9 +306,10 @@ fn list_view<'a>(
         },
         container(scrollable(padded_scroll_content)).height(Fill),
         Space::new().height(SPACER_SIZE_SMALL),
-        padded_footer,
+        footer,
     ]
     .spacing(ELEMENT_SPACING)
+    .align_x(Center)
     .padding(iced::Padding {
         top: FORM_PADDING,
         right: FORM_PADDING - SCROLLBAR_PADDING,
