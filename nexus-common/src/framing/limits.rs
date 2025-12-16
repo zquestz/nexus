@@ -45,18 +45,18 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176294);
-    m.insert("UserCreateResponse", 568);
-    m.insert("UserDeleteResponse", 568);
+    m.insert("UserCreateResponse", 614);
+    m.insert("UserDeleteResponse", 614);
     m.insert("UserDisconnected", 97);
     m.insert("UserEditResponse", 695);
     m.insert("UserBroadcastResponse", 571);
     m.insert("UserInfoResponse", 177412);
-    m.insert("UserKickResponse", 566);
+    m.insert("UserKickResponse", 612);
     m.insert("UserListResponse", 0); // unlimited (server-trusted)
     m.insert("UserMessage", 1177); // shared type: server (1177) > client (1108)
     m.insert("UserMessageResponse", 569);
     m.insert("UserUpdated", 176347);
-    m.insert("UserUpdateResponse", 568);
+    m.insert("UserUpdateResponse", 614);
 
     m
 });
@@ -491,6 +491,7 @@ mod tests {
         let msg = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(str_of_len(512)),
+            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -503,6 +504,7 @@ mod tests {
         let msg = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(str_of_len(512)),
+            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -584,6 +586,7 @@ mod tests {
         let msg = ServerMessage::UserKickResponse {
             success: false,
             error: Some(str_of_len(512)),
+            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -650,6 +653,7 @@ mod tests {
         let msg = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(str_of_len(512)),
+            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),

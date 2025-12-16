@@ -45,6 +45,7 @@ where
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -64,6 +65,7 @@ where
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_cannot_delete_self(ctx.locale)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -77,6 +79,7 @@ where
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -88,6 +91,7 @@ where
             let response = ServerMessage::UserDeleteResponse {
                 success: false,
                 error: Some(err_user_not_found(ctx.locale, &target_username)),
+                username: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -135,9 +139,11 @@ where
         Ok(deleted) => {
             if deleted {
                 // Send success response to the admin who deleted the user
+                // Use the database-preserved username casing, not the input
                 let response = ServerMessage::UserDeleteResponse {
                     success: true,
                     error: None,
+                    username: Some(target_user.username),
                 };
                 ctx.send_message(&response).await
             } else {
@@ -145,6 +151,7 @@ where
                 let response = ServerMessage::UserDeleteResponse {
                     success: false,
                     error: Some(err_cannot_delete_last_admin(ctx.locale)),
+                    username: None,
                 };
                 ctx.send_message(&response).await
             }
@@ -209,7 +216,7 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserDeleteResponse { success, error } => {
+            ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -255,7 +262,7 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserDeleteResponse { success, error } => {
+            ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -294,7 +301,7 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserDeleteResponse { success, error } => {
+            ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -363,7 +370,7 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserDeleteResponse { success, error } => {
+            ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -527,9 +534,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserDeleteResponse { success, error } => {
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message on success");
+                assert_eq!(username, Some("target".to_string()));
             }
             _ => panic!("Expected UserDeleteResponse"),
         }

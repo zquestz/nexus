@@ -173,10 +173,14 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = 사용자가 성공적으로 추방되었습니다
+msg-user-kicked-success-name = 사용자 '{ $username }'이(가) 성공적으로 추방되었습니다
 msg-broadcast-sent = 브로드캐스트가 성공적으로 전송되었습니다
 msg-user-created = 사용자가 성공적으로 생성되었습니다
+msg-user-created-name = 사용자 '{ $username }'이(가) 성공적으로 생성되었습니다
 msg-user-deleted = 사용자가 성공적으로 삭제되었습니다
+msg-user-deleted-name = 사용자 '{ $username }'이(가) 성공적으로 삭제되었습니다
 msg-user-updated = 사용자가 성공적으로 업데이트되었습니다
+msg-user-updated-name = 사용자 '{ $username }'이(가) 성공적으로 업데이트되었습니다
 msg-permissions-updated = 권한이 업데이트되었습니다
 msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 msg-password-changed = 비밀번호가 성공적으로 변경되었습니다

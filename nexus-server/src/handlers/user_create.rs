@@ -52,6 +52,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -67,6 +68,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -87,6 +89,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -133,6 +136,7 @@ where
                 let response = ServerMessage::UserCreateResponse {
                     success: false,
                     error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                    username: None,
                 };
                 return ctx.send_message(&response).await;
             }
@@ -160,6 +164,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_username_exists(ctx.locale, &username)),
+                username: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -197,6 +202,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: true,
                 error: None,
+                username: Some(username),
             };
             ctx.send_message(&response).await
         }
@@ -290,9 +296,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
         }
@@ -373,7 +384,7 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
@@ -414,9 +425,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert_eq!(username, Some("newadmin".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
         }
@@ -471,9 +487,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
         }
@@ -532,9 +553,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
         }
@@ -815,9 +841,14 @@ mod tests {
         // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserCreateResponse { success, error } => {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
         }

@@ -12,9 +12,18 @@ impl NexusApp {
         connection_id: usize,
         success: bool,
         error: Option<String>,
+        username: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            ChatMessage::info(t("msg-user-kicked-success"))
+            // Show success message with username if available
+            if let Some(ref name) = username {
+                ChatMessage::info(t_args(
+                    "msg-user-kicked-success-name",
+                    &[("username", name)],
+                ))
+            } else {
+                ChatMessage::info(t("msg-user-kicked-success"))
+            }
         } else {
             ChatMessage::error(t_args(
                 "err-failed-send-message",

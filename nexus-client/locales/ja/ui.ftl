@@ -173,10 +173,14 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = ユーザーを正常にキックしました
+msg-user-kicked-success-name = ユーザー '{ $username }' を正常にキックしました
 msg-broadcast-sent = ブロードキャストを正常に送信しました
 msg-user-created = ユーザーを正常に作成しました
+msg-user-created-name = ユーザー '{ $username }' を正常に作成しました
 msg-user-deleted = ユーザーを正常に削除しました
+msg-user-deleted-name = ユーザー '{ $username }' を正常に削除しました
 msg-user-updated = ユーザーを正常に更新しました
+msg-user-updated-name = ユーザー '{ $username }' を正常に更新しました
 msg-permissions-updated = 権限が更新されました
 msg-topic-updated = トピックが正常に更新されました
 msg-password-changed = パスワードが正常に変更されました

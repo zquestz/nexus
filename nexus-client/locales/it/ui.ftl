@@ -173,10 +173,14 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Utente espulso con successo
+msg-user-kicked-success-name = Utente '{ $username }' espulso con successo
 msg-broadcast-sent = Broadcast inviato con successo
 msg-user-created = Utente creato con successo
+msg-user-created-name = Utente '{ $username }' creato con successo
 msg-user-deleted = Utente eliminato con successo
+msg-user-deleted-name = Utente '{ $username }' eliminato con successo
 msg-user-updated = Utente aggiornato con successo
+msg-user-updated-name = Utente '{ $username }' aggiornato con successo
 msg-permissions-updated = I tuoi permessi sono stati aggiornati
 msg-topic-updated = Argomento aggiornato con successo
 msg-password-changed = Password cambiata con successo

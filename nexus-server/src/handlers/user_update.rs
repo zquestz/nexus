@@ -61,6 +61,7 @@ where
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -93,6 +94,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_cannot_edit_self(ctx.locale)),
+                username: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -102,6 +104,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_current_password_required(ctx.locale)),
+                username: None,
             };
             return ctx.send_message(&response).await;
         };
@@ -113,6 +116,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_user_not_found(ctx.locale, &request.username)),
+                    username: None,
                 };
                 return ctx.send_message(&response).await;
             }
@@ -131,6 +135,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_current_password_incorrect(ctx.locale)),
+                    username: None,
                 };
                 return ctx.send_message(&response).await;
             }
@@ -168,6 +173,7 @@ where
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -204,6 +210,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(error_msg),
+                username: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -283,6 +290,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(error_msg),
+                    username: None,
                 };
                 return ctx.send_message(&response).await;
             }
@@ -334,9 +342,16 @@ where
     {
         Ok(true) => {
             // Success - send response to requester
+            // Use the final username (in case it changed)
+            let final_username = request
+                .requested_username
+                .as_ref()
+                .unwrap_or(&request.username)
+                .clone();
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
+                username: Some(final_username.clone()),
             };
             ctx.send_message(&response).await?;
 
@@ -347,13 +362,8 @@ where
                 || request.requested_permissions.is_some();
 
             // Get the updated user's account
-            // Use the final username (in case it changed)
-            let final_username = request
-                .requested_username
-                .as_ref()
-                .unwrap_or(&request.username);
             if let Ok(Some(updated_account)) =
-                ctx.db.users.get_user_by_username(final_username).await
+                ctx.db.users.get_user_by_username(&final_username).await
             {
                 // Get the final permissions
                 if let Ok(final_permissions) =
@@ -607,6 +617,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(error_message.to_string()),
+                username: None,
             };
             ctx.send_message(&response).await
         }
@@ -703,7 +714,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
             }
@@ -734,7 +745,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
             }
@@ -765,7 +776,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
             }
@@ -796,7 +807,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
             }
@@ -827,9 +838,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Expected success, got error: {:?}", error);
                 assert!(error.is_none());
+                assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -858,7 +874,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(
                     error.unwrap(),
@@ -892,7 +908,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(
                     error.unwrap(),
@@ -933,9 +949,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert_eq!(username, Some("bobby".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -974,7 +995,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(
                     error.unwrap(),
@@ -1009,8 +1030,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username, Some("admin2".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1075,8 +1102,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username, Some("robert".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1164,7 +1197,7 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
             }
@@ -1203,8 +1236,14 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1251,13 +1290,19 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify permissions were set
+        // Verify permissions were changed
         assert!(
             test_ctx
                 .db
@@ -1308,12 +1353,19 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
+        // Verify password was NOT changed (hash should be same)
         // Verify password was NOT changed
         let user = test_ctx
             .db
@@ -1382,12 +1434,19 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Update should succeed with merged permissions");
+                assert!(error.is_none());
+                assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
+        // Verify target has both their original permission AND the editor's granted permission
         // Verify Alice's permissions were merged correctly:
         // - user_list: Bob set this (and has it), Alice should have it
         // - user_info: Bob can't modify this (he doesn't have it), Alice should keep it
@@ -1444,7 +1503,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should not allow self-edit");
                 assert_eq!(error, Some(err_cannot_edit_self(DEFAULT_TEST_LOCALE)));
             }
@@ -1503,7 +1562,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error } => {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should not allow disabling last admin");
                 assert_eq!(
                     error,
@@ -1548,12 +1607,19 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Should successfully disable user");
+                assert!(error.is_none());
+                assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
+        // Verify user is now disabled
         // Verify bob is now disabled in database
         let bob_after = test_ctx
             .db
@@ -1580,12 +1646,19 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(success, "Should successfully re-enable user");
+                assert!(error.is_none());
+                assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
+        // Verify user is now enabled
         // Verify bob is enabled again
         let bob_final = test_ctx
             .db
@@ -1712,11 +1785,17 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
                 assert!(
                     success,
                     "Should successfully demote admin2 (2 admins exist)"
                 );
+                assert!(error.is_none());
+                assert_eq!(username, Some("admin2".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }

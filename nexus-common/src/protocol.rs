@@ -161,12 +161,16 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
     },
     /// User delete response
     UserDeleteResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
     },
     /// User edit response (returns current user details for editing)
     UserEditResponse {
@@ -220,6 +224,8 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
     },
     /// User list response
     UserListResponse {
@@ -252,6 +258,8 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
     },
 }
 

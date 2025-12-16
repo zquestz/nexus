@@ -92,13 +92,29 @@ impl NexusApp {
                 self.handle_user_connected(connection_id, user)
             }
 
-            ServerMessage::UserCreateResponse { success, error } => {
-                self.handle_user_create_response(connection_id, message_id, success, error)
-            }
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => self.handle_user_create_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                username,
+            ),
 
-            ServerMessage::UserDeleteResponse { success, error } => {
-                self.handle_user_delete_response(connection_id, message_id, success, error)
-            }
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => self.handle_user_delete_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                username,
+            ),
 
             ServerMessage::UserDisconnected {
                 session_id,
@@ -131,9 +147,11 @@ impl NexusApp {
                 user,
             } => self.handle_user_info_response(connection_id, message_id, success, error, user),
 
-            ServerMessage::UserKickResponse { success, error } => {
-                self.handle_user_kick_response(connection_id, success, error)
-            }
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                username,
+            } => self.handle_user_kick_response(connection_id, success, error, username),
 
             ServerMessage::UserListResponse {
                 success,
@@ -163,9 +181,17 @@ impl NexusApp {
                 user,
             } => self.handle_user_updated(connection_id, previous_username, user),
 
-            ServerMessage::UserUpdateResponse { success, error } => {
-                self.handle_user_update_response(connection_id, message_id, success, error)
-            }
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => self.handle_user_update_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                username,
+            ),
 
             ServerMessage::ServerInfoUpdated { server_info } => {
                 self.handle_server_info_updated(connection_id, server_info)

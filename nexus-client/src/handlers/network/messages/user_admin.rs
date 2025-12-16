@@ -3,7 +3,7 @@
 use nexus_common::framing::MessageId;
 
 use crate::NexusApp;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::types::InputId;
 use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting};
 use iced::Task;
@@ -30,6 +30,7 @@ impl NexusApp {
         message_id: MessageId,
         success: bool,
         error: Option<String>,
+        username: Option<String>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -39,9 +40,13 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         if success {
-            // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-created")));
+            // Show success message in chat with username if available
+            let message = if let Some(ref name) = username {
+                t_args("msg-user-created-name", &[("username", name)])
+            } else {
+                t("msg-user-created")
+            };
+            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, return to list and refresh
             if matches!(routing, Some(ResponseRouting::UserManagementCreateResult)) {
@@ -76,6 +81,7 @@ impl NexusApp {
         message_id: MessageId,
         success: bool,
         error: Option<String>,
+        username: Option<String>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -85,9 +91,13 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         if success {
-            // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-deleted")));
+            // Show success message in chat with username if available
+            let message = if let Some(ref name) = username {
+                t_args("msg-user-deleted-name", &[("username", name)])
+            } else {
+                t("msg-user-deleted")
+            };
+            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, refresh the list
             if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
@@ -167,6 +177,7 @@ impl NexusApp {
         message_id: MessageId,
         success: bool,
         error: Option<String>,
+        username: Option<String>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -190,9 +201,13 @@ impl NexusApp {
                 );
             }
 
-            // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-user-updated")));
+            // Show success message in chat with username if available
+            let message = if let Some(ref name) = username {
+                t_args("msg-user-updated-name", &[("username", name)])
+            } else {
+                t("msg-user-updated")
+            };
+            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, return to list and refresh
             if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {

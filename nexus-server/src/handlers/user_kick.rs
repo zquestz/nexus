@@ -43,6 +43,7 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -63,6 +64,7 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_cannot_kick_self(ctx.locale)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -76,6 +78,7 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -98,11 +101,13 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_cannot_kick_admin(ctx.locale)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
 
     // Check if target user is online (case-insensitive)
+    // Get the first user's username to preserve original casing for the response
     let target_users = ctx
         .user_manager
         .get_sessions_by_username(&target_username)
@@ -112,9 +117,16 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_user_not_online(ctx.locale, &target_username)),
+            username: None,
         };
         return ctx.send_message(&response).await;
     }
+
+    // Get the preserved username casing from the first session
+    let preserved_username = target_users
+        .first()
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| target_username.clone());
 
     // Kick all sessions of the target user
     for user in target_users {
@@ -143,9 +155,11 @@ where
     }
 
     // Send success response to requester
+    // Use the session-preserved username casing, not the input
     let response = ServerMessage::UserKickResponse {
         success: true,
         error: None,
+        username: Some(preserved_username),
     };
     ctx.send_message(&response).await
 }
@@ -186,7 +200,7 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, error } = response {
+        if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Kick should fail without permission");
             assert!(
                 error.unwrap().to_lowercase().contains("permission"),
@@ -222,9 +236,15 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, error } = response {
+        if let ServerMessage::UserKickResponse {
+            success,
+            error,
+            username,
+        } = response
+        {
             assert!(success, "Kick should succeed");
             assert!(error.is_none(), "Should not have error");
+            assert_eq!(username, Some("bob".to_string()));
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
         }
@@ -248,8 +268,15 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, .. } = response {
+        if let ServerMessage::UserKickResponse {
+            success,
+            error,
+            username,
+        } = response
+        {
             assert!(success, "Admin kick should succeed");
+            assert!(error.is_none(), "Should not have error");
+            assert_eq!(username, Some("bob".to_string()));
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
         }
@@ -281,7 +308,7 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, error } = response {
+        if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Should not be able to kick self");
             assert!(
                 error.unwrap().contains("yourself"),
@@ -322,7 +349,7 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, error } = response {
+        if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Cannot kick offline user");
             assert!(
                 error.unwrap().contains("not online"),
@@ -355,8 +382,16 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, .. } = response {
+        if let ServerMessage::UserKickResponse {
+            success,
+            error,
+            username,
+        } = response
+        {
             assert!(success, "Case-insensitive kick should succeed");
+            assert!(error.is_none(), "Should not have error");
+            // Should return the preserved casing from the database, not the input
+            assert_eq!(username, Some("Alice".to_string()));
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
         }
@@ -388,8 +423,15 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, .. } = response {
+        if let ServerMessage::UserKickResponse {
+            success,
+            error,
+            username,
+        } = response
+        {
             assert!(success, "Kick should succeed for multi-session user");
+            assert!(error.is_none(), "Should not have error");
+            assert_eq!(username, Some("alice".to_string()));
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
         }
@@ -421,7 +463,7 @@ mod tests {
 
         // Read response
         let response = read_server_message(&mut test_ctx.client).await;
-        if let ServerMessage::UserKickResponse { success, error } = response {
+        if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Should not be able to kick admin");
             assert!(
                 error.unwrap().contains("admin"),
