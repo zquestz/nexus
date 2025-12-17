@@ -176,28 +176,6 @@ fn list_view<'a>(
 
     let scroll_content = scroll_content_inner;
 
-    // Title (full width within the responsive container)
-    let title = shaped_text(t("title-news"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
-
-    // Error message (shown below title if present)
-    let error_element: Option<Element<'a, Message>> =
-        news_management.list_error.as_ref().map(|error| {
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into()
-        });
-
-    // Footer buttons
-    let close_button = button(shaped_text(t("button-close")).size(TEXT_SIZE))
-        .on_press(Message::CancelNews)
-        .padding(BUTTON_PADDING);
-
     // Create post button (icon style like add bookmark)
     let create_btn: Option<Element<'a, Message>> = if can_create {
         let add_icon = container(icon::plus().size(SIDEBAR_ACTION_ICON_SIZE))
@@ -225,15 +203,52 @@ fn list_view<'a>(
         None
     };
 
-    // Build footer row with scrollbar padding for alignment with scroll content
-    let footer_inner = if let Some(create_btn) = create_btn {
-        row![create_btn, Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
+    // Title row with create button on the right
+    let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
+        row![
+            Space::new().width(SCROLLBAR_PADDING),
+            shaped_text(t("title-news"))
+                .size(TITLE_SIZE)
+                .width(Fill)
+                .align_x(Center),
+            create_btn,
+            Space::new().width(SCROLLBAR_PADDING),
+        ]
+        .align_y(Center)
+        .into()
     } else {
-        row![Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
+        row![
+            Space::new().width(SCROLLBAR_PADDING),
+            shaped_text(t("title-news"))
+                .size(TITLE_SIZE)
+                .width(Fill)
+                .align_x(Center),
+            Space::new().width(SCROLLBAR_PADDING),
+        ]
+        .into()
     };
+
+    // Error message (shown below title if present)
+    let error_element: Option<Element<'a, Message>> =
+        news_management.list_error.as_ref().map(|error| {
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into()
+        });
+
+    // Footer row with close button
     let footer_row = row![
         Space::new().width(SCROLLBAR_PADDING),
-        container(footer_inner).width(Fill),
+        container(row![
+            Space::new().width(Fill),
+            button(shaped_text(t("button-close")).size(TEXT_SIZE))
+                .on_press(Message::CancelNews)
+                .padding(BUTTON_PADDING)
+        ])
+        .width(Fill),
         Space::new().width(SCROLLBAR_PADDING),
     ];
 
@@ -246,7 +261,7 @@ fn list_view<'a>(
 
     // Build the form with max_width constraint
     let form = column![
-        title,
+        title_row,
         if let Some(err) = error_element {
             Element::from(err)
         } else {

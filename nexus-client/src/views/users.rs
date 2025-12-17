@@ -229,34 +229,6 @@ fn list_view<'a>(
 
     let scroll_content = scroll_content_inner;
 
-    // Title (constrained to content width, centered)
-    let title = container(
-        shaped_text(t("title-user-management"))
-            .size(TITLE_SIZE)
-            .width(Fill)
-            .align_x(Center),
-    )
-    .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
-
-    // Error message (shown below title if present, constrained to content width, centered)
-    let error_element: Option<Element<'a, Message>> =
-        user_management.list_error.as_ref().map(|error| {
-            container(
-                shaped_text_wrapped(error)
-                    .size(TEXT_SIZE)
-                    .width(Fill)
-                    .align_x(Center)
-                    .style(error_text_style),
-            )
-            .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
-            .into()
-        });
-
-    // Footer buttons
-    let close_button = button(shaped_text(t("button-close")).size(TEXT_SIZE))
-        .on_press(Message::CancelUserManagement)
-        .padding(BUTTON_PADDING);
-
     // Create user button (icon style like add bookmark)
     let create_btn: Option<Element<'a, Message>> = if can_create {
         let add_icon = container(icon::user_plus().size(SIDEBAR_ACTION_ICON_SIZE))
@@ -284,13 +256,57 @@ fn list_view<'a>(
         None
     };
 
-    // Build footer row, constrained to standard width and centered
-    let footer_row = if let Some(create_btn) = create_btn {
-        row![create_btn, Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
+    // Title row with create button on the right
+    // Use matching spacer on left to keep title centered when button is present
+    let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
+        container(
+            row![
+                Space::new().width(
+                    SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right
+                ),
+                shaped_text(t("title-user-management"))
+                    .size(TITLE_SIZE)
+                    .width(Fill)
+                    .align_x(Center),
+                create_btn,
+            ]
+            .align_y(Center),
+        )
+        .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+        .into()
     } else {
-        row![Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
+        container(
+            shaped_text(t("title-user-management"))
+                .size(TITLE_SIZE)
+                .width(Fill)
+                .align_x(Center),
+        )
+        .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+        .into()
     };
-    let footer = container(footer_row).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
+
+    // Error message (shown below title if present, constrained to content width, centered)
+    let error_element: Option<Element<'a, Message>> =
+        user_management.list_error.as_ref().map(|error| {
+            container(
+                shaped_text_wrapped(error)
+                    .size(TEXT_SIZE)
+                    .width(Fill)
+                    .align_x(Center)
+                    .style(error_text_style),
+            )
+            .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+            .into()
+        });
+
+    // Footer row with close button
+    let footer = container(row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-close")).size(TEXT_SIZE))
+            .on_press(Message::CancelUserManagement)
+            .padding(BUTTON_PADDING)
+    ])
+    .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
 
     // Scrollable content with symmetric padding for scrollbar space
     // Inner content matches footer width, spacers provide scrollbar room
@@ -304,7 +320,7 @@ fn list_view<'a>(
 
     // Build the form with max_width constraint on the whole thing
     let form = column![
-        title,
+        title_row,
         if let Some(err) = error_element {
             Element::from(err)
         } else {
