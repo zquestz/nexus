@@ -9,8 +9,8 @@ use crate::icon;
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING,
-    INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_IMAGE_PREVIEW_SIZE,
-    NEWS_ITEM_SPACING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
+    INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_EDITOR_LINE_HEIGHT,
+    NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
@@ -455,6 +455,7 @@ fn form_view<'a>(
             .on_action(Message::NewsBodyAction)
             .padding(FORM_PADDING / 2.0)
             .size(TEXT_SIZE)
+            .line_height(NEWS_EDITOR_LINE_HEIGHT)
             .height(Length::Fixed(150.0))
             .into()
     } else {
@@ -558,7 +559,7 @@ fn form_view<'a>(
     let form = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
         .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .max_width(NEWS_LIST_MAX_WIDTH);
 
     scrollable_panel(form)
 }

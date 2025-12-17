@@ -43,6 +43,9 @@ pub const CHAT_MESSAGE_SIZE: f32 = 14.0;
 /// Chat message line height (1.5x for better readability)
 pub const CHAT_LINE_HEIGHT: f32 = 1.5;
 
+/// News editor line height (1.5x for better readability)
+pub const NEWS_EDITOR_LINE_HEIGHT: f32 = 1.5;
+
 /// Toolbar title text size
 pub const TOOLBAR_TITLE_SIZE: f32 = 16.0;
 
