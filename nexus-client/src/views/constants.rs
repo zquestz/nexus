@@ -41,3 +41,15 @@ pub(crate) const PERMISSION_CHAT_TOPIC: &str = "chat_topic";
 
 /// Permission to edit chat topic
 pub(crate) const PERMISSION_CHAT_TOPIC_EDIT: &str = "chat_topic_edit";
+
+/// Permission to view news posts
+pub(crate) const PERMISSION_NEWS_LIST: &str = "news_list";
+
+/// Permission to create news posts
+pub(crate) const PERMISSION_NEWS_CREATE: &str = "news_create";
+
+/// Permission to edit any news post (without: only own posts)
+pub(crate) const PERMISSION_NEWS_EDIT: &str = "news_edit";
+
+/// Permission to delete any news post (without: only own posts)
+pub(crate) const PERMISSION_NEWS_DELETE: &str = "news_delete";

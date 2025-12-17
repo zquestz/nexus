@@ -171,6 +171,31 @@ pub const AVATAR_MAX_CACHE_SIZE: u32 = 64;
 /// Server image preview size in edit mode (matches avatar preview size)
 pub const SERVER_IMAGE_PREVIEW_SIZE: f32 = 48.0;
 
+/// Maximum server image file size in bytes (512KB)
+pub const SERVER_IMAGE_MAX_SIZE: usize = 512 * 1024;
+
+// ============================================================================
+// News Panel Layout
+// ============================================================================
+
+/// News item action button size (edit/delete icons)
+pub const NEWS_ACTION_BUTTON_SIZE: f32 = 32.0;
+
+/// News item action icon size
+pub const NEWS_ACTION_ICON_SIZE: f32 = 18.0;
+
+/// News image preview size in create/edit forms
+pub const NEWS_IMAGE_PREVIEW_SIZE: f32 = 48.0;
+
+/// Spacing between news items in list
+pub const NEWS_ITEM_SPACING: f32 = 3.0;
+
+/// Maximum news image file size in bytes (512KB)
+pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
+
+/// Maximum width to cache news images at (matches form width)
+pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
+
 /// Maximum width to cache server images at (matches form width minus padding)
 ///
 /// Server images are resized to this width before caching to save memory.

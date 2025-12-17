@@ -44,6 +44,9 @@ title-server-info = Info Server
 title-user-info = Info Utente
 title-about = Informazioni
 title-change-password = Cambia Password
+title-news = Notizie
+title-news-create = Crea Pubblicazione
+title-news-edit = Modifica Pubblicazione
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = Scrivi un messaggio...
 placeholder-no-permission = Nessun permesso
 placeholder-broadcast-message = Inserisci messaggio broadcast...
 placeholder-server-description = Descrizione del server
+placeholder-news-body = Inserisci il contenuto...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = Aspetto
 label-image = Immagine
 label-general = Generale
 label-limits = Limiti
+label-news-body = Contenuto:
+label-news-image = Immagine:
 
 # =============================================================================
 # Permission Display Names
@@ -119,7 +125,8 @@ permission-user_message = Messaggio Utente
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
-tooltip-manage-users = Gestione Utenti
+tooltip-news = Notizie
+tooltip-manage-users = Gestisci Utenti
 tooltip-server-info = Info Server
 tooltip-about = Informazioni
 tooltip-settings = Impostazioni
@@ -135,6 +142,7 @@ tooltip-kick = Espelli
 tooltip-close = Chiudi
 tooltip-add-bookmark = Aggiungi Segnalibro
 tooltip-create-user = Crea Utente
+tooltip-create-news = Crea Pubblicazione
 tooltip-delete = Elimina
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = Nessun segnalibro
 empty-no-users = Nessun utente online
 user-management-loading = Caricamento utenti...
 user-management-no-users = Nessun utente trovato
+news-loading = Caricamento notizie...
+news-no-posts = Nessuna pubblicazione ancora
+news-updated = Aggiornato
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,6 +195,9 @@ msg-user-updated-name = Utente '{ $username }' aggiornato con successo
 msg-permissions-updated = I tuoi permessi sono stati aggiornati
 msg-topic-updated = Argomento aggiornato con successo
 msg-password-changed = Password cambiata con successo
+msg-news-created = Pubblicazione creata con successo
+msg-news-updated = Pubblicazione aggiornata con successo
+msg-news-deleted = Pubblicazione eliminata con successo
 
 
 
@@ -196,6 +210,7 @@ msg-topic-set = Argomento impostato da { $username }: { $topic }
 msg-server-info-updated = Configurazione del server aggiornata
 msg-topic-display = Argomento: { $topic }
 confirm-delete-user = Sei sicuro di voler eliminare l'utente '{ $username }'?
+confirm-delete-news = Sei sicuro di voler eliminare questa pubblicazione?
 msg-user-connected = { $username } si è connesso
 msg-user-disconnected = { $username } si è disconnesso
 msg-disconnected = Disconnesso: { $error }
@@ -412,5 +427,11 @@ label-server-image = Immagine del server:
 err-server-image-too-large = L'immagine del server è troppo grande (massimo 512KB)
 err-server-image-invalid-format = Formato immagine del server non valido (deve essere un URI di dati con codifica base64)
 err-server-image-unsupported-type = Tipo di immagine del server non supportato (solo PNG, WebP, JPEG o SVG)
-err-server-image-decode-failed = Impossibile decodificare l'immagine. Il file potrebbe essere danneggiato.
+err-server-image-decode-failed = Impossibile decodificare l'immagine. Il file potrebbe essere corrotto.
 err-failed-read-image = Impossibile leggere l'immagine: { $error }
+err-news-empty = La pubblicazione deve contenere testo o un'immagine
+err-news-body-too-long = Il contenuto è troppo lungo ({ $length } caratteri, massimo { $max })
+err-news-body-invalid-characters = Il contenuto contiene caratteri di controllo non validi
+err-news-image-decode-failed = Impossibile decodificare l'immagine. Il file potrebbe essere corrotto.
+err-news-image-too-large = L'immagine è troppo grande (massimo 512KB)
+err-news-image-unsupported-type = Tipo di immagine non supportato (solo PNG, WebP, JPEG o SVG)

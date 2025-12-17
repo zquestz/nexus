@@ -5,6 +5,7 @@
 mod broadcast;
 mod chat;
 mod error;
+mod news;
 mod permissions;
 mod user_admin;
 mod user_connection;
@@ -199,6 +200,44 @@ impl NexusApp {
 
             ServerMessage::ServerInfoUpdateResponse { success, error } => {
                 self.handle_server_info_update_response(connection_id, success, error)
+            }
+
+            ServerMessage::NewsListResponse {
+                success,
+                error,
+                items,
+            } => self.handle_news_list_response(connection_id, message_id, success, error, items),
+
+            ServerMessage::NewsShowResponse {
+                success,
+                error,
+                news,
+            } => self.handle_news_show_response(connection_id, message_id, success, error, news),
+
+            ServerMessage::NewsCreateResponse {
+                success,
+                error,
+                news,
+            } => self.handle_news_create_response(connection_id, message_id, success, error, news),
+
+            ServerMessage::NewsEditResponse {
+                success,
+                error,
+                news,
+            } => self.handle_news_edit_response(connection_id, message_id, success, error, news),
+
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => self.handle_news_update_response(connection_id, message_id, success, error, news),
+
+            ServerMessage::NewsDeleteResponse { success, error, id } => {
+                self.handle_news_delete_response(connection_id, message_id, success, error, id)
+            }
+
+            ServerMessage::NewsUpdated { action, id } => {
+                self.handle_news_updated(connection_id, action, id)
             }
 
             // Catch-all for any unhandled message types

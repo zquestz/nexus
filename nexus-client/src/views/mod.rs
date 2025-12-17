@@ -8,6 +8,7 @@ mod connection;
 pub(crate) mod constants;
 mod fingerprint;
 mod layout;
+mod news;
 mod server_info;
 mod server_list;
 mod settings;

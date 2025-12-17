@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 31534d58c4bed45cc31ef571d022041ed880d039e63d0917f22890d1adb47ff0
+// 31ff9bdb0b96b0b0fef46fbbd8338d6056b1727ed59596936a6ca91127097f4b
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -56,6 +56,14 @@ pub fn megaphone<'a>() -> Text<'a> {
 
 pub fn message<'a>() -> Text<'a> {
     icon("\u{E720}")
+}
+
+pub fn newspaper<'a>() -> Text<'a> {
+    icon("\u{F1EA}")
+}
+
+pub fn plus<'a>() -> Text<'a> {
+    icon("\u{2B}")
 }
 
 pub fn server<'a>() -> Text<'a> {

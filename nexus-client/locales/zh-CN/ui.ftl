@@ -44,7 +44,9 @@ title-server-info = 服务器信息
 title-user-info = 用户信息
 title-about = 关于
 title-change-password = 修改密码
-
+title-news = 新闻
+title-news-create = 创建帖子
+title-news-edit = 编辑帖子
 
 # =============================================================================
 # Placeholders
@@ -65,6 +67,7 @@ placeholder-message = 输入消息...
 placeholder-no-permission = 无权限
 placeholder-broadcast-message = 输入广播消息...
 placeholder-server-description = 服务器描述
+placeholder-news-body = 输入内容...
 
 # =============================================================================
 # Labels
@@ -96,6 +99,8 @@ label-appearance = 外观
 label-image = 图片
 label-general = 常规
 label-limits = 限制
+label-news-body = 内容：
+label-news-image = 图片：
 
 # =============================================================================
 # Permission Display Names
@@ -120,6 +125,7 @@ permission-user_message = 用户消息
 
 tooltip-chat = 聊天
 tooltip-broadcast = 广播
+tooltip-news = 新闻
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -136,6 +142,7 @@ tooltip-kick = 踢出
 tooltip-close = 关闭
 tooltip-add-bookmark = 添加书签
 tooltip-create-user = 创建用户
+tooltip-create-news = 创建帖子
 tooltip-delete = 删除
 
 # =============================================================================
@@ -148,6 +155,9 @@ empty-no-bookmarks = 无书签
 empty-no-users = 无在线用户
 user-management-loading = 正在加载用户...
 user-management-no-users = 未找到用户
+news-loading = 正在加载新闻...
+news-no-posts = 暂无帖子
+news-updated = 已更新
 
 # =============================================================================
 # Chat Tab Labels
@@ -185,6 +195,9 @@ msg-user-updated-name = 用户 '{ $username }' 已成功更新
 msg-permissions-updated = 您的权限已更新
 msg-topic-updated = 主题更新成功
 msg-password-changed = 密码修改成功
+msg-news-created = 帖子创建成功
+msg-news-updated = 帖子更新成功
+msg-news-deleted = 帖子删除成功
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -194,7 +207,8 @@ msg-topic-cleared = { $username } 清除了主题
 msg-topic-set = { $username } 设置了主题：{ $topic }
 msg-server-info-updated = 服务器配置已更新
 msg-topic-display = 主题：{ $topic }
-confirm-delete-user = 您确定要删除用户 '{ $username }' 吗？
+confirm-delete-user = 确定要删除用户 '{ $username }' 吗？
+confirm-delete-news = 确定要删除此帖子吗？
 msg-user-connected = { $username } 已连接
 msg-user-disconnected = { $username } 已断开连接
 msg-disconnected = 已断开连接：{ $error }
@@ -390,5 +404,11 @@ label-server-image = 服务器图片:
 err-server-image-too-large = 服务器图片太大（最大512KB）
 err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
 err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）
-err-server-image-decode-failed = 无法解码图片。文件可能已损坏。
-err-failed-read-image = 读取图片失败: { $error }
+err-server-image-decode-failed = 图片解码失败。文件可能已损坏。
+err-failed-read-image = 读取图片失败：{ $error }
+err-news-empty = 帖子必须包含文字或图片
+err-news-body-too-long = 内容过长（{ $length }个字符，最多{ $max }个）
+err-news-body-invalid-characters = 内容包含无效的控制字符
+err-news-image-decode-failed = 图片解码失败。文件可能已损坏。
+err-news-image-too-large = 图片过大（最大512KB）
+err-news-image-unsupported-type = 不支持的图片格式（仅支持PNG、WebP、JPEG或SVG）

@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 use super::{
-    ActivePanel, ChatMessage, ChatTab, PasswordChangeState, ResponseRouting, ScrollState,
-    ServerInfoEditState, UserInfo, UserManagementState,
+    ActivePanel, ChatMessage, ChatTab, NewsManagementState, PasswordChangeState, ResponseRouting,
+    ScrollState, ServerInfoEditState, UserInfo, UserManagementState,
 };
 use crate::image::CachedImage;
 
@@ -98,6 +98,10 @@ pub struct ServerConnection {
     pub server_info_edit: Option<ServerInfoEditState>,
     /// Currently active panel in the main content area (per-connection)
     pub active_panel: ActivePanel,
+    /// News management panel state
+    pub news_management: NewsManagementState,
+    /// Cached news images for rendering (keyed by news item ID)
+    pub news_image_cache: HashMap<i64, CachedImage>,
 }
 
 impl ServerConnection {
@@ -171,6 +175,8 @@ impl ServerConnection {
             avatar_cache: HashMap::new(),
             server_info_edit: None,
             active_panel: ActivePanel::None,
+            news_management: NewsManagementState::default(),
+            news_image_cache: HashMap::new(),
         }
     }
 }

@@ -34,6 +34,18 @@ pub enum ResponseRouting {
     UserManagementDeleteResult,
     /// Password change result (close panel on success, show error on failure)
     PasswordChangeResult,
+    /// Populate news list (from panel open)
+    PopulateNewsList,
+    /// Populate news edit form (from edit button click)
+    PopulateNewsEdit,
+    /// News create result (return to list on success)
+    NewsCreateResult,
+    /// News update result (return to list on success)
+    NewsUpdateResult,
+    /// News delete result (return to list on success)
+    NewsDeleteResult,
+    /// News show result for refresh (after NewsUpdated broadcast)
+    NewsShowForRefresh(i64),
 }
 
 /// Extension trait for tracking pending requests

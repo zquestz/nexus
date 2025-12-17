@@ -22,6 +22,8 @@ pub enum ActivePanel {
     UserInfo,
     /// User Management panel (create, edit, delete users)
     UserManagement,
+    /// News panel (view, create, edit, delete news posts)
+    News,
 }
 
 /// UI visibility state for toggleable panels
@@ -134,6 +136,8 @@ pub enum InputId {
     ChangePasswordNew,
     /// Password change: Confirm password input
     ChangePasswordConfirm,
+    /// News panel: Body input
+    NewsBody,
 }
 
 impl From<InputId> for Id {
@@ -160,6 +164,7 @@ impl From<InputId> for Id {
             InputId::ChangePasswordCurrent => "InputId::ChangePasswordCurrent",
             InputId::ChangePasswordNew => "InputId::ChangePasswordNew",
             InputId::ChangePasswordConfirm => "InputId::ChangePasswordConfirm",
+            InputId::NewsBody => "InputId::NewsBody",
         })
     }
 }

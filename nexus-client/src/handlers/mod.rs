@@ -6,6 +6,7 @@ mod connection;
 mod fingerprint;
 mod keyboard;
 pub(crate) mod network;
+mod news;
 mod server_info;
 mod settings;
 mod ui;

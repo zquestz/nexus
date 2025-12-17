@@ -45,6 +45,9 @@ title-server-info = Server Info
 title-user-info = Gebruiker Info
 title-about = Over
 title-change-password = Wachtwoord Wijzigen
+title-news = Nieuws
+title-news-create = Bericht Maken
+title-news-edit = Bericht Bewerken
 
 # =============================================================================
 # Placeholders
@@ -65,6 +68,7 @@ placeholder-message = Typ een bericht...
 placeholder-no-permission = Geen toestemming
 placeholder-broadcast-message = Voer broadcastbericht in...
 placeholder-server-description = Serverbeschrijving
+placeholder-news-body = Voer inhoud in...
 
 # =============================================================================
 # Labels
@@ -96,6 +100,8 @@ label-appearance = Uiterlijk
 label-image = Afbeelding
 label-general = Algemeen
 label-limits = Limieten
+label-news-body = Inhoud:
+label-news-image = Afbeelding:
 
 # =============================================================================
 # Permission Display Names
@@ -120,6 +126,7 @@ permission-user_message = Gebruikersbericht
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
+tooltip-news = Nieuws
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -148,6 +155,9 @@ empty-no-bookmarks = Geen bladwijzers
 empty-no-users = Geen gebruikers online
 user-management-loading = Gebruikers laden...
 user-management-no-users = Geen gebruikers gevonden
+news-loading = Nieuws laden...
+news-no-posts = Nog geen berichten
+news-updated = Bijgewerkt
 
 # =============================================================================
 # Chat Tab Labels
@@ -185,6 +195,9 @@ msg-user-updated-name = Gebruiker '{ $username }' succesvol bijgewerkt
 msg-permissions-updated = Je machtigingen zijn bijgewerkt
 msg-topic-updated = Onderwerp succesvol bijgewerkt
 msg-password-changed = Wachtwoord succesvol gewijzigd
+msg-news-created = Bericht succesvol aangemaakt
+msg-news-updated = Bericht succesvol bijgewerkt
+msg-news-deleted = Bericht succesvol verwijderd
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -195,6 +208,7 @@ msg-topic-set = Onderwerp ingesteld door { $username }: { $topic }
 msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
 confirm-delete-user = Weet je zeker dat je gebruiker '{ $username }' wilt verwijderen?
+confirm-delete-news = Weet je zeker dat je dit bericht wilt verwijderen?
 msg-user-connected = { $username } is verbonden
 msg-user-disconnected = { $username } is losgekoppeld
 msg-disconnected = Verbinding verbroken: { $error }
@@ -413,3 +427,9 @@ err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een da
 err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
 err-server-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
 err-failed-read-image = Kan afbeelding niet lezen: { $error }
+err-news-empty = Bericht moet tekst of een afbeelding bevatten
+err-news-body-too-long = Inhoud is te lang ({ $length } tekens, maximaal { $max })
+err-news-body-invalid-characters = Inhoud bevat ongeldige controletekens
+err-news-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
+err-news-image-too-large = Afbeelding is te groot (maximaal 512KB)
+err-news-image-unsupported-type = Niet-ondersteund afbeeldingstype (alleen PNG, WebP, JPEG of SVG)

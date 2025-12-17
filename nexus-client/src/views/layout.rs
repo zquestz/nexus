@@ -1,9 +1,10 @@
 //! Main application layout and toolbar
 
 use super::constants::{
-    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE,
-    PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE,
+    PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
+use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
 use super::user_info::{password_change_view, user_info_view};
 use crate::i18n::t;
@@ -239,6 +240,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
             .permissions
             .iter()
             .any(|p| p == PERMISSION_USER_BROADCAST);
+    let has_news = state.is_admin || state.permissions.iter().any(|p| p == PERMISSION_NEWS_LIST);
     let has_user_management = state.is_admin
         || state.permissions.iter().any(|p| {
             p == PERMISSION_USER_CREATE || p == PERMISSION_USER_EDIT || p == PERMISSION_USER_DELETE
@@ -293,6 +295,31 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         button(icon::megaphone().size(TOOLBAR_ICON_SIZE))
                             .style(disabled_icon_button_style),
                         container(shaped_text(t("tooltip-broadcast")).size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(tooltip_container_style),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                },
+                // News button
+                if state.is_connected && has_news {
+                    tooltip(
+                        button(icon::newspaper().size(TOOLBAR_ICON_SIZE))
+                            .on_press(Message::ToggleNews)
+                            .style(toolbar_button_style(active_panel == ActivePanel::News)),
+                        container(shaped_text(t("tooltip-news")).size(TOOLTIP_TEXT_SIZE))
+                            .padding(TOOLTIP_BACKGROUND_PADDING)
+                            .style(tooltip_container_style),
+                        tooltip::Position::Bottom,
+                    )
+                    .gap(TOOLTIP_GAP)
+                    .padding(TOOLTIP_PADDING)
+                } else {
+                    tooltip(
+                        button(icon::newspaper().size(TOOLBAR_ICON_SIZE))
+                            .style(disabled_icon_button_style),
+                        container(shaped_text(t("tooltip-news")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,
@@ -557,6 +584,10 @@ fn server_content_view<'a>(
         .width(Fill)
         .height(Fill)
         .into(),
+        ActivePanel::News => stack![chat, news_view(conn, &conn.news_management, &theme)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::None => chat,
     }
 }

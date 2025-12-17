@@ -1,7 +1,13 @@
 //! Connection and user management form state
 
+use crate::avatar::generate_identicon;
 use crate::config::Config;
-use nexus_common::protocol::UserInfo;
+use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_square};
+use crate::style::{
+    AVATAR_MAX_CACHE_SIZE, NEWS_IMAGE_MAX_CACHE_WIDTH, SERVER_IMAGE_MAX_CACHE_WIDTH,
+};
+use nexus_common::protocol::{NewsItem, UserInfo};
+use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 // =============================================================================
 // Password Change State
@@ -30,6 +36,154 @@ impl PasswordChangeState {
 }
 
 // =============================================================================
+// News Management State
+// =============================================================================
+
+/// News management panel mode
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum NewsManagementMode {
+    /// Showing list of all news items
+    #[default]
+    List,
+    /// Creating a new news item
+    Create,
+    /// Editing an existing news item
+    Edit {
+        /// News item ID being edited
+        id: i64,
+    },
+    /// Confirming deletion of a news item
+    ConfirmDelete {
+        /// News item ID to delete
+        id: i64,
+    },
+}
+
+/// News management panel state (per-connection)
+#[derive(Clone)]
+pub struct NewsManagementState {
+    /// Current mode (list, create, edit, confirm delete)
+    pub mode: NewsManagementMode,
+    /// All news items (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
+    pub news_items: Option<Result<Vec<NewsItem>, String>>,
+    /// Body text for create form
+    pub create_body: String,
+    /// Image data URI for create form
+    pub create_image: String,
+    /// Cached image for create form preview
+    pub cached_create_image: Option<CachedImage>,
+    /// Error message for create form
+    pub create_error: Option<String>,
+    /// Body text for edit form (stored in mode, but we need this for form state)
+    pub edit_body: String,
+    /// Image data URI for edit form
+    pub edit_image: String,
+    /// Cached image for edit form preview
+    pub cached_edit_image: Option<CachedImage>,
+    /// Error message for edit form
+    pub edit_error: Option<String>,
+    /// Error message for list view
+    pub list_error: Option<String>,
+}
+
+// Manual Debug implementation because CachedImage doesn't implement Debug
+impl std::fmt::Debug for NewsManagementState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewsManagementState")
+            .field("mode", &self.mode)
+            .field("news_items", &self.news_items)
+            .field("create_body", &self.create_body)
+            .field(
+                "create_image",
+                &format!("<{} bytes>", self.create_image.len()),
+            )
+            .field(
+                "cached_create_image",
+                &self.cached_create_image.as_ref().map(|_| "<cached>"),
+            )
+            .field("create_error", &self.create_error)
+            .field("edit_body", &self.edit_body)
+            .field("edit_image", &format!("<{} bytes>", self.edit_image.len()))
+            .field(
+                "cached_edit_image",
+                &self.cached_edit_image.as_ref().map(|_| "<cached>"),
+            )
+            .field("edit_error", &self.edit_error)
+            .field("list_error", &self.list_error)
+            .finish()
+    }
+}
+
+impl Default for NewsManagementState {
+    fn default() -> Self {
+        Self {
+            mode: NewsManagementMode::List,
+            news_items: None,
+            create_body: String::new(),
+            create_image: String::new(),
+            cached_create_image: None,
+            create_error: None,
+            edit_body: String::new(),
+            edit_image: String::new(),
+            cached_edit_image: None,
+            edit_error: None,
+            list_error: None,
+        }
+    }
+}
+
+impl NewsManagementState {
+    /// Reset to list mode and clear all form state
+    pub fn reset_to_list(&mut self) {
+        self.mode = NewsManagementMode::List;
+        self.clear_create_form();
+        self.clear_edit_form();
+        self.list_error = None;
+    }
+
+    /// Clear the create form fields
+    pub fn clear_create_form(&mut self) {
+        self.create_body.clear();
+        self.create_image.clear();
+        self.cached_create_image = None;
+        self.create_error = None;
+    }
+
+    /// Clear the edit form fields
+    pub fn clear_edit_form(&mut self) {
+        self.edit_body.clear();
+        self.edit_image.clear();
+        self.cached_edit_image = None;
+        self.edit_error = None;
+    }
+
+    /// Enter create mode
+    pub fn enter_create_mode(&mut self) {
+        self.clear_create_form();
+        self.mode = NewsManagementMode::Create;
+    }
+
+    /// Enter edit mode for a news item (with pre-populated values from server)
+    pub fn enter_edit_mode(&mut self, id: i64, body: Option<String>, image: Option<String>) {
+        self.edit_body = body.clone().unwrap_or_default();
+        self.edit_image = image.clone().unwrap_or_default();
+        self.cached_edit_image = if self.edit_image.is_empty() {
+            None
+        } else {
+            decode_data_uri_max_width(&self.edit_image, NEWS_IMAGE_MAX_CACHE_WIDTH)
+        };
+        self.edit_error = None;
+
+        self.mode = NewsManagementMode::Edit { id };
+    }
+
+    /// Enter confirm delete mode for a news item
+    pub fn enter_confirm_delete_mode(&mut self, id: i64) {
+        self.mode = NewsManagementMode::ConfirmDelete { id };
+    }
+}
+
+// =============================================================================
 // User Management State
 // =============================================================================
 
@@ -50,10 +204,6 @@ const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "user_list",
     "user_message",
 ];
-use crate::avatar::generate_identicon;
-use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_square};
-use crate::style::{AVATAR_MAX_CACHE_SIZE, SERVER_IMAGE_MAX_CACHE_WIDTH};
-use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 
 /// User management panel mode
 #[derive(Debug, Clone, PartialEq, Default)]

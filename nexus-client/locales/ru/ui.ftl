@@ -44,6 +44,9 @@ title-server-info = Информация о сервере
 title-user-info = Информация о пользователе
 title-about = О программе
 title-change-password = Изменить пароль
+title-news = Новости
+title-news-create = Создать публикацию
+title-news-edit = Редактировать публикацию
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
 placeholder-broadcast-message = Введите сообщение рассылки...
 placeholder-server-description = Описание сервера
+placeholder-news-body = Введите содержимое...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = Внешний вид
 label-image = Изображение
 label-general = Общие
 label-limits = Ограничения
+label-news-body = Содержимое:
+label-news-image = Изображение:
 
 # =============================================================================
 # Permission Display Names
@@ -119,7 +125,8 @@ permission-user_message = Сообщение Пользователю
 
 tooltip-chat = Чат
 tooltip-broadcast = Рассылка
-tooltip-manage-users = Управление Пользователями
+tooltip-news = Новости
+tooltip-manage-users = Управление пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
 tooltip-settings = Настройки
@@ -135,6 +142,7 @@ tooltip-kick = Выгнать
 tooltip-close = Закрыть
 tooltip-add-bookmark = Добавить закладку
 tooltip-create-user = Создать пользователя
+tooltip-create-news = Создать публикацию
 tooltip-delete = Удалить
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = Нет закладок
 empty-no-users = Нет пользователей онлайн
 user-management-loading = Загрузка пользователей...
 user-management-no-users = Пользователи не найдены
+news-loading = Загрузка новостей...
+news-no-posts = Пока нет публикаций
+news-updated = Обновлено
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,6 +195,9 @@ msg-user-updated-name = Пользователь '{ $username }' успешно 
 msg-permissions-updated = Ваши разрешения были обновлены
 msg-topic-updated = Тема успешно обновлена
 msg-password-changed = Пароль успешно изменён
+msg-news-created = Публикация успешно создана
+msg-news-updated = Публикация успешно обновлена
+msg-news-deleted = Публикация успешно удалена
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -194,6 +208,7 @@ msg-topic-set = Тема установлена пользователем { $us
 msg-server-info-updated = Конфигурация сервера обновлена
 msg-topic-display = Тема: { $topic }
 confirm-delete-user = Вы уверены, что хотите удалить пользователя '{ $username }'?
+confirm-delete-news = Вы уверены, что хотите удалить эту публикацию?
 msg-user-connected = { $username } подключился
 msg-user-disconnected = { $username } отключился
 msg-disconnected = Отключено: { $error }
@@ -419,3 +434,9 @@ err-server-image-invalid-format = Недопустимый формат изоб
 err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)
 err-server-image-decode-failed = Не удалось декодировать изображение. Возможно, файл повреждён.
 err-failed-read-image = Не удалось прочитать изображение: { $error }
+err-news-empty = Публикация должна содержать текст или изображение
+err-news-body-too-long = Содержимое слишком длинное ({ $length } символов, максимум { $max })
+err-news-body-invalid-characters = Содержимое содержит недопустимые управляющие символы
+err-news-image-decode-failed = Не удалось декодировать изображение. Возможно, файл повреждён.
+err-news-image-too-large = Изображение слишком большое (максимум 512КБ)
+err-news-image-unsupported-type = Неподдерживаемый тип изображения (только PNG, WebP, JPEG или SVG)

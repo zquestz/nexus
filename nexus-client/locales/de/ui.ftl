@@ -44,6 +44,9 @@ title-server-info = Server-Info
 title-user-info = Benutzer-Info
 title-about = Über
 title-change-password = Passwort ändern
+title-news = Neuigkeiten
+title-news-create = Beitrag erstellen
+title-news-edit = Beitrag bearbeiten
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = Nachricht eingeben...
 placeholder-no-permission = Keine Berechtigung
 placeholder-broadcast-message = Rundnachricht eingeben...
 placeholder-server-description = Serverbeschreibung
+placeholder-news-body = Inhalt eingeben...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = Erscheinungsbild
 label-image = Bild
 label-general = Allgemein
 label-limits = Limits
+label-news-body = Inhalt:
+label-news-image = Bild:
 
 # =============================================================================
 # Permission Display Names
@@ -119,6 +125,7 @@ permission-user_message = Benutzernachricht
 
 tooltip-chat = Chat
 tooltip-broadcast = Rundnachricht
+tooltip-news = Neuigkeiten
 tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
@@ -135,6 +142,7 @@ tooltip-kick = Rauswerfen
 tooltip-close = Schließen
 tooltip-add-bookmark = Lesezeichen hinzufügen
 tooltip-create-user = Benutzer erstellen
+tooltip-create-news = Beitrag erstellen
 tooltip-delete = Löschen
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = Keine Lesezeichen
 empty-no-users = Keine Benutzer online
 user-management-loading = Benutzer werden geladen...
 user-management-no-users = Keine Benutzer gefunden
+news-loading = Neuigkeiten werden geladen...
+news-no-posts = Noch keine Beiträge vorhanden
+news-updated = Aktualisiert
 
 # =============================================================================
 # Chat Tab Labels
@@ -181,9 +192,12 @@ msg-user-deleted = Benutzer erfolgreich gelöscht
 msg-user-deleted-name = Benutzer '{ $username }' erfolgreich gelöscht
 msg-user-updated = Benutzer erfolgreich aktualisiert
 msg-user-updated-name = Benutzer '{ $username }' erfolgreich aktualisiert
-msg-permissions-updated = Ihre Berechtigungen wurden aktualisiert
+msg-permissions-updated = Deine Berechtigungen wurden aktualisiert
 msg-topic-updated = Thema erfolgreich aktualisiert
 msg-password-changed = Passwort erfolgreich geändert
+msg-news-created = Beitrag erfolgreich erstellt
+msg-news-updated = Beitrag erfolgreich aktualisiert
+msg-news-deleted = Beitrag erfolgreich gelöscht
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -194,6 +208,7 @@ msg-topic-set = Thema gesetzt von { $username }: { $topic }
 msg-server-info-updated = Serverkonfiguration aktualisiert
 msg-topic-display = Thema: { $topic }
 confirm-delete-user = Möchten Sie den Benutzer '{ $username }' wirklich löschen?
+confirm-delete-news = Möchten Sie diesen Beitrag wirklich löschen?
 msg-user-connected = { $username } hat sich verbunden
 msg-user-disconnected = { $username } hat sich getrennt
 msg-disconnected = Getrennt: { $error }
@@ -412,3 +427,9 @@ err-server-image-invalid-format = Ungültiges Serverbild-Format (muss eine Data-
 err-server-image-unsupported-type = Nicht unterstützter Serverbild-Typ (nur PNG, WebP, JPEG oder SVG)
 err-server-image-decode-failed = Bild konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
 err-failed-read-image = Fehler beim Lesen des Bildes: { $error }
+err-news-empty = Der Beitrag muss Text oder ein Bild enthalten
+err-news-body-too-long = Der Inhalt ist zu lang ({ $length } Zeichen, maximal { $max })
+err-news-body-invalid-characters = Der Inhalt enthält ungültige Steuerzeichen
+err-news-image-decode-failed = Bild konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
+err-news-image-too-large = Das Bild ist zu groß (maximal 512KB)
+err-news-image-unsupported-type = Nicht unterstützter Bildtyp (nur PNG, WebP, JPEG oder SVG)

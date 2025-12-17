@@ -255,4 +255,40 @@ pub enum Message {
         x: Option<i32>,
         y: Option<i32>,
     },
+
+    // ==================== News Management ====================
+    /// Toolbar: Toggle News panel
+    ToggleNews,
+    /// News: Cancel button pressed (return to list or close panel)
+    CancelNews,
+    /// News: Create new post button clicked (switch to create form)
+    NewsShowCreate,
+    /// News: Edit button clicked on news item
+    NewsEditClicked(i64),
+    /// News: Delete button clicked on news item
+    NewsDeleteClicked(i64),
+    /// News: Confirm delete button pressed in modal
+    NewsConfirmDelete,
+    /// News: Cancel delete (close modal)
+    NewsCancelDelete,
+    /// News: Create form - body field changed
+    NewsCreateBodyChanged(String),
+    /// News: Create form - pick image button pressed
+    NewsCreatePickImagePressed,
+    /// News: Create form - image loaded from file picker
+    NewsCreateImageLoaded(Result<String, ImagePickerError>),
+    /// News: Create form - clear image button pressed
+    NewsCreateClearImagePressed,
+    /// News: Create form - submit button pressed
+    NewsCreatePressed,
+    /// News: Edit form - body field changed
+    NewsEditBodyChanged(String),
+    /// News: Edit form - pick image button pressed
+    NewsEditPickImagePressed,
+    /// News: Edit form - image loaded from file picker
+    NewsEditImageLoaded(Result<String, ImagePickerError>),
+    /// News: Edit form - clear image button pressed
+    NewsEditClearImagePressed,
+    /// News: Edit form - save button pressed
+    NewsUpdatePressed,
 }

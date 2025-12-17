@@ -45,6 +45,9 @@ title-server-info = Infos Serveur
 title-user-info = Infos Utilisateur
 title-about = À propos
 title-change-password = Changer le Mot de Passe
+title-news = Actualités
+title-news-create = Créer une Publication
+title-news-edit = Modifier la Publication
 
 # =============================================================================
 # Placeholders
@@ -65,6 +68,7 @@ placeholder-message = Tapez un message...
 placeholder-no-permission = Pas de permission
 placeholder-broadcast-message = Entrez le message de diffusion...
 placeholder-server-description = Description du serveur
+placeholder-news-body = Entrez le contenu...
 
 # =============================================================================
 # Labels
@@ -96,6 +100,8 @@ label-appearance = Apparence
 label-image = Image
 label-general = Général
 label-limits = Limites
+label-news-body = Contenu :
+label-news-image = Image :
 
 # =============================================================================
 # Permission Display Names
@@ -134,8 +140,9 @@ tooltip-info = Info
 tooltip-message = Message
 tooltip-kick = Expulser
 tooltip-close = Fermer
-tooltip-add-bookmark = Ajouter un favori
-tooltip-create-user = Créer Utilisateur
+tooltip-add-bookmark = Ajouter un signet
+tooltip-create-user = Créer un Utilisateur
+tooltip-create-news = Créer une Publication
 tooltip-delete = Supprimer
 
 # =============================================================================
@@ -148,6 +155,9 @@ empty-no-bookmarks = Aucun signet
 empty-no-users = Aucun utilisateur en ligne
 user-management-loading = Chargement des utilisateurs...
 user-management-no-users = Aucun utilisateur trouvé
+news-loading = Chargement des actualités...
+news-no-posts = Aucune publication pour le moment
+news-updated = Modifié
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,7 +194,10 @@ msg-user-updated = Utilisateur mis à jour avec succès
 msg-user-updated-name = Utilisateur '{ $username }' mis à jour avec succès
 msg-permissions-updated = Vos permissions ont été mises à jour
 msg-topic-updated = Sujet mis à jour avec succès
-msg-password-changed = Mot de passe changé avec succès
+msg-password-changed = Mot de passe modifié avec succès
+msg-news-created = Publication créée avec succès
+msg-news-updated = Publication mise à jour avec succès
+msg-news-deleted = Publication supprimée avec succès
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -195,6 +208,7 @@ msg-topic-set = Sujet défini par { $username } : { $topic }
 msg-server-info-updated = Configuration du serveur mise à jour
 msg-topic-display = Sujet : { $topic }
 confirm-delete-user = Êtes-vous sûr de vouloir supprimer l'utilisateur '{ $username }' ?
+confirm-delete-news = Êtes-vous sûr de vouloir supprimer cette publication ?
 msg-user-connected = { $username } s'est connecté
 msg-user-disconnected = { $username } s'est déconnecté
 msg-disconnected = Déconnecté : { $error }
@@ -411,5 +425,11 @@ label-server-image = Image du serveur :
 err-server-image-too-large = L'image du serveur est trop grande (maximum 512 Ko)
 err-server-image-invalid-format = Format d'image du serveur invalide (doit être une URI de données avec encodage base64)
 err-server-image-unsupported-type = Type d'image du serveur non pris en charge (PNG, WebP, JPEG ou SVG uniquement)
-err-server-image-decode-failed = Échec du décodage de l'image. Le fichier est peut-être corrompu.
-err-failed-read-image = Échec de la lecture de l'image : { $error }
+err-server-image-decode-failed = Échec du décodage de l'image. Le fichier peut être corrompu.
+err-failed-read-image = Échec de lecture de l'image : { $error }
+err-news-empty = La publication doit contenir du texte ou une image
+err-news-body-too-long = Le contenu est trop long ({ $length } caractères, max { $max })
+err-news-body-invalid-characters = Le contenu contient des caractères de contrôle invalides
+err-news-image-decode-failed = Échec du décodage de l'image. Le fichier peut être corrompu.
+err-news-image-too-large = L'image est trop volumineuse (max 512 Ko)
+err-news-image-unsupported-type = Type d'image non supporté (PNG, WebP, JPEG ou SVG uniquement)

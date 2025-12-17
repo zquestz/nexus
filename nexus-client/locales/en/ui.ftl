@@ -44,6 +44,9 @@ title-server-info = Server Info
 title-user-info = User Info
 title-about = About
 title-change-password = Change Password
+title-news = News
+title-news-create = Create News Post
+title-news-edit = Edit News Post
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = Type a message...
 placeholder-no-permission = No permission
 placeholder-broadcast-message = Enter broadcast message...
 placeholder-server-description = Server description
+placeholder-news-body = Enter news content...
 
 # =============================================================================
 # Labels
@@ -96,6 +100,8 @@ label-appearance = Appearance
 label-image = Image
 label-general = General
 label-limits = Limits
+label-news-body = Body:
+label-news-image = Image:
 
 # =============================================================================
 # Permission Display Names
@@ -115,11 +121,21 @@ permission-user_kick = User Kick
 permission-user_message = User Message
 
 # =============================================================================
+# Permission Display Names (continued)
+# =============================================================================
+
+permission-news_list = News List
+permission-news_create = News Create
+permission-news_edit = News Edit
+permission-news_delete = News Delete
+
+# =============================================================================
 # Tooltips
 # =============================================================================
 
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
+tooltip-news = News
 tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
@@ -136,6 +152,7 @@ tooltip-kick = Kick
 tooltip-close = Close
 tooltip-add-bookmark = Add Bookmark
 tooltip-create-user = Create User
+tooltip-create-news = Create News Post
 tooltip-delete = Delete
 
 # =============================================================================
@@ -148,6 +165,9 @@ empty-no-bookmarks = No bookmarks
 empty-no-users = No users online
 user-management-loading = Loading users...
 user-management-no-users = No users found
+news-loading = Loading news...
+news-no-posts = No news posts yet
+news-updated = Updated
 
 # =============================================================================
 # Chat Tab Labels
@@ -185,6 +205,9 @@ msg-user-updated-name = User '{ $username }' updated successfully
 msg-permissions-updated = Your permissions have been updated
 msg-topic-updated = Topic updated successfully
 msg-password-changed = Password changed successfully
+msg-news-created = News post created successfully
+msg-news-updated = News post updated successfully
+msg-news-deleted = News post deleted successfully
 
 
 
@@ -197,6 +220,7 @@ msg-topic-set = Topic set by { $username }: { $topic }
 msg-server-info-updated = Server configuration updated
 msg-topic-display = Topic: { $topic }
 confirm-delete-user = Are you sure you want to delete user '{ $username }'?
+confirm-delete-news = Are you sure you want to delete this news post?
 msg-user-connected = { $username } connected
 msg-user-disconnected = { $username } disconnected
 msg-disconnected = Disconnected: { $error }
@@ -263,6 +287,12 @@ err-server-image-invalid-format = Invalid server image format (must be a data UR
 err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
 err-server-image-decode-failed = Failed to decode image. The file may be corrupted.
 err-failed-read-image = Failed to read image: { $error }
+err-news-empty = News post must have either body text or an image
+err-news-body-too-long = Body is too long ({ $length } characters, max { $max })
+err-news-body-invalid-characters = Body contains invalid control characters
+err-news-image-decode-failed = Failed to decode image. The file may be corrupted.
+err-news-image-too-large = Image is too large (max 512KB)
+err-news-image-unsupported-type = Unsupported image type (PNG, WebP, JPEG, or SVG only)
 
 # =============================================================================
 # Dynamic Error Messages (with parameters)

@@ -44,6 +44,9 @@ title-server-info = Info do Servidor
 title-user-info = Info do Utilizador
 title-about = Sobre
 title-change-password = Alterar Palavra-passe
+title-news = Notícias
+title-news-create = Criar Publicação
+title-news-edit = Editar Publicação
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = Escreva uma mensagem...
 placeholder-no-permission = Sem permissão
 placeholder-broadcast-message = Escreva a mensagem de difusão...
 placeholder-server-description = Descrição do servidor
+placeholder-news-body = Escreva o conteúdo...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = Aparência
 label-image = Imagem
 label-general = Geral
 label-limits = Limites
+label-news-body = Conteúdo:
+label-news-image = Imagem:
 
 # =============================================================================
 # Permission Display Names
@@ -119,6 +125,7 @@ permission-user_message = Mensagem de Utilizador
 
 tooltip-chat = Chat
 tooltip-broadcast = Difusão
+tooltip-news = Notícias
 tooltip-manage-users = Gerir Utilizadores
 tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
@@ -135,6 +142,7 @@ tooltip-kick = Expulsar
 tooltip-close = Fechar
 tooltip-add-bookmark = Adicionar Marcador
 tooltip-create-user = Criar Utilizador
+tooltip-create-news = Criar Publicação
 tooltip-delete = Eliminar
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = Sem marcadores
 empty-no-users = Nenhum utilizador online
 user-management-loading = A carregar utilizadores...
 user-management-no-users = Nenhum utilizador encontrado
+news-loading = A carregar notícias...
+news-no-posts = Ainda sem publicações
+news-updated = Actualizado
 
 # =============================================================================
 # Chat Tab Labels
@@ -182,8 +193,11 @@ msg-user-deleted-name = Utilizador '{ $username }' eliminado com sucesso
 msg-user-updated = Utilizador actualizado com sucesso
 msg-user-updated-name = Utilizador '{ $username }' actualizado com sucesso
 msg-permissions-updated = As suas permissões foram actualizadas
-msg-topic-updated = Tópico atualizado com sucesso
+msg-topic-updated = Tópico actualizado com sucesso
 msg-password-changed = Palavra-passe alterada com sucesso
+msg-news-created = Publicação criada com sucesso
+msg-news-updated = Publicação actualizada com sucesso
+msg-news-deleted = Publicação eliminada com sucesso
 
 
 # =============================================================================
@@ -195,6 +209,7 @@ msg-topic-set = Tópico definido por { $username }: { $topic }
 msg-server-info-updated = Configuração do servidor atualizada
 msg-topic-display = Tópico: { $topic }
 confirm-delete-user = Tem a certeza de que deseja eliminar o utilizador '{ $username }'?
+confirm-delete-news = Tem a certeza de que deseja eliminar esta publicação?
 msg-user-connected = { $username } ligou-se
 msg-user-disconnected = { $username } desligou-se
 msg-disconnected = Desligado: { $error }
@@ -413,3 +428,9 @@ err-server-image-invalid-format = Formato de imagem do servidor inválido (deve 
 err-server-image-unsupported-type = Tipo de imagem do servidor não suportado (apenas PNG, WebP, JPEG ou SVG)
 err-server-image-decode-failed = Falha ao descodificar a imagem. O ficheiro pode estar corrompido.
 err-failed-read-image = Falha ao ler a imagem: { $error }
+err-news-empty = A publicação deve ter texto ou uma imagem
+err-news-body-too-long = O conteúdo é demasiado longo ({ $length } caracteres, máximo { $max })
+err-news-body-invalid-characters = O conteúdo contém caracteres de controlo inválidos
+err-news-image-decode-failed = Falha ao descodificar a imagem. O ficheiro pode estar corrompido.
+err-news-image-too-large = A imagem é demasiado grande (máximo 512KB)
+err-news-image-unsupported-type = Tipo de imagem não suportado (apenas PNG, WebP, JPEG ou SVG)

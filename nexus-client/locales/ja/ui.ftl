@@ -44,6 +44,9 @@ title-server-info = サーバー情報
 title-user-info = ユーザー情報
 title-about = アプリについて
 title-change-password = パスワードを変更
+title-news = ニュース
+title-news-create = 投稿を作成
+title-news-edit = 投稿を編集
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = メッセージを入力...
 placeholder-no-permission = 権限がありません
 placeholder-broadcast-message = ブロードキャストメッセージを入力...
 placeholder-server-description = サーバーの説明
+placeholder-news-body = 内容を入力...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = 外観
 label-image = 画像
 label-general = 一般
 label-limits = 制限
+label-news-body = 内容:
+label-news-image = 画像:
 
 # =============================================================================
 # Permission Display Names
@@ -119,6 +125,7 @@ permission-user_message = ユーザーメッセージ
 
 tooltip-chat = チャット
 tooltip-broadcast = ブロードキャスト
+tooltip-news = ニュース
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -134,7 +141,8 @@ tooltip-message = メッセージ
 tooltip-kick = キック
 tooltip-close = 閉じる
 tooltip-add-bookmark = ブックマークを追加
-tooltip-create-user = ユーザー作成
+tooltip-create-user = ユーザーを作成
+tooltip-create-news = 投稿を作成
 tooltip-delete = 削除
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = ブックマークなし
 empty-no-users = オンラインユーザーなし
 user-management-loading = ユーザーを読み込み中...
 user-management-no-users = ユーザーが見つかりません
+news-loading = ニュースを読み込み中...
+news-no-posts = まだ投稿がありません
+news-updated = 更新済み
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,6 +195,9 @@ msg-user-updated-name = ユーザー '{ $username }' を正常に更新しまし
 msg-permissions-updated = 権限が更新されました
 msg-topic-updated = トピックが正常に更新されました
 msg-password-changed = パスワードが正常に変更されました
+msg-news-created = 投稿が正常に作成されました
+msg-news-updated = 投稿が正常に更新されました
+msg-news-deleted = 投稿が正常に削除されました
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -194,6 +208,7 @@ msg-topic-set = { $username } がトピックを設定しました: { $topic }
 msg-server-info-updated = サーバー設定が更新されました
 msg-topic-display = トピック: { $topic }
 confirm-delete-user = ユーザー '{ $username }' を削除してもよろしいですか？
+confirm-delete-news = この投稿を削除してもよろしいですか？
 msg-user-connected = { $username } が接続しました
 msg-user-disconnected = { $username } が切断しました
 msg-disconnected = 切断されました: { $error }
@@ -391,3 +406,9 @@ err-server-image-invalid-format = サーバー画像の形式が無効です（b
 err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）
 err-server-image-decode-failed = 画像のデコードに失敗しました。ファイルが破損している可能性があります。
 err-failed-read-image = 画像の読み込みに失敗しました: { $error }
+err-news-empty = 投稿にはテキストまたは画像が必要です
+err-news-body-too-long = 内容が長すぎます（{ $length }文字、最大{ $max }文字）
+err-news-body-invalid-characters = 内容に無効な制御文字が含まれています
+err-news-image-decode-failed = 画像のデコードに失敗しました。ファイルが破損している可能性があります。
+err-news-image-too-large = 画像が大きすぎます（最大512KB）
+err-news-image-unsupported-type = サポートされていない画像形式です（PNG、WebP、JPEG、SVGのみ）

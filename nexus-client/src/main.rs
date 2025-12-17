@@ -402,6 +402,25 @@ impl NexusApp {
             Message::ServerMessageReceived(connection_id, message_id, msg) => {
                 self.handle_server_message_received(connection_id, message_id, msg)
             }
+
+            // News management
+            Message::ToggleNews => self.handle_toggle_news(),
+            Message::CancelNews => self.handle_cancel_news(),
+            Message::NewsShowCreate => self.handle_news_show_create(),
+            Message::NewsEditClicked(id) => self.handle_news_edit_clicked(id),
+            Message::NewsDeleteClicked(id) => self.handle_news_delete_clicked(id),
+            Message::NewsConfirmDelete => self.handle_news_confirm_delete(),
+            Message::NewsCancelDelete => self.handle_news_cancel_delete(),
+            Message::NewsCreateBodyChanged(body) => self.handle_news_create_body_changed(body),
+            Message::NewsCreatePickImagePressed => self.handle_news_create_pick_image_pressed(),
+            Message::NewsCreateImageLoaded(result) => self.handle_news_create_image_loaded(result),
+            Message::NewsCreateClearImagePressed => self.handle_news_create_clear_image_pressed(),
+            Message::NewsCreatePressed => self.handle_news_create_pressed(),
+            Message::NewsEditBodyChanged(body) => self.handle_news_edit_body_changed(body),
+            Message::NewsEditPickImagePressed => self.handle_news_edit_pick_image_pressed(),
+            Message::NewsEditImageLoaded(result) => self.handle_news_edit_image_loaded(result),
+            Message::NewsEditClearImagePressed => self.handle_news_edit_clear_image_pressed(),
+            Message::NewsUpdatePressed => self.handle_news_update_pressed(),
         }
     }
 

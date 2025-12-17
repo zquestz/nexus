@@ -45,6 +45,9 @@ title-server-info = Info del Servidor
 title-user-info = Info del Usuario
 title-about = Acerca de
 title-change-password = Cambiar Contraseña
+title-news = Noticias
+title-news-create = Crear Publicación
+title-news-edit = Editar Publicación
 
 # =============================================================================
 # Placeholders
@@ -65,6 +68,7 @@ placeholder-message = Escribe un mensaje...
 placeholder-no-permission = Sin permiso
 placeholder-broadcast-message = Escribe un mensaje de difusión...
 placeholder-server-description = Descripción del servidor
+placeholder-news-body = Escribe el contenido...
 
 # =============================================================================
 # Labels
@@ -96,6 +100,8 @@ label-appearance = Apariencia
 label-image = Imagen
 label-general = General
 label-limits = Límites
+label-news-body = Contenido:
+label-news-image = Imagen:
 
 # =============================================================================
 # Permission Display Names
@@ -120,6 +126,7 @@ permission-user_message = Mensaje de Usuario
 
 tooltip-chat = Chat
 tooltip-broadcast = Difusión
+tooltip-news = Noticias
 tooltip-manage-users = Gestionar Usuarios
 tooltip-server-info = Info del Servidor
 tooltip-about = Acerca de
@@ -136,6 +143,7 @@ tooltip-kick = Expulsar
 tooltip-close = Cerrar
 tooltip-add-bookmark = Añadir Marcador
 tooltip-create-user = Crear Usuario
+tooltip-create-news = Crear Publicación
 tooltip-delete = Eliminar
 
 # =============================================================================
@@ -148,6 +156,9 @@ empty-no-bookmarks = Sin marcadores
 empty-no-users = No hay usuarios conectados
 user-management-loading = Cargando usuarios...
 user-management-no-users = No se encontraron usuarios
+news-loading = Cargando noticias...
+news-no-posts = Aún no hay publicaciones
+news-updated = Actualizado
 
 # =============================================================================
 # Chat Tab Labels
@@ -183,8 +194,11 @@ msg-user-deleted-name = Usuario '{ $username }' eliminado exitosamente
 msg-user-updated = Usuario actualizado exitosamente
 msg-user-updated-name = Usuario '{ $username }' actualizado exitosamente
 msg-permissions-updated = Tus permisos han sido actualizados
-msg-topic-updated = Tema actualizado exitosamente
-msg-password-changed = Contraseña cambiada exitosamente
+msg-topic-updated = Tema actualizado correctamente
+msg-password-changed = Contraseña cambiada correctamente
+msg-news-created = Publicación creada correctamente
+msg-news-updated = Publicación actualizada correctamente
+msg-news-deleted = Publicación eliminada correctamente
 
 
 
@@ -197,7 +211,8 @@ msg-topic-set = Tema establecido por { $username }: { $topic }
 msg-server-info-updated = Configuración del servidor actualizada
 msg-topic-display = Tema: { $topic }
 confirm-delete-user = ¿Estás seguro de que deseas eliminar al usuario '{ $username }'?
-msg-user-connected = { $username } se conectó
+confirm-delete-news = ¿Estás seguro de que deseas eliminar esta publicación?
+msg-user-connected = { $username } conectado
 msg-user-disconnected = { $username } se desconectó
 msg-disconnected = Desconectado: { $error }
 msg-connection-cancelled = Conexión cancelada debido a certificado no coincidente
@@ -413,5 +428,11 @@ label-server-image = Imagen del servidor:
 err-server-image-too-large = La imagen del servidor es demasiado grande (máx. 512KB)
 err-server-image-invalid-format = Formato de imagen del servidor inválido (debe ser una URI de datos con codificación base64)
 err-server-image-unsupported-type = Tipo de imagen del servidor no compatible (solo PNG, WebP, JPEG o SVG)
-err-server-image-decode-failed = Error al decodificar la imagen. El archivo puede estar dañado.
+err-server-image-decode-failed = Error al decodificar la imagen. El archivo puede estar corrupto.
 err-failed-read-image = Error al leer la imagen: { $error }
+err-news-empty = La publicación debe tener texto o una imagen
+err-news-body-too-long = El contenido es demasiado largo ({ $length } caracteres, máximo { $max })
+err-news-body-invalid-characters = El contenido contiene caracteres de control inválidos
+err-news-image-decode-failed = Error al decodificar la imagen. El archivo puede estar corrupto.
+err-news-image-too-large = La imagen es demasiado grande (máximo 512KB)
+err-news-image-unsupported-type = Tipo de imagen no soportado (solo PNG, WebP, JPEG o SVG)

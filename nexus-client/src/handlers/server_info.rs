@@ -10,10 +10,10 @@ use nexus_common::validators::{
 use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
-use crate::config::settings::SERVER_IMAGE_MAX_SIZE;
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
+use crate::style::SERVER_IMAGE_MAX_SIZE;
 use crate::types::{InputId, Message, ServerInfoEditState};
 
 impl NexusApp {

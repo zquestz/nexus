@@ -11,9 +11,6 @@ use super::theme::ThemePreference;
 /// Maximum avatar size in bytes (128KB)
 pub const AVATAR_MAX_SIZE: usize = 128 * 1024;
 
-/// Maximum server image size in bytes (512KB)
-pub const SERVER_IMAGE_MAX_SIZE: usize = 512 * 1024;
-
 /// Minimum allowed chat font size
 pub const CHAT_FONT_SIZE_MIN: u8 = 9;
 

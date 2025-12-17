@@ -44,6 +44,9 @@ title-server-info = 서버 정보
 title-user-info = 사용자 정보
 title-about = 정보
 title-change-password = 비밀번호 변경
+title-news = 뉴스
+title-news-create = 게시물 작성
+title-news-edit = 게시물 편집
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
 placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요...
 placeholder-server-description = 서버 설명
+placeholder-news-body = 내용을 입력하세요...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = 외관
 label-image = 이미지
 label-general = 일반
 label-limits = 제한
+label-news-body = 내용:
+label-news-image = 이미지:
 
 # =============================================================================
 # Permission Display Names
@@ -119,6 +125,7 @@ permission-user_message = 사용자 메시지
 
 tooltip-chat = 채팅
 tooltip-broadcast = 브로드캐스트
+tooltip-news = 뉴스
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -135,6 +142,7 @@ tooltip-kick = 추방
 tooltip-close = 닫기
 tooltip-add-bookmark = 북마크 추가
 tooltip-create-user = 사용자 생성
+tooltip-create-news = 게시물 작성
 tooltip-delete = 삭제
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = 북마크 없음
 empty-no-users = 온라인 사용자 없음
 user-management-loading = 사용자 로딩 중...
 user-management-no-users = 사용자를 찾을 수 없습니다
+news-loading = 뉴스 로딩 중...
+news-no-posts = 아직 게시물이 없습니다
+news-updated = 수정됨
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,6 +195,9 @@ msg-user-updated-name = 사용자 '{ $username }'이(가) 성공적으로 업데
 msg-permissions-updated = 권한이 업데이트되었습니다
 msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 msg-password-changed = 비밀번호가 성공적으로 변경되었습니다
+msg-news-created = 게시물이 성공적으로 작성되었습니다
+msg-news-updated = 게시물이 성공적으로 수정되었습니다
+msg-news-deleted = 게시물이 성공적으로 삭제되었습니다
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -194,6 +208,7 @@ msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
 msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 confirm-delete-user = '{ $username }' 사용자를 삭제하시겠습니까?
+confirm-delete-news = 이 게시물을 삭제하시겠습니까?
 msg-user-connected = { $username }님이 연결되었습니다
 msg-user-disconnected = { $username }님의 연결이 해제되었습니다
 msg-disconnected = 연결 해제됨: { $error }
@@ -390,4 +405,10 @@ err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
 err-server-image-invalid-format = 서버 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
 err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
 err-server-image-decode-failed = 이미지를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
-err-failed-read-image = 이미지 읽기 실패: { $error }
+err-failed-read-image = 이미지를 읽을 수 없습니다: { $error }
+err-news-empty = 게시물에는 텍스트 또는 이미지가 필요합니다
+err-news-body-too-long = 내용이 너무 깁니다 ({ $length }자, 최대 { $max }자)
+err-news-body-invalid-characters = 내용에 잘못된 제어 문자가 포함되어 있습니다
+err-news-image-decode-failed = 이미지를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
+err-news-image-too-large = 이미지가 너무 큽니다 (최대 512KB)
+err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG, SVG만 지원)

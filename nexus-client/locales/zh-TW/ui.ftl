@@ -44,6 +44,9 @@ title-server-info = 伺服器資訊
 title-user-info = 使用者資訊
 title-about = 關於
 title-change-password = 修改密碼
+title-news = 新聞
+title-news-create = 建立貼文
+title-news-edit = 編輯貼文
 
 # =============================================================================
 # Placeholders
@@ -64,6 +67,7 @@ placeholder-message = 輸入訊息...
 placeholder-no-permission = 無權限
 placeholder-broadcast-message = 輸入廣播訊息...
 placeholder-server-description = 伺服器描述
+placeholder-news-body = 輸入內容...
 
 # =============================================================================
 # Labels
@@ -95,6 +99,8 @@ label-appearance = 外觀
 label-image = 圖片
 label-general = 一般
 label-limits = 限制
+label-news-body = 內容：
+label-news-image = 圖片：
 
 # =============================================================================
 # Permission Display Names
@@ -119,6 +125,7 @@ permission-user_message = 使用者訊息
 
 tooltip-chat = 聊天
 tooltip-broadcast = 廣播
+tooltip-news = 新聞
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -135,6 +142,7 @@ tooltip-kick = 踢出
 tooltip-close = 關閉
 tooltip-add-bookmark = 新增書籤
 tooltip-create-user = 建立使用者
+tooltip-create-news = 建立貼文
 tooltip-delete = 刪除
 
 # =============================================================================
@@ -147,6 +155,9 @@ empty-no-bookmarks = 無書籤
 empty-no-users = 無線上使用者
 user-management-loading = 正在載入使用者...
 user-management-no-users = 找不到使用者
+news-loading = 正在載入新聞...
+news-no-posts = 目前沒有貼文
+news-updated = 已更新
 
 # =============================================================================
 # Chat Tab Labels
@@ -184,6 +195,9 @@ msg-user-updated-name = 使用者 '{ $username }' 更新成功
 msg-permissions-updated = 您的權限已更新
 msg-topic-updated = 主題更新成功
 msg-password-changed = 密碼修改成功
+msg-news-created = 貼文建立成功
+msg-news-updated = 貼文更新成功
+msg-news-deleted = 貼文刪除成功
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -193,7 +207,8 @@ msg-topic-cleared = { $username } 清除了主題
 msg-topic-set = { $username } 設定了主題：{ $topic }
 msg-server-info-updated = 伺服器設定已更新
 msg-topic-display = 主題：{ $topic }
-confirm-delete-user = 您確定要刪除使用者 '{ $username }' 嗎？
+confirm-delete-user = 確定要刪除使用者 '{ $username }' 嗎？
+confirm-delete-news = 確定要刪除此貼文嗎？
 msg-user-connected = { $username } 已連線
 msg-user-disconnected = { $username } 已中斷連線
 msg-disconnected = 已中斷連線：{ $error }
@@ -389,5 +404,11 @@ label-server-image = 伺服器圖片:
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
 err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）
-err-server-image-decode-failed = 無法解碼圖片。檔案可能已損壞。
-err-failed-read-image = 讀取圖片失敗: { $error }
+err-server-image-decode-failed = 圖片解碼失敗。檔案可能已損壞。
+err-failed-read-image = 讀取圖片失敗：{ $error }
+err-news-empty = 貼文必須包含文字或圖片
+err-news-body-too-long = 內容過長（{ $length }個字元，最多{ $max }個）
+err-news-body-invalid-characters = 內容包含無效的控制字元
+err-news-image-decode-failed = 圖片解碼失敗。檔案可能已損壞。
+err-news-image-too-large = 圖片過大（最大512KB）
+err-news-image-unsupported-type = 不支援的圖片格式（僅支援PNG、WebP、JPEG或SVG）

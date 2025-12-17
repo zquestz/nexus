@@ -1,7 +1,10 @@
 //! Keyboard navigation
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, UserManagementMode};
+use crate::types::{
+    ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode,
+    UserManagementMode,
+};
 use iced::keyboard::{self, key};
 use iced::widget::{Id, operation};
 use iced::{Event, Task};
@@ -125,6 +128,37 @@ impl NexusApp {
                     }
                 }
                 return Task::none();
+            } else if self.active_panel() == ActivePanel::News {
+                // On news screen, handle Enter based on mode
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                {
+                    match &conn.news_management.mode {
+                        NewsManagementMode::Create => {
+                            // Create mode: Submit if has content
+                            let has_content = !conn.news_management.create_body.trim().is_empty()
+                                || !conn.news_management.create_image.is_empty();
+                            if has_content {
+                                return self.update(Message::NewsCreatePressed);
+                            }
+                        }
+                        NewsManagementMode::Edit { .. } => {
+                            // Edit mode: Submit if has content
+                            let has_content = !conn.news_management.edit_body.trim().is_empty()
+                                || !conn.news_management.edit_image.is_empty();
+                            if has_content {
+                                return self.update(Message::NewsUpdatePressed);
+                            }
+                        }
+                        NewsManagementMode::List => {
+                            // List mode: Close the panel
+                            return self.update(Message::CancelNews);
+                        }
+                        NewsManagementMode::ConfirmDelete { .. } => {
+                            // ConfirmDelete: No Enter action (user must click button)
+                        }
+                    }
+                }
             } else if self.active_connection.is_none() {
                 // On connection screen, try to connect
                 let can_connect = !self.connection_form.server_address.trim().is_empty()
@@ -168,6 +202,10 @@ impl NexusApp {
                     ActivePanel::UserInfo => return self.update(Message::CloseUserInfo),
                     ActivePanel::ChangePassword => {
                         return self.update(Message::ChangePasswordCancelPressed);
+                    }
+                    ActivePanel::News => {
+                        // In news panel, Escape returns to list (or closes if on list)
+                        return self.update(Message::CancelNews);
                     }
                     ActivePanel::None => {}
                 }
@@ -275,6 +313,22 @@ impl NexusApp {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return operation::focus(Id::from(InputId::BroadcastMessage));
+        } else if self.active_panel() == ActivePanel::News {
+            // News panel only has one text field (body) in create/edit mode
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+            {
+                match &conn.news_management.mode {
+                    NewsManagementMode::Create | NewsManagementMode::Edit { .. } => {
+                        // Single field - focus it
+                        self.focused_field = InputId::NewsBody;
+                        return operation::focus(Id::from(InputId::NewsBody));
+                    }
+                    NewsManagementMode::List | NewsManagementMode::ConfirmDelete { .. } => {
+                        // List/ConfirmDelete: No Tab navigation
+                    }
+                }
+            }
         } else if self.active_panel() == ActivePanel::Settings {
             // Settings panel has no text inputs yet, just return
             return Task::none();
