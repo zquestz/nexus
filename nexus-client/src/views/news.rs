@@ -409,8 +409,8 @@ fn build_news_item_row<'a>(
         let md_settings = markdown::Settings::with_text_size(TEXT_SIZE, theme);
 
         // Render markdown and map link clicks to OpenUrl message
-        let md_view: Element<'a, Message> = markdown::view(markdown_items, md_settings)
-            .map(Message::OpenUrl);
+        let md_view: Element<'a, Message> =
+            markdown::view(markdown_items, md_settings).map(Message::OpenUrl);
 
         content_col = content_col.push(md_view);
     }
