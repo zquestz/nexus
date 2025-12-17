@@ -18,9 +18,11 @@ use crate::style::{
     transparent_icon_button_style,
 };
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
+use iced::widget::Id;
 use iced::widget::button as btn;
 use iced::widget::{
-    Column, Row, Space, button, column, container, image, row, scrollable, svg, tooltip,
+    Column, Row, Space, button, column, container, image, row, scrollable, svg, text_editor,
+    tooltip,
 };
 use iced::{Center, Element, Fill, Length, Theme, alignment};
 use nexus_common::protocol::NewsItem;
@@ -408,48 +410,58 @@ fn build_news_item_row<'a>(
 }
 
 // ============================================================================
-// Create View
+// Form View (used for both Create and Edit)
 // ============================================================================
 
-/// Build the create news form
-fn create_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Message> {
-    let title = shaped_text(t("title-news-create"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
-
-    // Must have either body or image
-    let has_content =
-        !news_management.create_body.trim().is_empty() || !news_management.create_image.is_empty();
-
-    let submit_action = if has_content {
-        Message::NewsCreatePressed
+/// Build the news form (create or edit)
+fn form_view<'a>(
+    news_management: &'a NewsManagementState,
+    body_content: Option<&'a text_editor::Content>,
+    is_edit: bool,
+) -> Element<'a, Message> {
+    let title = shaped_text(if is_edit {
+        t("title-news-edit")
     } else {
-        // Will show validation error
-        Message::NewsCreatePressed
-    };
+        t("title-news-create")
+    })
+    .size(TITLE_SIZE)
+    .width(Fill)
+    .align_x(Center);
 
-    // Body text input (using text_input for simplicity)
+    // Check if we have content (body from editor or image)
+    let body_text = body_content.map(|c| c.text()).unwrap_or_default();
+    let has_content = !body_text.trim().is_empty() || !news_management.form_image.is_empty();
+
+    // Body text editor
     let body_label = shaped_text(t("label-news-body")).size(TEXT_SIZE);
-    let body_input =
-        iced::widget::text_input(&t("placeholder-news-body"), &news_management.create_body)
-            .id(InputId::NewsBody)
-            .on_input(Message::NewsCreateBodyChanged)
-            .on_submit(submit_action.clone())
-            .padding(INPUT_PADDING)
-            .size(TEXT_SIZE);
+    let body_editor: Element<'a, Message> = if let Some(content) = body_content {
+        text_editor(content)
+            .id(Id::from(InputId::NewsBody))
+            .placeholder(t("placeholder-news-body"))
+            .on_action(Message::NewsBodyAction)
+            .padding(FORM_PADDING / 2.0)
+            .size(TEXT_SIZE)
+            .height(Length::Fixed(150.0))
+            .into()
+    } else {
+        // Fallback if no content (shouldn't happen in practice)
+        shaped_text(t("news-loading"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
 
     // Image picker
     let image_label = shaped_text(t("label-news-image")).size(TEXT_SIZE);
 
     let pick_image_button = button(shaped_text(t("button-choose-image")).size(TEXT_SIZE))
-        .on_press(Message::NewsCreatePickImagePressed)
+        .on_press(Message::NewsPickImagePressed)
         .padding(BUTTON_PADDING)
         .style(btn::secondary);
 
-    let clear_image_button = if !news_management.create_image.is_empty() {
+    let clear_image_button = if !news_management.form_image.is_empty() {
         button(shaped_text(t("button-clear-image")).size(TEXT_SIZE))
-            .on_press(Message::NewsCreateClearImagePressed)
+            .on_press(Message::NewsClearImagePressed)
             .padding(BUTTON_PADDING)
             .style(btn::secondary)
     } else {
@@ -461,8 +473,7 @@ fn create_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Mess
     let image_buttons = row![pick_image_button, clear_image_button].spacing(ELEMENT_SPACING);
 
     // Image preview if present
-    let image_row: Element<'a, Message> = if let Some(cached) = &news_management.cached_create_image
-    {
+    let image_row: Element<'a, Message> = if let Some(cached) = &news_management.cached_form_image {
         let image_preview = render_cached_image_preview(cached);
         row![image_preview, image_buttons]
             .spacing(ELEMENT_SPACING)
@@ -472,13 +483,28 @@ fn create_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Mess
         image_buttons.into()
     };
 
-    // Buttons
-    let create_button = if has_content {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE))
-            .on_press(Message::NewsCreatePressed)
-            .padding(BUTTON_PADDING)
+    // Submit button (Create or Save)
+    let submit_button = if has_content {
+        button(
+            shaped_text(if is_edit {
+                t("button-save")
+            } else {
+                t("button-create")
+            })
+            .size(TEXT_SIZE),
+        )
+        .on_press(Message::NewsSubmitPressed)
+        .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(
+            shaped_text(if is_edit {
+                t("button-save")
+            } else {
+                t("button-create")
+            })
+            .size(TEXT_SIZE),
+        )
+        .padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -489,7 +515,7 @@ fn create_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Mess
     let mut items: Vec<Element<'a, Message>> = vec![title.into()];
 
     // Show error if present
-    if let Some(error) = &news_management.create_error {
+    if let Some(error) = &news_management.form_error {
         items.push(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
@@ -508,119 +534,9 @@ fn create_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Mess
         image_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
         body_label.into(),
-        body_input.into(),
+        body_editor,
         Space::new().height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::new().width(Fill), cancel_button, create_button]
-            .spacing(ELEMENT_SPACING)
-            .into(),
-    ]);
-
-    let form = Column::with_children(items)
-        .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
-
-    scrollable_panel(form)
-}
-
-// ============================================================================
-// Edit View
-// ============================================================================
-
-/// Build the edit news form
-fn edit_view<'a>(news_management: &'a NewsManagementState) -> Element<'a, Message> {
-    let title = shaped_text(t("title-news-edit"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
-
-    // Must have either body or image
-    let has_content =
-        !news_management.edit_body.trim().is_empty() || !news_management.edit_image.is_empty();
-
-    let submit_action = Message::NewsUpdatePressed;
-
-    // Body text input
-    let body_label = shaped_text(t("label-news-body")).size(TEXT_SIZE);
-    let body_input =
-        iced::widget::text_input(&t("placeholder-news-body"), &news_management.edit_body)
-            .id(InputId::NewsBody)
-            .on_input(Message::NewsEditBodyChanged)
-            .on_submit(submit_action)
-            .padding(INPUT_PADDING)
-            .size(TEXT_SIZE);
-
-    // Image picker
-    let image_label = shaped_text(t("label-news-image")).size(TEXT_SIZE);
-
-    let pick_image_button = button(shaped_text(t("button-choose-image")).size(TEXT_SIZE))
-        .on_press(Message::NewsEditPickImagePressed)
-        .padding(BUTTON_PADDING)
-        .style(btn::secondary);
-
-    let clear_image_button = if !news_management.edit_image.is_empty() {
-        button(shaped_text(t("button-clear-image")).size(TEXT_SIZE))
-            .on_press(Message::NewsEditClearImagePressed)
-            .padding(BUTTON_PADDING)
-            .style(btn::secondary)
-    } else {
-        button(shaped_text(t("button-clear-image")).size(TEXT_SIZE))
-            .padding(BUTTON_PADDING)
-            .style(btn::secondary)
-    };
-
-    let image_buttons = row![pick_image_button, clear_image_button].spacing(ELEMENT_SPACING);
-
-    // Image preview if present
-    let image_row: Element<'a, Message> = if let Some(cached) = &news_management.cached_edit_image {
-        let image_preview = render_cached_image_preview(cached);
-        row![image_preview, image_buttons]
-            .spacing(ELEMENT_SPACING)
-            .align_y(Center)
-            .into()
-    } else {
-        image_buttons.into()
-    };
-
-    // Buttons
-    let save_button = if has_content {
-        button(shaped_text(t("button-save")).size(TEXT_SIZE))
-            .on_press(Message::NewsUpdatePressed)
-            .padding(BUTTON_PADDING)
-    } else {
-        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
-    };
-
-    let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
-        .on_press(Message::CancelNews)
-        .padding(BUTTON_PADDING)
-        .style(btn::secondary);
-
-    let mut items: Vec<Element<'a, Message>> = vec![title.into()];
-
-    // Show error if present
-    if let Some(error) = &news_management.edit_error {
-        items.push(
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into(),
-        );
-        items.push(Space::new().height(SPACER_SIZE_SMALL).into());
-    } else {
-        items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-    }
-
-    items.extend([
-        image_label.into(),
-        image_row,
-        Space::new().height(SPACER_SIZE_SMALL).into(),
-        body_label.into(),
-        body_input.into(),
-        Space::new().height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::new().width(Fill), cancel_button, save_button]
+        row![Space::new().width(Fill), cancel_button, submit_button]
             .spacing(ELEMENT_SPACING)
             .into(),
     ]);
@@ -688,11 +604,12 @@ pub fn news_view<'a>(
     conn: &'a ServerConnection,
     news_management: &'a NewsManagementState,
     theme: &Theme,
+    body_content: Option<&'a text_editor::Content>,
 ) -> Element<'a, Message> {
     match &news_management.mode {
         NewsManagementMode::List => list_view(conn, news_management, theme, &conn.news_image_cache),
-        NewsManagementMode::Create => create_view(news_management),
-        NewsManagementMode::Edit { .. } => edit_view(news_management),
+        NewsManagementMode::Create => form_view(news_management, body_content, false),
+        NewsManagementMode::Edit { .. } => form_view(news_management, body_content, true),
         NewsManagementMode::ConfirmDelete { .. } => confirm_delete_modal(),
     }
 }

@@ -136,7 +136,7 @@ pub enum InputId {
     ChangePasswordNew,
     /// Password change: Confirm password input
     ChangePasswordConfirm,
-    /// News panel: Body input
+    /// News panel: Body text editor
     NewsBody,
 }
 

@@ -17,7 +17,7 @@ mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use iced::widget::{Id, operation};
+use iced::widget::{Id, operation, text_editor};
 use iced::{Element, Subscription, Task, Theme};
 
 use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
@@ -106,6 +106,12 @@ struct NexusApp {
     fingerprint_mismatch_queue: VecDeque<FingerprintMismatch>,
     /// Transient per-bookmark connection errors (not persisted to disk)
     bookmark_errors: HashMap<usize, String>,
+
+    // -------------------------------------------------------------------------
+    // Text Editor State (not Clone, stored outside ServerConnection)
+    // -------------------------------------------------------------------------
+    /// News body editor content, keyed by connection_id (used for both create and edit)
+    news_body_content: HashMap<usize, text_editor::Content>,
 }
 
 impl Default for NexusApp {
@@ -129,6 +135,8 @@ impl Default for NexusApp {
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
             bookmark_errors: HashMap::new(),
+            // Text Editor State
+            news_body_content: HashMap::new(),
         }
     }
 }
@@ -411,16 +419,11 @@ impl NexusApp {
             Message::NewsDeleteClicked(id) => self.handle_news_delete_clicked(id),
             Message::NewsConfirmDelete => self.handle_news_confirm_delete(),
             Message::NewsCancelDelete => self.handle_news_cancel_delete(),
-            Message::NewsCreateBodyChanged(body) => self.handle_news_create_body_changed(body),
-            Message::NewsCreatePickImagePressed => self.handle_news_create_pick_image_pressed(),
-            Message::NewsCreateImageLoaded(result) => self.handle_news_create_image_loaded(result),
-            Message::NewsCreateClearImagePressed => self.handle_news_create_clear_image_pressed(),
-            Message::NewsCreatePressed => self.handle_news_create_pressed(),
-            Message::NewsEditBodyChanged(body) => self.handle_news_edit_body_changed(body),
-            Message::NewsEditPickImagePressed => self.handle_news_edit_pick_image_pressed(),
-            Message::NewsEditImageLoaded(result) => self.handle_news_edit_image_loaded(result),
-            Message::NewsEditClearImagePressed => self.handle_news_edit_clear_image_pressed(),
-            Message::NewsUpdatePressed => self.handle_news_update_pressed(),
+            Message::NewsBodyAction(action) => self.handle_news_body_action(action),
+            Message::NewsPickImagePressed => self.handle_news_pick_image_pressed(),
+            Message::NewsImageLoaded(result) => self.handle_news_image_loaded(result),
+            Message::NewsClearImagePressed => self.handle_news_clear_image_pressed(),
+            Message::NewsSubmitPressed => self.handle_news_submit_pressed(),
         }
     }
 
@@ -458,6 +461,11 @@ impl NexusApp {
         let message_input = active_conn.map(|c| c.message_input.as_str()).unwrap_or("");
         let user_management = active_conn.map(|c| &c.user_management);
 
+        // Get news body content for current connection
+        let news_body_content = self
+            .active_connection
+            .and_then(|id| self.news_body_content.get(&id));
+
         // Build view configuration
         let config = ViewConfig {
             theme: self.theme(),
@@ -477,6 +485,7 @@ impl NexusApp {
             user_management,
             ui_state: &self.ui_state,
             active_panel: self.active_panel(),
+            news_body_content,
         };
 
         let main_view = views::main_layout(config);

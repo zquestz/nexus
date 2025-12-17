@@ -5,6 +5,7 @@ use crate::types::{
     SettingsFormState, UiState, UserManagementState,
 };
 use iced::Theme;
+use iced::widget::text_editor;
 use std::collections::HashMap;
 
 /// Configuration struct for view rendering
@@ -62,6 +63,9 @@ pub struct ViewConfig<'a> {
 
     /// Effective active panel (computed from connection or ui_state)
     pub active_panel: ActivePanel,
+
+    /// News body editor content (stored outside ServerConnection because not Clone)
+    pub news_body_content: Option<&'a text_editor::Content>,
 }
 
 /// Toolbar state configuration

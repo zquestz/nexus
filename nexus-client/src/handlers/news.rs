@@ -1,7 +1,7 @@
 //! News panel handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::{Id, operation, text_editor};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, NewsBodyError};
 use rfd::AsyncFileDialog;
@@ -38,6 +38,9 @@ impl NexusApp {
         conn.news_management.reset_to_list();
         conn.news_management.news_items = None; // Trigger loading state
 
+        // Clear the text editor content
+        self.news_body_content.remove(&conn_id);
+
         // Request news list from server
         match conn.send(ClientMessage::NewsList) {
             Ok(message_id) => {
@@ -67,12 +70,14 @@ impl NexusApp {
 
         match &conn.news_management.mode {
             NewsManagementMode::List => {
-                // In list mode, close the panel
+                // In list mode, close the panel and clean up
+                self.news_body_content.remove(&conn_id);
                 self.handle_show_chat_view()
             }
             NewsManagementMode::Create | NewsManagementMode::Edit { .. } => {
-                // In create/edit mode, return to list
+                // In create/edit mode, return to list and clear editor
                 conn.news_management.reset_to_list();
+                self.news_body_content.remove(&conn_id);
                 Task::none()
             }
             NewsManagementMode::ConfirmDelete { .. } => {
@@ -95,7 +100,12 @@ impl NexusApp {
         };
 
         conn.news_management.enter_create_mode();
-        self.focused_field = InputId::NewsBody;
+
+        // Initialize empty text editor content
+        self.news_body_content
+            .insert(conn_id, text_editor::Content::new());
+
+        // Focus the text editor
         operation::focus(Id::from(InputId::NewsBody))
     }
 
@@ -183,26 +193,31 @@ impl NexusApp {
         Task::none()
     }
 
-    // ==================== Create Form Handlers ====================
+    // ==================== Text Editor Action ====================
 
-    /// Handle news create body field change
-    pub fn handle_news_create_body_changed(&mut self, body: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            conn.news_management.create_body = body;
-            self.focused_field = InputId::NewsBody;
-        }
+    /// Handle text editor action for news body
+    pub fn handle_news_body_action(&mut self, action: text_editor::Action) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+
+        // Get or create content for this connection
+        let content = self.news_body_content.entry(conn_id).or_default();
+
+        content.perform(action);
+
         Task::none()
     }
 
-    /// Handle pick image button press in create form
-    pub fn handle_news_create_pick_image_pressed(&mut self) -> Task<Message> {
+    // ==================== Image Handlers ====================
+
+    /// Handle pick image button press
+    pub fn handle_news_pick_image_pressed(&mut self) -> Task<Message> {
         // Clear any previous error when starting a new pick
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            conn.news_management.create_error = None;
+            conn.news_management.form_error = None;
         }
 
         Task::perform(
@@ -253,12 +268,12 @@ impl NexusApp {
                     None => Err(ImagePickerError::Cancelled),
                 }
             },
-            Message::NewsCreateImageLoaded,
+            Message::NewsImageLoaded,
         )
     }
 
-    /// Handle image loaded from file picker in create form
-    pub fn handle_news_create_image_loaded(
+    /// Handle image loaded from file picker
+    pub fn handle_news_image_loaded(
         &mut self,
         result: Result<String, ImagePickerError>,
     ) -> Task<Message> {
@@ -273,29 +288,29 @@ impl NexusApp {
             Ok(data_uri) => {
                 let cached = decode_data_uri_max_width(&data_uri, NEWS_IMAGE_MAX_CACHE_WIDTH);
                 if cached.is_some() {
-                    conn.news_management.create_image = data_uri;
-                    conn.news_management.cached_create_image = cached;
-                    conn.news_management.create_error = None;
+                    conn.news_management.form_image = data_uri;
+                    conn.news_management.cached_form_image = cached;
+                    conn.news_management.form_error = None;
                 } else {
-                    conn.news_management.create_error = Some(t("err-news-image-decode-failed"));
+                    conn.news_management.form_error = Some(t("err-news-image-decode-failed"));
                 }
             }
             Err(ImagePickerError::Cancelled) => {
                 // User cancelled, do nothing
             }
             Err(ImagePickerError::TooLarge) => {
-                conn.news_management.create_error = Some(t("err-news-image-too-large"));
+                conn.news_management.form_error = Some(t("err-news-image-too-large"));
             }
             Err(ImagePickerError::UnsupportedType) => {
-                conn.news_management.create_error = Some(t("err-news-image-unsupported-type"));
+                conn.news_management.form_error = Some(t("err-news-image-unsupported-type"));
             }
         }
 
         Task::none()
     }
 
-    /// Handle clear image button press in create form
-    pub fn handle_news_create_clear_image_pressed(&mut self) -> Task<Message> {
+    /// Handle clear image button press
+    pub fn handle_news_clear_image_pressed(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -303,28 +318,39 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.news_management.create_image.clear();
-        conn.news_management.cached_create_image = None;
-        conn.news_management.create_error = None;
+        conn.news_management.form_image.clear();
+        conn.news_management.cached_form_image = None;
+        conn.news_management.form_error = None;
 
         Task::none()
     }
 
-    /// Handle create news button pressed
-    pub fn handle_news_create_pressed(&mut self) -> Task<Message> {
+    // ==================== Submit Handler ====================
+
+    /// Handle submit button pressed (create or update based on mode)
+    pub fn handle_news_submit_pressed(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
+
+        // Get the body text from the editor
+        let body = self
+            .news_body_content
+            .get(&conn_id)
+            .map(|c| c.text())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
 
-        let body = conn.news_management.create_body.trim().to_string();
-        let image = conn.news_management.create_image.clone();
+        let image = conn.news_management.form_image.clone();
 
         // Must have either body or image
         if body.is_empty() && image.is_empty() {
-            conn.news_management.create_error = Some(t("err-news-empty"));
+            conn.news_management.form_error = Some(t("err-news-empty"));
             return Task::none();
         }
 
@@ -342,214 +368,50 @@ impl NexusApp {
                 ),
                 NewsBodyError::InvalidCharacters => t("err-news-body-invalid-characters"),
             };
-            conn.news_management.create_error = Some(error_msg);
+            conn.news_management.form_error = Some(error_msg);
             return Task::none();
         }
 
-        // Build the create message
-        let msg = ClientMessage::NewsCreate {
-            body: if body.is_empty() { None } else { Some(body) },
-            image: if image.is_empty() { None } else { Some(image) },
-        };
+        // Determine if this is create or update based on mode
+        match &conn.news_management.mode {
+            NewsManagementMode::Create => {
+                let msg = ClientMessage::NewsCreate {
+                    body: if body.is_empty() { None } else { Some(body) },
+                    image: if image.is_empty() { None } else { Some(image) },
+                };
 
-        // Send create request
-        match conn.send(msg) {
-            Ok(message_id) => {
-                conn.pending_requests
-                    .track(message_id, ResponseRouting::NewsCreateResult);
-            }
-            Err(e) => {
-                conn.news_management.create_error =
-                    Some(format!("{}: {}", t("err-send-failed"), e));
-            }
-        }
-
-        Task::none()
-    }
-
-    // ==================== Edit Form Handlers ====================
-
-    /// Handle news edit body field change
-    pub fn handle_news_edit_body_changed(&mut self, body: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            conn.news_management.edit_body = body;
-            self.focused_field = InputId::NewsBody;
-        }
-        Task::none()
-    }
-
-    /// Handle pick image button press in edit form
-    pub fn handle_news_edit_pick_image_pressed(&mut self) -> Task<Message> {
-        // Clear any previous error when starting a new pick
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
-            conn.news_management.edit_error = None;
-        }
-
-        Task::perform(
-            async {
-                let handle = AsyncFileDialog::new()
-                    .add_filter("Images", &["png", "jpg", "jpeg", "webp", "svg"])
-                    .pick_file()
-                    .await;
-
-                match handle {
-                    Some(file) => {
-                        let path = file.path();
-                        let extension = path
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("")
-                            .to_lowercase();
-
-                        // Determine MIME type from extension
-                        let mime_type = match extension.as_str() {
-                            "png" => "image/png",
-                            "jpg" | "jpeg" => "image/jpeg",
-                            "webp" => "image/webp",
-                            "svg" => "image/svg+xml",
-                            _ => return Err(ImagePickerError::UnsupportedType),
-                        };
-
-                        // Read file contents
-                        let bytes = file.read().await;
-
-                        // Check file size
-                        if bytes.len() > NEWS_IMAGE_MAX_SIZE {
-                            return Err(ImagePickerError::TooLarge);
-                        }
-
-                        // Validate file content matches expected format
-                        if !crate::image::validate_image_bytes(&bytes, mime_type) {
-                            return Err(ImagePickerError::UnsupportedType);
-                        }
-
-                        // Encode as data URI
-                        use base64::Engine;
-                        let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                        let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
-
-                        Ok(data_uri)
+                match conn.send(msg) {
+                    Ok(message_id) => {
+                        conn.pending_requests
+                            .track(message_id, ResponseRouting::NewsCreateResult);
                     }
-                    None => Err(ImagePickerError::Cancelled),
-                }
-            },
-            Message::NewsEditImageLoaded,
-        )
-    }
-
-    /// Handle image loaded from file picker in edit form
-    pub fn handle_news_edit_image_loaded(
-        &mut self,
-        result: Result<String, ImagePickerError>,
-    ) -> Task<Message> {
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
-
-        match result {
-            Ok(data_uri) => {
-                let cached = decode_data_uri_max_width(&data_uri, NEWS_IMAGE_MAX_CACHE_WIDTH);
-                if cached.is_some() {
-                    conn.news_management.edit_image = data_uri;
-                    conn.news_management.cached_edit_image = cached;
-                    conn.news_management.edit_error = None;
-                } else {
-                    conn.news_management.edit_error = Some(t("err-news-image-decode-failed"));
+                    Err(e) => {
+                        conn.news_management.form_error =
+                            Some(format!("{}: {}", t("err-send-failed"), e));
+                    }
                 }
             }
-            Err(ImagePickerError::Cancelled) => {
-                // User cancelled, do nothing
+            NewsManagementMode::Edit { id } => {
+                let id = *id;
+                let msg = ClientMessage::NewsUpdate {
+                    id,
+                    body: if body.is_empty() { None } else { Some(body) },
+                    image: if image.is_empty() { None } else { Some(image) },
+                };
+
+                match conn.send(msg) {
+                    Ok(message_id) => {
+                        conn.pending_requests
+                            .track(message_id, ResponseRouting::NewsUpdateResult);
+                    }
+                    Err(e) => {
+                        conn.news_management.form_error =
+                            Some(format!("{}: {}", t("err-send-failed"), e));
+                    }
+                }
             }
-            Err(ImagePickerError::TooLarge) => {
-                conn.news_management.edit_error = Some(t("err-news-image-too-large"));
-            }
-            Err(ImagePickerError::UnsupportedType) => {
-                conn.news_management.edit_error = Some(t("err-news-image-unsupported-type"));
-            }
-        }
-
-        Task::none()
-    }
-
-    /// Handle clear image button press in edit form
-    pub fn handle_news_edit_clear_image_pressed(&mut self) -> Task<Message> {
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
-
-        conn.news_management.edit_image.clear();
-        conn.news_management.cached_edit_image = None;
-        conn.news_management.edit_error = None;
-
-        Task::none()
-    }
-
-    /// Handle update news button pressed
-    pub fn handle_news_update_pressed(&mut self) -> Task<Message> {
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
-
-        let id = match &conn.news_management.mode {
-            NewsManagementMode::Edit { id, .. } => *id,
-            _ => return Task::none(),
-        };
-
-        let body = conn.news_management.edit_body.trim().to_string();
-        let image = conn.news_management.edit_image.clone();
-
-        // Must have either body or image
-        if body.is_empty() && image.is_empty() {
-            conn.news_management.edit_error = Some(t("err-news-empty"));
-            return Task::none();
-        }
-
-        // Validate body if present
-        if !body.is_empty()
-            && let Err(e) = validators::validate_news_body(&body)
-        {
-            let error_msg = match e {
-                NewsBodyError::TooLong => t_args(
-                    "err-news-body-too-long",
-                    &[
-                        ("length", &body.len().to_string()),
-                        ("max", &validators::MAX_NEWS_BODY_LENGTH.to_string()),
-                    ],
-                ),
-                NewsBodyError::InvalidCharacters => t("err-news-body-invalid-characters"),
-            };
-            conn.news_management.edit_error = Some(error_msg);
-            return Task::none();
-        }
-
-        // Build the update message
-        let msg = ClientMessage::NewsUpdate {
-            id,
-            body: if body.is_empty() { None } else { Some(body) },
-            image: if image.is_empty() { None } else { Some(image) },
-        };
-
-        // Send update request
-        match conn.send(msg) {
-            Ok(message_id) => {
-                conn.pending_requests
-                    .track(message_id, ResponseRouting::NewsUpdateResult);
-            }
-            Err(e) => {
-                conn.news_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
+            _ => {
+                // Not in create or edit mode, do nothing
             }
         }
 
@@ -585,5 +447,24 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+
+    /// Initialize text editor content for editing a news item
+    ///
+    /// Returns a focus task to focus the text editor.
+    pub fn init_news_edit_content(
+        &mut self,
+        connection_id: usize,
+        body: Option<String>,
+    ) -> Task<Message> {
+        let content = if let Some(text) = body {
+            text_editor::Content::with_text(&text)
+        } else {
+            text_editor::Content::new()
+        };
+        self.news_body_content.insert(connection_id, content);
+
+        // Focus the text editor
+        operation::focus(Id::from(InputId::NewsBody))
     }
 }

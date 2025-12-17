@@ -1,7 +1,6 @@
 //! News response handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{NewsAction, NewsItem};
 
@@ -9,7 +8,7 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
-use crate::types::{ActivePanel, ChatMessage, InputId, Message, PendingRequests, ResponseRouting};
+use crate::types::{ActivePanel, ChatMessage, Message, PendingRequests, ResponseRouting};
 
 impl NexusApp {
     /// Handle news list response
@@ -166,6 +165,9 @@ impl NexusApp {
                     // No item returned, just refresh the list
                     return Task::batch([task, self.refresh_news_list_for(connection_id)]);
                 }
+
+                // Clear the text editor content
+                self.news_body_content.remove(&connection_id);
             }
 
             return task;
@@ -174,7 +176,7 @@ impl NexusApp {
         // On error, show in the appropriate place
         if matches!(routing, Some(ResponseRouting::NewsCreateResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.news_management.create_error = Some(error.unwrap_or_default());
+                conn.news_management.form_error = Some(error.unwrap_or_default());
             }
         } else {
             return self
@@ -206,11 +208,11 @@ impl NexusApp {
             if let Some(item) = news {
                 // If from news panel, populate the edit form
                 if matches!(routing, Some(ResponseRouting::PopulateNewsEdit)) {
-                    conn.news_management
-                        .enter_edit_mode(item.id, item.body, item.image);
-                    // Focus the body field
-                    self.focused_field = InputId::NewsBody;
-                    return operation::focus(Id::from(InputId::NewsBody));
+                    // Set up the image in form state
+                    conn.news_management.enter_edit_mode(item.id, item.image);
+
+                    // Initialize the text editor content with the body and focus it
+                    return self.init_news_edit_content(connection_id, item.body);
                 }
             }
         } else {
@@ -283,6 +285,9 @@ impl NexusApp {
                     // No item returned, just refresh
                     return Task::batch([task, self.refresh_news_list_for(connection_id)]);
                 }
+
+                // Clear the text editor content
+                self.news_body_content.remove(&connection_id);
             }
 
             return task;
@@ -291,7 +296,7 @@ impl NexusApp {
         // On error, show in the appropriate place
         if matches!(routing, Some(ResponseRouting::NewsUpdateResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.news_management.edit_error = Some(error.unwrap_or_default());
+                conn.news_management.form_error = Some(error.unwrap_or_default());
             }
         } else {
             return self

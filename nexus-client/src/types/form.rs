@@ -60,28 +60,21 @@ pub enum NewsManagementMode {
 }
 
 /// News management panel state (per-connection)
+///
+/// Note: The body text is stored in `NexusApp.news_body_content` as a `text_editor::Content`
+/// because it's not Clone. Only the image and error state are stored here.
 #[derive(Clone)]
 pub struct NewsManagementState {
     /// Current mode (list, create, edit, confirm delete)
     pub mode: NewsManagementMode,
     /// All news items (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
     pub news_items: Option<Result<Vec<NewsItem>, String>>,
-    /// Body text for create form
-    pub create_body: String,
-    /// Image data URI for create form
-    pub create_image: String,
-    /// Cached image for create form preview
-    pub cached_create_image: Option<CachedImage>,
-    /// Error message for create form
-    pub create_error: Option<String>,
-    /// Body text for edit form (stored in mode, but we need this for form state)
-    pub edit_body: String,
-    /// Image data URI for edit form
-    pub edit_image: String,
-    /// Cached image for edit form preview
-    pub cached_edit_image: Option<CachedImage>,
-    /// Error message for edit form
-    pub edit_error: Option<String>,
+    /// Image data URI for form (used in both create and edit modes)
+    pub form_image: String,
+    /// Cached image for form preview
+    pub cached_form_image: Option<CachedImage>,
+    /// Error message for form (create or edit)
+    pub form_error: Option<String>,
     /// Error message for list view
     pub list_error: Option<String>,
 }
@@ -92,23 +85,12 @@ impl std::fmt::Debug for NewsManagementState {
         f.debug_struct("NewsManagementState")
             .field("mode", &self.mode)
             .field("news_items", &self.news_items)
-            .field("create_body", &self.create_body)
+            .field("form_image", &format!("<{} bytes>", self.form_image.len()))
             .field(
-                "create_image",
-                &format!("<{} bytes>", self.create_image.len()),
+                "cached_form_image",
+                &self.cached_form_image.as_ref().map(|_| "<cached>"),
             )
-            .field(
-                "cached_create_image",
-                &self.cached_create_image.as_ref().map(|_| "<cached>"),
-            )
-            .field("create_error", &self.create_error)
-            .field("edit_body", &self.edit_body)
-            .field("edit_image", &format!("<{} bytes>", self.edit_image.len()))
-            .field(
-                "cached_edit_image",
-                &self.cached_edit_image.as_ref().map(|_| "<cached>"),
-            )
-            .field("edit_error", &self.edit_error)
+            .field("form_error", &self.form_error)
             .field("list_error", &self.list_error)
             .finish()
     }
@@ -119,14 +101,9 @@ impl Default for NewsManagementState {
         Self {
             mode: NewsManagementMode::List,
             news_items: None,
-            create_body: String::new(),
-            create_image: String::new(),
-            cached_create_image: None,
-            create_error: None,
-            edit_body: String::new(),
-            edit_image: String::new(),
-            cached_edit_image: None,
-            edit_error: None,
+            form_image: String::new(),
+            cached_form_image: None,
+            form_error: None,
             list_error: None,
         }
     }
@@ -136,43 +113,32 @@ impl NewsManagementState {
     /// Reset to list mode and clear all form state
     pub fn reset_to_list(&mut self) {
         self.mode = NewsManagementMode::List;
-        self.clear_create_form();
-        self.clear_edit_form();
+        self.clear_form();
         self.list_error = None;
     }
 
-    /// Clear the create form fields
-    pub fn clear_create_form(&mut self) {
-        self.create_body.clear();
-        self.create_image.clear();
-        self.cached_create_image = None;
-        self.create_error = None;
-    }
-
-    /// Clear the edit form fields
-    pub fn clear_edit_form(&mut self) {
-        self.edit_body.clear();
-        self.edit_image.clear();
-        self.cached_edit_image = None;
-        self.edit_error = None;
+    /// Clear the form fields (used for both create and edit)
+    pub fn clear_form(&mut self) {
+        self.form_image.clear();
+        self.cached_form_image = None;
+        self.form_error = None;
     }
 
     /// Enter create mode
     pub fn enter_create_mode(&mut self) {
-        self.clear_create_form();
+        self.clear_form();
         self.mode = NewsManagementMode::Create;
     }
 
-    /// Enter edit mode for a news item (with pre-populated values from server)
-    pub fn enter_edit_mode(&mut self, id: i64, body: Option<String>, image: Option<String>) {
-        self.edit_body = body.clone().unwrap_or_default();
-        self.edit_image = image.clone().unwrap_or_default();
-        self.cached_edit_image = if self.edit_image.is_empty() {
+    /// Enter edit mode for a news item (image pre-populated, body handled by text_editor)
+    pub fn enter_edit_mode(&mut self, id: i64, image: Option<String>) {
+        self.form_image = image.clone().unwrap_or_default();
+        self.cached_form_image = if self.form_image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(&self.edit_image, NEWS_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(&self.form_image, NEWS_IMAGE_MAX_CACHE_WIDTH)
         };
-        self.edit_error = None;
+        self.form_error = None;
 
         self.mode = NewsManagementMode::Edit { id };
     }

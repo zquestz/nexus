@@ -21,7 +21,9 @@ use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
     ViewConfig,
 };
-use iced::widget::{Column, Space, button, column, container, row, scrollable, stack, tooltip};
+use iced::widget::{
+    Column, Space, button, column, container, row, scrollable, stack, text_editor, tooltip,
+};
 use iced::{Center, Element, Fill};
 
 // ============================================================================
@@ -167,6 +169,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                     show_seconds: config.show_seconds,
                 },
                 config.settings_form,
+                config.news_body_content,
             )
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -511,6 +514,7 @@ fn server_content_view<'a>(
     chat_font_size: u8,
     timestamp_settings: TimestampSettings,
     settings_form: Option<&'a crate::types::SettingsFormState>,
+    news_body_content: Option<&'a text_editor::Content>,
 ) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
     let chat = chat_view(
@@ -584,10 +588,13 @@ fn server_content_view<'a>(
         .width(Fill)
         .height(Fill)
         .into(),
-        ActivePanel::News => stack![chat, news_view(conn, &conn.news_management, &theme)]
-            .width(Fill)
-            .height(Fill)
-            .into(),
+        ActivePanel::News => stack![
+            chat,
+            news_view(conn, &conn.news_management, &theme, news_body_content)
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
         ActivePanel::None => chat,
     }
 }

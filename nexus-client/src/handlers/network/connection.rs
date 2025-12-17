@@ -190,6 +190,9 @@ impl NexusApp {
                 }
             });
 
+            // Clean up text editor content for this connection
+            self.news_body_content.remove(&connection_id);
+
             // If this was the active connection, clear it
             if self.active_connection == Some(connection_id) {
                 self.active_connection = None;

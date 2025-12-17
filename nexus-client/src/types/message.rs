@@ -1,7 +1,7 @@
 //! Message types for the Elm-style architecture
 
 use iced::Theme;
-use iced::widget::markdown;
+use iced::widget::{markdown, text_editor};
 
 use nexus_common::framing::MessageId;
 
@@ -271,24 +271,14 @@ pub enum Message {
     NewsConfirmDelete,
     /// News: Cancel delete (close modal)
     NewsCancelDelete,
-    /// News: Create form - body field changed
-    NewsCreateBodyChanged(String),
-    /// News: Create form - pick image button pressed
-    NewsCreatePickImagePressed,
-    /// News: Create form - image loaded from file picker
-    NewsCreateImageLoaded(Result<String, ImagePickerError>),
-    /// News: Create form - clear image button pressed
-    NewsCreateClearImagePressed,
-    /// News: Create form - submit button pressed
-    NewsCreatePressed,
-    /// News: Edit form - body field changed
-    NewsEditBodyChanged(String),
-    /// News: Edit form - pick image button pressed
-    NewsEditPickImagePressed,
-    /// News: Edit form - image loaded from file picker
-    NewsEditImageLoaded(Result<String, ImagePickerError>),
-    /// News: Edit form - clear image button pressed
-    NewsEditClearImagePressed,
-    /// News: Edit form - save button pressed
-    NewsUpdatePressed,
+    /// News: Body editor action (used for both create and edit)
+    NewsBodyAction(text_editor::Action),
+    /// News: Pick image button pressed (create or edit)
+    NewsPickImagePressed,
+    /// News: Image loaded from file picker (create or edit)
+    NewsImageLoaded(Result<String, ImagePickerError>),
+    /// News: Clear image button pressed (create or edit)
+    NewsClearImagePressed,
+    /// News: Submit button pressed (create or edit)
+    NewsSubmitPressed,
 }

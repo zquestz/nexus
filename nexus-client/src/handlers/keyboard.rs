@@ -134,21 +134,9 @@ impl NexusApp {
                     && let Some(conn) = self.connections.get(&conn_id)
                 {
                     match &conn.news_management.mode {
-                        NewsManagementMode::Create => {
-                            // Create mode: Submit if has content
-                            let has_content = !conn.news_management.create_body.trim().is_empty()
-                                || !conn.news_management.create_image.is_empty();
-                            if has_content {
-                                return self.update(Message::NewsCreatePressed);
-                            }
-                        }
-                        NewsManagementMode::Edit { .. } => {
-                            // Edit mode: Submit if has content
-                            let has_content = !conn.news_management.edit_body.trim().is_empty()
-                                || !conn.news_management.edit_image.is_empty();
-                            if has_content {
-                                return self.update(Message::NewsUpdatePressed);
-                            }
+                        NewsManagementMode::Create | NewsManagementMode::Edit { .. } => {
+                            // Create/Edit mode: Don't submit on Enter - the text_editor
+                            // uses Enter for newlines. Users must click the submit button.
                         }
                         NewsManagementMode::List => {
                             // List mode: Close the panel
@@ -314,21 +302,9 @@ impl NexusApp {
             self.focused_field = InputId::BroadcastMessage;
             return operation::focus(Id::from(InputId::BroadcastMessage));
         } else if self.active_panel() == ActivePanel::News {
-            // News panel only has one text field (body) in create/edit mode
-            if let Some(conn_id) = self.active_connection
-                && let Some(conn) = self.connections.get(&conn_id)
-            {
-                match &conn.news_management.mode {
-                    NewsManagementMode::Create | NewsManagementMode::Edit { .. } => {
-                        // Single field - focus it
-                        self.focused_field = InputId::NewsBody;
-                        return operation::focus(Id::from(InputId::NewsBody));
-                    }
-                    NewsManagementMode::List | NewsManagementMode::ConfirmDelete { .. } => {
-                        // List/ConfirmDelete: No Tab navigation
-                    }
-                }
-            }
+            // News panel uses text_editor which handles its own focus
+            // No Tab navigation needed
+            return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
             // Settings panel has no text inputs yet, just return
             return Task::none();
