@@ -378,6 +378,7 @@ fn build_news_item_row<'a>(
 
     // Build content column
     let mut content_col = Column::new()
+        .width(Fill)
         .spacing(ELEMENT_SPACING)
         .padding(INPUT_PADDING)
         .push(header_group);

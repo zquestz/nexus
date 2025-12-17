@@ -196,8 +196,10 @@ pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
 /// Maximum width for news list view (double the standard form width)
 pub const NEWS_LIST_MAX_WIDTH: f32 = FORM_MAX_WIDTH * 2.0;
 
-/// Maximum width to cache news images at (matches news list max width)
-pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = NEWS_LIST_MAX_WIDTH as u32;
+/// Maximum width to cache news images at (news list width minus padding)
+/// NEWS_LIST_MAX_WIDTH (800) - reduced form padding (16) - INPUT_PADDING * 2 (16) = 768
+pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
+    (NEWS_LIST_MAX_WIDTH - (FORM_PADDING - SCROLLBAR_PADDING) * 2.0 - INPUT_PADDING * 2.0) as u32;
 
 /// Maximum width to cache server images at (matches form width minus padding)
 ///
