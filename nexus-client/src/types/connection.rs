@@ -1,5 +1,6 @@
 //! Server connection types
 
+use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use std::collections::{HashMap, HashSet};
@@ -102,6 +103,8 @@ pub struct ServerConnection {
     pub news_management: NewsManagementState,
     /// Cached news images for rendering (keyed by news item ID)
     pub news_image_cache: HashMap<i64, CachedImage>,
+    /// Cached parsed markdown for news items (keyed by news item ID)
+    pub news_markdown_cache: HashMap<i64, Vec<markdown::Item>>,
 }
 
 impl ServerConnection {
@@ -177,6 +180,7 @@ impl ServerConnection {
             active_panel: ActivePanel::None,
             news_management: NewsManagementState::default(),
             news_image_cache: HashMap::new(),
+            news_markdown_cache: HashMap::new(),
         }
     }
 }

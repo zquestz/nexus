@@ -20,6 +20,7 @@ use crate::style::{
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
 use iced::widget::Id;
 use iced::widget::button as btn;
+use iced::widget::markdown;
 use iced::widget::{
     Column, Row, Space, button, column, container, image, row, scrollable, svg, text_editor,
     tooltip,
@@ -167,7 +168,14 @@ fn list_view<'a>(
 
                 // Reverse to show newest first (server returns oldest first)
                 for (index, item) in items.iter().rev().enumerate() {
-                    let news_row = build_news_item_row(item, conn, theme, index, news_image_cache);
+                    let news_row = build_news_item_row(
+                        item,
+                        conn,
+                        theme,
+                        index,
+                        news_image_cache,
+                        &conn.news_markdown_cache,
+                    );
                     news_rows = news_rows.push(news_row);
                 }
 
@@ -302,6 +310,7 @@ fn build_news_item_row<'a>(
     theme: &Theme,
     index: usize,
     news_image_cache: &'a HashMap<i64, CachedImage>,
+    news_markdown_cache: &'a HashMap<i64, Vec<markdown::Item>>,
 ) -> Element<'a, Message> {
     let admin_color = chat::admin(theme);
 
@@ -392,13 +401,18 @@ fn build_news_item_row<'a>(
         content_col = content_col.push(render_cached_image(cached));
     }
 
-    // Add body as text if present
-    // TODO: Add proper markdown rendering when Iced's markdown widget supports owned content
-    if let Some(body) = &item.body
-        && !body.is_empty()
+    // Add body as markdown if present (from cache)
+    if item.body.is_some()
+        && let Some(markdown_items) = news_markdown_cache.get(&item.id)
     {
-        let body_text = shaped_text_wrapped(body.clone()).size(TEXT_SIZE);
-        content_col = content_col.push(body_text);
+        // Create markdown settings with appropriate text size
+        let md_settings = markdown::Settings::with_text_size(TEXT_SIZE, theme);
+
+        // Render markdown and map link clicks to OpenUrl message
+        let md_view: Element<'a, Message> = markdown::view(markdown_items, md_settings)
+            .map(Message::OpenUrl);
+
+        content_col = content_col.push(md_view);
     }
 
     // Alternating row backgrounds

@@ -1,6 +1,7 @@
 //! News response handlers
 
 use iced::Task;
+use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{NewsAction, NewsItem};
 
@@ -31,13 +32,22 @@ impl NexusApp {
 
         if success {
             if let Some(items) = items {
-                // Cache images for all items
+                // Cache images and markdown for all items
                 for item in &items {
+                    // Cache image if present
                     if let Some(image_data) = &item.image
                         && let Some(cached) =
                             decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
                     {
                         conn.news_image_cache.insert(item.id, cached);
+                    }
+
+                    // Cache parsed markdown if body is present
+                    if let Some(body) = &item.body
+                        && !body.is_empty()
+                    {
+                        let parsed: Vec<markdown::Item> = markdown::parse(body).collect();
+                        conn.news_markdown_cache.insert(item.id, parsed);
                     }
                 }
 
@@ -106,6 +116,16 @@ impl NexusApp {
                     } else {
                         conn.news_image_cache.remove(&item.id);
                     }
+
+                    // Update markdown cache
+                    if let Some(body) = &item.body
+                        && !body.is_empty()
+                    {
+                        let parsed: Vec<markdown::Item> = markdown::parse(body).collect();
+                        conn.news_markdown_cache.insert(item.id, parsed);
+                    } else {
+                        conn.news_markdown_cache.remove(&item.id);
+                    }
                 }
             }
         } else {
@@ -150,6 +170,14 @@ impl NexusApp {
                                 decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
                         {
                             conn.news_image_cache.insert(item.id, cached);
+                        }
+
+                        // Cache parsed markdown if body is present
+                        if let Some(body) = &item.body
+                            && !body.is_empty()
+                        {
+                            let parsed: Vec<markdown::Item> = markdown::parse(body).collect();
+                            conn.news_markdown_cache.insert(item.id, parsed);
                         }
 
                         // Add to list
@@ -268,6 +296,16 @@ impl NexusApp {
                             conn.news_image_cache.remove(&item.id);
                         }
 
+                        // Update markdown cache
+                        if let Some(body) = &item.body
+                            && !body.is_empty()
+                        {
+                            let parsed: Vec<markdown::Item> = markdown::parse(body).collect();
+                            conn.news_markdown_cache.insert(item.id, parsed);
+                        } else {
+                            conn.news_markdown_cache.remove(&item.id);
+                        }
+
                         // Update in list
                         if let Some(Ok(items)) = &mut conn.news_management.news_items {
                             for existing in items.iter_mut() {
@@ -341,6 +379,9 @@ impl NexusApp {
 
                 // Remove from image cache
                 conn.news_image_cache.remove(&deleted_id);
+
+                // Remove from markdown cache
+                conn.news_markdown_cache.remove(&deleted_id);
             }
 
             return task;
@@ -398,6 +439,9 @@ impl NexusApp {
 
                 // Remove from image cache
                 conn.news_image_cache.remove(&id);
+
+                // Remove from markdown cache
+                conn.news_markdown_cache.remove(&id);
             }
         }
 
