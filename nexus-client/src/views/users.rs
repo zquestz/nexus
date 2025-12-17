@@ -299,15 +299,6 @@ fn list_view<'a>(
             .into()
         });
 
-    // Footer row with close button
-    let footer = container(row![
-        Space::new().width(Fill),
-        button(shaped_text(t("button-close")).size(TEXT_SIZE))
-            .on_press(Message::CancelUserManagement)
-            .padding(BUTTON_PADDING)
-    ])
-    .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
-
     // Scrollable content with symmetric padding for scrollbar space
     // Inner content matches footer width, spacers provide scrollbar room
     let scroll_inner = container(scroll_content).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
@@ -327,8 +318,6 @@ fn list_view<'a>(
             Element::from(Space::new().height(SPACER_SIZE_SMALL))
         },
         container(scrollable(padded_scroll_content)).height(Fill),
-        Space::new().height(SPACER_SIZE_SMALL),
-        footer,
     ]
     .spacing(ELEMENT_SPACING)
     .align_x(Center)

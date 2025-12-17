@@ -81,8 +81,7 @@ impl NexusApp {
                             }
                         }
                         UserManagementMode::List => {
-                            // List mode: Close the panel
-                            return self.update(Message::CancelUserManagement);
+                            // List mode: No Enter action (use Escape to close)
                         }
                         UserManagementMode::ConfirmDelete { .. } => {
                             // ConfirmDelete: No Enter action (user must click button)
@@ -139,8 +138,7 @@ impl NexusApp {
                             // uses Enter for newlines. Users must click the submit button.
                         }
                         NewsManagementMode::List => {
-                            // List mode: Close the panel
-                            return self.update(Message::CancelNews);
+                            // List mode: No Enter action (use Escape to close)
                         }
                         NewsManagementMode::ConfirmDelete { .. } => {
                             // ConfirmDelete: No Enter action (user must click button)
