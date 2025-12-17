@@ -10,11 +10,12 @@ use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING,
     INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_IMAGE_PREVIEW_SIZE,
-    NEWS_ITEM_SPACING, NO_SPACING, SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM,
-    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alternating_row_style, chat, content_background_style,
-    danger_icon_button_style, error_text_style, muted_text_style, shaped_text, shaped_text_wrapped,
-    tooltip_container_style, transparent_icon_button_style,
+    NEWS_ITEM_SPACING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
+    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    alternating_row_style, chat, content_background_style, danger_icon_button_style,
+    error_text_style, muted_text_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
 use iced::widget::button as btn;
@@ -175,27 +176,21 @@ fn list_view<'a>(
 
     let scroll_content = scroll_content_inner;
 
-    // Title (constrained to content width, centered)
-    let title = container(
-        shaped_text(t("title-news"))
-            .size(TITLE_SIZE)
-            .width(Fill)
-            .align_x(Center),
-    )
-    .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
+    // Title (full width within the responsive container)
+    let title = shaped_text(t("title-news"))
+        .size(TITLE_SIZE)
+        .width(Fill)
+        .align_x(Center);
 
-    // Error message (shown below title if present, constrained to content width, centered)
+    // Error message (shown below title if present)
     let error_element: Option<Element<'a, Message>> =
         news_management.list_error.as_ref().map(|error| {
-            container(
-                shaped_text_wrapped(error)
-                    .size(TEXT_SIZE)
-                    .width(Fill)
-                    .align_x(Center)
-                    .style(error_text_style),
-            )
-            .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
-            .into()
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into()
         });
 
     // Footer buttons
@@ -230,24 +225,26 @@ fn list_view<'a>(
         None
     };
 
-    // Build footer row, constrained to standard width and centered
-    let footer_row = if let Some(create_btn) = create_btn {
+    // Build footer row with scrollbar padding for alignment with scroll content
+    let footer_inner = if let Some(create_btn) = create_btn {
         row![create_btn, Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
     } else {
         row![Space::new().width(Fill), close_button].spacing(ELEMENT_SPACING)
     };
-    let footer = container(footer_row).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
-
-    // Scrollable content with symmetric padding for scrollbar space
-    let scroll_inner = container(scroll_content).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
-
-    let padded_scroll_content = row![
+    let footer_row = row![
         Space::new().width(SCROLLBAR_PADDING),
-        scroll_inner,
+        container(footer_inner).width(Fill),
         Space::new().width(SCROLLBAR_PADDING),
     ];
 
-    // Build the form with max_width constraint on the whole thing
+    // Scrollable content with symmetric padding for scrollbar space
+    let padded_scroll_content = row![
+        Space::new().width(SCROLLBAR_PADDING),
+        container(scroll_content).width(Fill),
+        Space::new().width(SCROLLBAR_PADDING),
+    ];
+
+    // Build the form with max_width constraint
     let form = column![
         title,
         if let Some(err) = error_element {
@@ -257,7 +254,7 @@ fn list_view<'a>(
         },
         container(scrollable(padded_scroll_content)).height(Fill),
         Space::new().height(SPACER_SIZE_SMALL),
-        footer,
+        footer_row,
     ]
     .spacing(ELEMENT_SPACING)
     .align_x(Center)
@@ -267,7 +264,7 @@ fn list_view<'a>(
         bottom: FORM_PADDING,
         left: FORM_PADDING - SCROLLBAR_PADDING,
     })
-    .max_width(FORM_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
+    .max_width(NEWS_LIST_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
 
     // Center the form horizontally

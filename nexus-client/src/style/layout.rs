@@ -193,8 +193,11 @@ pub const NEWS_ITEM_SPACING: f32 = 3.0;
 /// Maximum news image file size in bytes (512KB)
 pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
 
-/// Maximum width to cache news images at (matches form width)
-pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
+/// Maximum width for news list view (double the standard form width)
+pub const NEWS_LIST_MAX_WIDTH: f32 = FORM_MAX_WIDTH * 2.0;
+
+/// Maximum width to cache news images at (matches news list max width)
+pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = NEWS_LIST_MAX_WIDTH as u32;
 
 /// Maximum width to cache server images at (matches form width minus padding)
 ///
