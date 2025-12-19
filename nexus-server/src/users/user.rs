@@ -15,6 +15,7 @@ pub struct NewSessionParams {
     pub db_user_id: i64,
     pub username: String,
     pub is_admin: bool,
+    pub is_shared: bool,
     pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     pub created_at: i64,
@@ -23,6 +24,8 @@ pub struct NewSessionParams {
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
     pub avatar: Option<String>,
+    /// Nickname for shared account users (required for shared, None for regular)
+    pub nickname: Option<String>,
 }
 
 /// Represents a logged-in user session
@@ -36,6 +39,8 @@ pub struct UserSession {
     pub username: String,
     /// Whether the user is an admin
     pub is_admin: bool,
+    /// Whether this is a shared account
+    pub is_shared: bool,
     /// Cached permissions for this user (admins bypass this check)
     pub permissions: HashSet<Permission>,
     /// Remote address of the user's connection
@@ -56,6 +61,8 @@ pub struct UserSession {
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
     pub avatar: Option<String>,
+    /// Nickname for shared account users (Some for shared, None for regular)
+    pub nickname: Option<String>,
 }
 
 impl UserSession {
@@ -66,6 +73,7 @@ impl UserSession {
             db_user_id: params.db_user_id,
             username: params.username,
             is_admin: params.is_admin,
+            is_shared: params.is_shared,
             permissions: params.permissions,
             address: params.address,
             created_at: params.created_at,
@@ -74,6 +82,7 @@ impl UserSession {
             features: params.features,
             locale: params.locale,
             avatar: params.avatar,
+            nickname: params.nickname,
         }
     }
 
@@ -89,6 +98,14 @@ impl UserSession {
         } else {
             self.permissions.contains(&permission)
         }
+    }
+
+    /// Returns the display name for this session
+    ///
+    /// For shared accounts, returns the nickname.
+    /// For regular accounts, returns the username.
+    pub fn display_name(&self) -> &str {
+        self.nickname.as_deref().unwrap_or(&self.username)
     }
 }
 

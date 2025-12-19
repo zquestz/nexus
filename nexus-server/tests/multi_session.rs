@@ -24,7 +24,7 @@ async fn test_multi_session_partial_disconnect() {
     perms.add(Permission::UserList);
     let alice = db
         .users
-        .create_user("alice", &hashed_password, false, true, &perms)
+        .create_user("alice", &hashed_password, false, false, true, &perms)
         .await
         .unwrap();
 
@@ -143,7 +143,7 @@ async fn test_broadcast_respects_user_list_permission() {
     let hashed = db::hash_password("password").unwrap();
     let admin = db
         .users
-        .create_user("admin", &hashed, true, true, &Permissions::new())
+        .create_user("admin", &hashed, true, false, true, &Permissions::new())
         .await
         .unwrap();
 
@@ -152,14 +152,21 @@ async fn test_broadcast_respects_user_list_permission() {
     perms_with.add(Permission::UserList);
     let user_with = db
         .users
-        .create_user("user_with", &hashed, false, true, &perms_with)
+        .create_user("user_with", &hashed, false, false, true, &perms_with)
         .await
         .unwrap();
 
     // Create user WITHOUT user_list permission
     let user_without = db
         .users
-        .create_user("user_without", &hashed, false, true, &Permissions::new())
+        .create_user(
+            "user_without",
+            &hashed,
+            false,
+            false,
+            true,
+            &Permissions::new(),
+        )
         .await
         .unwrap();
 
@@ -190,7 +197,9 @@ async fn test_broadcast_respects_user_list_permission() {
             ServerMessage::UserConnected {
                 user: UserInfo {
                     username: "newuser".to_string(),
+                    nickname: None,
                     is_admin: false,
+                    is_shared: false,
                     login_time: chrono::Utc::now().timestamp(),
                     session_ids: vec![99],
                     locale: "en".to_string(),
@@ -244,12 +253,12 @@ async fn test_broadcast_excludes_specified_session() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, true, &perms)
+        .create_user("user1", &hashed, false, false, true, &perms)
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, true, &perms)
+        .create_user("user2", &hashed, false, false, true, &perms)
         .await
         .unwrap();
 
@@ -272,7 +281,9 @@ async fn test_broadcast_excludes_specified_session() {
             ServerMessage::UserConnected {
                 user: UserInfo {
                     username: "newcomer".to_string(),
+                    nickname: None,
                     is_admin: false,
+                    is_shared: false,
                     login_time: chrono::Utc::now().timestamp(),
                     session_ids: vec![30],
                     locale: "en".to_string(),
@@ -316,12 +327,12 @@ async fn test_broadcast_detects_closed_channels() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, true, &perms)
+        .create_user("user1", &hashed, false, false, true, &perms)
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, true, &perms)
+        .create_user("user2", &hashed, false, false, true, &perms)
         .await
         .unwrap();
 
@@ -362,6 +373,7 @@ async fn test_broadcast_detects_closed_channels() {
             ServerMessage::ChatMessage {
                 session_id: 999,
                 username: "system".to_string(),
+                is_shared: false,
                 message: "test".to_string(),
             },
             &db.users,

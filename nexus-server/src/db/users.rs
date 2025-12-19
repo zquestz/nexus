@@ -25,6 +25,7 @@ pub struct UserAccount {
     pub username: String,
     pub hashed_password: String,
     pub is_admin: bool,
+    pub is_shared: bool,
     pub enabled: bool,
     pub created_at: i64,
 }
@@ -73,22 +74,27 @@ impl UserDb {
     // ========================================================================
 
     /// Get a user by ID
-    #[allow(dead_code)] // Used in tests
+    ///
+    /// Note: Only used in tests. Production code looks up users by username.
+    #[cfg(test)]
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, bool, i64)> =
+        let user: Option<(i64, String, String, bool, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_USER_BY_ID)
                 .bind(user_id)
                 .fetch_optional(&self.pool)
                 .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
-                id,
-                username,
-                hashed_password,
-                is_admin,
-                enabled,
-                created_at,
+            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+                UserAccount {
+                    id,
+                    username,
+                    hashed_password,
+                    is_admin,
+                    is_shared,
+                    enabled,
+                    created_at,
+                }
             },
         ))
     }
@@ -104,29 +110,43 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let user: Option<(i64, String, String, bool, bool, i64)> =
+        let user: Option<(i64, String, String, bool, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
                 .bind(username)
                 .fetch_optional(&self.pool)
                 .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
-                id,
-                username,
-                hashed_password,
-                is_admin,
-                enabled,
-                created_at,
+            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+                UserAccount {
+                    id,
+                    username,
+                    hashed_password,
+                    is_admin,
+                    is_shared,
+                    enabled,
+                    created_at,
+                }
             },
         ))
+    }
+
+    /// Check if a username exists in the database (case-insensitive)
+    ///
+    /// Used to check if a shared account nickname collides with an existing username.
+    pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
+        let (count,): (i64,) = sqlx::query_as(SQL_CHECK_USERNAME_EXISTS)
+            .bind(username)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count > 0)
     }
 
     /// Get all users from the database (sorted alphabetically by username)
     ///
     /// Used by the `/list all` command for user management.
     pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
-        let rows: Vec<(i64, String, String, bool, bool, i64)> =
+        let rows: Vec<(i64, String, String, bool, bool, bool, i64)> =
             sqlx::query_as(SQL_SELECT_ALL_USERS)
                 .fetch_all(&self.pool)
                 .await?;
@@ -134,13 +154,16 @@ impl UserDb {
         Ok(rows
             .into_iter()
             .map(
-                |(id, username, hashed_password, is_admin, enabled, created_at)| UserAccount {
-                    id,
-                    username,
-                    hashed_password,
-                    is_admin,
-                    enabled,
-                    created_at,
+                |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+                    UserAccount {
+                        id,
+                        username,
+                        hashed_password,
+                        is_admin,
+                        is_shared,
+                        enabled,
+                        created_at,
+                    }
                 },
             )
             .collect())
@@ -244,6 +267,7 @@ impl UserDb {
         username: &str,
         hashed_password: &str,
         is_admin: bool,
+        is_shared: bool,
         enabled: bool,
         permissions: &Permissions,
     ) -> Result<UserAccount, sqlx::Error> {
@@ -259,6 +283,7 @@ impl UserDb {
             .bind(username)
             .bind(hashed_password)
             .bind(is_admin)
+            .bind(is_shared)
             .bind(enabled)
             .bind(created_at)
             .execute(&self.pool)
@@ -277,6 +302,7 @@ impl UserDb {
             username: username.to_string(),
             hashed_password: hashed_password.to_string(),
             is_admin,
+            is_shared,
             enabled,
             created_at,
         })
@@ -322,6 +348,7 @@ impl UserDb {
             .bind(username)
             .bind(hashed_password)
             .bind(true) // is_admin = true
+            .bind(false) // is_shared = false (first user cannot be shared)
             .bind(true) // enabled = true
             .bind(created_at)
             .execute(&mut *tx)
@@ -337,6 +364,7 @@ impl UserDb {
             username: username.to_string(),
             hashed_password: hashed_password.to_string(),
             is_admin: true,
+            is_shared: false,
             enabled: true,
             created_at,
         }))
@@ -498,7 +526,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, true, &Permissions::new())
+            .create_user("alice", "hash123", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -526,7 +554,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific casing
-        db.create_user("Alice", "hash123", false, true, &Permissions::new())
+        db.create_user("Alice", "hash123", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -546,7 +574,7 @@ mod tests {
 
         // Cannot create another user with different casing
         let result = db
-            .create_user("alice", "hash456", false, true, &Permissions::new())
+            .create_user("alice", "hash456", false, false, true, &Permissions::new())
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
     }
@@ -558,7 +586,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, true, &Permissions::new())
+            .create_user("alice", "hash123", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -594,7 +622,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash123", false, true, &perms)
+            .create_user("alice", "hash123", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -624,7 +652,7 @@ mod tests {
         };
 
         let admin = db
-            .create_user("admin", "hash123", true, true, &perms)
+            .create_user("admin", "hash123", true, false, true, &perms)
             .await
             .unwrap();
 
@@ -650,7 +678,7 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -699,7 +727,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -757,7 +785,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, true, &initial_perms)
+            .create_user("alice", "hash", false, false, true, &initial_perms)
             .await
             .unwrap();
 
@@ -813,7 +841,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first
-        db.create_user("admin", "hash0", true, true, &Permissions::new())
+        db.create_user("admin", "hash0", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -828,7 +856,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -875,7 +903,7 @@ mod tests {
 
         // Create single admin
         let admin = db
-            .create_user("admin", "hash", true, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -898,11 +926,11 @@ mod tests {
 
         // Create two admins
         let admin1 = db
-            .create_user("admin1", "hash1", true, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
             .await
             .unwrap();
         let admin2 = db
-            .create_user("admin2", "hash2", true, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -925,13 +953,13 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin (so system has an admin)
-        db.create_user("admin", "hash0", true, true, &Permissions::new())
+        db.create_user("admin", "hash0", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
         // Create regular user
         let user = db
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -955,11 +983,11 @@ mod tests {
 
         // Create exactly 2 admins
         let admin1 = db1
-            .create_user("admin1", "hash1", true, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
             .await
             .unwrap();
         let admin2 = db1
-            .create_user("admin2", "hash2", true, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -994,13 +1022,13 @@ mod tests {
         let db2 = UserDb::new(pool.clone());
 
         // Create admin first
-        db1.create_user("admin", "hash0", true, true, &Permissions::new())
+        db1.create_user("admin", "hash0", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
         // Create user
         let user = db1
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1084,7 +1112,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create a user first
-        db.create_user("existing", "hash", false, true, &Permissions::new())
+        db.create_user("existing", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1121,7 +1149,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, true, &perms)
+            .create_user("alice", "hash", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -1142,7 +1170,7 @@ mod tests {
 
         // Create user with no permissions
         let user = db
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1158,7 +1186,7 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1169,5 +1197,178 @@ mod tests {
             0,
             "Admin permissions not stored in DB"
         );
+    }
+
+    // ========================================================================
+    // Username Exists Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_username_exists_found() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create a user
+        db.create_user("alice", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Check existence - exact match
+        assert!(db.username_exists("alice").await.unwrap());
+
+        // Check existence - case insensitive
+        assert!(db.username_exists("Alice").await.unwrap());
+        assert!(db.username_exists("ALICE").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_username_exists_not_found() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // No users exist
+        assert!(!db.username_exists("alice").await.unwrap());
+
+        // Create a different user
+        db.create_user("bob", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // alice still doesn't exist
+        assert!(!db.username_exists("alice").await.unwrap());
+    }
+
+    // ========================================================================
+    // Shared Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_create_shared_account() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create a shared account
+        let shared = db
+            .create_user(
+                "shared_acct",
+                "hash",
+                false,
+                true,
+                true,
+                &Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(shared.username, "shared_acct");
+        assert!(!shared.is_admin);
+        assert!(shared.is_shared);
+        assert!(shared.enabled);
+
+        // Retrieve and verify
+        let retrieved = db
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(retrieved.is_shared);
+        assert!(!retrieved.is_admin);
+    }
+
+    #[tokio::test]
+    async fn test_shared_account_in_get_all_users() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create mix of regular and shared accounts
+        db.create_user("alice", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+        db.create_user(
+            "shared_acct",
+            "hash",
+            false,
+            true,
+            true,
+            &Permissions::new(),
+        )
+        .await
+        .unwrap();
+        db.create_user("bob", "hash", true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        let all_users = db.get_all_users().await.unwrap();
+        assert_eq!(all_users.len(), 3);
+
+        // Find each user and verify is_shared
+        let alice = all_users.iter().find(|u| u.username == "alice").unwrap();
+        assert!(!alice.is_shared);
+        assert!(!alice.is_admin);
+
+        let shared = all_users
+            .iter()
+            .find(|u| u.username == "shared_acct")
+            .unwrap();
+        assert!(shared.is_shared);
+        assert!(!shared.is_admin);
+
+        let bob = all_users.iter().find(|u| u.username == "bob").unwrap();
+        assert!(!bob.is_shared);
+        assert!(bob.is_admin);
+    }
+
+    #[tokio::test]
+    async fn test_shared_account_is_shared_immutable() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Create admin first (needed for system to function)
+        db.create_user("admin", "hash", true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Create a shared account
+        let shared = db
+            .create_user(
+                "shared_acct",
+                "hash",
+                false,
+                true,
+                true,
+                &Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        assert!(shared.is_shared);
+
+        // Update the user (change password, etc.) - is_shared should remain unchanged
+        // Note: update_user doesn't have is_shared parameter because it's immutable
+        let updated = db
+            .update_user(
+                "shared_acct",
+                None,             // no username change
+                Some("new_hash"), // change password
+                None,             // no admin change
+                None,             // no enabled change
+                None,             // no permission change
+            )
+            .await
+            .unwrap();
+
+        assert!(updated, "Update should succeed");
+
+        // Verify is_shared is still true
+        let retrieved = db
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            retrieved.is_shared,
+            "is_shared should remain true after update"
+        );
+        assert_eq!(retrieved.hashed_password, "new_hash");
     }
 }

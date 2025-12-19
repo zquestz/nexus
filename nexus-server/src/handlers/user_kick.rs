@@ -59,8 +59,14 @@ where
     };
 
     // Prevent self-kick (cheap check before DB queries)
+    // Check both username and nickname for self-kick prevention
     let target_lower = target_username.to_lowercase();
-    if target_lower == requesting_user_session.username.to_lowercase() {
+    let is_self_kick = target_lower == requesting_user_session.username.to_lowercase()
+        || requesting_user_session
+            .nickname
+            .as_ref()
+            .is_some_and(|n| n.to_lowercase() == target_lower);
+    if is_self_kick {
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_cannot_kick_self(ctx.locale)),
@@ -83,8 +89,46 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Look up target user in database to check admin status
-    let target_user_db = match ctx.db.users.get_user_by_username(&target_username).await {
+    // First, try to find by nickname (for shared account users)
+    // Then fall back to username lookup
+    let (target_users, kicked_by_nickname) = if let Some(session) = ctx
+        .user_manager
+        .get_session_by_nickname(&target_username)
+        .await
+    {
+        // Found a shared account user by nickname - kick just that session
+        (vec![session], true)
+    } else {
+        // Look up all sessions for target username (case-insensitive)
+        let sessions = ctx
+            .user_manager
+            .get_sessions_by_username(&target_username)
+            .await;
+        (sessions, false)
+    };
+
+    if target_users.is_empty() {
+        let response = ServerMessage::UserKickResponse {
+            success: false,
+            error: Some(err_user_not_online(ctx.locale, &target_username)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Always check admin status before kicking (defense in depth)
+    // For nickname-based kicks, use the session's username to look up the account
+    // For username-based kicks, use the provided username directly
+    let db_lookup_username = if kicked_by_nickname {
+        target_users
+            .first()
+            .map(|s| s.username.clone())
+            .unwrap_or_else(|| target_username.clone())
+    } else {
+        target_username.clone()
+    };
+
+    let target_user_db = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(user) => user,
         Err(e) => {
             eprintln!("Database error getting target user: {}", e);
@@ -106,29 +150,22 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if target user is online (case-insensitive)
-    // Get the first user's username to preserve original casing for the response
-    let target_users = ctx
-        .user_manager
-        .get_sessions_by_username(&target_username)
-        .await;
+    // Get the preserved display name from the first session
+    // For shared accounts kicked by nickname, use the nickname
+    // For regular accounts, use the username
+    let preserved_display_name = if kicked_by_nickname {
+        target_users
+            .first()
+            .and_then(|u| u.nickname.clone())
+            .unwrap_or_else(|| target_username.clone())
+    } else {
+        target_users
+            .first()
+            .map(|u| u.username.clone())
+            .unwrap_or_else(|| target_username.clone())
+    };
 
-    if target_users.is_empty() {
-        let response = ServerMessage::UserKickResponse {
-            success: false,
-            error: Some(err_user_not_online(ctx.locale, &target_username)),
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Get the preserved username casing from the first session
-    let preserved_username = target_users
-        .first()
-        .map(|u| u.username.clone())
-        .unwrap_or_else(|| target_username.clone());
-
-    // Kick all sessions of the target user
+    // Kick all target sessions
     for user in target_users {
         // Send kick message to the user in their locale before disconnecting
         let kick_msg = ServerMessage::Error {
@@ -145,7 +182,7 @@ where
                 .broadcast_user_event(
                     ServerMessage::UserDisconnected {
                         session_id: target_session_id,
-                        username: removed_user.username.clone(),
+                        username: removed_user.display_name().to_string(),
                     },
                     &ctx.db.users,
                     Some(target_session_id), // Exclude the kicked user
@@ -155,11 +192,11 @@ where
     }
 
     // Send success response to requester
-    // Use the session-preserved username casing, not the input
+    // Use the session-preserved display name (nickname for shared, username for regular)
     let response = ServerMessage::UserKickResponse {
         success: true,
         error: None,
-        username: Some(preserved_username),
+        username: Some(preserved_display_name),
     };
     ctx.send_message(&response).await
 }
@@ -167,6 +204,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
     use crate::db::Permission;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
@@ -333,7 +371,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("offline_user", &hashed, false, true, &perms)
+            .create_user("offline_user", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -471,6 +509,151 @@ mod tests {
             );
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
+        }
+    }
+
+    // ========================================================================
+    // Shared Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_userkick_shared_account_by_nickname() {
+        let mut test_ctx = create_test_context().await;
+        use crate::handlers::login::{LoginRequest, handle_login};
+
+        // Create admin user to do the kicking
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account in the database
+        let hashed = db::hash_password("password").unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Login to the shared account with a nickname
+        let mut shared_session_id = None;
+        let login_request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: Some("Nick1".to_string()),
+            handshake_complete: true,
+        };
+        let _ = handle_login(
+            login_request,
+            &mut shared_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+
+        assert!(
+            shared_session_id.is_some(),
+            "Shared account should be logged in"
+        );
+
+        // Kick by nickname
+        let result = handle_user_kick(
+            "Nick1".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Kick by nickname should succeed");
+                assert!(error.is_none());
+                assert_eq!(
+                    username,
+                    Some("Nick1".to_string()),
+                    "Should return the nickname"
+                );
+            }
+            _ => panic!("Expected UserKickResponse"),
+        }
+
+        // Verify user was kicked
+        let sessions = test_ctx.user_manager.get_session_by_nickname("Nick1").await;
+        assert!(sessions.is_none(), "Session should be removed");
+    }
+
+    #[tokio::test]
+    async fn test_userkick_shared_account_self_kick_by_nickname_prevented() {
+        let mut test_ctx = create_test_context().await;
+        use crate::handlers::login::{LoginRequest, handle_login};
+
+        // Create a shared account in the database with kick permission
+        let hashed = db::hash_password("password").unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserKick);
+        test_ctx
+            .db
+            .users
+            .create_user("shared_acct", &hashed, false, true, true, &perms)
+            .await
+            .unwrap();
+
+        // But first we need an admin
+        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Login to the shared account with a nickname
+        let mut shared_session_id = None;
+        let login_request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: Some("Nick1".to_string()),
+            handshake_complete: true,
+        };
+        let _ = handle_login(
+            login_request,
+            &mut shared_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+
+        let session_id = shared_session_id.unwrap();
+
+        // Try to kick self by nickname (should fail)
+        let result = handle_user_kick(
+            "Nick1".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserKickResponse { success, error, .. } => {
+                assert!(!success, "Self-kick by nickname should be prevented");
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected UserKickResponse"),
         }
     }
 }

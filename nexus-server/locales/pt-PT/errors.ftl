@@ -1,6 +1,19 @@
 # Erros de autenticação e sessão
 err-not-logged-in = Sessão não iniciada
 
+# Erros de validação de alcunha
+err-nickname-empty = A alcunha não pode estar vazia
+err-nickname-in-use = A alcunha já está em uso
+err-nickname-invalid = A alcunha contém caracteres inválidos (letras, números e símbolos permitidos - sem espaços ou caracteres de controlo)
+err-nickname-is-username = A alcunha não pode ser um nome de utilizador existente
+err-nickname-required = Alcunha obrigatória para contas partilhadas
+err-nickname-too-long = A alcunha é demasiado longa (máx. { $max_length } caracteres)
+
+# Erros de contas partilhadas
+err-shared-cannot-be-admin = Contas partilhadas não podem ser administradores
+err-shared-cannot-change-password = Não é possível alterar a palavra-passe de uma conta partilhada
+err-shared-invalid-permissions = Contas partilhadas não podem ter estas permissões: { $permissions }
+
 # Erros de validação de avatar
 err-avatar-invalid-format = Formato de avatar inválido (deve ser uma URI de dados com codificação base64)
 err-avatar-too-large = O avatar é demasiado grande (máx. { $max_length } caracteres)

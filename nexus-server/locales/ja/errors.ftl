@@ -1,6 +1,19 @@
 # 認証とセッションのエラー
 err-not-logged-in = ログインしていません
 
+# ニックネーム検証エラー
+err-nickname-empty = ニックネームを空にすることはできません
+err-nickname-in-use = ニックネームは既に使用されています
+err-nickname-invalid = ニックネームに無効な文字が含まれています（文字、数字、記号は許可 - スペースや制御文字は不可）
+err-nickname-is-username = ニックネームは既存のユーザー名にすることはできません
+err-nickname-required = 共有アカウントにはニックネームが必要です
+err-nickname-too-long = ニックネームが長すぎます（最大{ $max_length }文字）
+
+# 共有アカウントエラー
+err-shared-cannot-be-admin = 共有アカウントは管理者になれません
+err-shared-cannot-change-password = 共有アカウントのパスワードは変更できません
+err-shared-invalid-permissions = 共有アカウントはこれらの権限を持つことができません: { $permissions }
+
 # アバター検証エラー
 err-avatar-invalid-format = アバター形式が無効です（base64エンコードのデータURIである必要があります）
 err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }文字）

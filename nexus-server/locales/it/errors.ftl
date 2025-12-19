@@ -1,6 +1,19 @@
 # Errori di autenticazione e sessione
 err-not-logged-in = Non connesso
 
+# Errori di validazione soprannome
+err-nickname-empty = Il soprannome non può essere vuoto
+err-nickname-in-use = Il soprannome è già in uso
+err-nickname-invalid = Il soprannome contiene caratteri non validi (lettere, numeri e simboli consentiti - nessuno spazio o carattere di controllo)
+err-nickname-is-username = Il soprannome non può essere un nome utente esistente
+err-nickname-required = Soprannome richiesto per account condivisi
+err-nickname-too-long = Il soprannome è troppo lungo (max { $max_length } caratteri)
+
+# Errori account condivisi
+err-shared-cannot-be-admin = Gli account condivisi non possono essere amministratori
+err-shared-cannot-change-password = Impossibile modificare la password di un account condiviso
+err-shared-invalid-permissions = Gli account condivisi non possono avere questi permessi: { $permissions }
+
 # Errori di validazione avatar
 err-avatar-invalid-format = Formato avatar non valido (deve essere un URI di dati con codifica base64)
 err-avatar-too-large = L'avatar è troppo grande (max { $max_length } caratteri)

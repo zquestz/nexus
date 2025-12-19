@@ -335,6 +335,7 @@ mod tests {
             server_message_type(&ServerMessage::ChatMessage {
                 session_id: 1,
                 username: "test".to_string(),
+                is_shared: false,
                 message: "hi".to_string(),
             }),
             "ChatMessage"
@@ -381,6 +382,7 @@ mod tests {
         let message = ServerMessage::ChatMessage {
             session_id: 42,
             username: "alice".to_string(),
+            is_shared: false,
             message: "Hi there!".to_string(),
         };
 
@@ -402,10 +404,12 @@ mod tests {
             ServerMessage::ChatMessage {
                 session_id,
                 username,
+                is_shared,
                 message,
             } => {
                 assert_eq!(session_id, 42);
                 assert_eq!(username, "alice");
+                assert!(!is_shared);
                 assert_eq!(message, "Hi there!");
             }
             _ => panic!("Wrong message type"),

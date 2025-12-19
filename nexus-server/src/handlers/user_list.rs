@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::io;
 
 /// Aggregated user data for deduplication
-/// Fields: (login_time, is_admin, session_ids, locale, avatar, avatar_login_time)
-type UserAggregateData = (i64, bool, Vec<u32>, String, Option<String>, i64);
+/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, avatar_login_time)
+type UserAggregateData = (i64, bool, bool, Vec<u32>, String, Option<String>, i64);
 
 use tokio::io::AsyncWrite;
 
@@ -69,45 +69,89 @@ where
     // Fetch all connected users
     let online_users = ctx.user_manager.get_all_users().await;
 
-    // Deduplicate by username and aggregate sessions
-    // Use is_admin from UserManager instead of querying DB for each user
-    // Avatar uses "latest login wins" - track login_time for avatar selection
+    // Separate handling for regular vs shared accounts:
+    // - Regular accounts: aggregate by username (multiple sessions = one entry)
+    // - Shared accounts: each session is a separate entry with its nickname
     let mut user_map: HashMap<String, UserAggregateData> = HashMap::new();
+    let mut shared_user_infos: Vec<UserInfo> = Vec::new();
 
     for user in online_users {
-        user_map
-            .entry(user.username.clone())
-            .and_modify(
-                |(login_time, _, session_ids, _, avatar, avatar_login_time)| {
-                    // Keep earliest login time for display
-                    *login_time = (*login_time).min(user.login_time);
-                    session_ids.push(user.session_id);
-                    // Avatar: latest login wins
-                    if user.login_time > *avatar_login_time {
-                        *avatar = user.avatar.clone();
-                        *avatar_login_time = user.login_time;
-                    }
-                },
-            )
-            .or_insert((
-                user.login_time,
-                user.is_admin, // Use is_admin from UserManager
-                vec![user.session_id],
-                user.locale.clone(),
-                user.avatar.clone(),
-                user.login_time, // Track login time for avatar selection
-            ));
+        if user.is_shared {
+            // Shared accounts are NOT aggregated - each session is a separate entry
+            shared_user_infos.push(UserInfo {
+                username: user.username.clone(),
+                nickname: user.nickname.clone(),
+                login_time: user.login_time,
+                is_admin: false, // Shared accounts are never admin
+                is_shared: true,
+                session_ids: vec![user.session_id],
+                locale: user.locale.clone(),
+                avatar: user.avatar.clone(),
+            });
+        } else {
+            // Regular accounts: deduplicate by username and aggregate sessions
+            // Use is_admin from UserManager instead of querying DB for each user
+            // Avatar uses "latest login wins" - track login_time for avatar selection
+            user_map
+                .entry(user.username.clone())
+                .and_modify(
+                    |(login_time, _, _, session_ids, _, avatar, avatar_login_time)| {
+                        // Keep earliest login time for display
+                        *login_time = (*login_time).min(user.login_time);
+                        session_ids.push(user.session_id);
+                        // Avatar: latest login wins
+                        if user.login_time > *avatar_login_time {
+                            *avatar = user.avatar.clone();
+                            *avatar_login_time = user.login_time;
+                        }
+                    },
+                )
+                .or_insert((
+                    user.login_time,
+                    user.is_admin, // Use is_admin from UserManager
+                    false,         // Regular accounts are not shared
+                    vec![user.session_id],
+                    user.locale.clone(),
+                    user.avatar.clone(),
+                    user.login_time, // Track login time for avatar selection
+                ));
+        }
     }
 
     // If `all` requested, merge in offline users from database
+    // This includes both regular accounts and shared accounts that have no active sessions
     if all {
         match ctx.db.users.get_all_users().await {
             Ok(db_users) => {
                 for db_user in db_users {
-                    // Only add users not already in the map (i.e., offline users)
+                    if db_user.is_shared {
+                        // For shared accounts, check if there are any online sessions
+                        // by looking for entries with matching username in shared_user_infos
+                        let has_online_sessions = shared_user_infos
+                            .iter()
+                            .any(|u| u.username.to_lowercase() == db_user.username.to_lowercase());
+
+                        if !has_online_sessions {
+                            // Shared account with no online sessions - show the account itself
+                            // so admins can manage it (edit/delete)
+                            user_map.entry(db_user.username.clone()).or_insert((
+                                db_user.created_at, // Use created_at as login_time
+                                false,              // Shared accounts are never admin
+                                true,               // This is a shared account
+                                vec![],             // No session IDs (offline)
+                                String::new(),      // No locale (offline)
+                                None,               // No avatar (offline)
+                                0,                  // No avatar login time
+                            ));
+                        }
+                        // If there are online sessions, they're already in shared_user_infos
+                        continue;
+                    }
+                    // Regular account: only add if not already in the map (i.e., offline)
                     user_map.entry(db_user.username.clone()).or_insert((
                         db_user.created_at, // Use created_at as login_time for offline users
                         db_user.is_admin,
+                        false,         // Regular accounts are not shared
                         vec![],        // No session IDs (offline)
                         String::new(), // No locale (offline)
                         None,          // No avatar (offline)
@@ -122,23 +166,34 @@ where
         }
     }
 
-    // Build deduplicated user info list
+    // Build user info list from aggregated users (regular accounts + offline shared accounts)
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
         .map(
-            |(username, (login_time, is_admin, session_ids, locale, avatar, _))| UserInfo {
-                username,
-                login_time,
-                is_admin,
-                session_ids,
-                locale,
-                avatar,
+            |(username, (login_time, is_admin, is_shared, session_ids, locale, avatar, _))| {
+                UserInfo {
+                    username,
+                    nickname: None, // Aggregated users don't have nicknames (shared accounts show as account name)
+                    login_time,
+                    is_admin,
+                    is_shared,
+                    session_ids,
+                    locale,
+                    avatar,
+                }
             },
         )
         .collect();
 
-    // Sort by username (case-insensitive) for consistent ordering
-    user_infos.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+    // Add shared account users (each session is a separate entry)
+    user_infos.extend(shared_user_infos);
+
+    // Sort: regular users by username, shared users by nickname (case-insensitive)
+    user_infos.sort_by(|a, b| {
+        let a_sort_key = a.nickname.as_ref().unwrap_or(&a.username).to_lowercase();
+        let b_sort_key = b.nickname.as_ref().unwrap_or(&b.username).to_lowercase();
+        a_sort_key.cmp(&b_sort_key)
+    });
 
     // Send user list response
     let response = ServerMessage::UserListResponse {
@@ -304,7 +359,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -320,13 +375,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(avatar_data.clone()),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Get user list
         let result =
@@ -363,7 +421,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -380,13 +438,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(old_avatar.clone()),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Delay of 1.1 seconds to ensure different login timestamps (timestamps are in seconds)
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
@@ -401,13 +462,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(new_avatar.clone()),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Get user list
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
@@ -444,7 +508,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -458,13 +522,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Get user list
         let result =
@@ -587,7 +654,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("offline_bob", &hashed, false, true, &perms)
+            .create_user("offline_bob", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -695,6 +762,171 @@ mod tests {
         match response {
             ServerMessage::UserListResponse { success, .. } => {
                 assert!(success);
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_includes_offline_shared_accounts() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create an offline shared account directly in the database
+        let hashed = crate::db::hash_password("sharedpass").unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false, // not admin
+                true,  // is_shared
+                true,  // enabled
+                &crate::db::Permissions::new(),
+            )
+            .await
+            .expect("shared account creation should succeed");
+
+        // Get all users - should include the offline shared account
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok(), "UserList all should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, users, .. } => {
+                assert!(success);
+                let users = users.expect("users should be present");
+
+                // Should include the admin and the shared account
+                assert!(
+                    users.len() >= 2,
+                    "Should have at least admin and shared account"
+                );
+
+                // Find the shared account
+                let shared_account = users.iter().find(|u| u.username == "shared_acct");
+                assert!(
+                    shared_account.is_some(),
+                    "Offline shared account should appear in all users list"
+                );
+
+                let shared = shared_account.unwrap();
+                assert!(shared.is_shared, "Account should be marked as shared");
+                assert!(!shared.is_admin, "Shared account should not be admin");
+                assert!(
+                    shared.session_ids.is_empty(),
+                    "Offline shared account should have no sessions"
+                );
+                assert!(
+                    shared.nickname.is_none(),
+                    "Offline shared account should have no nickname"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_all_shared_account_with_online_sessions() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account in the database
+        let hashed = crate::db::hash_password("sharedpass").unwrap();
+        let shared_account = test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false, // not admin
+                true,  // is_shared
+                true,  // enabled
+                &crate::db::Permissions::new(),
+            )
+            .await
+            .expect("shared account creation should succeed");
+
+        // Add an online session for the shared account with a nickname
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: shared_account.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: shared_account.created_at,
+                tx,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: Some("Alice".to_string()),
+            })
+            .await
+            .expect("Failed to add shared user session");
+
+        // Get all users
+        let result = handle_user_list(
+            true,
+            Some(admin_session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok(), "UserList all should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { success, users, .. } => {
+                assert!(success);
+                let users = users.expect("users should be present");
+
+                // Find the shared account session (should appear with nickname)
+                let alice_session = users
+                    .iter()
+                    .find(|u| u.nickname.as_ref().map(|n| n == "Alice").unwrap_or(false));
+                assert!(
+                    alice_session.is_some(),
+                    "Online shared account session should appear with nickname"
+                );
+
+                let alice = alice_session.unwrap();
+                assert!(alice.is_shared, "Session should be marked as shared");
+                assert_eq!(
+                    alice.username, "shared_acct",
+                    "Username should be the account name"
+                );
+                assert!(!alice.session_ids.is_empty(), "Should have session ID");
+
+                // The offline "shared_acct" account entry should NOT appear separately
+                // since there's an online session
+                let offline_shared = users
+                    .iter()
+                    .filter(|u| {
+                        u.username == "shared_acct"
+                            && u.nickname.is_none()
+                            && u.session_ids.is_empty()
+                    })
+                    .count();
+                assert_eq!(
+                    offline_shared, 0,
+                    "Should not have separate offline entry when sessions are online"
+                );
             }
             _ => panic!("Expected UserListResponse"),
         }

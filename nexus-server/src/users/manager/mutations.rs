@@ -6,20 +6,76 @@ use super::UserManager;
 use crate::db::Permission;
 use crate::users::user::{NewSessionParams, UserSession};
 
+/// Error returned when adding a user fails
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddUserError {
+    /// The requested nickname is already in use by another session
+    NicknameInUse,
+    /// The requested nickname matches an existing logged-in username
+    NicknameMatchesUsername,
+}
+
 impl UserManager {
     /// Add a new user and return their assigned session ID
-    pub async fn add_user(&self, mut params: NewSessionParams) -> u32 {
-        let mut next_id = self.next_id.write().await;
-        let session_id = *next_id;
-        *next_id += 1;
-        drop(next_id);
+    ///
+    /// For shared accounts with nicknames, this performs an atomic check to ensure
+    /// the nickname is not already in use by another session or matching a logged-in
+    /// username. This prevents race conditions where two users could claim the same
+    /// nickname simultaneously.
+    ///
+    /// # Defense in Depth
+    ///
+    /// The login handler performs a non-atomic pre-check via `is_nickname_in_use()`
+    /// before calling this method. This provides two benefits:
+    ///
+    /// 1. **Early rejection**: Most conflicts are caught without acquiring the write lock,
+    ///    reducing contention for legitimate requests.
+    ///
+    /// 2. **Atomic guarantee**: This method's check while holding the write lock prevents
+    ///    race conditions where two simultaneous logins could both pass the pre-check
+    ///    but only one should succeed.
+    ///
+    /// Both checks are necessary: the pre-check for performance, the atomic check for correctness.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AddUserError::NicknameInUse` if the nickname is already taken by
+    /// another shared account session.
+    ///
+    /// Returns `AddUserError::NicknameMatchesUsername` if the nickname matches
+    /// a currently logged-in regular user's username.
+    pub async fn add_user(&self, mut params: NewSessionParams) -> Result<u32, AddUserError> {
+        // Acquire write lock first to ensure atomicity of nickname check + insert
+        let mut users = self.users.write().await;
 
+        // For shared accounts, check nickname uniqueness while holding the lock
+        if let Some(ref nickname) = params.nickname {
+            let nickname_lower = nickname.to_lowercase();
+
+            for user in users.values() {
+                // Check against existing nicknames (other shared account sessions)
+                if let Some(ref existing_nickname) = user.nickname
+                    && existing_nickname.to_lowercase() == nickname_lower
+                {
+                    return Err(AddUserError::NicknameInUse);
+                }
+
+                // Check against logged-in usernames (regular accounts)
+                // This ensures a shared account can't use a nickname that matches
+                // a logged-in regular user's username
+                if user.username.to_lowercase() == nickname_lower {
+                    return Err(AddUserError::NicknameMatchesUsername);
+                }
+            }
+        }
+
+        // Nickname is unique (or not a shared account), proceed with adding
+        let session_id = self.next_session_id();
         params.session_id = session_id;
         let user = UserSession::new(params);
-        let mut users = self.users.write().await;
         users.insert(session_id, user);
 
-        session_id
+        Ok(session_id)
     }
 
     /// Remove a user by session ID

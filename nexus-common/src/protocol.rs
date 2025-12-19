@@ -36,6 +36,9 @@ pub enum ClientMessage {
         /// User's avatar as a data URI (e.g., "data:image/png;base64,...")
         #[serde(default, skip_serializing_if = "Option::is_none")]
         avatar: Option<String>,
+        /// Nickname for shared accounts (required for shared, silently ignored for regular)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
     },
     /// Broadcast a message to all connected users
     UserBroadcast { message: String },
@@ -44,6 +47,9 @@ pub enum ClientMessage {
         username: String,
         password: String,
         is_admin: bool,
+        /// Whether this is a shared account (allows multiple logins with nicknames)
+        #[serde(default)]
+        is_shared: bool,
         enabled: bool,
         permissions: Vec<String>,
     },
@@ -132,7 +138,11 @@ pub enum ServerMessage {
     /// Chat message
     ChatMessage {
         session_id: u32,
+        /// Display name (nickname for shared accounts, username for regular)
         username: String,
+        /// Whether the sender is a shared account user (for client-side coloring)
+        #[serde(default)]
+        is_shared: bool,
         message: String,
     },
     /// Chat topic updated broadcast (sent to users with ChatTopic permission when topic changes)
@@ -208,13 +218,20 @@ pub enum ServerMessage {
         username: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_admin: Option<bool>,
+        /// Whether this is a shared account (read-only, cannot be changed)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_shared: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         enabled: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
     },
     /// User disconnected event
-    UserDisconnected { session_id: u32, username: String },
+    UserDisconnected {
+        session_id: u32,
+        /// Display name (nickname for shared accounts, username for regular)
+        username: String,
+    },
     /// Permissions updated notification (sent to user when their permissions change)
     PermissionsUpdated {
         is_admin: bool,
@@ -373,8 +390,14 @@ pub struct ChatInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,
+    /// Nickname for shared account users (None for regular users)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
     pub login_time: i64,
     pub is_admin: bool,
+    /// Whether this is a shared account user
+    #[serde(default)]
+    pub is_shared: bool,
     pub session_ids: Vec<u32>,
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, from most recent login)
@@ -415,7 +438,13 @@ pub struct NewsItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfoDetailed {
     pub username: String,
+    /// Nickname for shared account users (None for regular users)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
     pub login_time: i64,
+    /// Whether this is a shared account user
+    #[serde(default)]
+    pub is_shared: bool,
     pub session_ids: Vec<u32>,
     pub features: Vec<String>,
     /// When the account was created (Unix timestamp)
@@ -455,6 +484,7 @@ impl std::fmt::Debug for ClientMessage {
                 features,
                 locale,
                 avatar,
+                nickname,
             } => f
                 .debug_struct("Login")
                 .field("username", username)
@@ -471,6 +501,7 @@ impl std::fmt::Debug for ClientMessage {
                         }
                     }),
                 )
+                .field("nickname", nickname)
                 .finish(),
             ClientMessage::UserBroadcast { message } => f
                 .debug_struct("UserBroadcast")
@@ -479,12 +510,14 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::UserCreate {
                 username,
                 is_admin,
+                is_shared,
                 permissions,
                 ..
             } => f
                 .debug_struct("UserCreate")
                 .field("username", username)
                 .field("is_admin", is_admin)
+                .field("is_shared", is_shared)
                 .field("permissions", permissions)
                 .field("password", &"<REDACTED>")
                 .finish(),
@@ -615,6 +648,7 @@ mod tests {
             features: vec!["chat".to_string()],
             locale: "en".to_string(),
             avatar: None,
+            nickname: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"Login\""));
@@ -636,12 +670,14 @@ mod tests {
                 features,
                 locale,
                 avatar,
+                nickname,
             } => {
                 assert_eq!(username, "alice");
                 assert_eq!(password, "secret");
                 assert_eq!(features, vec!["chat".to_string()]);
                 assert_eq!(locale, "en"); // Default locale
                 assert!(avatar.is_none()); // Default avatar
+                assert!(nickname.is_none()); // Default nickname
             }
             _ => panic!("Expected Login message"),
         }
@@ -655,6 +691,7 @@ mod tests {
             features: vec!["chat".to_string()],
             locale: "en".to_string(),
             avatar: None,
+            nickname: None,
         };
         let debug_output = format!("{:?}", msg);
 
@@ -756,6 +793,7 @@ mod tests {
             features: vec!["chat".to_string()],
             locale: "en".to_string(),
             avatar: Some(avatar_data.clone()),
+            nickname: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -779,8 +817,10 @@ mod tests {
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
         let user_info = UserInfo {
             username: "alice".to_string(),
+            nickname: None,
             login_time: 1234567890,
             is_admin: false,
+            is_shared: false,
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: Some(avatar_data.clone()),
@@ -794,8 +834,10 @@ mod tests {
     fn test_serialize_user_info_without_avatar() {
         let user_info = UserInfo {
             username: "alice".to_string(),
+            nickname: None,
             login_time: 1234567890,
             is_admin: false,
+            is_shared: false,
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: None,
@@ -810,7 +852,9 @@ mod tests {
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
         let user_info = UserInfoDetailed {
             username: "alice".to_string(),
+            nickname: None,
             login_time: 1234567890,
+            is_shared: false,
             session_ids: vec![1, 2],
             features: vec!["chat".to_string()],
             created_at: 1234567800,
@@ -834,6 +878,7 @@ mod tests {
             features: vec![],
             locale: "en".to_string(),
             avatar: Some(large_avatar.clone()),
+            nickname: None,
         };
         let debug_output = format!("{:?}", msg);
 
@@ -842,5 +887,217 @@ mod tests {
         assert!(debug_output.contains("bytes"));
         // Should NOT contain the full avatar
         assert!(!debug_output.contains(&large_avatar));
+    }
+
+    // =========================================================================
+    // Shared account serialization tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize_login_with_nickname() {
+        let msg = ClientMessage::Login {
+            username: "shared_acct".to_string(),
+            password: "secret".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: Some("Nick1".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"nickname\":\"Nick1\""));
+    }
+
+    #[test]
+    fn test_serialize_login_without_nickname() {
+        let msg = ClientMessage::Login {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        // nickname should not be in JSON when None (skip_serializing_if)
+        assert!(!json.contains("\"nickname\""));
+    }
+
+    #[test]
+    fn test_deserialize_login_with_nickname() {
+        let json = r#"{"type":"Login","username":"shared_acct","password":"secret","features":[],"locale":"en","nickname":"Nick1"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::Login { nickname, .. } => {
+                assert_eq!(nickname, Some("Nick1".to_string()));
+            }
+            _ => panic!("Expected Login message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_create_with_is_shared() {
+        let msg = ClientMessage::UserCreate {
+            username: "shared_acct".to_string(),
+            password: "secret".to_string(),
+            is_admin: false,
+            is_shared: true,
+            enabled: true,
+            permissions: vec!["chat_send".to_string()],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"is_shared\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_user_create_with_is_shared() {
+        let json = r#"{"type":"UserCreate","username":"shared_acct","password":"secret","is_admin":false,"is_shared":true,"enabled":true,"permissions":[]}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::UserCreate { is_shared, .. } => {
+                assert!(is_shared);
+            }
+            _ => panic!("Expected UserCreate message"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_user_create_defaults_is_shared_false() {
+        // Old clients may not send is_shared field - should default to false
+        let json = r#"{"type":"UserCreate","username":"alice","password":"secret","is_admin":false,"enabled":true,"permissions":[]}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::UserCreate { is_shared, .. } => {
+                assert!(!is_shared);
+            }
+            _ => panic!("Expected UserCreate message"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_chat_message_with_is_shared() {
+        let msg = ServerMessage::ChatMessage {
+            session_id: 123,
+            username: "Nick1".to_string(),
+            is_shared: true,
+            message: "Hello!".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"is_shared\":true"));
+        assert!(json.contains("\"username\":\"Nick1\""));
+    }
+
+    #[test]
+    fn test_serialize_user_info_with_nickname_and_is_shared() {
+        let user_info = UserInfo {
+            username: "shared_acct".to_string(),
+            nickname: Some("Nick1".to_string()),
+            login_time: 1234567890,
+            is_admin: false,
+            is_shared: true,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: None,
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        assert!(json.contains("\"nickname\":\"Nick1\""));
+        assert!(json.contains("\"is_shared\":true"));
+        assert!(json.contains("\"username\":\"shared_acct\""));
+    }
+
+    #[test]
+    fn test_serialize_user_info_without_nickname() {
+        let user_info = UserInfo {
+            username: "alice".to_string(),
+            nickname: None,
+            login_time: 1234567890,
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: None,
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        // nickname should not be in JSON when None (skip_serializing_if)
+        assert!(!json.contains("\"nickname\""));
+        // is_shared should still be present (no skip_serializing_if)
+        assert!(json.contains("\"is_shared\":false"));
+    }
+
+    #[test]
+    fn test_deserialize_user_info_with_shared_fields() {
+        let json = r#"{"username":"shared_acct","nickname":"Nick1","login_time":1234567890,"is_admin":false,"is_shared":true,"session_ids":[1],"locale":"en"}"#;
+        let user_info: UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(user_info.username, "shared_acct");
+        assert_eq!(user_info.nickname, Some("Nick1".to_string()));
+        assert!(user_info.is_shared);
+    }
+
+    #[test]
+    fn test_deserialize_user_info_defaults_shared_fields() {
+        // Old servers may not send nickname or is_shared - should default
+        let json = r#"{"username":"alice","login_time":1234567890,"is_admin":false,"session_ids":[1],"locale":"en"}"#;
+        let user_info: UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(user_info.nickname, None);
+        assert!(!user_info.is_shared);
+    }
+
+    #[test]
+    fn test_serialize_user_info_detailed_with_shared_fields() {
+        let user_info = UserInfoDetailed {
+            username: "shared_acct".to_string(),
+            nickname: Some("Nick1".to_string()),
+            login_time: 1234567890,
+            is_shared: true,
+            session_ids: vec![1, 2],
+            features: vec!["chat".to_string()],
+            created_at: 1234567800,
+            locale: "en".to_string(),
+            avatar: None,
+            is_admin: Some(false),
+            addresses: None,
+        };
+        let json = serde_json::to_string(&user_info).unwrap();
+        assert!(json.contains("\"nickname\":\"Nick1\""));
+        assert!(json.contains("\"is_shared\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_user_info_detailed_defaults_shared_fields() {
+        // Old servers may not send nickname or is_shared - should default
+        let json = r#"{"username":"alice","login_time":1234567890,"session_ids":[1],"features":[],"created_at":1234567800,"locale":"en"}"#;
+        let user_info: UserInfoDetailed = serde_json::from_str(json).unwrap();
+        assert_eq!(user_info.nickname, None);
+        assert!(!user_info.is_shared);
+    }
+
+    #[test]
+    fn test_serialize_user_edit_response_with_is_shared() {
+        let msg = ServerMessage::UserEditResponse {
+            success: true,
+            error: None,
+            username: Some("shared_acct".to_string()),
+            is_admin: Some(false),
+            is_shared: Some(true),
+            enabled: Some(true),
+            permissions: Some(vec!["chat_send".to_string()]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"is_shared\":true"));
+    }
+
+    #[test]
+    fn test_serialize_user_edit_response_without_is_shared() {
+        let msg = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some("User not found".to_string()),
+            username: None,
+            is_admin: None,
+            is_shared: None,
+            enabled: None,
+            permissions: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        // is_shared should not be in JSON when None (skip_serializing_if)
+        assert!(!json.contains("\"is_shared\""));
     }
 }

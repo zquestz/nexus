@@ -51,6 +51,7 @@ impl NexusApp {
             ServerMessage::ChatMessage {
                 session_id: _,
                 username,
+                is_shared: _, // TODO: Use in Phase 6 for chat message coloring
                 message,
             } => self.handle_chat_message(connection_id, username, message),
 
@@ -127,6 +128,7 @@ impl NexusApp {
                 error,
                 username,
                 is_admin,
+                is_shared,
                 enabled,
                 permissions,
             } => self.handle_user_edit_response(
@@ -137,6 +139,7 @@ impl NexusApp {
                     error,
                     username,
                     is_admin,
+                    is_shared,
                     enabled,
                     permissions,
                 },

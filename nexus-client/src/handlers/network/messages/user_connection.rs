@@ -83,6 +83,9 @@ impl NexusApp {
     }
 
     /// Handle user disconnected notification
+    ///
+    /// The `username` parameter is the display name (nickname for shared accounts,
+    /// actual username for regular accounts).
     pub fn handle_user_disconnected(
         &mut self,
         connection_id: usize,
@@ -94,26 +97,28 @@ impl NexusApp {
         };
 
         // Remove the specific session_id from the user's sessions
+        // We look up by session_id since username is the display name which may differ
         let mut is_last_session = false;
         if let Some(user) = conn
             .online_users
             .iter_mut()
-            .find(|u| u.username == username)
+            .find(|u| u.session_ids.contains(&session_id))
         {
             user.session_ids.retain(|&sid| sid != session_id);
 
             // If user has no more sessions, remove them entirely
             if user.session_ids.is_empty() {
-                conn.online_users.retain(|u| u.username != username);
+                let user_to_remove = user.username.clone();
+                conn.online_users.retain(|u| u.username != user_to_remove);
                 is_last_session = true;
 
                 // Clear expanded_user if the disconnected user was expanded
-                if conn.expanded_user.as_ref() == Some(&username) {
+                if conn.expanded_user.as_ref() == Some(&user_to_remove) {
                     conn.expanded_user = None;
                 }
 
                 // Remove from avatar cache
-                conn.avatar_cache.remove(&username);
+                conn.avatar_cache.remove(&user_to_remove);
             }
         }
 

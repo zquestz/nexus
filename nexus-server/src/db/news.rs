@@ -165,7 +165,7 @@ mod tests {
 
         // Create a user first
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -189,7 +189,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("bob", "hash", true, true, &Permissions::new())
+            .create_user("bob", "hash", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -211,7 +211,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("charlie", "hash", false, true, &Permissions::new())
+            .create_user("charlie", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -235,7 +235,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -269,7 +269,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -296,7 +296,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -342,7 +342,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -370,7 +370,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -394,7 +394,7 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 

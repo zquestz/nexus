@@ -4,6 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
+use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
@@ -14,24 +15,40 @@ use super::{
     err_password_empty, err_password_too_long, err_permission_denied,
     err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_unknown_permission, err_username_empty, err_username_exists,
-    err_username_invalid, err_username_too_long,
+    err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
+    err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
+    err_username_too_long,
 };
 use crate::db::{Permission, Permissions, hash_password};
 
+/// User creation request parameters
+pub struct UserCreateRequest {
+    pub username: String,
+    pub password: String,
+    pub is_admin: bool,
+    pub is_shared: bool,
+    pub enabled: bool,
+    pub permissions: Vec<String>,
+}
+
 /// Handle a user creation request from the client
 pub async fn handle_user_create<W>(
-    username: String,
-    password: String,
-    is_admin: bool,
-    enabled: bool,
-    permissions: Vec<String>,
+    request: UserCreateRequest,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
+    let UserCreateRequest {
+        username,
+        password,
+        is_admin,
+        is_shared,
+        enabled,
+        permissions,
+    } = request;
+
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(requesting_session_id) = session_id else {
         eprintln!("UserCreate request from {} without login", ctx.peer_addr);
@@ -126,6 +143,37 @@ where
             .await;
     }
 
+    // Shared accounts cannot be admins
+    if is_shared && is_admin {
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(err_shared_cannot_be_admin(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // For shared accounts, validate that only allowed permissions are requested
+    if is_shared {
+        let forbidden: Vec<&str> = permissions
+            .iter()
+            .map(|s| s.as_str())
+            .filter(|p| !is_shared_account_permission(p))
+            .collect();
+
+        if !forbidden.is_empty() {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_shared_invalid_permissions(
+                    ctx.locale,
+                    &forbidden.join(", "),
+                )),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    }
+
     // Parse and validate requested permissions
     let mut perms = Permissions::new();
     for perm_str in &permissions {
@@ -194,7 +242,14 @@ where
     match ctx
         .db
         .users
-        .create_user(&username, &password_hash, is_admin, enabled, &perms)
+        .create_user(
+            &username,
+            &password_hash,
+            is_admin,
+            is_shared,
+            enabled,
+            &perms,
+        )
         .await
     {
         Ok(_user) => {
@@ -228,11 +283,14 @@ mod tests {
 
         // Try to create user without being logged in
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             None,
             &mut test_ctx.handler_context(),
         )
@@ -251,11 +309,14 @@ mod tests {
 
         // Try to create user without permission
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(user_id),
             &mut test_ctx.handler_context(),
         )
@@ -278,11 +339,14 @@ mod tests {
 
         // Create a new user
         let result = handle_user_create(
-            "newuser".to_string(),
-            "newpassword".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "newpassword".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -331,7 +395,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -339,7 +403,14 @@ mod tests {
         let _existing = test_ctx
             .db
             .users
-            .create_user("existing", &hashed, false, true, &db::Permissions::new())
+            .create_user(
+                "existing",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -351,6 +422,7 @@ mod tests {
                 db_user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
@@ -358,16 +430,21 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Try to create user with duplicate username
         let result = handle_user_create(
-            "existing".to_string(),
-            "newpassword".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "existing".to_string(),
+                password: "newpassword".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -407,11 +484,14 @@ mod tests {
 
         // Create a new admin user
         let result = handle_user_create(
-            "newadmin".to_string(),
-            "newpassword".to_string(),
-            true, // is_admin = true
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newadmin".to_string(),
+                password: "newpassword".to_string(),
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -466,11 +546,14 @@ mod tests {
 
         // Create a new user (can only grant permissions creator has)
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec!["user_list".to_string()],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec!["user_list".to_string()],
+            },
             Some(creator_id),
             &mut test_ctx.handler_context(),
         )
@@ -528,15 +611,18 @@ mod tests {
 
         // Create a new user with specific permissions
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec![
-                "user_list".to_string(),
-                "user_info".to_string(),
-                "chat_send".to_string(),
-            ],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![
+                    "user_list".to_string(),
+                    "user_info".to_string(),
+                    "chat_send".to_string(),
+                ],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -633,7 +719,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -648,7 +734,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, true, &perms)
+            .create_user("creator", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -660,6 +746,7 @@ mod tests {
                 db_user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
@@ -667,16 +754,21 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Try to create an admin user as non-admin
         let result = handle_user_create(
-            "newadmin".to_string(),
-            "password".to_string(),
-            true, // is_admin = true
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newadmin".to_string(),
+                password: "password".to_string(),
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(creator_id),
             &mut test_ctx.handler_context(),
         )
@@ -699,7 +791,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -715,7 +807,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, true, &perms)
+            .create_user("creator", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -727,6 +819,7 @@ mod tests {
                 db_user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: creator.created_at,
@@ -734,19 +827,24 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Try to create a user with UserDelete permission (which creator doesn't have)
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec![
-                "chat_send".to_string(),   // creator has this - OK
-                "user_delete".to_string(), // creator doesn't have this - FAIL
-            ],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![
+                    "chat_send".to_string(),   // creator has this - OK
+                    "user_delete".to_string(), // creator doesn't have this - FAIL
+                ],
+            },
             Some(creator_id),
             &mut test_ctx.handler_context(),
         )
@@ -769,11 +867,14 @@ mod tests {
 
         // Try to create user with empty username
         let result = handle_user_create(
-            "".to_string(),
-            "password123".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "".to_string(),
+                password: "password123".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -791,11 +892,14 @@ mod tests {
 
         // Try to create user with empty password
         let result = handle_user_create(
-            "newuser".to_string(),
-            "".to_string(),
-            false,
-            true,
-            vec![],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+            },
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -813,18 +917,25 @@ mod tests {
 
         // Admin can grant ALL permissions even if not explicitly listed
         let result = handle_user_create(
-            "newuser".to_string(),
-            "password".to_string(),
-            false,
-            true,
-            vec![
-                "user_list".to_string(),
-                "user_info".to_string(),
-                "chat_send".to_string(),
-                "chat_receive".to_string(),
-                "user_create".to_string(),
-                "user_delete".to_string(),
-            ],
+            UserCreateRequest {
+                username: "newuser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![
+                    "user_list".to_string(),
+                    "user_info".to_string(),
+                    "chat_send".to_string(),
+                    "chat_receive".to_string(),
+                    "user_broadcast".to_string(),
+                    "user_create".to_string(),
+                    "user_delete".to_string(),
+                    "user_edit".to_string(),
+                    "user_kick".to_string(),
+                    "user_message".to_string(),
+                ],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -893,11 +1004,14 @@ mod tests {
 
         // Create a disabled user
         let result = handle_user_create(
-            "disableduser".to_string(),
-            "password".to_string(),
-            false,
-            false, // enabled = false
-            vec!["chat_send".to_string()],
+            UserCreateRequest {
+                username: "disableduser".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: false,
+                permissions: vec!["chat_send".to_string()],
+            },
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -916,5 +1030,193 @@ mod tests {
         assert!(created_user.is_some(), "User should exist in database");
         let user = created_user.unwrap();
         assert!(!user.enabled, "User should be disabled");
+    }
+
+    // ========================================================================
+    // Shared Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_usercreate_shared_account_cannot_be_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to create a shared account with is_admin=true
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "shared_acct".to_string(),
+                password: "password".to_string(),
+                is_admin: true,
+                is_shared: true,
+                enabled: true,
+                permissions: vec![],
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Should fail to create shared admin");
+                assert!(error.is_some(), "Should have error message");
+                assert!(
+                    error.unwrap().contains("cannot be admin"),
+                    "Error should mention shared accounts cannot be admins"
+                );
+                assert!(username.is_none());
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_shared_account_with_forbidden_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to create a shared account with forbidden permissions
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "shared_acct".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: vec![
+                    "chat_send".to_string(),   // allowed
+                    "user_create".to_string(), // forbidden
+                    "user_kick".to_string(),   // forbidden
+                ],
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Should fail with forbidden permissions");
+                assert!(error.is_some(), "Should have error message");
+                let err_msg = error.unwrap();
+                assert!(
+                    err_msg.contains("user_create") || err_msg.contains("user_kick"),
+                    "Error should mention forbidden permissions: {}",
+                    err_msg
+                );
+                assert!(username.is_none());
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_shared_account_with_allowed_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account with only allowed permissions
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "shared_acct".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: vec![
+                    "chat_send".to_string(),
+                    "chat_receive".to_string(),
+                    "user_list".to_string(),
+                    "user_message".to_string(),
+                ],
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Should successfully create shared account");
+                assert!(error.is_none(), "Should have no error");
+                assert_eq!(username, Some("shared_acct".to_string()));
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+
+        // Verify user exists and is marked as shared
+        let created_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap();
+        assert!(created_user.is_some(), "User should exist");
+        let user = created_user.unwrap();
+        assert!(user.is_shared, "User should be marked as shared");
+        assert!(!user.is_admin, "User should not be admin");
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_shared_account_no_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account with no permissions (allowed)
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "shared_acct".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: vec![],
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserCreateResponse { success, .. } => {
+                assert!(
+                    success,
+                    "Should successfully create shared account with no permissions"
+                );
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
     }
 }

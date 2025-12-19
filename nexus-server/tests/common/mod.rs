@@ -60,6 +60,7 @@ pub async fn add_test_user(
             db_user_id,
             username: username.to_string(),
             is_admin,
+            is_shared: false,
             permissions,
             address: addr,
             created_at,
@@ -67,8 +68,10 @@ pub async fn add_test_user(
             features: vec!["chat".to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
+            nickname: None,
         })
-        .await;
+        .await
+        .expect("Failed to add user to UserManager");
 
     (session_id, rx)
 }

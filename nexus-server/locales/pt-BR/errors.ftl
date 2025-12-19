@@ -1,6 +1,19 @@
 # Erros de autenticação e sessão
 err-not-logged-in = Não conectado
 
+# Erros de validação de apelido
+err-nickname-empty = O apelido não pode estar vazio
+err-nickname-in-use = O apelido já está em uso
+err-nickname-invalid = O apelido contém caracteres inválidos (letras, números e símbolos permitidos - sem espaços ou caracteres de controle)
+err-nickname-is-username = O apelido não pode ser um nome de usuário existente
+err-nickname-required = Apelido obrigatório para contas compartilhadas
+err-nickname-too-long = O apelido é muito longo (máx. { $max_length } caracteres)
+
+# Erros de contas compartilhadas
+err-shared-cannot-be-admin = Contas compartilhadas não podem ser administradores
+err-shared-cannot-change-password = Não é possível alterar a senha de uma conta compartilhada
+err-shared-invalid-permissions = Contas compartilhadas não podem ter estas permissões: { $permissions }
+
 # Erros de validação de avatar
 err-avatar-invalid-format = Formato de avatar inválido (deve ser uma URI de dados com codificação base64)
 err-avatar-too-large = O avatar é muito grande (máx. { $max_length } caracteres)

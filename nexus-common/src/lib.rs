@@ -61,6 +61,45 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "user_message",
 ];
 
+/// Permissions that can be granted to shared accounts.
+///
+/// Shared accounts are restricted to read-only operations and basic chat functionality.
+/// They cannot perform any actions that modify database records (except sending messages).
+///
+/// Allowed permissions:
+/// - `chat_receive`: Receive chat messages from #server
+/// - `chat_send`: Send chat messages to #server
+/// - `chat_topic`: View the server topic (but not edit)
+/// - `news_list`: View news posts (but not create/edit/delete)
+/// - `user_info`: View detailed user information
+/// - `user_list`: View the list of connected users
+/// - `user_message`: Send private messages to users
+pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
+    "chat_receive",
+    "chat_send",
+    "chat_topic",
+    "news_list",
+    "user_info",
+    "user_list",
+    "user_message",
+];
+
+/// Check if a permission is allowed for shared accounts
+///
+/// Shared accounts have a restricted set of permissions. This function
+/// returns `true` if the given permission string is in the allowed set.
+///
+/// # Arguments
+///
+/// * `permission` - The permission string to check (e.g., "chat_send")
+///
+/// # Returns
+///
+/// `true` if the permission is allowed for shared accounts, `false` otherwise.
+pub fn is_shared_account_permission(permission: &str) -> bool {
+    SHARED_ACCOUNT_PERMISSIONS.contains(&permission)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,6 +128,59 @@ mod tests {
     fn test_all_permissions_count() {
         // Verify we have the expected number of permissions (16)
         assert_eq!(ALL_PERMISSIONS.len(), 16);
+    }
+
+    #[test]
+    fn test_shared_account_permissions_count() {
+        // Verify we have the expected number of shared account permissions (7)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 7);
+    }
+
+    #[test]
+    fn test_is_shared_account_permission() {
+        // Allowed permissions
+        assert!(is_shared_account_permission("chat_receive"));
+        assert!(is_shared_account_permission("chat_send"));
+        assert!(is_shared_account_permission("chat_topic"));
+        assert!(is_shared_account_permission("news_list"));
+        assert!(is_shared_account_permission("user_info"));
+        assert!(is_shared_account_permission("user_list"));
+        assert!(is_shared_account_permission("user_message"));
+
+        // Forbidden permissions
+        assert!(!is_shared_account_permission("user_create"));
+        assert!(!is_shared_account_permission("user_delete"));
+        assert!(!is_shared_account_permission("user_edit"));
+        assert!(!is_shared_account_permission("user_kick"));
+        assert!(!is_shared_account_permission("user_broadcast"));
+        assert!(!is_shared_account_permission("chat_topic_edit"));
+        assert!(!is_shared_account_permission("news_create"));
+        assert!(!is_shared_account_permission("news_edit"));
+        assert!(!is_shared_account_permission("news_delete"));
+
+        // Invalid permissions
+        assert!(!is_shared_account_permission("invalid"));
+        assert!(!is_shared_account_permission(""));
+    }
+
+    #[test]
+    fn test_shared_account_permissions_sorted() {
+        // Verify shared account permissions are in alphabetical order
+        let mut sorted = SHARED_ACCOUNT_PERMISSIONS.to_vec();
+        sorted.sort();
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS, sorted.as_slice());
+    }
+
+    #[test]
+    fn test_shared_account_permissions_subset() {
+        // Verify all shared account permissions are valid permissions
+        for perm in SHARED_ACCOUNT_PERMISSIONS {
+            assert!(
+                ALL_PERMISSIONS.contains(perm),
+                "SHARED_ACCOUNT_PERMISSIONS contains '{}' which is not in ALL_PERMISSIONS",
+                perm
+            );
+        }
     }
 
     #[test]

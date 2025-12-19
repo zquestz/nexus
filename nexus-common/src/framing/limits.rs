@@ -21,9 +21,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatSend", 1056);
     m.insert("ChatTopicUpdate", 293);
     m.insert("Handshake", 65);
-    m.insert("Login", 176945);
+    m.insert("Login", 176991);
     m.insert("UserBroadcast", 1061);
-    m.insert("UserCreate", 944);
+    m.insert("UserCreate", 963);
     m.insert("UserDelete", 67);
     m.insert("UserEdit", 65);
     m.insert("UserInfo", 65);
@@ -42,7 +42,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
-    m.insert("ChatMessage", 1129);
+    m.insert("ChatMessage", 1147);
     m.insert("ChatTopicUpdated", 340);
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
@@ -52,18 +52,18 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ServerBroadcast", 1133);
     m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
     m.insert("ServerInfoUpdateResponse", 574);
-    m.insert("UserConnected", 176294);
+    m.insert("UserConnected", 176359);
     m.insert("UserCreateResponse", 614);
     m.insert("UserDeleteResponse", 614);
     m.insert("UserDisconnected", 97);
-    m.insert("UserEditResponse", 695);
+    m.insert("UserEditResponse", 714);
     m.insert("UserBroadcastResponse", 571);
-    m.insert("UserInfoResponse", 177412);
+    m.insert("UserInfoResponse", 177477);
     m.insert("UserKickResponse", 612);
     m.insert("UserListResponse", 0); // unlimited (server-trusted)
     m.insert("UserMessage", 1177); // shared type: server (1177) > client (1108)
     m.insert("UserMessageResponse", 569);
-    m.insert("UserUpdated", 176347);
+    m.insert("UserUpdated", 176412);
     m.insert("UserUpdateResponse", 614);
 
     // News server messages
@@ -112,9 +112,10 @@ mod tests {
     };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
-        MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
-        MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-        MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
+        MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH,
+        MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH,
+        MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -214,6 +215,7 @@ mod tests {
                 .collect(),
             locale: str_of_len(MAX_LOCALE_LENGTH),
             avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
+            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("Login") as usize);
     }
@@ -234,7 +236,8 @@ mod tests {
         let msg = ClientMessage::UserCreate {
             username: str_of_len(MAX_USERNAME_LENGTH),
             password: str_of_len(MAX_PASSWORD_LENGTH),
-            is_admin: true,
+            is_admin: false,
+            is_shared: false,
             enabled: true,
             permissions: (0..MAX_PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
@@ -333,6 +336,7 @@ mod tests {
         let msg = ServerMessage::ChatMessage {
             session_id: u32::MAX,
             username: str_of_len(MAX_USERNAME_LENGTH),
+            is_shared: false,
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
         assert_eq!(
@@ -490,8 +494,10 @@ mod tests {
         let msg = ServerMessage::UserConnected {
             user: UserInfo {
                 username: str_of_len(MAX_USERNAME_LENGTH),
+                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
                 login_time: i64::MAX,
-                is_admin: true,
+                is_admin: false,
+                is_shared: false,
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
@@ -547,7 +553,8 @@ mod tests {
             success: true,
             error: None,
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
-            is_admin: Some(true),
+            is_admin: Some(false),
+            is_shared: Some(false),
             enabled: Some(true),
             permissions: Some(
                 (0..MAX_PERMISSIONS_COUNT)
@@ -580,7 +587,9 @@ mod tests {
             error: None,
             user: Some(UserInfoDetailed {
                 username: str_of_len(MAX_USERNAME_LENGTH),
+                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
                 login_time: i64::MAX,
+                is_shared: false,
                 session_ids: vec![u32::MAX; 10],
                 features: (0..MAX_FEATURES_COUNT)
                     .map(|_| str_of_len(MAX_FEATURE_LENGTH))
@@ -588,7 +597,7 @@ mod tests {
                 created_at: i64::MAX,
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
-                is_admin: Some(true),
+                is_admin: Some(false),
                 addresses: Some(vec![str_of_len(45); 10]),
             }),
         };
@@ -652,8 +661,10 @@ mod tests {
             previous_username: str_of_len(MAX_USERNAME_LENGTH),
             user: UserInfo {
                 username: str_of_len(MAX_USERNAME_LENGTH),
+                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
                 login_time: i64::MAX,
-                is_admin: true,
+                is_admin: false,
+                is_shared: false,
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),

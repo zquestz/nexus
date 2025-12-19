@@ -47,6 +47,7 @@ where
             error: Some(error_msg),
             username: None,
             is_admin: None,
+            is_shared: None,
             enabled: None,
             permissions: None,
         };
@@ -74,6 +75,7 @@ where
             error: Some(err_cannot_edit_self(ctx.locale)),
             username: None,
             is_admin: None,
+            is_shared: None,
             enabled: None,
             permissions: None,
         };
@@ -91,6 +93,7 @@ where
             error: Some(err_permission_denied(ctx.locale)),
             username: None,
             is_admin: None,
+            is_shared: None,
             enabled: None,
             permissions: None,
         };
@@ -106,6 +109,7 @@ where
                 error: Some(err_user_not_found(ctx.locale, &username)),
                 username: None,
                 is_admin: None,
+                is_shared: None,
                 enabled: None,
                 permissions: None,
             };
@@ -130,6 +134,7 @@ where
             error: Some(err_cannot_edit_admin(ctx.locale)),
             username: None,
             is_admin: None,
+            is_shared: None,
             enabled: None,
             permissions: None,
         };
@@ -160,6 +165,7 @@ where
         error: None,
         username: Some(target_user.username),
         is_admin: Some(target_user.is_admin),
+        is_shared: Some(target_user.is_shared),
         enabled: Some(target_user.enabled),
         permissions: Some(permissions),
     };
@@ -198,7 +204,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -263,7 +269,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -284,6 +290,7 @@ mod tests {
                 is_admin,
                 enabled: _,
                 permissions,
+                ..
             } => {
                 assert!(success);
                 assert!(error.is_none());
@@ -318,7 +325,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin2", "hash", true, true, &db::Permissions::new())
+            .create_user("admin2", "hash", true, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -339,6 +346,7 @@ mod tests {
                 is_admin,
                 enabled,
                 permissions,
+                ..
             } => {
                 assert!(success);
                 assert!(error.is_none());
@@ -370,7 +378,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -461,6 +469,101 @@ mod tests {
                 );
             }
             _ => panic!("Expected UserEditResponse with error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_useredit_returns_is_shared_for_shared_account() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                "hash",
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        let result = handle_user_edit(
+            "shared_acct".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserEditResponse {
+                success,
+                error,
+                username,
+                is_admin,
+                is_shared,
+                enabled,
+                ..
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username.as_deref(), Some("shared_acct"));
+                assert_eq!(is_admin, Some(false));
+                assert_eq!(
+                    is_shared,
+                    Some(true),
+                    "is_shared should be true for shared account"
+                );
+                assert_eq!(enabled, Some(true));
+            }
+            _ => panic!("Expected UserEditResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_useredit_returns_is_shared_false_for_regular_account() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a regular (non-shared) account
+        test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        let result = handle_user_edit(
+            "bob".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserEditResponse {
+                success, is_shared, ..
+            } => {
+                assert!(success);
+                assert_eq!(
+                    is_shared,
+                    Some(false),
+                    "is_shared should be false for regular account"
+                );
+            }
+            _ => panic!("Expected UserEditResponse"),
         }
     }
 }

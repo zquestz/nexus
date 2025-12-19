@@ -140,7 +140,7 @@ where
                 .broadcast_user_event(
                     ServerMessage::UserDisconnected {
                         session_id,
-                        username: removed_user.username.clone(),
+                        username: removed_user.display_name().to_string(),
                     },
                     &ctx.db.users,
                     Some(session_id), // Exclude the deleted user
@@ -211,7 +211,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -383,7 +383,14 @@ mod tests {
         test_ctx2
             .db
             .users
-            .create_user("target", "hash", false, true, &db::Permissions::new())
+            .create_user(
+                "target",
+                "hash",
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -498,7 +505,14 @@ mod tests {
         let offline_user = test_ctx
             .db
             .users
-            .create_user("offline_user", "hash", false, true, &db::Permissions::new())
+            .create_user(
+                "offline_user",
+                "hash",
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -506,7 +520,14 @@ mod tests {
         let online_user = test_ctx
             .db
             .users
-            .create_user("online_user", "hash", false, true, &db::Permissions::new())
+            .create_user(
+                "online_user",
+                "hash",
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -519,6 +540,7 @@ mod tests {
                 db_user_id: online_user.id,
                 username: "online_user".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: online_user.created_at,
@@ -526,8 +548,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Verify online user is connected
         let online_before = test_ctx
@@ -606,7 +630,14 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", "hash", false, true, &db::Permissions::new())
+            .create_user(
+                "target",
+                "hash",
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 

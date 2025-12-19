@@ -314,6 +314,7 @@ impl NexusApp {
             username: conn.user_management.username.clone(),
             password: conn.user_management.password.clone(),
             is_admin,
+            is_shared: false, // TODO: Add shared account support in client UI
             enabled: conn.user_management.enabled,
             permissions,
         };

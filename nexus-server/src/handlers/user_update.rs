@@ -4,6 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
+use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
@@ -16,8 +17,9 @@ use super::{
     err_database, err_not_logged_in, err_password_empty, err_password_too_long,
     err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_update_failed, err_user_not_found, err_username_empty,
-    err_username_exists, err_username_invalid, err_username_too_long,
+    err_permissions_too_many, err_shared_cannot_change_password, err_shared_invalid_permissions,
+    err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
+    err_username_invalid, err_username_too_long,
 };
 use crate::db::{Permission, Permissions, hash_password, verify_password};
 
@@ -84,6 +86,16 @@ where
     let is_self_edit = request.username.to_lowercase() == requesting_user.username.to_lowercase();
 
     if is_self_edit {
+        // Shared accounts cannot change their own password
+        if requesting_user.is_shared {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_shared_cannot_change_password(ctx.locale)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+
         // Self-edit: only password change is allowed
         // Reject if trying to change anything other than password
         if request.requested_username.is_some()
@@ -223,8 +235,50 @@ where
             .await;
     }
 
+    // Fetch target user to check if they're a shared account (needed for permission validation)
+    let target_user_account = match ctx.db.users.get_user_by_username(&request.username).await {
+        Ok(Some(account)) => Some(account),
+        Ok(None) => {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_user_not_found(ctx.locale, &request.username)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(e) => {
+            eprintln!("Database error getting target user: {}", e);
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                .await;
+        }
+    };
+
     // Validate and parse requested permissions
     let parsed_permissions = if let Some(ref perm_strings) = request.requested_permissions {
+        // For shared accounts, validate that only allowed permissions are requested
+        if let Some(ref account) = target_user_account
+            && account.is_shared
+        {
+            let forbidden: Vec<&str> = perm_strings
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|p| !is_shared_account_permission(p))
+                .collect();
+
+            if !forbidden.is_empty() {
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_shared_invalid_permissions(
+                        ctx.locale,
+                        &forbidden.join(", "),
+                    )),
+                    username: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+        }
+
         // Validate permissions format first
         if let Err(e) = validators::validate_permissions(perm_strings) {
             let error_msg = match e {
@@ -515,7 +569,7 @@ where
                                 .broadcast_user_event(
                                     ServerMessage::UserDisconnected {
                                         session_id,
-                                        username: removed_user.username.clone(),
+                                        username: removed_user.display_name().to_string(),
                                     },
                                     &ctx.db.users,
                                     Some(session_id), // Exclude the disabled user
@@ -588,8 +642,10 @@ where
 
                     let user_info = UserInfo {
                         username: updated_account.username.clone(),
+                        nickname: None, // Account-level updates don't have a specific session nickname
                         login_time,
                         is_admin: updated_account.is_admin,
+                        is_shared: updated_account.is_shared,
                         session_ids,
                         locale,
                         avatar,
@@ -667,6 +723,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
     use crate::handlers::testing::*;
     use crate::users::user::NewSessionParams;
 
@@ -700,7 +757,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -964,7 +1021,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1117,7 +1174,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1167,7 +1224,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1205,13 +1262,13 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "hash", false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1250,7 +1307,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "oldhash", false, true, &Permissions::new())
+            .create_user("alice", "oldhash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1304,7 +1361,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1367,7 +1424,14 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", original_hash, false, true, &Permissions::new())
+            .create_user(
+                "alice",
+                original_hash,
+                false,
+                false,
+                true,
+                &Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -1667,7 +1731,7 @@ mod tests {
         let editor = test_ctx
             .db
             .users
-            .create_user("editor", "hash", false, true, &perms)
+            .create_user("editor", "hash", false, false, true, &perms)
             .await
             .unwrap();
 
@@ -1679,6 +1743,7 @@ mod tests {
                 db_user_id: editor.id,
                 username: "editor".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: editor.created_at,
@@ -1686,8 +1751,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Non-admin editor tries to edit admin - should fail
         let request = UserUpdateRequest {
@@ -1729,7 +1796,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1869,13 +1936,13 @@ mod tests {
         let admin1 = test_ctx
             .db
             .users
-            .create_user("admin1", "hash1", true, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
             .await
             .unwrap();
         let admin2 = test_ctx
             .db
             .users
-            .create_user("admin2", "hash2", true, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
             .await
             .unwrap();
 
@@ -1887,6 +1954,7 @@ mod tests {
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
@@ -1894,8 +1962,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         let _admin2_session = test_ctx
             .user_manager
@@ -1904,6 +1974,7 @@ mod tests {
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
@@ -1911,8 +1982,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
         let request = UserUpdateRequest {
@@ -2004,5 +2077,197 @@ mod tests {
             admin1_account.is_admin,
             "Admin1 should still be admin (protected by atomic SQL)"
         );
+    }
+
+    // ========================================================================
+    // Shared Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_userupdate_shared_user_cannot_change_own_password() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin first
+        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create shared account
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &db::hash_password("sharedpass").unwrap(),
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .expect("shared account creation should succeed");
+
+        // Login as shared account with nickname
+        let mut shared_session_id = None;
+        let login_request = crate::handlers::login::LoginRequest {
+            username: "shared_acct".to_string(),
+            password: "sharedpass".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("Alice".to_string()),
+            handshake_complete: true,
+        };
+        let login_result = crate::handlers::handle_login(
+            login_request,
+            &mut shared_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(login_result.is_ok(), "Shared account login should succeed");
+
+        // Read login response
+        let _login_response = read_server_message(&mut test_ctx.client).await;
+
+        // Try to change own password
+        let request = UserUpdateRequest {
+            username: "shared_acct".to_string(),
+            current_password: Some("sharedpass".to_string()),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: shared_session_id,
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Should send error response");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    !success,
+                    "Shared user should not be able to change password"
+                );
+                assert!(error.is_some(), "Should have error message");
+                assert!(
+                    error.unwrap().contains("shared account"),
+                    "Error should mention shared account"
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_shared_account_forbidden_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create shared account
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &db::hash_password("sharedpass").unwrap(),
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .expect("shared account creation should succeed");
+
+        // Try to update shared account with forbidden permissions
+        let request = UserUpdateRequest {
+            username: "shared_acct".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec![
+                "chat_send".to_string(),   // allowed
+                "user_kick".to_string(),   // forbidden
+                "news_create".to_string(), // forbidden
+            ]),
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Should send error response");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should fail with forbidden permissions");
+                assert!(error.is_some(), "Should have error message");
+                let err_msg = error.unwrap();
+                assert!(
+                    err_msg.contains("user_kick") || err_msg.contains("news_create"),
+                    "Error should mention forbidden permissions: {}",
+                    err_msg
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_shared_account_allowed_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create shared account
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &db::hash_password("sharedpass").unwrap(),
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .expect("shared account creation should succeed");
+
+        // Update shared account with only allowed permissions
+        let request = UserUpdateRequest {
+            username: "shared_acct".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec![
+                "chat_send".to_string(),
+                "chat_receive".to_string(),
+                "user_list".to_string(),
+                "user_message".to_string(),
+            ]),
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Should succeed");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "Should successfully update shared account permissions"
+                );
+                assert!(error.is_none(), "Should have no error");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
     }
 }

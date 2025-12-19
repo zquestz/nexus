@@ -1,6 +1,19 @@
 # 인증 및 세션 오류
 err-not-logged-in = 로그인되지 않음
 
+# 닉네임 유효성 검사 오류
+err-nickname-empty = 닉네임은 비워둘 수 없습니다
+err-nickname-in-use = 닉네임이 이미 사용 중입니다
+err-nickname-invalid = 닉네임에 잘못된 문자가 포함되어 있습니다 (문자, 숫자, 기호 허용 - 공백 또는 제어 문자 불가)
+err-nickname-is-username = 닉네임은 기존 사용자 이름이 될 수 없습니다
+err-nickname-required = 공유 계정에는 닉네임이 필요합니다
+err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max_length }자)
+
+# 공유 계정 오류
+err-shared-cannot-be-admin = 공유 계정은 관리자가 될 수 없습니다
+err-shared-cannot-change-password = 공유 계정의 비밀번호는 변경할 수 없습니다
+err-shared-invalid-permissions = 공유 계정은 다음 권한을 가질 수 없습니다: { $permissions }
+
 # 아바타 유효성 검사 오류
 err-avatar-invalid-format = 아바타 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
 err-avatar-too-large = 아바타가 너무 큽니다 (최대 { $max_length }자)

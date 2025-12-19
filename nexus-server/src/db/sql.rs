@@ -63,31 +63,43 @@ pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
 /// **Parameters:**
 /// 1. `username: &str` - Username to search for
 ///
-/// **Returns:** `(id, username, password_hash, is_admin, enabled, created_at)`
+/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
 ///
 /// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
 /// the original case in the returned username.
-pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
+pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
 
 /// Select user by ID
 ///
 /// **Parameters:**
 /// 1. `user_id: i64` - User ID to look up
 ///
-/// **Returns:** `(id, username, password_hash, is_admin, enabled, created_at)`
-#[allow(dead_code)] // Used in tests
-pub const SQL_SELECT_USER_BY_ID: &str =
-    "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users WHERE id = ?";
+/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
+///
+/// Note: Only used in tests. Production code looks up users by username.
+#[cfg(test)]
+pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users WHERE id = ?";
 
 /// Select all users (for user management listing)
 ///
 /// **Parameters:** None
 ///
-/// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, enabled, created_at)`
+/// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
 ///
 /// **Note:** Used by `/list all` command for user management.
 /// Results are sorted alphabetically by username (case-insensitive).
-pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, enabled, created_at FROM users ORDER BY LOWER(username)";
+pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users ORDER BY LOWER(username)";
+
+/// Check if a username exists (case-insensitive)
+///
+/// **Parameters:**
+/// 1. `username: &str` - Username to check
+///
+/// **Returns:** `(count: i64)` - 1 if exists, 0 if not
+///
+/// **Note:** Used to check if a shared account nickname collides with an existing username.
+pub const SQL_CHECK_USERNAME_EXISTS: &str =
+    "SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(?)";
 
 /// Check if user is admin
 ///
@@ -152,11 +164,12 @@ pub const SQL_INSERT_PERMISSION: &str =
 /// 1. `username: &str` - Username
 /// 2. `password_hash: &str` - Hashed password
 /// 3. `is_admin: bool` - Admin status
-/// 4. `enabled: bool` - Enabled status
-/// 5. `created_at: i64` - Unix timestamp
+/// 4. `is_shared: bool` - Shared account status
+/// 5. `enabled: bool` - Enabled status
+/// 6. `created_at: i64` - Unix timestamp
 ///
 /// **Returns:** `last_insert_rowid()` - The new user's ID
-pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, enabled, created_at) VALUES (?, ?, ?, ?, ?)";
+pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)";
 
 /// Update user with atomic protection for last admin/enabled admin
 ///
@@ -168,6 +181,8 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, i
 /// 5. `user_id: i64` - User ID to update
 /// 6. `enabled: bool` - (Duplicate) Final enabled status for protection check
 /// 7. `is_admin: bool` - (Duplicate) Final admin status for protection check
+///
+/// **Note:** `is_shared` is not updated - it is immutable once set at creation.
 ///
 /// **Atomic Protection:**
 /// - Prevents disabling the last enabled admin

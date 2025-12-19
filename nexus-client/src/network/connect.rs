@@ -103,6 +103,7 @@ async fn perform_login(
         features: DEFAULT_FEATURES.iter().map(|s| s.to_string()).collect(),
         locale,
         avatar,
+        nickname: None, // TODO: Add nickname support for shared accounts
     };
     send_client_message(writer, &login)
         .await

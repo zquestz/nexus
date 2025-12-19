@@ -1,7 +1,20 @@
 # Authenticatie- en sessiefouten
 err-not-logged-in = Niet ingelogd
 
-# Avatar validatiefouten
+# Bijnaam-validatiefouten
+err-nickname-empty = Bijnaam mag niet leeg zijn
+err-nickname-in-use = Bijnaam is al in gebruik
+err-nickname-invalid = Bijnaam bevat ongeldige tekens (letters, cijfers en symbolen toegestaan - geen spaties of stuurtekens)
+err-nickname-is-username = Bijnaam mag geen bestaande gebruikersnaam zijn
+err-nickname-required = Bijnaam vereist voor gedeelde accounts
+err-nickname-too-long = Bijnaam is te lang (max. { $max_length } tekens)
+
+# Gedeelde account-fouten
+err-shared-cannot-be-admin = Gedeelde accounts kunnen geen beheerders zijn
+err-shared-cannot-change-password = Wachtwoord van gedeeld account kan niet worden gewijzigd
+err-shared-invalid-permissions = Gedeelde accounts kunnen deze rechten niet hebben: { $permissions }
+
+# Avatar-validatiefouten
 err-avatar-invalid-format = Ongeldig avatar-formaat (moet een data-URI zijn met base64-codering)
 err-avatar-too-large = Avatar is te groot (max. { $max_length } tekens)
 err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, WebP of SVG)

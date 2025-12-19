@@ -5,6 +5,71 @@
 
 use crate::i18n::{t, t_args};
 
+// ========================================================================
+// Nickname Validation Errors
+// ========================================================================
+
+/// Get translated "nickname empty" error
+pub fn err_nickname_empty(locale: &str) -> String {
+    t(locale, "err-nickname-empty")
+}
+
+/// Get translated "nickname in use" error
+pub fn err_nickname_in_use(locale: &str) -> String {
+    t(locale, "err-nickname-in-use")
+}
+
+/// Get translated "nickname invalid" error
+pub fn err_nickname_invalid(locale: &str) -> String {
+    t(locale, "err-nickname-invalid")
+}
+
+/// Get translated "nickname is username" error
+pub fn err_nickname_is_username(locale: &str) -> String {
+    t(locale, "err-nickname-is-username")
+}
+
+/// Get translated "nickname required" error
+pub fn err_nickname_required(locale: &str) -> String {
+    t(locale, "err-nickname-required")
+}
+
+/// Get translated "nickname too long" error
+pub fn err_nickname_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-nickname-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+// ========================================================================
+// Shared Account Errors
+// ========================================================================
+
+/// Get translated "shared cannot be admin" error
+pub fn err_shared_cannot_be_admin(locale: &str) -> String {
+    t(locale, "err-shared-cannot-be-admin")
+}
+
+/// Get translated "shared cannot change password" error
+pub fn err_shared_cannot_change_password(locale: &str) -> String {
+    t(locale, "err-shared-cannot-change-password")
+}
+
+/// Get translated "shared invalid permissions" error
+pub fn err_shared_invalid_permissions(locale: &str, permissions: &str) -> String {
+    t_args(
+        locale,
+        "err-shared-invalid-permissions",
+        &[("permissions", permissions)],
+    )
+}
+
+// ========================================================================
+// Account & Session Errors
+// ========================================================================
+
 /// Get translated "account deleted" error
 pub fn err_account_deleted(locale: &str) -> String {
     t(locale, "err-account-deleted")

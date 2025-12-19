@@ -75,12 +75,14 @@ where
     }
 
     // Broadcast to all users with chat feature and ChatReceive permission
+    // Use display_name() to show nickname for shared accounts
     ctx.user_manager
         .broadcast_to_feature(
             FEATURE_CHAT,
             ServerMessage::ChatMessage {
                 session_id: id,
-                username: user.username.clone(),
+                username: user.display_name().to_string(),
+                is_shared: user.is_shared,
                 message,
             },
             &ctx.db.users,

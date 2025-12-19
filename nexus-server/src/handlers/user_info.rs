@@ -72,11 +72,23 @@ where
             .await;
     }
 
-    // Look up all sessions for target username (case-insensitive)
-    let target_sessions = ctx
+    // First, try to find by nickname (for shared account users)
+    // Then fall back to username lookup
+    let (target_sessions, lookup_by_nickname) = if let Some(session) = ctx
         .user_manager
-        .get_sessions_by_username(&requested_username)
-        .await;
+        .get_session_by_nickname(&requested_username)
+        .await
+    {
+        // Found a shared account user by nickname - return just that session
+        (vec![session], true)
+    } else {
+        // Look up all sessions for target username (case-insensitive)
+        let sessions = ctx
+            .user_manager
+            .get_sessions_by_username(&requested_username)
+            .await;
+        (sessions, false)
+    };
 
     if target_sessions.is_empty() {
         // User not found - send response with error
@@ -88,8 +100,19 @@ where
         return ctx.send_message(&response).await;
     }
 
+    // Determine the actual username for database lookup
+    // When looked up by nickname, use the session's username (not the requested nickname)
+    let db_lookup_username = if lookup_by_nickname {
+        target_sessions
+            .first()
+            .map(|s| s.username.clone())
+            .unwrap_or_else(|| requested_username.clone())
+    } else {
+        requested_username.clone()
+    };
+
     // Fetch target user account for admin status and created_at
-    let target_account = match ctx.db.users.get_user_by_username(&requested_username).await {
+    let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(Some(acc)) => acc,
         _ => {
             return ctx
@@ -121,6 +144,18 @@ where
         .max_by_key(|s| s.login_time)
         .and_then(|s| s.avatar.clone());
 
+    // Get nickname for shared account users
+    // If looked up by nickname, use that session's nickname
+    // Otherwise, for shared accounts looked up by username, get nickname from first session
+    let nickname = if lookup_by_nickname {
+        target_sessions.first().and_then(|s| s.nickname.clone())
+    } else if target_account.is_shared {
+        // Shared account looked up by username - get nickname from first session
+        target_sessions.first().and_then(|s| s.nickname.clone())
+    } else {
+        None
+    };
+
     // Collect IP addresses from all sessions (for admins only)
     let addresses: Vec<String> = target_sessions
         .iter()
@@ -137,7 +172,9 @@ where
         // Admin gets all fields including addresses
         UserInfoDetailed {
             username: actual_username,
+            nickname,
             login_time: earliest_login,
+            is_shared: target_account.is_shared,
             session_ids,
             features,
             created_at: target_account.created_at,
@@ -150,7 +187,9 @@ where
         // Non-admin gets all fields except addresses
         UserInfoDetailed {
             username: actual_username,
+            nickname,
             login_time: earliest_login,
+            is_shared: target_account.is_shared,
             session_ids,
             features,
             created_at: target_account.created_at,
@@ -198,7 +237,14 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, true, &db::Permissions::new())
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -210,6 +256,7 @@ mod tests {
                 db_user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
@@ -217,8 +264,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Try to get user info without permission
         let result = handle_user_info(
@@ -252,7 +301,7 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -264,6 +313,7 @@ mod tests {
                 db_user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: user.created_at,
@@ -271,8 +321,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Request info for non-existent username
         let result = handle_user_info(
@@ -329,7 +381,7 @@ mod tests {
         let requester = test_ctx
             .db
             .users
-            .create_user("requester", &hashed, false, true, &perms)
+            .create_user("requester", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -337,7 +389,14 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", &hashed, false, true, &db::Permissions::new())
+            .create_user(
+                "target",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -350,6 +409,7 @@ mod tests {
                 db_user_id: requester.id,
                 username: "requester".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: perms.permissions.clone(),
                 address: test_ctx.peer_addr,
                 created_at: requester.created_at,
@@ -357,8 +417,10 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Add target to UserManager
         let target_id = test_ctx
@@ -368,6 +430,7 @@ mod tests {
                 db_user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
@@ -375,8 +438,10 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Request info about target as non-admin
         let result = handle_user_info(
@@ -440,7 +505,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
             .await
             .unwrap();
 
@@ -448,7 +513,14 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("target", &hashed, false, true, &db::Permissions::new())
+            .create_user(
+                "target",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -461,6 +533,7 @@ mod tests {
                 db_user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin.created_at,
@@ -468,8 +541,10 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Add target to UserManager
         let target_id = test_ctx
@@ -479,6 +554,7 @@ mod tests {
                 db_user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: target.created_at,
@@ -486,8 +562,10 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Request info about target as admin
         let result = handle_user_info(
@@ -556,14 +634,28 @@ mod tests {
         let admin1 = test_ctx
             .db
             .users
-            .create_user("admin1", &hashed, true, true, &db::Permissions::new())
+            .create_user(
+                "admin1",
+                &hashed,
+                true,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
         let admin2 = test_ctx
             .db
             .users
-            .create_user("admin2", &hashed, true, true, &db::Permissions::new())
+            .create_user(
+                "admin2",
+                &hashed,
+                true,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
             .await
             .unwrap();
 
@@ -575,6 +667,7 @@ mod tests {
                 db_user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin1.created_at,
@@ -582,8 +675,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Add admin2 to UserManager
         let admin2_id = test_ctx
@@ -593,6 +688,7 @@ mod tests {
                 db_user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 address: test_ctx.peer_addr,
                 created_at: admin2.created_at,
@@ -600,8 +696,10 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Admin1 requests info about admin2
         let result = handle_user_info(
@@ -711,6 +809,7 @@ mod tests {
                 "alice",
                 &hashed,
                 false,
+                false,
                 true,
                 &crate::db::Permissions::new(),
             )
@@ -729,13 +828,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(avatar_data.clone()),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Request user info
         let result = handle_user_info(
@@ -778,6 +880,7 @@ mod tests {
                 "alice",
                 &hashed,
                 false,
+                false,
                 true,
                 &crate::db::Permissions::new(),
             )
@@ -797,13 +900,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(old_avatar),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Delay of 1.1 seconds to ensure different login timestamps (timestamps are in seconds)
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
@@ -818,13 +924,16 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
                 is_admin: false,
+                is_shared: false,
                 permissions: std::collections::HashSet::new(),
                 tx: test_ctx.tx.clone(),
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(new_avatar.clone()),
+                nickname: None,
             })
-            .await;
+            .await
+            .expect("Failed to add user");
 
         // Request user info
         let result = handle_user_info(
@@ -876,6 +985,189 @@ mod tests {
             ServerMessage::UserInfoResponse { user, .. } => {
                 let user_info = user.unwrap();
                 assert_eq!(user_info.avatar, None, "Avatar should be None");
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    // ========================================================================
+    // Shared Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_userinfo_shared_account_lookup_by_nickname() {
+        let mut test_ctx = create_test_context().await;
+        use crate::handlers::login::{LoginRequest, handle_login};
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account in the database
+        let hashed = db::hash_password("password").unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Login to the shared account with a nickname
+        let mut shared_session_id = None;
+        let login_request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: "password".to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("Nick1".to_string()),
+            handshake_complete: true,
+        };
+        let _ = handle_login(
+            login_request,
+            &mut shared_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+
+        // Look up by nickname
+        let result = handle_user_info(
+            "Nick1".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert_eq!(
+                    user_info.username, "shared_acct",
+                    "Should return the account username"
+                );
+                assert_eq!(
+                    user_info.nickname,
+                    Some("Nick1".to_string()),
+                    "Should include nickname"
+                );
+                assert!(user_info.is_shared, "Should be marked as shared");
+                assert_eq!(user_info.session_ids.len(), 1, "Should have one session");
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_shared_account_lookup_by_username() {
+        let mut test_ctx = create_test_context().await;
+        use crate::handlers::login::{LoginRequest, handle_login};
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a shared account in the database
+        let hashed = db::hash_password("password").unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false,
+                true,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Login to the shared account with a nickname
+        let mut shared_session_id = None;
+        let login_request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("Nick1".to_string()),
+            handshake_complete: true,
+        };
+        let _ = handle_login(
+            login_request,
+            &mut shared_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+
+        // Look up by username (not nickname)
+        let result = handle_user_info(
+            "shared_acct".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert_eq!(user_info.username, "shared_acct");
+                assert_eq!(
+                    user_info.nickname,
+                    Some("Nick1".to_string()),
+                    "Should include nickname from session"
+                );
+                assert!(user_info.is_shared, "Should be marked as shared");
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_regular_account_is_shared_false() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create regular (non-shared) user
+        let _target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // Request user info
+        let result = handle_user_info(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx.client).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert!(!user_info.is_shared, "Regular account should not be shared");
+                assert_eq!(
+                    user_info.nickname, None,
+                    "Regular account should have no nickname"
+                );
             }
             _ => panic!("Expected UserInfoResponse"),
         }

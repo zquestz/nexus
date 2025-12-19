@@ -38,7 +38,7 @@ pub use news_list::handle_news_list;
 pub use news_show::handle_news_show;
 pub use news_update::handle_news_update;
 pub use server_info_update::handle_server_info_update;
-pub use user_create::handle_user_create;
+pub use user_create::{UserCreateRequest, handle_user_create};
 pub use user_delete::handle_user_delete;
 pub use user_edit::handle_user_edit;
 pub use user_info::handle_user_info;

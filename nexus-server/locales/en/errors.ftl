@@ -1,6 +1,19 @@
 # Authentication & Session Errors
 err-not-logged-in = Not logged in
 
+# Nickname Validation Errors
+err-nickname-empty = Nickname cannot be empty
+err-nickname-in-use = Nickname is already in use
+err-nickname-invalid = Nickname contains invalid characters (letters, numbers, and symbols allowed - no whitespace or control characters)
+err-nickname-is-username = Nickname cannot be an existing username
+err-nickname-required = Nickname required for shared accounts
+err-nickname-too-long = Nickname is too long (max { $max_length } characters)
+
+# Shared Account Errors
+err-shared-cannot-be-admin = Shared accounts cannot be admins
+err-shared-cannot-change-password = Cannot change password on shared account
+err-shared-invalid-permissions = Shared accounts cannot have these permissions: { $permissions }
+
 # Avatar Validation Errors
 err-avatar-invalid-format = Invalid avatar format (must be a data URI with base64 encoding)
 err-avatar-too-large = Avatar is too large (max { $max_length } characters)

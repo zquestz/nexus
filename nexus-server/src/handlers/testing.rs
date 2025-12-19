@@ -132,7 +132,7 @@ pub async fn login_user_with_features(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, true, &perms)
+        .create_user(username, &hashed, is_admin, false, true, &perms)
         .await
         .unwrap();
 
@@ -144,6 +144,7 @@ pub async fn login_user_with_features(
             db_user_id: user.id,
             username: username.to_string(),
             is_admin,
+            is_shared: false,
             permissions: perms.permissions.clone(),
             address: test_ctx.peer_addr,
             created_at: user.created_at,
@@ -151,8 +152,10 @@ pub async fn login_user_with_features(
             features,
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
+            nickname: None,
         })
         .await
+        .expect("Failed to add user to UserManager")
 }
 
 /// Helper to read a ServerMessage from the client stream using the new framing format

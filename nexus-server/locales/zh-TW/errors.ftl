@@ -1,6 +1,19 @@
 # 身份驗證和會話錯誤
 err-not-logged-in = 未登入
 
+# 暱稱驗證錯誤
+err-nickname-empty = 暱稱不能為空
+err-nickname-in-use = 暱稱已被使用
+err-nickname-invalid = 暱稱包含無效字元（允許字母、數字和符號 - 不允許空格或控制字元）
+err-nickname-is-username = 暱稱不能是已存在的使用者名稱
+err-nickname-required = 共享帳戶需要暱稱
+err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
+
+# 共享帳戶錯誤
+err-shared-cannot-be-admin = 共享帳戶不能成為管理員
+err-shared-cannot-change-password = 無法更改共享帳戶的密碼
+err-shared-invalid-permissions = 共享帳戶不能擁有這些權限：{ $permissions }
+
 # 頭像驗證錯誤
 err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）
 err-avatar-too-large = 頭像太大（最多{ $max_length }個字元）

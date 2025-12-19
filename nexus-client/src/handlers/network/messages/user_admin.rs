@@ -15,6 +15,8 @@ pub struct UserEditResponseData {
     pub error: Option<String>,
     pub username: Option<String>,
     pub is_admin: Option<bool>,
+    #[allow(dead_code)] // Will be used in Phase 7 for shared account UI
+    pub is_shared: Option<bool>,
     pub enabled: Option<bool>,
     pub permissions: Option<Vec<String>>,
 }

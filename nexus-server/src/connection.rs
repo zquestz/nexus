@@ -171,7 +171,7 @@ where
             .broadcast_user_event(
                 ServerMessage::UserDisconnected {
                     session_id: id,
-                    username: user.username.clone(),
+                    username: user.display_name().to_string(),
                 },
                 &db.users,
                 Some(id), // Exclude the disconnecting user
@@ -207,6 +207,7 @@ where
             features,
             locale,
             avatar,
+            nickname,
         } => {
             let request = handlers::LoginRequest {
                 username,
@@ -214,6 +215,7 @@ where
                 features,
                 locale: locale.clone(),
                 avatar,
+                nickname,
                 handshake_complete: conn_state.handshake_complete,
             };
             handlers::handle_login(request, &mut conn_state.session_id, ctx).await?;
@@ -228,19 +230,19 @@ where
             username,
             password,
             is_admin,
+            is_shared,
             enabled,
             permissions,
         } => {
-            handlers::handle_user_create(
+            let request = handlers::UserCreateRequest {
                 username,
                 password,
                 is_admin,
+                is_shared,
                 enabled,
                 permissions,
-                conn_state.session_id,
-                ctx,
-            )
-            .await?;
+            };
+            handlers::handle_user_create(request, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserDelete { username } => {
             handlers::handle_user_delete(username, conn_state.session_id, ctx).await?;

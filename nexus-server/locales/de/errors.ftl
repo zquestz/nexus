@@ -1,6 +1,19 @@
 # Authentifizierungs- und Sitzungsfehler
 err-not-logged-in = Nicht angemeldet
 
+# Spitzname-Validierungsfehler
+err-nickname-empty = Spitzname darf nicht leer sein
+err-nickname-in-use = Spitzname wird bereits verwendet
+err-nickname-invalid = Spitzname enthält ungültige Zeichen (Buchstaben, Zahlen und Symbole erlaubt - keine Leerzeichen oder Steuerzeichen)
+err-nickname-is-username = Spitzname darf kein existierender Benutzername sein
+err-nickname-required = Spitzname für gemeinsame Konten erforderlich
+err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
+
+# Fehler bei gemeinsamen Konten
+err-shared-cannot-be-admin = Gemeinsame Konten können keine Administratoren sein
+err-shared-cannot-change-password = Passwort für gemeinsames Konto kann nicht geändert werden
+err-shared-invalid-permissions = Gemeinsame Konten können diese Berechtigungen nicht haben: { $permissions }
+
 # Avatar-Validierungsfehler
 err-avatar-invalid-format = Ungültiges Avatar-Format (muss eine Data-URI mit Base64-Kodierung sein)
 err-avatar-too-large = Avatar ist zu groß (max. { $max_length } Zeichen)
