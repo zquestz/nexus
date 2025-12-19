@@ -2,6 +2,7 @@
 
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
+use crate::network::ConnectionParams;
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
 use crate::views::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::{NexusApp, network};
@@ -62,6 +63,14 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle nickname field change
+    pub fn handle_nickname_changed(&mut self, nickname: String) -> Task<Message> {
+        self.connection_form.nickname = nickname;
+        self.connection_form.error = None;
+        self.focused_field = InputId::Nickname;
+        Task::none()
+    }
+
     // ==================== Connection Actions ====================
 
     /// Handle connect button press
@@ -85,6 +94,12 @@ impl NexusApp {
         let server_address = self.connection_form.server_address.clone();
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
+        // Use nickname from form, falling back to settings default
+        let nickname = if self.connection_form.nickname.is_empty() {
+            self.config.settings.nickname.clone()
+        } else {
+            Some(self.connection_form.nickname.clone())
+        };
         let locale = get_locale().to_string();
         let avatar = self.config.settings.avatar.clone();
         let connection_id = self.next_connection_id;
@@ -92,15 +107,16 @@ impl NexusApp {
 
         Task::perform(
             async move {
-                network::connect_to_server(
+                network::connect_to_server(ConnectionParams {
                     server_address,
                     port,
                     username,
                     password,
+                    nickname,
                     locale,
                     avatar,
                     connection_id,
-                )
+                })
                 .await
             },
             Message::ConnectionResult,
@@ -373,12 +389,13 @@ impl NexusApp {
     /// Checks which field is actually focused using async operations,
     /// then moves to the next field in sequence.
     pub fn handle_connection_form_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of all five connection form fields in parallel
+        // Check focus state of all six connection form fields in parallel
         let check_name = operation::is_focused(Id::from(InputId::ServerName));
         let check_address = operation::is_focused(Id::from(InputId::ServerAddress));
         let check_port = operation::is_focused(Id::from(InputId::Port));
         let check_username = operation::is_focused(Id::from(InputId::Username));
         let check_password = operation::is_focused(Id::from(InputId::Password));
+        let check_nickname = operation::is_focused(Id::from(InputId::Nickname));
 
         // Batch the checks and combine results
         Task::batch([
@@ -387,6 +404,7 @@ impl NexusApp {
             check_port.map(|focused| (2, focused)),
             check_username.map(|focused| (3, focused)),
             check_password.map(|focused| (4, focused)),
+            check_nickname.map(|focused| (5, focused)),
         ])
         .collect()
         .map(|results: Vec<(u8, bool)>| {
@@ -395,12 +413,14 @@ impl NexusApp {
             let port_focused = results.iter().any(|(i, f)| *i == 2 && *f);
             let username_focused = results.iter().any(|(i, f)| *i == 3 && *f);
             let password_focused = results.iter().any(|(i, f)| *i == 4 && *f);
+            let nickname_focused = results.iter().any(|(i, f)| *i == 5 && *f);
             Message::ConnectionFormFocusResult(
                 name_focused,
                 address_focused,
                 port_focused,
                 username_focused,
                 password_focused,
+                nickname_focused,
             )
         })
     }
@@ -413,6 +433,7 @@ impl NexusApp {
         port_focused: bool,
         username_focused: bool,
         password_focused: bool,
+        nickname_focused: bool,
     ) -> Task<Message> {
         // Determine next field based on which is currently focused
         let next_field = if name_focused {
@@ -424,6 +445,8 @@ impl NexusApp {
         } else if username_focused {
             InputId::Password
         } else if password_focused {
+            InputId::Nickname
+        } else if nickname_focused {
             // Wrap around to first field
             InputId::ServerName
         } else {

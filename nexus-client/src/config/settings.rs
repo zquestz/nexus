@@ -58,6 +58,13 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
 
+    /// Default nickname for shared account connections
+    ///
+    /// When connecting to a server with a shared account, this nickname will be used
+    /// unless the bookmark specifies its own nickname.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
+
     /// Window width in pixels
     #[serde(default = "default_window_width")]
     pub window_width: f32,
@@ -85,6 +92,7 @@ impl Default for Settings {
             use_24_hour_time: false,
             show_seconds: default_true(),
             avatar: None,
+            nickname: None,
             window_width: default_window_width(),
             window_height: default_window_height(),
             window_x: None,
@@ -114,6 +122,7 @@ impl std::fmt::Debug for Settings {
                 "avatar",
                 &self.avatar.as_ref().map(|a| format!("<{} bytes>", a.len())),
             )
+            .field("nickname", &self.nickname)
             .finish()
     }
 }
@@ -152,6 +161,7 @@ mod tests {
         assert!(!settings.use_24_hour_time);
         assert!(settings.show_seconds);
         assert!(settings.avatar.is_none());
+        assert!(settings.nickname.is_none());
         assert_eq!(settings.window_width, WINDOW_WIDTH);
         assert_eq!(settings.window_height, WINDOW_HEIGHT);
         assert!(settings.window_x.is_none());

@@ -47,9 +47,13 @@ impl NexusApp {
                 conn.active_panel == ActivePanel::UserInfo && conn.user_info_data.is_none()
             });
 
-            // Check if username matches (case-insensitive)
+            // Check if requested name matches the response (case-insensitive)
+            // Compare against display name: nickname for shared accounts, username for regular
             let username_matches = match &user {
-                Some(u) => requested_username.to_lowercase() == u.username.to_lowercase(),
+                Some(u) => {
+                    let response_display_name = u.nickname.as_deref().unwrap_or(&u.username);
+                    requested_username.to_lowercase() == response_display_name.to_lowercase()
+                }
                 None => true, // Error responses don't have user data, accept them
             };
 
@@ -100,13 +104,16 @@ impl NexusApp {
         // Build multi-line IRC WHOIS-style output
         let mut lines = Vec::new();
 
-        // Username header
-        lines.push(format!("[{}]", user.username));
+        // Header: display name (nickname for shared, username for regular)
+        let display_name = user.nickname.as_deref().unwrap_or(&user.username);
+        lines.push(format!("[{}]", display_name));
 
         // Role (only visible to admins)
         if let Some(is_admin) = user.is_admin {
             let role_value = if is_admin {
                 t("user-info-role-admin")
+            } else if user.is_shared {
+                t("user-info-role-shared")
             } else {
                 t("user-info-role-user")
             };
@@ -255,7 +262,9 @@ impl NexusApp {
                 get_or_create_avatar(&mut conn.avatar_cache, &u.username, u.avatar.as_deref());
                 ClientUserInfo {
                     username: u.username,
+                    nickname: u.nickname,
                     is_admin: u.is_admin,
+                    is_shared: u.is_shared,
                     session_ids: u.session_ids,
                     avatar_hash,
                 }
@@ -333,7 +342,9 @@ impl NexusApp {
             let avatar_changed = existing_user.avatar_hash != new_avatar_hash;
 
             existing_user.username = new_username.clone();
+            existing_user.nickname = user.nickname.clone();
             existing_user.is_admin = user.is_admin;
+            existing_user.is_shared = user.is_shared;
             existing_user.session_ids = user.session_ids;
             existing_user.avatar_hash = new_avatar_hash;
 

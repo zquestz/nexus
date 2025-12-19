@@ -11,7 +11,7 @@ mod view_config;
 
 // Re-export types for convenience
 pub use bookmark::{BookmarkEditMode, BookmarkEditState, ServerBookmark};
-pub use connection::{NetworkConnection, ServerConnection};
+pub use connection::{NetworkConnection, ServerConnection, ServerConnectionParams};
 pub use display::{ChatMessage, ChatTab, MessageType, ScrollState, UserInfo};
 pub use form::{
     ConnectionFormState, NewsManagementMode, NewsManagementState, PasswordChangeState,

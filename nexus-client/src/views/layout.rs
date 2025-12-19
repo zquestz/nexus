@@ -18,13 +18,43 @@ use crate::style::{
     tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{
-    ActivePanel, BookmarkEditMode, Message, ServerConnection, ToolbarState, UserManagementState,
-    ViewConfig,
+    ActivePanel, BookmarkEditMode, Message, ServerConnection, SettingsFormState, ToolbarState,
+    UserManagementState, ViewConfig,
 };
 use iced::widget::{
     Column, Space, button, column, container, row, scrollable, stack, text_editor, tooltip,
 };
 use iced::{Center, Element, Fill};
+
+// ============================================================================
+// Server Content Context
+// ============================================================================
+
+/// Context for rendering server content view
+struct ServerContentContext<'a> {
+    /// Active server connection
+    conn: &'a ServerConnection,
+    /// Current message input text
+    message_input: &'a str,
+    /// User management panel state
+    user_management: &'a UserManagementState,
+    /// Currently active panel
+    active_panel: ActivePanel,
+    /// Current theme
+    theme: iced::Theme,
+    /// Whether to show connection notifications
+    show_connection_notifications: bool,
+    /// Chat font size
+    chat_font_size: u8,
+    /// Timestamp display settings
+    timestamp_settings: TimestampSettings,
+    /// Settings form state (when settings panel is open)
+    settings_form: Option<&'a SettingsFormState>,
+    /// News body editor content
+    news_body_content: Option<&'a text_editor::Content>,
+    /// Default nickname for shared accounts
+    nickname: &'a str,
+}
 
 // ============================================================================
 // Helper Functions
@@ -155,22 +185,23 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             && let Some(conn) = config.connections.get(&conn_id)
             && let Some(user_mgmt) = config.user_management
         {
-            server_content_view(
+            server_content_view(ServerContentContext {
                 conn,
-                config.message_input,
-                user_mgmt,
-                config.active_panel,
-                config.theme.clone(),
-                config.show_connection_notifications,
-                config.chat_font_size,
-                TimestampSettings {
+                message_input: config.message_input,
+                user_management: user_mgmt,
+                active_panel: config.active_panel,
+                theme: config.theme.clone(),
+                show_connection_notifications: config.show_connection_notifications,
+                chat_font_size: config.chat_font_size,
+                timestamp_settings: TimestampSettings {
                     show_timestamps: config.show_timestamps,
                     use_24_hour_time: config.use_24_hour_time,
                     show_seconds: config.show_seconds,
                 },
-                config.settings_form,
-                config.news_body_content,
-            )
+                settings_form: config.settings_form,
+                news_body_content: config.news_body_content,
+                nickname: config.nickname,
+            })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
             empty_content_view()
@@ -190,6 +221,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                             show_seconds: config.show_seconds,
                         },
                         config.settings_form,
+                        config.nickname,
                     )
                 ]
                 .width(Fill)
@@ -503,50 +535,41 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
 ///
 /// Always renders chat view at the bottom layer to preserve scroll position,
 /// then overlays broadcast or user management panels on top when active.
-#[allow(clippy::too_many_arguments)]
-fn server_content_view<'a>(
-    conn: &'a ServerConnection,
-    message_input: &'a str,
-    user_management: &'a UserManagementState,
-    active_panel: ActivePanel,
-    theme: iced::Theme,
-    show_connection_notifications: bool,
-    chat_font_size: u8,
-    timestamp_settings: TimestampSettings,
-    settings_form: Option<&'a crate::types::SettingsFormState>,
-    news_body_content: Option<&'a text_editor::Content>,
-) -> Element<'a, Message> {
+fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message> {
     // Always render chat view as the base layer to preserve scroll position
     let chat = chat_view(
-        conn,
-        message_input,
-        theme.clone(),
-        chat_font_size,
-        timestamp_settings,
+        ctx.conn,
+        ctx.message_input,
+        ctx.theme.clone(),
+        ctx.chat_font_size,
+        ctx.timestamp_settings,
     );
 
     // Overlay panels on top when active
-    match active_panel {
-        ActivePanel::About => stack![chat, about_view(theme)]
+    match ctx.active_panel {
+        ActivePanel::About => stack![chat, about_view(ctx.theme)]
             .width(Fill)
             .height(Fill)
             .into(),
-        ActivePanel::Broadcast => stack![chat, broadcast_view(conn)]
+        ActivePanel::Broadcast => stack![chat, broadcast_view(ctx.conn)]
             .width(Fill)
             .height(Fill)
             .into(),
-        ActivePanel::UserManagement => stack![chat, users_view(conn, user_management, &theme)]
-            .width(Fill)
-            .height(Fill)
-            .into(),
+        ActivePanel::UserManagement => {
+            stack![chat, users_view(ctx.conn, ctx.user_management, &ctx.theme)]
+                .width(Fill)
+                .height(Fill)
+                .into()
+        }
         ActivePanel::Settings => stack![
             chat,
             settings_view(
-                theme.clone(),
-                show_connection_notifications,
-                chat_font_size,
-                timestamp_settings,
-                settings_form,
+                ctx.theme.clone(),
+                ctx.show_connection_notifications,
+                ctx.chat_font_size,
+                ctx.timestamp_settings,
+                ctx.settings_form,
+                ctx.nickname,
             )
         ]
         .width(Fill)
@@ -554,13 +577,13 @@ fn server_content_view<'a>(
         .into(),
         ActivePanel::ServerInfo => {
             let data = ServerInfoData {
-                name: conn.server_name.clone(),
-                description: conn.server_description.clone(),
-                version: conn.server_version.clone(),
-                max_connections_per_ip: conn.max_connections_per_ip,
-                cached_server_image: conn.cached_server_image.as_ref(),
-                is_admin: conn.is_admin,
-                edit_state: conn.server_info_edit.as_ref(),
+                name: ctx.conn.server_name.clone(),
+                description: ctx.conn.server_description.clone(),
+                version: ctx.conn.server_version.clone(),
+                max_connections_per_ip: ctx.conn.max_connections_per_ip,
+                cached_server_image: ctx.conn.cached_server_image.as_ref(),
+                is_admin: ctx.conn.is_admin,
+                edit_state: ctx.conn.server_info_edit.as_ref(),
             };
             stack![chat, server_info_view(&data)]
                 .width(Fill)
@@ -570,12 +593,12 @@ fn server_content_view<'a>(
         ActivePanel::UserInfo => stack![
             chat,
             user_info_view(
-                &conn.user_info_data,
-                theme,
-                conn.is_admin,
-                &conn.permissions,
-                &conn.username,
-                &conn.avatar_cache,
+                &ctx.conn.user_info_data,
+                ctx.theme,
+                ctx.conn.is_admin,
+                &ctx.conn.permissions,
+                &ctx.conn.username,
+                &ctx.conn.avatar_cache,
             )
         ]
         .width(Fill)
@@ -583,14 +606,19 @@ fn server_content_view<'a>(
         .into(),
         ActivePanel::ChangePassword => stack![
             chat,
-            password_change_view(conn.password_change_state.as_ref())
+            password_change_view(ctx.conn.password_change_state.as_ref())
         ]
         .width(Fill)
         .height(Fill)
         .into(),
         ActivePanel::News => stack![
             chat,
-            news_view(conn, &conn.news_management, &theme, news_body_content)
+            news_view(
+                ctx.conn,
+                &ctx.conn.news_management,
+                &ctx.theme,
+                ctx.news_body_content,
+            )
         ]
         .width(Fill)
         .height(Fill)

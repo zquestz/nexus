@@ -21,16 +21,39 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Get current user's display name for comparison
+        // For shared accounts, this is the nickname; for regular accounts, this is the username
+        let current_display_name = conn
+            .online_users
+            .iter()
+            .find(|u| u.username == conn.username)
+            .map(|u| u.display_name())
+            .unwrap_or(&conn.username);
+
         // Determine which user we're chatting with (the other person)
-        let other_user = if from_username == conn.username {
+        // Compare against display name since from_username is the sender's display name
+        let other_user = if from_username == current_display_name {
             to_username
         } else {
             from_username.clone()
         };
 
+        // Look up is_shared status from online_users (from_username is display name)
+        let is_shared = conn
+            .online_users
+            .iter()
+            .find(|u| u.display_name() == from_username)
+            .map(|u| u.is_shared)
+            .unwrap_or(false);
+
         // Add message to PM tab history (creates entry if doesn't exist)
-        let chat_msg =
-            ChatMessage::with_timestamp_and_admin(from_username, message, Local::now(), from_admin);
+        let chat_msg = ChatMessage::with_timestamp_and_status(
+            from_username,
+            message,
+            Local::now(),
+            from_admin,
+            is_shared,
+        );
         conn.user_messages
             .entry(other_user.clone())
             .or_default()

@@ -69,6 +69,7 @@ placeholder-no-permission = Geen toestemming
 placeholder-broadcast-message = Voer broadcastbericht in...
 placeholder-server-description = Serverbeschrijving
 placeholder-news-body = Voer inhoud in...
+placeholder-nickname-optional = Bijnaam (optioneel)
 
 # =============================================================================
 # Labels
@@ -77,6 +78,7 @@ placeholder-news-body = Voer inhoud in...
 label-auto-connect = Auto-Verbinden
 label-add-bookmark = Bladwijzer
 label-admin = Beheerder
+label-shared-account = Gedeeld Account
 label-enabled = Ingeschakeld
 label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
@@ -102,6 +104,8 @@ label-general = Algemeen
 label-limits = Limieten
 label-news-body = Inhoud:
 label-news-image = Afbeelding:
+label-identity = Identiteit
+label-nickname = Bijnaam:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = Dit kan wijzen op een beveiligingsprobleem (MITM-aanval) o
 user-info-username = Gebruikersnaam:
 user-info-role = Rol:
 user-info-role-admin = admin
+user-info-role-shared = gedeeld
 user-info-role-user = gebruiker
+user-info-account = Account: { $username }
 user-info-connected = Verbonden:
 user-info-connected-value = { $duration } geleden
 user-info-connected-value-sessions = { $duration } geleden ({ $count } sessies)

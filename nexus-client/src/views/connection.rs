@@ -68,9 +68,16 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
 
     let password_input = text_input(&t("placeholder-password-optional"), &form.password)
         .on_input(Message::PasswordChanged)
-        .on_submit(submit_action)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::Password))
         .secure(true)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+
+    let nickname_input = text_input(&t("placeholder-nickname-optional"), &form.nickname)
+        .on_input(Message::NicknameChanged)
+        .on_submit(submit_action)
+        .id(Id::from(InputId::Nickname))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
@@ -105,6 +112,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         port_input.into(),
         username_input.into(),
         password_input.into(),
+        nickname_input.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         checkbox(form.add_bookmark)
             .label(t("label-add-bookmark"))

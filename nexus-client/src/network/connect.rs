@@ -13,24 +13,17 @@ use crate::types::NetworkConnection;
 use super::constants::DEFAULT_FEATURES;
 use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
-use super::types::{LoginInfo, Reader, Writer};
+use super::types::{ConnectionParams, LoginInfo, Reader, Writer};
 
 /// Connect to server, perform handshake and login
 ///
 /// Establishes a TCP connection, performs protocol handshake and authentication,
 /// then sets up bidirectional communication channels. Returns a NetworkConnection
 /// handle for sending messages to the server.
-pub async fn connect_to_server(
-    server_address: String,
-    port: u16,
-    username: String,
-    password: String,
-    locale: String,
-    avatar: Option<String>,
-    connection_id: usize,
-) -> Result<NetworkConnection, String> {
+pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnection, String> {
     // Establish TCP connection and get certificate fingerprint
-    let (tls_stream, fingerprint) = establish_connection(&server_address, port).await?;
+    let (tls_stream, fingerprint) =
+        establish_connection(&params.server_address, params.port).await?;
 
     let (reader, writer) = tokio::io::split(tls_stream);
     let buf_reader = BufReader::new(reader);
@@ -42,10 +35,11 @@ pub async fn connect_to_server(
     let login_info = perform_login(
         &mut frame_reader,
         &mut frame_writer,
-        username,
-        password,
-        locale,
-        avatar,
+        params.username,
+        params.password,
+        params.nickname,
+        params.locale,
+        params.avatar,
     )
     .await?;
 
@@ -54,7 +48,7 @@ pub async fn connect_to_server(
         frame_reader,
         frame_writer,
         login_info,
-        connection_id,
+        params.connection_id,
         fingerprint,
     )
     .await
@@ -94,6 +88,7 @@ async fn perform_login(
     writer: &mut Writer,
     username: String,
     password: String,
+    nickname: Option<String>,
     locale: String,
     avatar: Option<String>,
 ) -> Result<LoginInfo, String> {
@@ -103,7 +98,7 @@ async fn perform_login(
         features: DEFAULT_FEATURES.iter().map(|s| s.to_string()).collect(),
         locale,
         avatar,
-        nickname: None, // TODO: Add nickname support for shared accounts
+        nickname,
     };
     send_client_message(writer, &login)
         .await

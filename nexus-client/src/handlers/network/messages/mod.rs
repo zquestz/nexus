@@ -51,9 +51,9 @@ impl NexusApp {
             ServerMessage::ChatMessage {
                 session_id: _,
                 username,
-                is_shared: _, // TODO: Use in Phase 6 for chat message coloring
+                is_shared,
                 message,
-            } => self.handle_chat_message(connection_id, username, message),
+            } => self.handle_chat_message(connection_id, username, message, is_shared),
 
             ServerMessage::ChatTopicUpdated { topic, username } => {
                 self.handle_chat_topic(connection_id, topic, username)

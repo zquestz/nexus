@@ -5,6 +5,26 @@ use tokio::net::TcpStream;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 
+/// Parameters for connecting to a server
+pub struct ConnectionParams {
+    /// Server address (IPv4 or IPv6)
+    pub server_address: String,
+    /// Server port
+    pub port: u16,
+    /// Username for authentication
+    pub username: String,
+    /// Password for authentication
+    pub password: String,
+    /// Nickname for shared account logins
+    pub nickname: Option<String>,
+    /// Locale for server messages
+    pub locale: String,
+    /// Avatar data URI
+    pub avatar: Option<String>,
+    /// Unique connection identifier
+    pub connection_id: usize,
+}
+
 /// Type alias for TLS stream
 pub type TlsStream = tokio_rustls::client::TlsStream<TcpStream>;
 

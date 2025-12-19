@@ -80,16 +80,19 @@ fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
 // ============================================================================
 
 /// Create action toolbar for an expanded user
+///
+/// - `display_name`: Display name - nickname for shared accounts, username for regular
+///   (used for all actions: info, PM, kick - server looks up by display name)
 fn create_user_toolbar<'a>(
-    username: &'a str,
+    display_name: &'a str,
     current_username: &'a str,
     target_is_admin: bool,
     current_user_is_admin: bool,
     permissions: &[String],
     theme: &Theme,
 ) -> Row<'a, Message> {
-    let username_owned = username.to_string();
-    let is_self = username == current_username;
+    let display_name_owned = display_name.to_string();
+    let is_self = display_name == current_username;
 
     // Check permissions (admins have all permissions)
     let has_user_info_permission =
@@ -109,10 +112,10 @@ fn create_user_toolbar<'a>(
     let danger_color = theme.palette().danger;
 
     let info_button = if has_user_info_permission {
-        let username_for_info = username_owned.clone();
+        let display_name_for_info = display_name_owned.clone();
         enabled_icon_button(
             info_icon,
-            Message::UserInfoIconClicked(username_for_info),
+            Message::UserInfoIconClicked(display_name_for_info),
             primary_color,
             icon_color,
         )
@@ -125,10 +128,10 @@ fn create_user_toolbar<'a>(
     if !is_self {
         let message_icon = icon_container(icon::message());
         let message_button = if has_user_message_permission {
-            let username_for_message = username_owned.clone();
+            let display_name_for_message = display_name_owned.clone();
             enabled_icon_button(
                 message_icon,
-                Message::UserMessageIconClicked(username_for_message),
+                Message::UserMessageIconClicked(display_name_for_message),
                 primary_color,
                 icon_color,
             )
@@ -146,7 +149,7 @@ fn create_user_toolbar<'a>(
         let kick_icon = icon_container(icon::kick());
         let kick_button = enabled_icon_button(
             kick_icon,
-            Message::UserKickIconClicked(username_owned),
+            Message::UserKickIconClicked(display_name_owned),
             danger_color,
             icon_color,
         );
@@ -169,7 +172,14 @@ fn create_user_toolbar<'a>(
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
 pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element<'a, Message> {
-    let current_username = &conn.username;
+    // Get current user's display name for self-detection
+    // For shared accounts, this is the nickname; for regular accounts, this is the username
+    let current_display_name = conn
+        .online_users
+        .iter()
+        .find(|u| u.username == conn.username)
+        .map(|u| u.display_name())
+        .unwrap_or(&conn.username);
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
 
@@ -192,7 +202,9 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
 
             // Username button with avatar
             let user_is_admin = user.is_admin;
+            let user_is_shared = user.is_shared;
             let username_clone = user.username.clone();
+            let display_name = user.display_name();
 
             // Get cached avatar (should already be populated by handlers)
             let avatar_element: Element<'_, Message> =
@@ -203,13 +215,23 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     generate_identicon(&user.username).render(USER_LIST_AVATAR_SIZE)
                 };
 
-            // Row with avatar and username
-            let user_row = row![
-                avatar_element,
-                shaped_text(&user.username).size(USER_LIST_TEXT_SIZE),
-            ]
-            .spacing(USER_LIST_AVATAR_SPACING)
-            .align_y(Center);
+            // Row with avatar and display name (nickname for shared, username for regular)
+            // Apply appropriate color: admin = red, shared = muted, regular = default
+            let display_name_text = if user_is_admin {
+                shaped_text(display_name)
+                    .size(USER_LIST_TEXT_SIZE)
+                    .color(chat::admin(theme))
+            } else if user_is_shared {
+                shaped_text(display_name)
+                    .size(USER_LIST_TEXT_SIZE)
+                    .color(chat::shared(theme))
+            } else {
+                shaped_text(display_name).size(USER_LIST_TEXT_SIZE)
+            };
+
+            let user_row = row![avatar_element, display_name_text,]
+                .spacing(USER_LIST_AVATAR_SPACING)
+                .align_y(Center);
 
             let user_button = button(container(user_row).width(Fill))
                 .on_press(Message::UserListItemClicked(username_clone))
@@ -220,10 +242,21 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     chat::admin(theme),
                 ));
 
-            // Wrap button in tooltip showing full username (useful when truncated)
+            // Tooltip: "Nickname (account)" for shared, just username for regular
+            let tooltip_text = if user_is_shared {
+                if let Some(nickname) = &user.nickname {
+                    format!("{} ({})", nickname, user.username)
+                } else {
+                    user.username.clone()
+                }
+            } else {
+                display_name.to_string()
+            };
+
+            // Wrap button in tooltip showing full name (useful when truncated)
             let user_button_with_tooltip = tooltip(
                 user_button,
-                container(shaped_text(&user.username).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(tooltip_container_style),
                 tooltip::Position::Left,
@@ -244,8 +277,8 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
 
                 // Toolbar
                 let toolbar = create_user_toolbar(
-                    &user.username,
-                    current_username,
+                    user.display_name(),
+                    current_display_name,
                     user.is_admin,
                     is_admin,
                     permissions,

@@ -68,6 +68,7 @@ placeholder-no-permission = 無權限
 placeholder-broadcast-message = 輸入廣播訊息...
 placeholder-server-description = 伺服器描述
 placeholder-news-body = 輸入內容...
+placeholder-nickname-optional = 暱稱（選填）
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = 輸入內容...
 label-auto-connect = 自動連線
 label-add-bookmark = 新增書籤
 label-admin = 管理員
+label-shared-account = 共享帳戶
 label-enabled = 啟用
 label-permissions = 權限：
 label-expected-fingerprint = 預期指紋：
@@ -101,6 +103,8 @@ label-general = 一般
 label-limits = 限制
 label-news-body = 內容：
 label-news-image = 圖片：
+label-identity = 身分
+label-nickname = 暱稱：
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = 這可能表示存在安全問題（中間人攻擊）或�
 user-info-username = 使用者名稱：
 user-info-role = 角色：
 user-info-role-admin = 管理員
+user-info-role-shared = 共享
 user-info-role-user = 使用者
+user-info-account = 帳戶：{ $username }
 user-info-connected = 已連線：
 user-info-connected-value = { $duration }前
 user-info-connected-value-sessions = { $duration }前（{ $count }個工作階段）

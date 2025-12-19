@@ -95,6 +95,18 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Nickname ====================
+
+    /// Handle nickname field change in settings panel
+    pub fn handle_settings_nickname_changed(&mut self, nickname: String) -> Task<Message> {
+        if nickname.is_empty() {
+            self.config.settings.nickname = None;
+        } else {
+            self.config.settings.nickname = Some(nickname);
+        }
+        Task::none()
+    }
+
     // ==================== Avatar ====================
 
     /// Handle pick avatar button pressed - opens file dialog

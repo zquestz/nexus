@@ -68,6 +68,7 @@ placeholder-no-permission = 无权限
 placeholder-broadcast-message = 输入广播消息...
 placeholder-server-description = 服务器描述
 placeholder-news-body = 输入内容...
+placeholder-nickname-optional = 昵称（可选）
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = 输入内容...
 label-auto-connect = 自动连接
 label-add-bookmark = 书签
 label-admin = 管理员
+label-shared-account = 共享账户
 label-enabled = 已启用
 label-permissions = 权限：
 label-expected-fingerprint = 预期指纹：
@@ -101,6 +103,8 @@ label-general = 常规
 label-limits = 限制
 label-news-body = 内容：
 label-news-image = 图片：
+label-identity = 身份
+label-nickname = 昵称：
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = 这可能表示存在安全问题（中间人攻击）或�
 user-info-username = 用户名：
 user-info-role = 角色：
 user-info-role-admin = 管理员
+user-info-role-shared = 共享
 user-info-role-user = 用户
+user-info-account = 账户：{ $username }
 user-info-connected = 已连接：
 user-info-connected-value = { $duration }前
 user-info-connected-value-sessions = { $duration }前（{ $count }个会话）

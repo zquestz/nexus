@@ -65,9 +65,10 @@ placeholder-new-password = 새 비밀번호
 placeholder-confirm-password = 비밀번호 확인
 placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
-placeholder-broadcast-message = 브로드캐스트 메시지를 입력하세요...
+placeholder-broadcast-message = 방송 메시지 입력...
 placeholder-server-description = 서버 설명
 placeholder-news-body = 내용을 입력하세요...
+placeholder-nickname-optional = 별명 (선택사항)
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = 내용을 입력하세요...
 label-auto-connect = 자동 연결
 label-add-bookmark = 북마크 추가
 label-admin = 관리자
+label-shared-account = 공유 계정
 label-enabled = 활성화
 label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
@@ -101,6 +103,8 @@ label-general = 일반
 label-limits = 제한
 label-news-body = 내용:
 label-news-image = 이미지:
+label-identity = 신원
+label-nickname = 별명:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = 이는 보안 문제(MITM 공격)를 나타내거나 서�
 user-info-username = 사용자명:
 user-info-role = 역할:
 user-info-role-admin = 관리자
+user-info-role-shared = 공유
 user-info-role-user = 사용자
+user-info-account = 계정: { $username }
 user-info-connected = 연결됨:
 user-info-connected-value = { $duration } 전
 user-info-connected-value-sessions = { $duration } 전 ({ $count }개 세션)

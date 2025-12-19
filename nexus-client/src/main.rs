@@ -214,10 +214,18 @@ impl NexusApp {
             Message::ServerAddressChanged(addr) => self.handle_server_address_changed(addr),
             Message::ServerNameChanged(name) => self.handle_server_name_changed(name),
             Message::UsernameChanged(username) => self.handle_username_changed(username),
+            Message::NicknameChanged(nickname) => self.handle_nickname_changed(nickname),
             Message::ConnectionFormTabPressed => self.handle_connection_form_tab_pressed(),
-            Message::ConnectionFormFocusResult(name, address, port, username, password) => {
-                self.handle_connection_form_focus_result(name, address, port, username, password)
-            }
+            Message::ConnectionFormFocusResult(
+                name,
+                address,
+                port,
+                username,
+                password,
+                nickname,
+            ) => self.handle_connection_form_focus_result(
+                name, address, port, username, password, nickname,
+            ),
 
             // Bookmark management
             Message::BookmarkAddressChanged(addr) => self.handle_bookmark_address_changed(addr),
@@ -232,14 +240,19 @@ impl NexusApp {
             Message::BookmarkUsernameChanged(username) => {
                 self.handle_bookmark_username_changed(username)
             }
+            Message::BookmarkNicknameChanged(nickname) => {
+                self.handle_bookmark_nickname_changed(nickname)
+            }
             Message::CancelBookmarkEdit => self.handle_cancel_bookmark_edit(),
             Message::DeleteBookmark(index) => self.handle_delete_bookmark(index),
             Message::SaveBookmark => self.handle_save_bookmark(),
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(index) => self.handle_show_edit_bookmark(index),
             Message::BookmarkEditTabPressed => self.handle_bookmark_edit_tab_pressed(),
-            Message::BookmarkEditFocusResult(name, address, port, username, password) => {
-                self.handle_bookmark_edit_focus_result(name, address, port, username, password)
+            Message::BookmarkEditFocusResult(name, address, port, username, password, nickname) => {
+                self.handle_bookmark_edit_focus_result(
+                    name, address, port, username, password, nickname,
+                )
             }
 
             // Certificate fingerprint
@@ -273,6 +286,9 @@ impl NexusApp {
             }
             Message::UserManagementIsAdminToggled(is_admin) => {
                 self.handle_user_management_is_admin_toggled(is_admin)
+            }
+            Message::UserManagementIsSharedToggled(is_shared) => {
+                self.handle_user_management_is_shared_toggled(is_shared)
             }
             Message::UserManagementEnabledToggled(enabled) => {
                 self.handle_user_management_enabled_toggled(enabled)
@@ -343,6 +359,9 @@ impl NexusApp {
             Message::ShowSecondsToggled(enabled) => self.handle_show_seconds_toggled(enabled),
             Message::ShowTimestampsToggled(enabled) => self.handle_show_timestamps_toggled(enabled),
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
+            Message::SettingsNicknameChanged(nickname) => {
+                self.handle_settings_nickname_changed(nickname)
+            }
             Message::ToggleSettings => self.handle_toggle_settings(),
             Message::Use24HourTimeToggled(enabled) => self.handle_use_24_hour_time_toggled(enabled),
 
@@ -482,6 +501,7 @@ impl NexusApp {
             connection_form: &self.connection_form,
             bookmark_edit: &self.bookmark_edit,
             message_input,
+            nickname: self.config.settings.nickname.as_deref().unwrap_or(""),
             user_management,
             ui_state: &self.ui_state,
             active_panel: self.active_panel(),

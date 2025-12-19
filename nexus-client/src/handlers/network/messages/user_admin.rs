@@ -15,7 +15,6 @@ pub struct UserEditResponseData {
     pub error: Option<String>,
     pub username: Option<String>,
     pub is_admin: Option<bool>,
-    #[allow(dead_code)] // Will be used in Phase 7 for shared account UI
     pub is_shared: Option<bool>,
     pub enabled: Option<bool>,
     pub permissions: Option<Vec<String>>,
@@ -146,6 +145,7 @@ impl NexusApp {
                 conn.user_management.enter_edit_mode(
                     data.username.unwrap_or_default(),
                     data.is_admin.unwrap_or(false),
+                    data.is_shared.unwrap_or(false),
                     data.enabled.unwrap_or(true),
                     data.permissions.unwrap_or_default(),
                 );

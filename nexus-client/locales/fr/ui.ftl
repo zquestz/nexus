@@ -69,6 +69,7 @@ placeholder-no-permission = Pas de permission
 placeholder-broadcast-message = Entrez le message de diffusion...
 placeholder-server-description = Description du serveur
 placeholder-news-body = Entrez le contenu...
+placeholder-nickname-optional = Pseudo (optionnel)
 
 # =============================================================================
 # Labels
@@ -77,6 +78,7 @@ placeholder-news-body = Entrez le contenu...
 label-auto-connect = Connexion auto
 label-add-bookmark = Ajouter un favori
 label-admin = Administrateur
+label-shared-account = Compte Partagé
 label-enabled = Activé
 label-permissions = Permissions :
 label-expected-fingerprint = Empreinte attendue :
@@ -100,8 +102,10 @@ label-appearance = Apparence
 label-image = Image
 label-general = Général
 label-limits = Limites
-label-news-body = Contenu :
-label-news-image = Image :
+label-news-body = Contenu:
+label-news-image = Image:
+label-identity = Identité
+label-nickname = Pseudo:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = Cela pourrait indiquer un problème de sécurité (attaque
 user-info-username = Nom d'utilisateur :
 user-info-role = Rôle :
 user-info-role-admin = admin
+user-info-role-shared = partagé
 user-info-role-user = utilisateur
+user-info-account = Compte : { $username }
 user-info-connected = Connecté :
 user-info-connected-value = il y a { $duration }
 user-info-connected-value-sessions = il y a { $duration } ({ $count } sessions)

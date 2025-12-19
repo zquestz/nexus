@@ -8,3 +8,4 @@ mod types;
 
 pub use connect::connect_to_server;
 pub use stream::{NETWORK_RECEIVERS, ShutdownHandle, network_stream};
+pub use types::ConnectionParams;

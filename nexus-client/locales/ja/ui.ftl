@@ -68,6 +68,7 @@ placeholder-no-permission = 権限がありません
 placeholder-broadcast-message = ブロードキャストメッセージを入力...
 placeholder-server-description = サーバーの説明
 placeholder-news-body = 内容を入力...
+placeholder-nickname-optional = ニックネーム（任意）
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = 内容を入力...
 label-auto-connect = 自動接続
 label-add-bookmark = ブックマークに追加
 label-admin = 管理者
+label-shared-account = 共有アカウント
 label-enabled = 有効
 label-permissions = 権限:
 label-expected-fingerprint = 期待されるフィンガープリント:
@@ -99,8 +101,10 @@ label-appearance = 外観
 label-image = 画像
 label-general = 一般
 label-limits = 制限
-label-news-body = 内容:
+label-news-body = 本文:
 label-news-image = 画像:
+label-identity = アイデンティティ
+label-nickname = ニックネーム:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = これはセキュリティ上の問題（MITM攻撃）ま
 user-info-username = ユーザー名:
 user-info-role = 役割:
 user-info-role-admin = 管理者
+user-info-role-shared = 共有
 user-info-role-user = ユーザー
+user-info-account = アカウント: { $username }
 user-info-connected = 接続:
 user-info-connected-value = { $duration }前
 user-info-connected-value-sessions = { $duration }前（{ $count }セッション）

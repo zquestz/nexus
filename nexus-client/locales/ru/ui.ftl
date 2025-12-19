@@ -65,9 +65,10 @@ placeholder-new-password = Новый пароль
 placeholder-confirm-password = Подтвердите пароль
 placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
-placeholder-broadcast-message = Введите сообщение рассылки...
+placeholder-broadcast-message = Введите сообщение для рассылки...
 placeholder-server-description = Описание сервера
 placeholder-news-body = Введите содержимое...
+placeholder-nickname-optional = Псевдоним (опционально)
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = Введите содержимое...
 label-auto-connect = Автоподключение
 label-add-bookmark = Добавить закладку
 label-admin = Администратор
+label-shared-account = Общий Аккаунт
 label-enabled = Включён
 label-permissions = Разрешения:
 label-expected-fingerprint = Ожидаемый отпечаток:
@@ -101,6 +103,8 @@ label-general = Общие
 label-limits = Ограничения
 label-news-body = Содержимое:
 label-news-image = Изображение:
+label-identity = Идентификация
+label-nickname = Псевдоним:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = Это может указывать на проблему
 user-info-username = Имя пользователя:
 user-info-role = Роль:
 user-info-role-admin = админ
+user-info-role-shared = общий
 user-info-role-user = пользователь
+user-info-account = Аккаунт: { $username }
 user-info-connected = Подключён:
 user-info-connected-value = { $duration } назад
 user-info-connected-value-sessions = { $duration } назад ({ $count } сеансов)

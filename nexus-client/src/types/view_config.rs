@@ -55,6 +55,9 @@ pub struct ViewConfig<'a> {
     /// Chat message input (from active connection or empty)
     pub message_input: &'a str,
 
+    /// Default nickname for shared account connections (from settings)
+    pub nickname: &'a str,
+
     /// User management state (only present when connected)
     pub user_management: Option<&'a UserManagementState>,
 

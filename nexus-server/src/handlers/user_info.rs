@@ -72,8 +72,10 @@ where
             .await;
     }
 
-    // First, try to find by nickname (for shared account users)
-    // Then fall back to username lookup
+    // Look up by display name:
+    // 1. First try to find by nickname (for shared account users)
+    // 2. Then fall back to username lookup, but filter out shared accounts
+    //    (shared accounts can only be found by their nickname, not account username)
     let (target_sessions, lookup_by_nickname) = if let Some(session) = ctx
         .user_manager
         .get_session_by_nickname(&requested_username)
@@ -83,10 +85,14 @@ where
         (vec![session], true)
     } else {
         // Look up all sessions for target username (case-insensitive)
-        let sessions = ctx
+        // Filter out shared account sessions - they can only be found by nickname
+        let sessions: Vec<_> = ctx
             .user_manager
             .get_sessions_by_username(&requested_username)
-            .await;
+            .await
+            .into_iter()
+            .filter(|s| s.nickname.is_none()) // Only regular users, not shared accounts
+            .collect();
         (sessions, false)
     };
 
@@ -1069,7 +1075,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_userinfo_shared_account_lookup_by_username() {
+    async fn test_userinfo_shared_account_lookup_by_username_fails() {
         let mut test_ctx = create_test_context().await;
         use crate::handlers::login::{LoginRequest, handle_login};
 
@@ -1111,7 +1117,8 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx.client).await; // consume login response
 
-        // Look up by username (not nickname)
+        // Look up by username (not nickname) - should fail
+        // Shared accounts can only be looked up by their display name (nickname)
         let result = handle_user_info(
             "shared_acct".to_string(),
             Some(admin_id),
@@ -1123,16 +1130,12 @@ mod tests {
 
         let response_msg = read_server_message(&mut test_ctx.client).await;
         match response_msg {
-            ServerMessage::UserInfoResponse { success, user, .. } => {
-                assert!(success);
-                let user_info = user.unwrap();
-                assert_eq!(user_info.username, "shared_acct");
-                assert_eq!(
-                    user_info.nickname,
-                    Some("Nick1".to_string()),
-                    "Should include nickname from session"
+            ServerMessage::UserInfoResponse { success, error, .. } => {
+                assert!(
+                    !success,
+                    "Looking up shared account by username should fail"
                 );
-                assert!(user_info.is_shared, "Should be marked as shared");
+                assert!(error.is_some(), "Should have error message");
             }
             _ => panic!("Expected UserInfoResponse"),
         }

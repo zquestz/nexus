@@ -18,6 +18,9 @@ pub struct ServerBookmark {
     pub username: String,
     /// Optional password for quick connect
     pub password: String,
+    /// Optional nickname for shared account logins
+    #[serde(default)]
+    pub nickname: String,
     /// Whether to auto-connect on startup
     #[serde(default)]
     pub auto_connect: bool,
@@ -34,6 +37,7 @@ impl Default for ServerBookmark {
             port: DEFAULT_PORT_STR.to_string(),
             username: String::new(),
             password: String::new(),
+            nickname: String::new(),
             auto_connect: false,
             certificate_fingerprint: None,
         }

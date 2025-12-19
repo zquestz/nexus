@@ -16,8 +16,28 @@ impl NexusApp {
         connection_id: usize,
         username: String,
         message: String,
+        is_shared: bool,
     ) -> Task<Message> {
-        self.add_chat_message(connection_id, ChatMessage::new(username, message))
+        // Look up admin status from online_users (username is display name)
+        let is_admin = self
+            .connections
+            .get(&connection_id)
+            .and_then(|conn| {
+                conn.online_users
+                    .iter()
+                    .find(|u| u.display_name() == username)
+                    .map(|u| u.is_admin)
+            })
+            .unwrap_or(false);
+
+        let chat_message = ChatMessage::with_timestamp_and_status(
+            username,
+            message,
+            chrono::Local::now(),
+            is_admin,
+            is_shared,
+        );
+        self.add_chat_message(connection_id, chat_message)
     }
 
     /// Handle chat topic change notification

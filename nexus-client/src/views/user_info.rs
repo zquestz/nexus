@@ -69,8 +69,14 @@ pub fn user_info_view<'a>(
     // Build buttons row - spacer, then buttons on the right
     let mut buttons = row![Space::new().width(Fill)].spacing(ELEMENT_SPACING);
 
-    // Add Change Password button if viewing self and data loaded
-    if viewing_self {
+    // Add Change Password button if viewing self, data loaded, and NOT a shared account
+    // (shared account users cannot change their password)
+    let is_shared_user = data
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .is_some_and(|user| user.is_shared);
+
+    if viewing_self && !is_shared_user {
         buttons = buttons.push(
             button(shaped_text(t("button-change-password")).size(TEXT_SIZE))
                 .on_press(Message::ChangePasswordPressed)
@@ -228,8 +234,10 @@ fn build_user_info_content<'a>(
     theme: &Theme,
     avatar_cache: &'a HashMap<String, CachedImage>,
 ) -> iced::widget::Column<'a, Message> {
-    // Header row: Avatar + Username (title-sized, red for admins)
+    // Header: Avatar + Display name (nickname for shared, username for regular)
+    // For shared accounts, also show the account name below
     let is_admin = user.is_admin.unwrap_or(false);
+    let is_shared = user.is_shared;
 
     let avatar_element: Element<'_, Message> =
         if let Some(cached_avatar) = avatar_cache.get(&user.username) {
@@ -239,15 +247,23 @@ fn build_user_info_content<'a>(
             generate_identicon(&user.username).render(USER_INFO_AVATAR_SIZE)
         };
 
-    let username_text = if is_admin {
-        shaped_text(&user.username)
+    // Display name: nickname for shared accounts, username for regular
+    let display_name = user.nickname.as_deref().unwrap_or(&user.username);
+
+    // Apply color: admin = red, shared = muted, regular = default
+    let display_name_text = if is_admin {
+        shaped_text(display_name)
             .size(TITLE_SIZE)
             .color(chat::admin(theme))
+    } else if is_shared {
+        shaped_text(display_name)
+            .size(TITLE_SIZE)
+            .color(chat::shared(theme))
     } else {
-        shaped_text(&user.username).size(TITLE_SIZE)
+        shaped_text(display_name).size(TITLE_SIZE)
     };
 
-    let header_row = row![avatar_element, username_text]
+    let header_row = row![avatar_element, display_name_text]
         .spacing(USER_INFO_AVATAR_SPACING)
         .align_y(Center);
 
@@ -258,6 +274,8 @@ fn build_user_info_content<'a>(
     if user.is_admin.is_some() {
         let role_value = if is_admin {
             t("user-info-role-admin")
+        } else if is_shared {
+            t("user-info-role-shared")
         } else {
             t("user-info-role-user")
         };

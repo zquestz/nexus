@@ -33,6 +33,8 @@ pub enum Message {
     BookmarkPortChanged(String),
     /// Bookmark editor: Username field changed
     BookmarkUsernameChanged(String),
+    /// Bookmark editor: Nickname field changed
+    BookmarkNicknameChanged(String),
     /// Broadcast: Message input changed
     BroadcastMessageChanged(String),
     /// User management: Cancel button pressed (return to list or close panel)
@@ -64,12 +66,12 @@ pub enum Message {
     ChangePasswordFocusResult(bool, bool, bool),
     /// Bookmark edit: Tab pressed, check focus and move to next field
     BookmarkEditTabPressed,
-    /// Bookmark edit: Focus check result for Tab navigation (name, address, port, username, password)
-    BookmarkEditFocusResult(bool, bool, bool, bool, bool),
+    /// Bookmark edit: Focus check result for Tab navigation (name, address, port, username, password, nickname)
+    BookmarkEditFocusResult(bool, bool, bool, bool, bool, bool),
     /// Connection form: Tab pressed, check focus and move to next field
     ConnectionFormTabPressed,
-    /// Connection form: Focus check result for Tab navigation (name, address, port, username, password)
-    ConnectionFormFocusResult(bool, bool, bool, bool, bool),
+    /// Connection form: Focus check result for Tab navigation (name, address, port, username, password, nickname)
+    ConnectionFormFocusResult(bool, bool, bool, bool, bool, bool),
     /// User management create: Tab pressed, check focus and move to next field
     UserManagementCreateTabPressed,
     /// User management create: Focus check result for Tab navigation (username, password)
@@ -137,6 +139,10 @@ pub enum Message {
     ServerMessageReceived(usize, MessageId, ServerMessage),
     /// Connection form: Server name field changed
     ServerNameChanged(String),
+    /// Connection form: Nickname field changed
+    NicknameChanged(String),
+    /// Settings panel: Nickname field changed
+    SettingsNicknameChanged(String),
     /// Bookmark list: Add Bookmark button pressed
     ShowAddBookmark,
     /// Toolbar: Show chat view
@@ -199,6 +205,8 @@ pub enum Message {
     UserManagementPasswordChanged(String),
     /// User management: Create user form - is admin checkbox toggled
     UserManagementIsAdminToggled(bool),
+    /// User management: Create user form - is shared account checkbox toggled
+    UserManagementIsSharedToggled(bool),
     /// User management: Create user form - enabled checkbox toggled
     UserManagementEnabledToggled(bool),
     /// User management: Create user form - permission checkbox toggled

@@ -68,6 +68,7 @@ placeholder-no-permission = Keine Berechtigung
 placeholder-broadcast-message = Rundnachricht eingeben...
 placeholder-server-description = Serverbeschreibung
 placeholder-news-body = Inhalt eingeben...
+placeholder-nickname-optional = Spitzname (optional)
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = Inhalt eingeben...
 label-auto-connect = Auto-Verbindung
 label-add-bookmark = Lesezeichen
 label-admin = Admin
+label-shared-account = Gemeinsames Konto
 label-enabled = Aktiviert
 label-permissions = Berechtigungen:
 label-expected-fingerprint = Erwarteter Fingerabdruck:
@@ -101,6 +103,8 @@ label-general = Allgemein
 label-limits = Limits
 label-news-body = Inhalt:
 label-news-image = Bild:
+label-identity = Identität
+label-nickname = Spitzname:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = Dies könnte auf ein Sicherheitsproblem (MITM-Angriff) hin
 user-info-username = Benutzername:
 user-info-role = Rolle:
 user-info-role-admin = admin
+user-info-role-shared = geteilt
 user-info-role-user = benutzer
+user-info-account = Konto: { $username }
 user-info-connected = Verbunden:
 user-info-connected-value = vor { $duration }
 user-info-connected-value-sessions = vor { $duration } ({ $count } Sitzungen)

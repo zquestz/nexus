@@ -52,7 +52,9 @@ impl NexusApp {
             // New user - add to list
             conn.online_users.push(ClientUserInfo {
                 username: user.username.clone(),
+                nickname: user.nickname.clone(),
                 is_admin: user.is_admin,
+                is_shared: user.is_shared,
                 session_ids: user.session_ids.clone(),
                 avatar_hash: new_avatar_hash,
             });

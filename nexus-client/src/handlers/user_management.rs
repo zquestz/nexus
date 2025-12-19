@@ -10,6 +10,7 @@ use crate::views::constants::PERMISSION_USER_INFO;
 use iced::Task;
 use iced::widget::{Id, operation};
 
+use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, PasswordError, UsernameError};
 
@@ -72,6 +73,13 @@ impl NexusApp {
             UserManagementMode::Create | UserManagementMode::Edit { .. } => {
                 // In create/edit mode, return to list
                 conn.user_management.reset_to_list();
+                // Only fetch if we don't already have the list
+                if conn.user_management.all_users.is_none()
+                    && let Ok(message_id) = conn.send(ClientMessage::UserList { all: true })
+                {
+                    conn.pending_requests
+                        .track(message_id, ResponseRouting::PopulateUserManagementList);
+                }
                 Task::none()
             }
             UserManagementMode::ConfirmDelete { .. } => {
@@ -101,7 +109,8 @@ impl NexusApp {
     /// Handle edit button click on a user in the list (or from user info panel)
     ///
     /// Requests user details from server, then transitions to edit mode.
-    /// If called from outside the User Management panel, opens the panel first.
+    /// If called from outside the User Management panel, opens the panel first
+    /// and fetches the user list (so canceling back to list mode shows the list).
     pub fn handle_user_management_edit_clicked(&mut self, username: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -222,7 +231,36 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            conn.user_management.is_admin = is_admin;
+            // Shared accounts cannot be admins - ignore toggle if is_shared
+            if !conn.user_management.is_shared {
+                conn.user_management.is_admin = is_admin;
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle is_shared checkbox toggle in create form
+    ///
+    /// When toggled ON:
+    /// - Unchecks admin (shared accounts cannot be admins)
+    /// - Disables forbidden permissions (keeps only allowed ones)
+    pub fn handle_user_management_is_shared_toggled(&mut self, is_shared: bool) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.is_shared = is_shared;
+
+            if is_shared {
+                // Shared accounts cannot be admins
+                conn.user_management.is_admin = false;
+
+                // Disable forbidden permissions (only allow shared account permissions)
+                for (perm_name, enabled) in &mut conn.user_management.permissions {
+                    if !is_shared_account_permission(perm_name) {
+                        *enabled = false;
+                    }
+                }
+            }
         }
         Task::none()
     }
@@ -310,11 +348,18 @@ impl NexusApp {
             .map(|(name, _)| name.clone())
             .collect();
 
+        // Only send shared flag if current user is admin (non-admins can't create shared accounts)
+        let is_shared = if conn.is_admin {
+            conn.user_management.is_shared
+        } else {
+            false
+        };
+
         let msg = ClientMessage::UserCreate {
             username: conn.user_management.username.clone(),
             password: conn.user_management.password.clone(),
             is_admin,
-            is_shared: false, // TODO: Add shared account support in client UI
+            is_shared,
             enabled: conn.user_management.enabled,
             permissions,
         };
@@ -469,6 +514,7 @@ impl NexusApp {
                     new_username,
                     new_password,
                     is_admin,
+                    is_shared: _, // is_shared is immutable, not sent in update
                     enabled,
                     permissions,
                 } => (

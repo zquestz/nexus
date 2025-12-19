@@ -98,6 +98,9 @@ impl NexusApp {
                         return self.update(Message::SendBroadcastPressed);
                     }
                 }
+            } else if self.active_panel() == ActivePanel::Settings {
+                // On settings screen, save settings
+                return self.update(Message::SaveSettings);
             } else if self.active_panel() == ActivePanel::About {
                 // On about screen, close the panel
                 return self.update(Message::CloseAbout);
@@ -304,8 +307,9 @@ impl NexusApp {
             // No Tab navigation needed
             return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
-            // Settings panel has no text inputs yet, just return
-            return Task::none();
+            // Settings panel has one text input (nickname), focus it
+            self.focused_field = InputId::Nickname;
+            return operation::focus(Id::from(InputId::Nickname));
         } else if self.active_connection.is_some() {
             // In chat view, Tab refocuses the chat input
             self.focused_field = InputId::ChatInput;

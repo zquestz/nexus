@@ -101,9 +101,19 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             &state.bookmark.password,
         )
         .on_input(Message::BookmarkPasswordChanged)
-        .on_submit(submit_action)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::BookmarkPassword))
         .secure(true)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .into(),
+        text_input(
+            &t("placeholder-nickname-optional"),
+            &state.bookmark.nickname,
+        )
+        .on_input(Message::BookmarkNicknameChanged)
+        .on_submit(submit_action)
+        .id(Id::from(InputId::BookmarkNickname))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),

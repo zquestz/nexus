@@ -7,6 +7,7 @@ use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 
 use crate::types::{
     ActivePanel, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
+    ServerConnectionParams,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 use iced::Task;
@@ -229,26 +230,26 @@ impl NexusApp {
             decode_data_uri_max_width(&conn.server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
         };
 
-        let server_conn = ServerConnection::new(
+        let server_conn = ServerConnection::new(ServerConnectionParams {
             bookmark_index,
-            conn.session_id,
+            session_id: conn.session_id,
             username,
             display_name,
-            conn.connection_id,
-            conn.is_admin,
-            conn.permissions,
-            conn.locale,
-            conn.server_name,
-            conn.server_description,
-            conn.server_version,
-            conn.server_image.clone(),
+            connection_id: conn.connection_id,
+            is_admin: conn.is_admin,
+            permissions: conn.permissions,
+            locale: conn.locale,
+            server_name: conn.server_name,
+            server_description: conn.server_description,
+            server_version: conn.server_version,
+            server_image: conn.server_image.clone(),
             cached_server_image,
-            chat_topic.clone(),
-            chat_topic_set_by.clone(),
-            conn.max_connections_per_ip,
-            conn.tx,
+            chat_topic: chat_topic.clone(),
+            chat_topic_set_by: chat_topic_set_by.clone(),
+            max_connections_per_ip: conn.max_connections_per_ip,
+            tx: conn.tx,
             shutdown_handle,
-        );
+        });
 
         self.connections.insert(conn.connection_id, server_conn);
         self.active_connection = Some(conn.connection_id);
@@ -303,6 +304,7 @@ impl NexusApp {
             port: self.connection_form.port.clone(),
             username: self.connection_form.username.clone(),
             password: self.connection_form.password.clone(),
+            nickname: self.connection_form.nickname.clone(),
             auto_connect: false,
             certificate_fingerprint: Some(certificate_fingerprint),
         };

@@ -138,6 +138,10 @@ pub enum InputId {
     ChangePasswordConfirm,
     /// News panel: Body text editor
     NewsBody,
+    /// Connection form: Nickname input
+    Nickname,
+    /// Bookmark editor: Nickname input
+    BookmarkNickname,
 }
 
 impl From<InputId> for Id {
@@ -165,6 +169,8 @@ impl From<InputId> for Id {
             InputId::ChangePasswordNew => "InputId::ChangePasswordNew",
             InputId::ChangePasswordConfirm => "InputId::ChangePasswordConfirm",
             InputId::NewsBody => "InputId::NewsBody",
+            InputId::Nickname => "InputId::Nickname",
+            InputId::BookmarkNickname => "InputId::BookmarkNickname",
         })
     }
 }

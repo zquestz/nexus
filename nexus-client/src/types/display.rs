@@ -59,26 +59,18 @@ pub struct ChatMessage {
     pub timestamp: Option<DateTime<Local>>,
     /// Whether the sender is an admin (for username coloring)
     pub is_admin: bool,
+    /// Whether the sender is a shared account user (for muted coloring)
+    pub is_shared: bool,
 }
 
 impl ChatMessage {
-    /// Create a new chat message from a user
-    pub fn new(username: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            username: username.into(),
-            message: message.into(),
-            message_type: MessageType::Chat,
-            timestamp: None,
-            is_admin: false,
-        }
-    }
-
-    /// Create a new chat message with a specific timestamp and admin status
-    pub fn with_timestamp_and_admin(
+    /// Create a new chat message with a specific timestamp, admin status, and shared status
+    pub fn with_timestamp_and_status(
         username: impl Into<String>,
         message: impl Into<String>,
         timestamp: DateTime<Local>,
         is_admin: bool,
+        is_shared: bool,
     ) -> Self {
         Self {
             username: username.into(),
@@ -86,6 +78,7 @@ impl ChatMessage {
             message_type: MessageType::Chat,
             timestamp: Some(timestamp),
             is_admin,
+            is_shared,
         }
     }
 
@@ -97,6 +90,7 @@ impl ChatMessage {
             message_type: MessageType::System,
             timestamp: None,
             is_admin: false,
+            is_shared: false,
         }
     }
 
@@ -108,6 +102,7 @@ impl ChatMessage {
             message_type: MessageType::Error,
             timestamp: None,
             is_admin: false,
+            is_shared: false,
         }
     }
 
@@ -119,6 +114,7 @@ impl ChatMessage {
             message_type: MessageType::Info,
             timestamp: None,
             is_admin: false,
+            is_shared: false,
         }
     }
 
@@ -130,6 +126,7 @@ impl ChatMessage {
             message_type: MessageType::Info,
             timestamp: Some(timestamp),
             is_admin: false,
+            is_shared: false,
         }
     }
 
@@ -141,6 +138,7 @@ impl ChatMessage {
             message_type: MessageType::Broadcast,
             timestamp: None,
             is_admin: false,
+            is_shared: false,
         }
     }
 
@@ -153,10 +151,14 @@ impl ChatMessage {
 /// User information for display
 #[derive(Debug, Clone)]
 pub struct UserInfo {
-    /// Username
+    /// Username (account name)
     pub username: String,
+    /// Nickname for shared account users (None for regular users)
+    pub nickname: Option<String>,
     /// Whether user is admin
     pub is_admin: bool,
+    /// Whether this is a shared account user
+    pub is_shared: bool,
     /// All active session IDs for this user
     pub session_ids: Vec<u32>,
     /// SHA-256 hash of the avatar data URI for change detection (None = no avatar/identicon)
@@ -164,4 +166,11 @@ pub struct UserInfo {
     /// We store a 32-byte hash instead of the full data URI (up to 176KB) to save memory.
     /// The actual decoded avatar is stored in `ServerConnection.avatar_cache`.
     pub avatar_hash: Option<[u8; 32]>,
+}
+
+impl UserInfo {
+    /// Returns the display name for this user (nickname for shared, username for regular)
+    pub fn display_name(&self) -> &str {
+        self.nickname.as_deref().unwrap_or(&self.username)
+    }
 }

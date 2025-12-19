@@ -65,9 +65,10 @@ placeholder-new-password = Nova Senha
 placeholder-confirm-password = Confirmar Senha
 placeholder-message = Digite uma mensagem...
 placeholder-no-permission = Sem permissão
-placeholder-broadcast-message = Digite a mensagem de difusão...
+placeholder-broadcast-message = Digite a mensagem de transmissão...
 placeholder-server-description = Descrição do servidor
 placeholder-news-body = Digite o conteúdo...
+placeholder-nickname-optional = Apelido (opcional)
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = Digite o conteúdo...
 label-auto-connect = Auto-Conectar
 label-add-bookmark = Favorito
 label-admin = Admin
+label-shared-account = Conta Compartilhada
 label-enabled = Habilitado
 label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
@@ -101,6 +103,8 @@ label-general = Geral
 label-limits = Limites
 label-news-body = Conteúdo:
 label-news-image = Imagem:
+label-identity = Identidade
+label-nickname = Apelido:
 
 # =============================================================================
 # Permission Display Names
@@ -319,7 +323,9 @@ fingerprint-warning = Isso pode indicar um problema de segurança (ataque MITM) 
 user-info-username = Nome de usuário:
 user-info-role = Função:
 user-info-role-admin = admin
+user-info-role-shared = compartilhado
 user-info-role-user = usuário
+user-info-account = Conta: { $username }
 user-info-connected = Conectado:
 user-info-connected-value = há { $duration }
 user-info-connected-value-sessions = há { $duration } ({ $count } sessões)

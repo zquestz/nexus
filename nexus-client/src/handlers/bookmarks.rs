@@ -2,6 +2,7 @@
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
+use crate::network::ConnectionParams;
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::Task;
 use iced::widget::{Id, operation};
@@ -53,6 +54,14 @@ impl NexusApp {
         self.bookmark_edit.bookmark.username = username;
         self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkUsername;
+        Task::none()
+    }
+
+    /// Handle bookmark nickname field change
+    pub fn handle_bookmark_nickname_changed(&mut self, nickname: String) -> Task<Message> {
+        self.bookmark_edit.bookmark.nickname = nickname;
+        self.bookmark_edit.error = None;
+        self.focused_field = InputId::BookmarkNickname;
         Task::none()
     }
 
@@ -147,21 +156,28 @@ impl NexusApp {
             let server_address = bookmark.address.clone();
             let username = bookmark.username.clone();
             let password = bookmark.password.clone();
+            // Use bookmark nickname, falling back to settings default
+            let nickname = if bookmark.nickname.is_empty() {
+                self.config.settings.nickname.clone()
+            } else {
+                Some(bookmark.nickname.clone())
+            };
             let locale = get_locale().to_string();
             let avatar = self.config.settings.avatar.clone();
             let display_name = bookmark.name.clone();
 
             return Task::perform(
                 async move {
-                    crate::network::connect_to_server(
+                    crate::network::connect_to_server(ConnectionParams {
                         server_address,
                         port,
                         username,
                         password,
+                        nickname,
                         locale,
                         avatar,
                         connection_id,
-                    )
+                    })
                     .await
                 },
                 move |result| Message::BookmarkConnectionResult {
@@ -204,12 +220,13 @@ impl NexusApp {
     /// Checks which field is actually focused using async operations,
     /// then moves to the next field in sequence.
     pub fn handle_bookmark_edit_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of all five bookmark fields in parallel
+        // Check focus state of all six bookmark fields in parallel
         let check_name = operation::is_focused(Id::from(InputId::BookmarkName));
         let check_address = operation::is_focused(Id::from(InputId::BookmarkAddress));
         let check_port = operation::is_focused(Id::from(InputId::BookmarkPort));
         let check_username = operation::is_focused(Id::from(InputId::BookmarkUsername));
         let check_password = operation::is_focused(Id::from(InputId::BookmarkPassword));
+        let check_nickname = operation::is_focused(Id::from(InputId::BookmarkNickname));
 
         // Batch the checks and combine results
         Task::batch([
@@ -218,6 +235,7 @@ impl NexusApp {
             check_port.map(|focused| (2, focused)),
             check_username.map(|focused| (3, focused)),
             check_password.map(|focused| (4, focused)),
+            check_nickname.map(|focused| (5, focused)),
         ])
         .collect()
         .map(|results: Vec<(u8, bool)>| {
@@ -226,12 +244,14 @@ impl NexusApp {
             let port_focused = results.iter().any(|(i, f)| *i == 2 && *f);
             let username_focused = results.iter().any(|(i, f)| *i == 3 && *f);
             let password_focused = results.iter().any(|(i, f)| *i == 4 && *f);
+            let nickname_focused = results.iter().any(|(i, f)| *i == 5 && *f);
             Message::BookmarkEditFocusResult(
                 name_focused,
                 address_focused,
                 port_focused,
                 username_focused,
                 password_focused,
+                nickname_focused,
             )
         })
     }
@@ -244,6 +264,7 @@ impl NexusApp {
         port_focused: bool,
         username_focused: bool,
         password_focused: bool,
+        nickname_focused: bool,
     ) -> Task<Message> {
         // Determine next field based on which is currently focused
         let next_field = if name_focused {
@@ -255,6 +276,8 @@ impl NexusApp {
         } else if username_focused {
             InputId::BookmarkPassword
         } else if password_focused {
+            InputId::BookmarkNickname
+        } else if nickname_focused {
             // Wrap around to first field
             InputId::BookmarkName
         } else {

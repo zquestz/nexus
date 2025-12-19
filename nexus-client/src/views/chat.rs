@@ -164,7 +164,16 @@ fn styled_message<'a>(
 fn is_admin_username(conn: &ServerConnection, username: &str) -> bool {
     conn.online_users
         .iter()
-        .any(|u| u.username == username && u.is_admin)
+        .any(|u| u.display_name() == username && u.is_admin)
+}
+
+/// Check if a username belongs to a shared account user.
+///
+/// For private messages, use the `is_shared` field on `ChatMessage` instead.
+fn is_shared_username(conn: &ServerConnection, username: &str) -> bool {
+    conn.online_users
+        .iter()
+        .any(|u| u.display_name() == username && u.is_shared)
 }
 
 // ============================================================================
@@ -253,99 +262,118 @@ fn create_inactive_tab_button(
 // Message Rendering
 // ============================================================================
 
-/// Build a rich text element for a single message line
-fn render_message_line<'a>(
-    time_str: Option<&str>,
-    username: &str,
-    line: &str,
+/// Context for rendering a chat message line
+struct MessageRenderContext<'a> {
+    /// Formatted timestamp string (None if timestamps disabled)
+    time_str: Option<String>,
+    /// Username/display name of the sender
+    username: &'a str,
+    /// The message line content
+    line: &'a str,
+    /// Type of message (Chat, System, Error, etc.)
     message_type: MessageType,
-    theme: &Theme,
-    username_is_admin: bool,
+    /// Current theme for colors
+    theme: &'a Theme,
+    /// Whether the sender is an admin
+    is_admin: bool,
+    /// Whether the sender is a shared account user
+    is_shared: bool,
+    /// Font size for the message
     font_size: f32,
-) -> Element<'a, Message> {
-    let timestamp_color = chat::timestamp(theme);
-    let link_color = theme.palette().primary;
+}
 
-    match message_type {
+/// Build a rich text element for a single message line
+fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Message> {
+    let timestamp_color = chat::timestamp(ctx.theme);
+    let link_color = ctx.theme.palette().primary;
+
+    match ctx.message_type {
         MessageType::System => {
-            let color = chat::system(theme);
+            let color = chat::system(ctx.theme);
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
                 content_color: color,
                 link_color,
-                font_size,
+                font_size: ctx.font_size,
             };
             styled_message(
-                time_str,
+                ctx.time_str.as_deref(),
                 format!("{} ", t("chat-prefix-system")),
-                line,
+                ctx.line,
                 &style,
             )
         }
         MessageType::Error => {
-            let color = chat::error(theme);
+            let color = chat::error(ctx.theme);
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
                 content_color: color,
                 link_color,
-                font_size,
+                font_size: ctx.font_size,
             };
             styled_message(
-                time_str,
+                ctx.time_str.as_deref(),
                 format!("{} ", t("chat-prefix-error")),
-                line,
+                ctx.line,
                 &style,
             )
         }
         MessageType::Info => {
-            let color = chat::info(theme);
+            let color = chat::info(ctx.theme);
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
                 content_color: color,
                 link_color,
-                font_size,
+                font_size: ctx.font_size,
             };
             styled_message(
-                time_str,
+                ctx.time_str.as_deref(),
                 format!("{} ", t("chat-prefix-info")),
-                line,
+                ctx.line,
                 &style,
             )
         }
         MessageType::Broadcast => {
-            let color = chat::broadcast(theme);
+            let color = chat::broadcast(ctx.theme);
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
                 content_color: color,
                 link_color,
-                font_size,
+                font_size: ctx.font_size,
             };
             styled_message(
-                time_str,
-                format!("{} {}: ", t("chat-prefix-broadcast"), username),
-                line,
+                ctx.time_str.as_deref(),
+                format!("{} {}: ", t("chat-prefix-broadcast"), ctx.username),
+                ctx.line,
                 &style,
             )
         }
         MessageType::Chat => {
-            let username_color = if username_is_admin {
-                chat::admin(theme)
+            let username_color = if ctx.is_admin {
+                chat::admin(ctx.theme)
+            } else if ctx.is_shared {
+                chat::shared(ctx.theme)
             } else {
-                chat::text(theme)
+                chat::text(ctx.theme)
             };
-            let text_color = chat::text(theme);
+            let text_color = chat::text(ctx.theme);
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: username_color,
                 content_color: text_color,
                 link_color,
-                font_size,
+                font_size: ctx.font_size,
             };
-            styled_message(time_str, format!("{}: ", username), line, &style)
+            styled_message(
+                ctx.time_str.as_deref(),
+                format!("{}: ", ctx.username),
+                ctx.line,
+                &style,
+            )
         }
     }
 }
@@ -374,26 +402,32 @@ fn build_message_list<'a>(
 
     for msg in messages {
         let time_str = timestamp_settings.format(&msg.get_timestamp());
-        // For private messages, use the stored is_admin flag.
+        // For private messages, use the stored is_admin/is_shared flags.
         // For server chat, fall back to looking up in online users.
         let username_is_admin = if msg.is_admin {
             true
         } else {
             is_admin_username(conn, &msg.username)
         };
+        let username_is_shared = if msg.is_shared {
+            true
+        } else {
+            is_shared_username(conn, &msg.username)
+        };
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
         for line in msg.message.split('\n') {
-            let display = render_message_line(
-                time_str.as_deref(),
-                &msg.username,
+            let display = render_message_line(MessageRenderContext {
+                time_str: time_str.clone(),
+                username: &msg.username,
                 line,
-                msg.message_type,
+                message_type: msg.message_type,
                 theme,
-                username_is_admin,
+                is_admin: username_is_admin,
+                is_shared: username_is_shared,
                 font_size,
-            );
+            });
             chat_column = chat_column.push(display);
         }
     }

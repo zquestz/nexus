@@ -68,6 +68,7 @@ placeholder-no-permission = No permission
 placeholder-broadcast-message = Enter broadcast message...
 placeholder-server-description = Server description
 placeholder-news-body = Enter news content...
+placeholder-nickname-optional = Nickname (optional)
 
 # =============================================================================
 # Labels
@@ -76,6 +77,7 @@ placeholder-news-body = Enter news content...
 label-auto-connect = Auto-Connect
 label-add-bookmark = Add Bookmark
 label-admin = Admin
+label-shared-account = Shared Account
 label-enabled = Enabled
 label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
@@ -102,6 +104,8 @@ label-general = General
 label-limits = Limits
 label-news-body = Body:
 label-news-image = Image:
+label-identity = Identity
+label-nickname = Nickname:
 
 # =============================================================================
 # Permission Display Names
@@ -342,7 +346,10 @@ fingerprint-warning = This could indicate a security issue (MITM attack) or the 
 user-info-username = Username:
 user-info-role = Role:
 user-info-role-admin = admin
+user-info-role-shared = shared
 user-info-role-user = user
+user-info-nickname = Nickname:
+user-info-account = Account: { $username }
 user-info-connected = Connected:
 user-info-connected-value = { $duration } ago
 user-info-connected-value-sessions = { $duration } ago ({ $count } sessions)

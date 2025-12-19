@@ -22,6 +22,33 @@ use iced::widget::{
     tooltip,
 };
 use iced::{Center, Element, Fill, Theme, alignment};
+use nexus_common::is_shared_account_permission;
+
+// ============================================================================
+// Edit User Context
+// ============================================================================
+
+/// Context for rendering the edit user form
+struct EditUserContext<'a> {
+    /// Connection state (for permission checking)
+    conn: &'a ServerConnection,
+    /// User management state (for error display)
+    user_management: &'a UserManagementState,
+    /// Original username (for display and update request)
+    original_username: &'a str,
+    /// New username (editable field)
+    new_username: &'a str,
+    /// New password (optional, empty = don't change)
+    new_password: &'a str,
+    /// Is admin flag
+    is_admin: bool,
+    /// Is shared account flag (immutable - display only)
+    is_shared: bool,
+    /// Enabled flag
+    enabled: bool,
+    /// Permissions list with enabled state
+    permissions: &'a [(String, bool)],
+}
 
 // ============================================================================
 // Helper Functions
@@ -52,9 +79,12 @@ fn danger_delete_button(
 }
 
 /// Build permission checkboxes split into two columns
+///
+/// When `is_shared` is true, permissions not in `SHARED_ACCOUNT_PERMISSIONS` are disabled.
 fn build_permission_columns<'a, F>(
     permissions: &'a [(String, bool)],
     conn: &'a ServerConnection,
+    is_shared: bool,
     on_toggle: F,
 ) -> Element<'a, Message>
 where
@@ -68,15 +98,21 @@ where
         let display_name = translate_permission(permission);
         let on_toggle_clone = on_toggle.clone();
 
-        let checkbox_widget = if conn.is_admin || conn.permissions.contains(permission) {
-            // Can toggle permissions they have
+        // Check if this permission is allowed for the current user
+        let user_can_toggle = conn.is_admin || conn.permissions.contains(permission);
+
+        // Check if this permission is forbidden for shared accounts
+        let forbidden_for_shared = is_shared && !is_shared_account_permission(permission);
+
+        let checkbox_widget = if user_can_toggle && !forbidden_for_shared {
+            // Can toggle: user has permission and it's not forbidden for shared accounts
             checkbox(*enabled)
                 .label(display_name)
                 .on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
                 .size(TEXT_SIZE)
                 .text_shaping(text::Shaping::Advanced)
         } else {
-            // Cannot toggle permissions they don't have
+            // Cannot toggle: either user doesn't have permission or it's forbidden for shared
             checkbox(*enabled)
                 .label(display_name)
                 .size(TEXT_SIZE)
@@ -380,7 +416,8 @@ fn create_view<'a>(
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let admin_checkbox = if conn.is_admin {
+    // Admin checkbox - disabled when is_shared is checked (shared accounts can't be admin)
+    let admin_checkbox = if conn.is_admin && !user_management.is_shared {
         checkbox(user_management.is_admin)
             .label(t("label-admin"))
             .on_toggle(Message::UserManagementIsAdminToggled)
@@ -389,6 +426,20 @@ fn create_view<'a>(
     } else {
         checkbox(user_management.is_admin)
             .label(t("label-admin"))
+            .size(TEXT_SIZE)
+            .text_shaping(text::Shaping::Advanced)
+    };
+
+    // Shared account checkbox - only admins can create shared accounts
+    let shared_checkbox = if conn.is_admin {
+        checkbox(user_management.is_shared)
+            .label(t("label-shared-account"))
+            .on_toggle(Message::UserManagementIsSharedToggled)
+            .size(TEXT_SIZE)
+            .text_shaping(text::Shaping::Advanced)
+    } else {
+        checkbox(user_management.is_shared)
+            .label(t("label-shared-account"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
@@ -410,6 +461,7 @@ fn create_view<'a>(
     let permissions_row = build_permission_columns(
         &user_management.permissions,
         conn,
+        user_management.is_shared,
         Message::UserManagementPermissionToggled,
     );
 
@@ -447,6 +499,7 @@ fn create_view<'a>(
         username_input.into(),
         password_input.into(),
         admin_checkbox.into(),
+        shared_checkbox.into(),
         enabled_checkbox.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
@@ -470,29 +523,19 @@ fn create_view<'a>(
 // ============================================================================
 
 /// Build the edit user form
-#[allow(clippy::too_many_arguments)]
-fn edit_view<'a>(
-    conn: &'a ServerConnection,
-    user_management: &'a UserManagementState,
-    original_username: &'a str,
-    new_username: &'a str,
-    new_password: &'a str,
-    is_admin: bool,
-    enabled: bool,
-    permissions: &'a [(String, bool)],
-) -> Element<'a, Message> {
+fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
     let title = shaped_text(t("title-update-user"))
         .size(TITLE_SIZE)
         .width(Fill)
         .align_x(Center);
 
-    let subtitle = shaped_text_wrapped(original_username)
+    let subtitle = shaped_text_wrapped(ctx.original_username)
         .size(TEXT_SIZE)
         .width(Fill)
         .align_x(Center)
         .style(muted_text_style);
 
-    let can_update = !new_username.trim().is_empty();
+    let can_update = !ctx.new_username.trim().is_empty();
 
     // Helper for on_submit
     let submit_action = if can_update {
@@ -501,14 +544,14 @@ fn edit_view<'a>(
         Message::ValidateUserManagementEdit
     };
 
-    let username_input = text_input(&t("placeholder-username"), new_username)
+    let username_input = text_input(&t("placeholder-username"), ctx.new_username)
         .on_input(Message::UserManagementEditUsernameChanged)
         .on_submit(submit_action.clone())
         .id(Id::from(InputId::EditNewUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let password_input = text_input(&t("placeholder-password-keep-current"), new_password)
+    let password_input = text_input(&t("placeholder-password-keep-current"), ctx.new_password)
         .on_input(Message::UserManagementEditPasswordChanged)
         .on_submit(submit_action)
         .id(Id::from(InputId::EditNewPassword))
@@ -516,27 +559,34 @@ fn edit_view<'a>(
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let admin_checkbox = if conn.is_admin {
-        checkbox(is_admin)
+    // Admin checkbox - disabled when is_shared (shared accounts can't be admin)
+    let admin_checkbox = if ctx.conn.is_admin && !ctx.is_shared {
+        checkbox(ctx.is_admin)
             .label(t("label-admin"))
             .on_toggle(Message::UserManagementEditIsAdminToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(is_admin)
+        checkbox(ctx.is_admin)
             .label(t("label-admin"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     };
 
-    let enabled_checkbox = if conn.is_admin {
-        checkbox(enabled)
+    // Shared account checkbox - always disabled in edit mode (is_shared is immutable)
+    let shared_checkbox = checkbox(ctx.is_shared)
+        .label(t("label-shared-account"))
+        .size(TEXT_SIZE)
+        .text_shaping(text::Shaping::Advanced);
+
+    let enabled_checkbox = if ctx.conn.is_admin {
+        checkbox(ctx.enabled)
             .label(t("label-enabled"))
             .on_toggle(Message::UserManagementEditEnabledToggled)
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
     } else {
-        checkbox(enabled)
+        checkbox(ctx.enabled)
             .label(t("label-enabled"))
             .size(TEXT_SIZE)
             .text_shaping(text::Shaping::Advanced)
@@ -544,8 +594,9 @@ fn edit_view<'a>(
 
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_permission_columns(
-        permissions,
-        conn,
+        ctx.permissions,
+        ctx.conn,
+        ctx.is_shared,
         Message::UserManagementEditPermissionToggled,
     );
 
@@ -565,7 +616,7 @@ fn edit_view<'a>(
     let mut items: Vec<Element<'a, Message>> = vec![title.into(), subtitle.into()];
 
     // Show error if present
-    if let Some(error) = &user_management.edit_error {
+    if let Some(error) = &ctx.user_management.edit_error {
         items.push(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
@@ -583,6 +634,7 @@ fn edit_view<'a>(
         username_input.into(),
         password_input.into(),
         admin_checkbox.into(),
+        shared_checkbox.into(),
         enabled_checkbox.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
@@ -673,18 +725,20 @@ pub fn users_view<'a>(
             new_username,
             new_password,
             is_admin,
+            is_shared,
             enabled,
             permissions,
-        } => edit_view(
+        } => edit_view(EditUserContext {
             conn,
             user_management,
             original_username,
             new_username,
             new_password,
-            *is_admin,
-            *enabled,
+            is_admin: *is_admin,
+            is_shared: *is_shared,
+            enabled: *enabled,
             permissions,
-        ),
+        }),
         UserManagementMode::ConfirmDelete { username } => confirm_delete_modal(username),
     }
 }

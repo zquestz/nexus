@@ -159,6 +159,7 @@ impl NewsManagementState {
 /// - `chat_receive`: Receive chat messages
 /// - `chat_send`: Send chat messages
 /// - `chat_topic`: View chat topic
+/// - `news_list`: View news posts
 /// - `user_info`: View user information
 /// - `user_list`: View connected users list
 /// - `user_message`: Send private messages
@@ -166,6 +167,7 @@ const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "news_list",
     "user_info",
     "user_list",
     "user_message",
@@ -189,6 +191,8 @@ pub enum UserManagementMode {
         new_password: String,
         /// Is admin flag (editable)
         is_admin: bool,
+        /// Is shared account flag (immutable - display only)
+        is_shared: bool,
         /// Enabled flag (editable)
         enabled: bool,
         /// Permissions (editable)
@@ -214,6 +218,8 @@ pub struct ConnectionFormState {
     pub username: String,
     /// Password for authentication
     pub password: String,
+    /// Nickname for shared account authentication
+    pub nickname: String,
     /// Connection error message
     pub error: Option<String>,
     /// Whether a connection attempt is currently in progress
@@ -230,6 +236,7 @@ impl Default for ConnectionFormState {
             port: DEFAULT_PORT_STR.to_string(),
             username: String::new(),
             password: String::new(),
+            nickname: String::new(),
             error: None,
             is_connecting: false,
             add_bookmark: false,
@@ -245,6 +252,7 @@ impl ConnectionFormState {
         self.port = DEFAULT_PORT_STR.to_string();
         self.username.clear();
         self.password.clear();
+        self.nickname.clear();
     }
 }
 
@@ -261,6 +269,8 @@ pub struct UserManagementState {
     pub password: String,
     /// Admin flag for create user form
     pub is_admin: bool,
+    /// Shared account flag for create user form
+    pub is_shared: bool,
     /// Enabled flag for create user form
     pub enabled: bool,
     /// Permissions for create user form
@@ -281,6 +291,7 @@ impl Default for UserManagementState {
             username: String::new(),
             password: String::new(),
             is_admin: false,
+            is_shared: false,
             enabled: true, // Default to enabled
             permissions: ALL_PERMISSIONS
                 .iter()
@@ -307,6 +318,7 @@ impl UserManagementState {
         self.username.clear();
         self.password.clear();
         self.is_admin = false;
+        self.is_shared = false;
         self.enabled = true; // Reset to default enabled
         for (perm_name, enabled) in &mut self.permissions {
             *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
@@ -325,6 +337,7 @@ impl UserManagementState {
         &mut self,
         username: String,
         is_admin: bool,
+        is_shared: bool,
         enabled: bool,
         permissions: Vec<String>,
     ) {
@@ -344,6 +357,7 @@ impl UserManagementState {
             new_username: username,
             new_password: String::new(),
             is_admin,
+            is_shared,
             enabled,
             permissions: perm_map,
         };

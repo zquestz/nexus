@@ -7,12 +7,12 @@ use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
+    INPUT_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
     error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
 use crate::types::{Message, SettingsFormState};
 use iced::widget::button as btn;
-use iced::widget::{Column, Space, button, checkbox, pick_list, row};
+use iced::widget::{Column, Space, button, checkbox, pick_list, row, text_input};
 use iced::{Center, Element, Fill, Theme};
 
 // ============================================================================
@@ -23,13 +23,14 @@ use iced::{Center, Element, Fill, Theme};
 ///
 /// Shows application settings that can be modified and saved to disk.
 /// Cancel restores original settings, Save persists changes.
-pub fn settings_view(
+pub fn settings_view<'a>(
     current_theme: Theme,
     show_connection_notifications: bool,
     chat_font_size: u8,
     timestamp_settings: TimestampSettings,
-    settings_form: Option<&SettingsFormState>,
-) -> Element<'static, Message> {
+    settings_form: Option<&'a SettingsFormState>,
+    nickname: &'a str,
+) -> Element<'a, Message> {
     // Extract avatar state from settings form (only present when panel is open)
     let (avatar, default_avatar, error) = settings_form
         .map(|f| {
@@ -106,8 +107,15 @@ pub fn settings_view(
     let time_format_row = row![Space::new().width(20), time_format_checkbox];
     let seconds_row = row![Space::new().width(20), seconds_checkbox];
 
+    // Nickname input
+    let nickname_input = text_input(&t("placeholder-nickname-optional"), nickname)
+        .on_input(Message::SettingsNicknameChanged)
+        .id(iced::widget::Id::from(crate::types::InputId::Nickname))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+
     // Avatar section
-    let avatar_preview: Element<'static, Message> = if let Some(av) = avatar {
+    let avatar_preview: Element<'_, Message> = if let Some(av) = avatar {
         av.render(AVATAR_PREVIEW_SIZE)
     } else if let Some(default) = default_avatar {
         default.render(AVATAR_PREVIEW_SIZE)
@@ -139,7 +147,7 @@ pub fn settings_view(
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
 
-    let buttons = row![
+    let buttons: iced::widget::Row<'_, Message> = row![
         Space::new().width(Fill),
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelSettings)
@@ -151,7 +159,7 @@ pub fn settings_view(
     ]
     .spacing(ELEMENT_SPACING);
 
-    let mut form_items: Vec<Element<'static, Message>> = vec![title.into()];
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
 
     // Show error if present
     if let Some(error) = error {
@@ -178,8 +186,8 @@ pub fn settings_view(
         .size(SUBHEADING_SIZE)
         .style(subheading_text_style);
 
-    // Avatar subheading
-    let avatar_heading = shaped_text(t("label-avatar"))
+    // Identity subheading (avatar + nickname)
+    let identity_heading = shaped_text(t("label-identity"))
         .size(SUBHEADING_SIZE)
         .style(subheading_text_style);
 
@@ -187,8 +195,9 @@ pub fn settings_view(
         appearance_heading.into(),
         theme_row.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
-        avatar_heading.into(),
+        identity_heading.into(),
         avatar_row.into(),
+        nickname_input.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         chat_heading.into(),
         font_size_row.into(),
