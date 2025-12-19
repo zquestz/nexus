@@ -135,10 +135,7 @@ impl NexusApp {
         if is_new_user && self.config.settings.show_connection_notifications {
             self.add_chat_message(
                 connection_id,
-                ChatMessage::system(t_args(
-                    "msg-user-connected",
-                    &[("username", &display_name)],
-                )),
+                ChatMessage::system(t_args("msg-user-connected", &[("username", &display_name)])),
             )
         } else {
             Task::none()
