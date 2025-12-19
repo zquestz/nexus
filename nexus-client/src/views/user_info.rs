@@ -239,16 +239,17 @@ fn build_user_info_content<'a>(
     let is_admin = user.is_admin.unwrap_or(false);
     let is_shared = user.is_shared;
 
+    // Display name: nickname for shared accounts, username for regular
+    let display_name = user.nickname.as_deref().unwrap_or(&user.username);
+
+    // Avatar cache is keyed by display name (nickname for shared, username for regular)
     let avatar_element: Element<'_, Message> =
-        if let Some(cached_avatar) = avatar_cache.get(&user.username) {
+        if let Some(cached_avatar) = avatar_cache.get(display_name) {
             cached_avatar.render(USER_INFO_AVATAR_SIZE)
         } else {
             // Fallback: generate identicon (shouldn't happen if cache is properly populated)
-            generate_identicon(&user.username).render(USER_INFO_AVATAR_SIZE)
+            generate_identicon(display_name).render(USER_INFO_AVATAR_SIZE)
         };
-
-    // Display name: nickname for shared accounts, username for regular
-    let display_name = user.nickname.as_deref().unwrap_or(&user.username);
 
     // Apply color: admin = red, shared = muted, regular = default
     let display_name_text = if is_admin {

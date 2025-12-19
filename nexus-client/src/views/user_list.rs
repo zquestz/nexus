@@ -207,12 +207,14 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
             let display_name = user.display_name();
 
             // Get cached avatar (should already be populated by handlers)
+            // Avatar cache is keyed by display name (nickname for shared, username for regular)
             let avatar_element: Element<'_, Message> =
-                if let Some(cached_avatar) = conn.avatar_cache.get(&user.username) {
+                if let Some(cached_avatar) = conn.avatar_cache.get(display_name) {
                     cached_avatar.render(USER_LIST_AVATAR_SIZE)
                 } else {
                     // Fallback: generate identicon if not in cache (shouldn't happen normally)
-                    generate_identicon(&user.username).render(USER_LIST_AVATAR_SIZE)
+                    // Use display name for identicon to match the cached key
+                    generate_identicon(display_name).render(USER_LIST_AVATAR_SIZE)
                 };
 
             // Row with avatar and display name (nickname for shared, username for regular)

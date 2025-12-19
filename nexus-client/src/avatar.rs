@@ -18,7 +18,7 @@ use crate::style::AVATAR_MAX_CACHE_SIZE;
 // Public Functions
 // =============================================================================
 
-/// Generate an identicon for a given seed string (e.g., username)
+/// Generate an identicon for a given seed string (e.g., username or nickname)
 ///
 /// Returns a cached image that can be used for rendering.
 /// The identicon is deterministic - the same seed always produces
@@ -59,24 +59,25 @@ pub fn compute_avatar_hash(avatar_data_uri: Option<&str>) -> Option<[u8; 32]> {
 /// - If the user has a custom avatar (data URI), decodes and caches it
 /// - If decoding fails or no avatar, generates and caches an identicon
 ///
-/// The cache key is the username (case-sensitive, matching server behavior).
+/// The cache key is the display name (nickname for shared accounts, username for regular).
+/// This is case-sensitive, matching server behavior.
 pub fn get_or_create_avatar(
     cache: &mut HashMap<String, CachedImage>,
-    username: &str,
+    display_name: &str,
     avatar_data_uri: Option<&str>,
 ) -> CachedImage {
-    // Check if already cached
-    if let Some(cached) = cache.get(username) {
+    // Check if already cached (keyed by display name)
+    if let Some(cached) = cache.get(display_name) {
         return cached.clone();
     }
 
     // Try to decode custom avatar, fall back to identicon
     let avatar = avatar_data_uri
         .and_then(|uri| decode_data_uri_square(uri, AVATAR_MAX_CACHE_SIZE))
-        .unwrap_or_else(|| generate_identicon(username));
+        .unwrap_or_else(|| generate_identicon(display_name));
 
-    // Cache and return
-    cache.insert(username.to_string(), avatar.clone());
+    // Cache and return (keyed by display name)
+    cache.insert(display_name.to_string(), avatar.clone());
     avatar
 }
 
@@ -333,10 +334,10 @@ mod tests {
     }
 
     #[test]
-    fn test_get_or_create_avatar_case_sensitive_username() {
+    fn test_get_or_create_avatar_case_sensitive_display_name() {
         let mut cache = HashMap::new();
 
-        // Usernames are case-sensitive for caching
+        // Display names are case-sensitive for caching
         get_or_create_avatar(&mut cache, "TestUser", None);
         get_or_create_avatar(&mut cache, "testuser", None);
 

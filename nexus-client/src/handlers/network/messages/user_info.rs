@@ -258,8 +258,9 @@ impl NexusApp {
             .into_iter()
             .map(|u| {
                 let avatar_hash = compute_avatar_hash(u.avatar.as_deref());
-                // Pre-populate avatar cache for this user
-                get_or_create_avatar(&mut conn.avatar_cache, &u.username, u.avatar.as_deref());
+                // Pre-populate avatar cache using display name (nickname for shared, username for regular)
+                let display_name = u.nickname.as_deref().unwrap_or(&u.username);
+                get_or_create_avatar(&mut conn.avatar_cache, display_name, u.avatar.as_deref());
                 ClientUserInfo {
                     username: u.username,
                     nickname: u.nickname,
@@ -294,6 +295,7 @@ impl NexusApp {
         }
 
         // Build IRC-style user list: @admin user1 user2
+        // Use display name (nickname for shared accounts)
         let user_count = users.len();
         let user_list: String = users
             .iter()
@@ -317,6 +319,9 @@ impl NexusApp {
     }
 
     /// Handle user updated notification
+    ///
+    /// This is broadcast when an admin modifies a user's account (username, admin status, etc.)
+    /// For shared accounts, multiple sessions may need updating (all sessions share the same account).
     pub fn handle_user_updated(
         &mut self,
         connection_id: usize,
@@ -331,41 +336,52 @@ impl NexusApp {
         let username_changed = previous_username != new_username;
         let new_avatar_hash = compute_avatar_hash(user.avatar.as_deref());
 
-        // Update the user's info in the online_users list
-        // Use previous_username to find the user (in case username changed)
-        if let Some(existing_user) = conn
+        // Update all users with this account username (for shared accounts, there may be multiple)
+        // Use previous_username to find users (in case username changed)
+        for existing_user in conn
             .online_users
             .iter_mut()
-            .find(|u| u.username == previous_username)
+            .filter(|u| u.username == previous_username)
         {
+            // Get old display name for cache invalidation
+            let old_display_name = existing_user.display_name().to_string();
+
             // Check if avatar changed (invalidate cache if so)
             let avatar_changed = existing_user.avatar_hash != new_avatar_hash;
 
             existing_user.username = new_username.clone();
-            existing_user.nickname = user.nickname.clone();
+            // Note: For shared accounts, nickname is per-session and doesn't come from UserUpdated
+            // Only update nickname if this is not a shared account
+            if !existing_user.is_shared {
+                existing_user.nickname = user.nickname.clone();
+            }
             existing_user.is_admin = user.is_admin;
+            // is_shared is immutable, but update anyway for consistency
             existing_user.is_shared = user.is_shared;
-            existing_user.session_ids = user.session_ids;
+            existing_user.session_ids = user.session_ids.clone();
             existing_user.avatar_hash = new_avatar_hash;
 
-            // If username changed, remove old cache entry
-            if username_changed {
-                conn.avatar_cache.remove(&previous_username);
+            // Get new display name for cache update
+            let new_display_name = existing_user.display_name().to_string();
+
+            // If display name changed, remove old cache entry
+            if old_display_name != new_display_name {
+                conn.avatar_cache.remove(&old_display_name);
             } else if avatar_changed {
-                // Same username but avatar changed - invalidate cache
-                conn.avatar_cache.remove(&new_username);
+                // Same display name but avatar changed - invalidate cache
+                conn.avatar_cache.remove(&new_display_name);
             }
 
-            // Pre-populate cache with new avatar
+            // Pre-populate cache with new avatar (keyed by display name)
             get_or_create_avatar(
                 &mut conn.avatar_cache,
-                &new_username,
+                &new_display_name,
                 user.avatar.as_deref(),
             );
-
-            // Re-sort the list since username may have changed
-            sort_user_list(&mut conn.online_users);
         }
+
+        // Re-sort the list since username may have changed
+        sort_user_list(&mut conn.online_users);
 
         // If username changed, update user_messages HashMap and active tab
         if username_changed {
