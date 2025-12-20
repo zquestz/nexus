@@ -173,11 +173,12 @@ fn create_user_toolbar<'a>(
 /// Permission checking is done at the layout level.
 pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element<'a, Message> {
     // Get current user's nickname for self-detection
-    // nickname is always populated (equals username for regular accounts)
+    // Use session_id to find our entry (important for shared accounts where
+    // multiple users may have the same username but different nicknames)
     let current_nickname = conn
         .online_users
         .iter()
-        .find(|u| u.username == conn.username)
+        .find(|u| u.session_ids.contains(&conn.session_id))
         .map(|u| u.nickname.as_str())
         .unwrap_or(&conn.username);
     let is_admin = conn.is_admin;

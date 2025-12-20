@@ -11,7 +11,7 @@ use nexus_common::validators::{self, NicknameError};
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_database, err_nickname_empty, err_nickname_invalid,
-    err_nickname_not_found, err_nickname_too_long, err_not_logged_in, err_permission_denied,
+    err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
@@ -72,56 +72,26 @@ where
             .await;
     }
 
-    // Look up by nickname (display name):
-    // Since nickname is always populated (equals username for regular accounts),
-    // we first try to find by nickname, then get all sessions for that user.
-    let (target_sessions, lookup_by_nickname) =
-        if let Some(session) = ctx.user_manager.get_session_by_nickname(&nickname).await {
-            // Found user by nickname
-            if session.is_shared {
-                // Shared account - return just this one session (each has unique nickname)
-                (vec![session], true)
-            } else {
-                // Regular account - get ALL sessions for this user (they share the same nickname)
-                let sessions = ctx
-                    .user_manager
-                    .get_sessions_by_username(&session.username)
-                    .await;
-                (sessions, true)
-            }
-        } else {
-            // Fall back to username lookup for regular accounts only
-            // Filter out shared account sessions - they can only be found by nickname
-            let sessions: Vec<_> = ctx
-                .user_manager
-                .get_sessions_by_username(&nickname)
-                .await
-                .into_iter()
-                .filter(|s| !s.is_shared) // Only regular users, not shared accounts
-                .collect();
-            (sessions, false)
-        };
+    // Get all sessions by nickname
+    // - Regular accounts: nickname == username, so all sessions are returned
+    // - Shared accounts: unique nickname, so only that session is returned
+    let target_sessions = ctx.user_manager.get_sessions_by_nickname(&nickname).await;
 
+    // Check if user is online
     if target_sessions.is_empty() {
-        // User not found - send response with error
         let response = ServerMessage::UserInfoResponse {
             success: false,
-            error: Some(err_nickname_not_found(ctx.locale, &nickname)),
+            error: Some(err_nickname_not_online(ctx.locale, &nickname)),
             user: None,
         };
         return ctx.send_message(&response).await;
     }
 
-    // Determine the actual username for database lookup
-    // When looked up by nickname, use the session's username (not the requested nickname)
-    let db_lookup_username = if lookup_by_nickname {
-        target_sessions
-            .first()
-            .map(|s| s.username.clone())
-            .unwrap_or_else(|| nickname.clone())
-    } else {
-        nickname.clone()
-    };
+    // Get username for database lookup from the session
+    let db_lookup_username = target_sessions
+        .first()
+        .map(|s| s.username.clone())
+        .expect("target_sessions is non-empty");
 
     // Fetch target user account for admin status and created_at
     let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
@@ -361,9 +331,10 @@ mod tests {
                 assert!(user.is_none(), "User should be None");
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
+                // We don't distinguish "not found" from "not online" for security
                 assert!(
-                    error_msg.contains("not found"),
-                    "Error should mention user not found, got: {}",
+                    error_msg.contains("not online"),
+                    "Error should mention user not online, got: {}",
                     error_msg
                 );
             }

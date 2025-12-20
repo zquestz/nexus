@@ -11,7 +11,6 @@ use super::{
     HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kicked_by, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
     err_nickname_too_long, err_not_logged_in, err_permission_denied,
-    err_shared_kick_requires_nickname,
 };
 use crate::db::Permission;
 
@@ -86,60 +85,22 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Look up by nickname (display name)
-    // Since nickname is always populated (equals username for regular accounts),
-    // we first try to find by nickname, then fall back to username lookup for
-    // regular accounts only (shared accounts can only be kicked by their nickname).
-    let (target_users, kicked_by_nickname) =
-        if let Some(session) = ctx.user_manager.get_session_by_nickname(&nickname).await {
-            // Found user by nickname
-            (vec![session], true)
-        } else {
-            // Fall back to username lookup for regular accounts only
-            // Filter out shared account sessions - they can only be kicked by nickname
-            let sessions: Vec<_> = ctx
-                .user_manager
-                .get_sessions_by_username(&nickname)
-                .await
-                .into_iter()
-                .filter(|s| !s.is_shared) // Only regular users, not shared accounts
-                .collect();
-            (sessions, false)
-        };
-
-    // If no sessions found, check if it's a shared account (to give appropriate error)
-    if target_users.is_empty() {
-        // Check if the username exists as a shared account
-        if let Ok(Some(user)) = ctx.db.users.get_user_by_username(&nickname).await
-            && user.is_shared
-        {
+    // Look up target by nickname (all users have a nickname - equals username for regular accounts)
+    let target_session = match ctx.user_manager.get_session_by_nickname(&nickname).await {
+        Some(session) => session,
+        None => {
+            // User not online
             let response = ServerMessage::UserKickResponse {
                 success: false,
-                error: Some(err_shared_kick_requires_nickname(ctx.locale)),
+                error: Some(err_nickname_not_online(ctx.locale, &nickname)),
                 nickname: None,
             };
             return ctx.send_message(&response).await;
         }
-
-        let response = ServerMessage::UserKickResponse {
-            success: false,
-            error: Some(err_nickname_not_online(ctx.locale, &nickname)),
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Always check admin status before kicking (defense in depth)
-    // For nickname-based kicks, use the session's username to look up the account
-    // For username-based kicks, use the provided username directly
-    let db_lookup_username = if kicked_by_nickname {
-        target_users
-            .first()
-            .map(|s| s.username.clone())
-            .unwrap_or_else(|| nickname.clone())
-    } else {
-        nickname.clone()
     };
+
+    // Look up account in database to check admin status
+    let db_lookup_username = target_session.username.clone();
 
     let target_user_db = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(user) => user,
@@ -163,14 +124,19 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get the preserved display name (nickname) from the first session
-    let preserved_nickname = target_users
-        .first()
-        .map(|u| u.nickname.clone())
-        .unwrap_or_else(|| nickname.clone());
+    // Get the preserved display name (nickname)
+    let preserved_nickname = target_session.nickname.clone();
+
+    // Get all sessions to kick by nickname
+    // - Regular accounts: nickname == username, so all sessions are returned
+    // - Shared accounts: unique nickname, so only that session is returned
+    let sessions_to_kick = ctx
+        .user_manager
+        .get_sessions_by_nickname(&preserved_nickname)
+        .await;
 
     // Kick all target sessions
-    for user in target_users {
+    for user in sessions_to_kick {
         // Send kick message to the user in their locale before disconnecting
         let kick_msg = ServerMessage::Error {
             message: err_kicked_by(&user.locale, &requesting_user_session.username),
@@ -658,42 +624,6 @@ mod tests {
             ServerMessage::UserKickResponse { success, error, .. } => {
                 assert!(!success, "Self-kick by nickname should be prevented");
                 assert!(error.is_some());
-            }
-            _ => panic!("Expected UserKickResponse"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_userkick_shared_account_requires_nickname() {
-        let mut test_ctx = create_test_context().await;
-
-        // Create admin user to perform kick
-        let _admin_id = login_user(&mut test_ctx, "admin", "pass123", &[], true).await;
-
-        // Create shared account user with nickname "Nick1"
-        let _shared_id =
-            login_shared_user(&mut test_ctx, "shared_acct", "sharedpass", "Nick1", &[]).await;
-
-        // Try to kick by account username (should fail)
-        let result = handle_user_kick(
-            "shared_acct".to_string(),
-            Some(1), // admin's session_id
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-
-        let response = read_server_message(&mut test_ctx.client).await;
-        match response {
-            ServerMessage::UserKickResponse { success, error, .. } => {
-                assert!(!success, "Should reject kicking shared account by username");
-                let err_msg = error.as_ref().unwrap();
-                assert!(
-                    err_msg.contains("nickname") && err_msg.contains("kicked"),
-                    "Error should mention nickname and kicked: {:?}",
-                    error
-                );
             }
             _ => panic!("Expected UserKickResponse"),
         }

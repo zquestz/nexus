@@ -8,11 +8,10 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
-    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long, err_database,
+    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long,
     err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
-    err_nickname_empty, err_nickname_invalid, err_nickname_not_found, err_nickname_not_online,
-    err_nickname_too_long, err_not_logged_in, err_permission_denied,
-    err_shared_message_requires_nickname,
+    err_nickname_empty, err_nickname_invalid, err_nickname_not_online, err_nickname_too_long,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 
@@ -100,72 +99,18 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Look up by nickname (display name)
-    // Since nickname is always populated (equals username for regular accounts),
-    // we first try to find by nickname, then fall back to username lookup for
-    // regular accounts only (shared accounts can only be messaged by their nickname).
-    let target_session_by_nickname = ctx.user_manager.get_session_by_nickname(&to_nickname).await;
-
-    // Determine the target nickname (for the UserMessage broadcast)
-    // and how to route the message
-    let (target_nickname, route_to_nickname) = if let Some(ref session) = target_session_by_nickname
-    {
-        // Found user by nickname
-        (session.nickname.clone(), true)
-    } else {
-        // Fall back to username lookup for regular accounts
-        (to_nickname.clone(), false)
-    };
-
-    // For username-based messaging, look up target user in database
-    let target_user_db = if !route_to_nickname {
-        match ctx.db.users.get_user_by_username(&to_nickname).await {
-            Ok(Some(user)) => {
-                // Shared accounts can only be messaged by nickname, not by account username
-                if user.is_shared {
-                    let response = ServerMessage::UserMessageResponse {
-                        success: false,
-                        error: Some(err_shared_message_requires_nickname(ctx.locale)),
-                    };
-                    return ctx.send_message(&response).await;
-                }
-                Some(user)
-            }
-            Ok(None) => {
-                let response = ServerMessage::UserMessageResponse {
-                    success: false,
-                    error: Some(err_nickname_not_found(ctx.locale, &to_nickname)),
-                };
-                return ctx.send_message(&response).await;
-            }
-            Err(e) => {
-                eprintln!("Database error getting target user: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserMessage"))
-                    .await;
-            }
-        }
-    } else {
-        None
-    };
-
-    // Check if target user is online
-    if route_to_nickname {
-        // Already confirmed online via get_session_by_nickname
-    } else {
-        let target_sessions = ctx
-            .user_manager
-            .get_session_ids_for_user(&target_user_db.as_ref().unwrap().username)
-            .await;
-
-        if target_sessions.is_empty() {
+    // Look up target by nickname (all users have a nickname - equals username for regular accounts)
+    let target_session = match ctx.user_manager.get_session_by_nickname(&to_nickname).await {
+        Some(session) => session,
+        None => {
+            // User not online
             let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
             };
             return ctx.send_message(&response).await;
         }
-    }
+    };
 
     // Send success response to sender
     let response = ServerMessage::UserMessageResponse {
@@ -174,38 +119,25 @@ where
     };
     ctx.send_message(&response).await?;
 
-    // Get sender's nickname
-    let from_nickname = requesting_user_session.nickname.clone();
-
-    // Broadcast message to sender and receiver
+    // Build the message to broadcast
     let broadcast = ServerMessage::UserMessage {
-        from_nickname,
+        from_nickname: requesting_user_session.nickname.clone(),
         from_admin: requesting_user_session.is_admin,
-        to_nickname: target_nickname,
+        to_nickname: target_session.nickname.clone(),
         message,
     };
 
-    // Send to all sender sessions (by username, not nickname - sender sees their own message)
+    // Send to sender's session(s) by nickname
+    // - Regular accounts: nickname == username, so all sessions receive it
+    // - Shared accounts: unique nickname, so only that session receives it
     ctx.user_manager
-        .broadcast_to_username(&requesting_user_session.username, &broadcast, &ctx.db.users)
+        .broadcast_to_nickname(&requesting_user_session.nickname, &broadcast, &ctx.db.users)
         .await;
 
-    // Send to receiver
-    if route_to_nickname {
-        // Send only to the specific shared account session (by nickname)
-        if let Some(session) = target_session_by_nickname {
-            let _ = session.tx.send((broadcast, None));
-        }
-    } else {
-        // Send to all receiver sessions (by username)
-        ctx.user_manager
-            .broadcast_to_username(
-                &target_user_db.as_ref().unwrap().username,
-                &broadcast,
-                &ctx.db.users,
-            )
-            .await;
-    }
+    // Send to receiver's session(s) by nickname
+    ctx.user_manager
+        .broadcast_to_nickname(&target_session.nickname, &broadcast, &ctx.db.users)
+        .await;
 
     Ok(())
 }
@@ -401,7 +333,8 @@ mod tests {
         match response {
             ServerMessage::UserMessageResponse { success, error } => {
                 assert!(!success);
-                assert!(error.unwrap().contains("not found"));
+                // User not online (we don't distinguish "not found" from "not online" for security)
+                assert!(error.unwrap().contains("not online"));
             }
             _ => panic!("Expected UserMessageResponse"),
         }
@@ -731,59 +664,6 @@ mod tests {
 
         // The UserMessage broadcast would contain from_username: "Sender" (the nickname)
         // This is verified by the implementation using requesting_user_session.nickname
-    }
-
-    #[tokio::test]
-    async fn test_usermessage_shared_account_requires_nickname() {
-        let mut test_ctx = create_test_context().await;
-
-        // Create sender with permission
-        let _sender_id = login_user(
-            &mut test_ctx,
-            "sender",
-            "pass123",
-            &[Permission::UserMessage],
-            false,
-        )
-        .await;
-
-        // Create shared account user with nickname "Nick1"
-        let _shared_id = login_shared_user(
-            &mut test_ctx,
-            "shared_acct",
-            "sharedpass",
-            "Nick1",
-            &[Permission::UserMessage],
-        )
-        .await;
-
-        // Try to message by account username (should fail)
-        let result = handle_user_message(
-            "shared_acct".to_string(),
-            "hello".to_string(),
-            Some(1), // sender's session_id
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-
-        let response = read_server_message(&mut test_ctx.client).await;
-        match response {
-            ServerMessage::UserMessageResponse { success, error } => {
-                assert!(
-                    !success,
-                    "Should reject messaging shared account by username"
-                );
-                let err_msg = error.as_ref().unwrap();
-                assert!(
-                    err_msg.contains("nickname") && err_msg.contains("messaged"),
-                    "Error should mention nickname and messaged: {:?}",
-                    error
-                );
-            }
-            _ => panic!("Expected UserMessageResponse"),
-        }
     }
 
     #[tokio::test]

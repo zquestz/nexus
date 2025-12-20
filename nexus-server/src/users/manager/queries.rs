@@ -86,6 +86,24 @@ impl UserManager {
             .find(|u| u.nickname.to_lowercase() == nickname_lower)
             .cloned()
     }
+
+    /// Get all sessions with a specific nickname (case-insensitive)
+    ///
+    /// This works correctly for both regular and shared accounts:
+    /// - Regular accounts: nickname == username, so returns all sessions of the user
+    /// - Shared accounts: each session has a unique nickname, so returns just that session
+    ///
+    /// This is useful for operations that need to affect all sessions of a "user"
+    /// as identified by their display name (e.g., kicking, disconnecting).
+    pub async fn get_sessions_by_nickname(&self, nickname: &str) -> Vec<UserSession> {
+        let users = self.users.read().await;
+        let nickname_lower = nickname.to_lowercase();
+        users
+            .values()
+            .filter(|u| u.nickname.to_lowercase() == nickname_lower)
+            .cloned()
+            .collect()
+    }
 }
 
 #[cfg(test)]

@@ -66,16 +66,6 @@ pub fn err_shared_invalid_permissions(locale: &str, permissions: &str) -> String
     )
 }
 
-/// Get translated "shared account message requires nickname" error
-pub fn err_shared_message_requires_nickname(locale: &str) -> String {
-    t(locale, "err-shared-message-requires-nickname")
-}
-
-/// Get translated "shared account kick requires nickname" error
-pub fn err_shared_kick_requires_nickname(locale: &str) -> String {
-    t(locale, "err-shared-kick-requires-nickname")
-}
-
 // ========================================================================
 // Account & Session Errors
 // ========================================================================
@@ -401,11 +391,6 @@ pub fn err_update_failed(locale: &str, username: &str) -> String {
 /// Get translated "user not found" error (for admin operations using account identifier)
 pub fn err_user_not_found(locale: &str, username: &str) -> String {
     t_args(locale, "err-user-not-found", &[("username", username)])
-}
-
-/// Get translated "nickname not found" error (for user operations using display name)
-pub fn err_nickname_not_found(locale: &str, nickname: &str) -> String {
-    t_args(locale, "err-nickname-not-found", &[("nickname", nickname)])
 }
 
 /// Get translated "nickname not online" error (for user operations using display name)

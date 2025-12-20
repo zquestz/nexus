@@ -92,6 +92,37 @@ impl UserManager {
         self.remove_disconnected(disconnected, user_db).await;
     }
 
+    /// Broadcast a message to all sessions with a specific nickname (case-insensitive)
+    ///
+    /// This works correctly for both regular and shared accounts:
+    /// - Regular accounts: nickname == username, so all sessions of the user receive the message
+    /// - Shared accounts: each session has a unique nickname, so only that session receives it
+    ///
+    /// Automatically removes users whose channels have closed (disconnected connections).
+    pub async fn broadcast_to_nickname(
+        &self,
+        nickname: &str,
+        message: &ServerMessage,
+        user_db: &UserDb,
+    ) {
+        let mut disconnected = Vec::new();
+
+        let nickname_lower = nickname.to_lowercase();
+
+        {
+            let users = self.users.read().await;
+            for user in users.values() {
+                if user.nickname.to_lowercase() == nickname_lower
+                    && user.tx.send((message.clone(), None)).is_err()
+                {
+                    disconnected.push(user.session_id);
+                }
+            }
+        }
+
+        self.remove_disconnected(disconnected, user_db).await;
+    }
+
     /// Broadcast a message to all users with a specific permission
     ///
     /// This method checks that users have the required permission (server enforcement).
