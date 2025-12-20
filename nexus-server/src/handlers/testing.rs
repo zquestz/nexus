@@ -152,10 +152,59 @@ pub async fn login_user_with_features(
             features,
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: None,
+            nickname: username.to_string(), // Regular account: nickname == username
         })
         .await
         .expect("Failed to add user to UserManager")
+}
+
+/// Helper to create a shared account user with a nickname and add them to UserManager
+pub async fn login_shared_user(
+    test_ctx: &mut TestContext,
+    account_username: &str,
+    password: &str,
+    nickname: &str,
+    permissions: &[crate::db::Permission],
+) -> u32 {
+    use crate::db::{Permissions, hash_password};
+
+    // Hash password
+    let hashed = hash_password(password).unwrap();
+
+    // Build permissions
+    let mut perms = Permissions::new();
+    for perm in permissions {
+        perms.permissions.insert(*perm);
+    }
+
+    // Create shared account in database (is_shared = true)
+    let user = test_ctx
+        .db
+        .users
+        .create_user(account_username, &hashed, false, true, true, &perms)
+        .await
+        .unwrap();
+
+    // Add user to UserManager with nickname
+    test_ctx
+        .user_manager
+        .add_user(NewSessionParams {
+            session_id: 0, // Will be assigned by add_user
+            db_user_id: user.id,
+            username: account_username.to_string(),
+            is_admin: false,
+            is_shared: true,
+            permissions: perms.permissions.clone(),
+            address: test_ctx.peer_addr,
+            created_at: user.created_at,
+            tx: test_ctx.tx.clone(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: nickname.to_string(), // Shared account: custom nickname
+        })
+        .await
+        .expect("Failed to add shared user to UserManager")
 }
 
 /// Helper to read a ServerMessage from the client stream using the new framing format

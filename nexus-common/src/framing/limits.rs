@@ -42,7 +42,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
-    m.insert("ChatMessage", 1147);
+    m.insert("ChatMessage", 1164);
     m.insert("ChatTopicUpdated", 340);
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn test_limit_user_info() {
         let msg = ClientMessage::UserInfo {
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("UserInfo") as usize);
     }
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn test_limit_user_kick() {
         let msg = ClientMessage::UserKick {
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("UserKick") as usize);
     }
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn test_limit_user_message_client() {
         let msg = ClientMessage::UserMessage {
-            to_username: str_of_len(MAX_USERNAME_LENGTH),
+            to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
         // Client variant is smaller than server variant, so it fits within the limit
@@ -335,7 +335,8 @@ mod tests {
     fn test_limit_chat_message() {
         let msg = ServerMessage::ChatMessage {
             session_id: u32::MAX,
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            is_admin: false,
             is_shared: false,
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
@@ -494,7 +495,7 @@ mod tests {
         let msg = ServerMessage::UserConnected {
             user: UserInfo {
                 username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+                nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
                 is_admin: false,
                 is_shared: false,
@@ -539,7 +540,7 @@ mod tests {
     fn test_limit_user_disconnected() {
         let msg = ServerMessage::UserDisconnected {
             session_id: u32::MAX,
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
         };
         assert_eq!(
             json_size(&msg),
@@ -587,7 +588,7 @@ mod tests {
             error: None,
             user: Some(UserInfoDetailed {
                 username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+                nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
                 is_shared: false,
                 session_ids: vec![u32::MAX; 10],
@@ -612,7 +613,7 @@ mod tests {
         let msg = ServerMessage::UserKickResponse {
             success: false,
             error: Some(str_of_len(512)),
-            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
+            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -631,9 +632,9 @@ mod tests {
     #[test]
     fn test_limit_user_message_server() {
         let msg = ServerMessage::UserMessage {
-            from_username: str_of_len(MAX_USERNAME_LENGTH),
+            from_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             from_admin: true,
-            to_username: str_of_len(MAX_USERNAME_LENGTH),
+            to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
         // Server variant defines the limit since it's larger
@@ -661,7 +662,7 @@ mod tests {
             previous_username: str_of_len(MAX_USERNAME_LENGTH),
             user: UserInfo {
                 username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+                nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
                 is_admin: false,
                 is_shared: false,

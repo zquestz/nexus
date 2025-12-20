@@ -81,18 +81,18 @@ fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
 
 /// Create action toolbar for an expanded user
 ///
-/// - `display_name`: Display name - nickname for shared accounts, username for regular
-///   (used for all actions: info, PM, kick - server looks up by display name)
+/// - `nickname`: The user's nickname (always populated; equals username for regular accounts).
+///   Used for all actions: info, PM, kick - server looks up by nickname.
 fn create_user_toolbar<'a>(
-    display_name: &'a str,
-    current_username: &'a str,
+    nickname: &'a str,
+    current_nickname: &'a str,
     target_is_admin: bool,
     current_user_is_admin: bool,
     permissions: &[String],
     theme: &Theme,
 ) -> Row<'a, Message> {
-    let display_name_owned = display_name.to_string();
-    let is_self = display_name == current_username;
+    let nickname_owned = nickname.to_string();
+    let is_self = nickname == current_nickname;
 
     // Check permissions (admins have all permissions)
     let has_user_info_permission =
@@ -112,10 +112,10 @@ fn create_user_toolbar<'a>(
     let danger_color = theme.palette().danger;
 
     let info_button = if has_user_info_permission {
-        let display_name_for_info = display_name_owned.clone();
+        let nickname_for_info = nickname_owned.clone();
         enabled_icon_button(
             info_icon,
-            Message::UserInfoIconClicked(display_name_for_info),
+            Message::UserInfoIconClicked(nickname_for_info),
             primary_color,
             icon_color,
         )
@@ -128,10 +128,10 @@ fn create_user_toolbar<'a>(
     if !is_self {
         let message_icon = icon_container(icon::message());
         let message_button = if has_user_message_permission {
-            let display_name_for_message = display_name_owned.clone();
+            let nickname_for_message = nickname_owned.clone();
             enabled_icon_button(
                 message_icon,
-                Message::UserMessageIconClicked(display_name_for_message),
+                Message::UserMessageIconClicked(nickname_for_message),
                 primary_color,
                 icon_color,
             )
@@ -149,7 +149,7 @@ fn create_user_toolbar<'a>(
         let kick_icon = icon_container(icon::kick());
         let kick_button = enabled_icon_button(
             kick_icon,
-            Message::UserKickIconClicked(display_name_owned),
+            Message::UserKickIconClicked(nickname_owned),
             danger_color,
             icon_color,
         );
@@ -172,13 +172,13 @@ fn create_user_toolbar<'a>(
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
 pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element<'a, Message> {
-    // Get current user's display name for self-detection
-    // For shared accounts, this is the nickname; for regular accounts, this is the username
-    let current_display_name = conn
+    // Get current user's nickname for self-detection
+    // nickname is always populated (equals username for regular accounts)
+    let current_nickname = conn
         .online_users
         .iter()
         .find(|u| u.username == conn.username)
-        .map(|u| u.display_name())
+        .map(|u| u.nickname.as_str())
         .unwrap_or(&conn.username);
     let is_admin = conn.is_admin;
     let permissions = &conn.permissions;
@@ -197,46 +197,46 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         );
     } else {
         for (index, user) in conn.online_users.iter().enumerate() {
-            let is_expanded = conn.expanded_user.as_ref() == Some(&user.username);
+            let is_expanded = conn.expanded_user.as_deref() == Some(user.nickname.as_str());
             let is_even = index % 2 == 0;
 
             // Username button with avatar
             let user_is_admin = user.is_admin;
             let user_is_shared = user.is_shared;
-            let username_clone = user.username.clone();
-            let display_name = user.display_name();
+            let nickname_clone = user.nickname.clone();
+            let nickname = &user.nickname;
 
             // Get cached avatar (should already be populated by handlers)
-            // Avatar cache is keyed by display name (nickname for shared, username for regular)
+            // Avatar cache is keyed by nickname (always populated; equals username for regular accounts)
             let avatar_element: Element<'_, Message> =
-                if let Some(cached_avatar) = conn.avatar_cache.get(display_name) {
+                if let Some(cached_avatar) = conn.avatar_cache.get(nickname) {
                     cached_avatar.render(USER_LIST_AVATAR_SIZE)
                 } else {
                     // Fallback: generate identicon if not in cache (shouldn't happen normally)
-                    // Use display name for identicon to match the cached key
-                    generate_identicon(display_name).render(USER_LIST_AVATAR_SIZE)
+                    // Use nickname for identicon to match the cached key
+                    generate_identicon(nickname).render(USER_LIST_AVATAR_SIZE)
                 };
 
-            // Row with avatar and display name (nickname for shared, username for regular)
+            // Row with avatar and nickname (always populated; equals username for regular accounts)
             // Apply appropriate color: admin = red, shared = muted, regular = default
-            let display_name_text = if user_is_admin {
-                shaped_text(display_name)
+            let nickname_text = if user_is_admin {
+                shaped_text(nickname)
                     .size(USER_LIST_TEXT_SIZE)
                     .color(chat::admin(theme))
             } else if user_is_shared {
-                shaped_text(display_name)
+                shaped_text(nickname)
                     .size(USER_LIST_TEXT_SIZE)
                     .color(chat::shared(theme))
             } else {
-                shaped_text(display_name).size(USER_LIST_TEXT_SIZE)
+                shaped_text(nickname).size(USER_LIST_TEXT_SIZE)
             };
 
-            let user_row = row![avatar_element, display_name_text,]
+            let user_row = row![avatar_element, nickname_text,]
                 .spacing(USER_LIST_AVATAR_SPACING)
                 .align_y(Center);
 
             let user_button = button(container(user_row).width(Fill))
-                .on_press(Message::UserListItemClicked(username_clone))
+                .on_press(Message::UserListItemClicked(nickname_clone))
                 .width(Fill)
                 .padding(INPUT_PADDING)
                 .style(user_list_item_button_style(
@@ -244,15 +244,11 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     chat::admin(theme),
                 ));
 
-            // Tooltip: "Nickname (account)" for shared, just username for regular
+            // Tooltip: "Nickname (account)" for shared, just nickname for regular
             let tooltip_text = if user_is_shared {
-                if let Some(nickname) = &user.nickname {
-                    format!("{} ({})", nickname, user.username)
-                } else {
-                    user.username.clone()
-                }
+                format!("{} ({})", user.nickname, user.username)
             } else {
-                display_name.to_string()
+                nickname.clone()
             };
 
             // Wrap button in tooltip showing full name (useful when truncated)
@@ -279,8 +275,8 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
 
                 // Toolbar
                 let toolbar = create_user_toolbar(
-                    user.display_name(),
-                    current_display_name,
+                    &user.nickname,
+                    current_nickname,
                     user.is_admin,
                     is_admin,
                     permissions,

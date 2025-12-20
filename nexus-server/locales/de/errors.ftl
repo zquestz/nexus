@@ -6,6 +6,8 @@ err-nickname-empty = Spitzname darf nicht leer sein
 err-nickname-in-use = Spitzname wird bereits verwendet
 err-nickname-invalid = Spitzname enthält ungültige Zeichen (Buchstaben, Zahlen und Symbole erlaubt - keine Leerzeichen oder Steuerzeichen)
 err-nickname-is-username = Spitzname darf kein existierender Benutzername sein
+err-nickname-not-found = Benutzer „{ $nickname }" nicht gefunden
+err-nickname-not-online = Benutzer „{ $nickname }" ist nicht online
 err-nickname-required = Spitzname für gemeinsame Konten erforderlich
 err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
 
@@ -13,6 +15,8 @@ err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
 err-shared-cannot-be-admin = Gemeinsame Konten können keine Administratoren sein
 err-shared-cannot-change-password = Passwort für gemeinsames Konto kann nicht geändert werden
 err-shared-invalid-permissions = Gemeinsame Konten können diese Berechtigungen nicht haben: { $permissions }
+err-shared-message-requires-nickname = Gemeinsame Konten können nur über den Spitznamen Nachrichten empfangen
+err-shared-kick-requires-nickname = Gemeinsame Konten können nur über den Spitznamen gekickt werden
 
 # Avatar-Validierungsfehler
 err-avatar-invalid-format = Ungültiges Avatar-Format (muss eine Data-URI mit Base64-Kodierung sein)

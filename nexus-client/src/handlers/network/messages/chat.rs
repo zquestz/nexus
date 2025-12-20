@@ -14,24 +14,13 @@ impl NexusApp {
     pub fn handle_chat_message(
         &mut self,
         connection_id: usize,
-        username: String,
+        nickname: String,
         message: String,
+        is_admin: bool,
         is_shared: bool,
     ) -> Task<Message> {
-        // Look up admin status from online_users (username is display name)
-        let is_admin = self
-            .connections
-            .get(&connection_id)
-            .and_then(|conn| {
-                conn.online_users
-                    .iter()
-                    .find(|u| u.display_name() == username)
-                    .map(|u| u.is_admin)
-            })
-            .unwrap_or(false);
-
         let chat_message = ChatMessage::with_timestamp_and_status(
-            username,
+            nickname,
             message,
             chrono::Local::now(),
             is_admin,

@@ -6,6 +6,8 @@ err-nickname-empty = Псевдоним не может быть пустым
 err-nickname-in-use = Псевдоним уже используется
 err-nickname-invalid = Псевдоним содержит недопустимые символы (разрешены буквы, цифры и символы - без пробелов и управляющих символов)
 err-nickname-is-username = Псевдоним не может совпадать с существующим именем пользователя
+err-nickname-not-found = Пользователь "{ $nickname }" не найден
+err-nickname-not-online = Пользователь "{ $nickname }" не в сети
 err-nickname-required = Псевдоним обязателен для общих учетных записей
 err-nickname-too-long = Псевдоним слишком длинный (макс. { $max_length } символов)
 
@@ -13,6 +15,8 @@ err-nickname-too-long = Псевдоним слишком длинный (мак
 err-shared-cannot-be-admin = Общие учетные записи не могут быть администраторами
 err-shared-cannot-change-password = Невозможно изменить пароль общей учетной записи
 err-shared-invalid-permissions = Общие учетные записи не могут иметь эти разрешения: { $permissions }
+err-shared-message-requires-nickname = Общим учетным записям можно отправлять сообщения только по никнейму
+err-shared-kick-requires-nickname = Общие учетные записи можно кикнуть только по никнейму
 
 # Ошибки валидации аватара
 err-avatar-invalid-format = Недопустимый формат аватара (должен быть data URI с кодировкой base64)

@@ -11,8 +11,6 @@ use crate::users::user::{NewSessionParams, UserSession};
 pub enum AddUserError {
     /// The requested nickname is already in use by another session
     NicknameInUse,
-    /// The requested nickname matches an existing logged-in username
-    NicknameMatchesUsername,
 }
 
 impl UserManager {
@@ -40,31 +38,21 @@ impl UserManager {
     /// # Errors
     ///
     /// Returns `AddUserError::NicknameInUse` if the nickname is already taken by
-    /// another shared account session.
-    ///
-    /// Returns `AddUserError::NicknameMatchesUsername` if the nickname matches
-    /// a currently logged-in regular user's username.
+    /// another session (shared or regular).
     pub async fn add_user(&self, mut params: NewSessionParams) -> Result<u32, AddUserError> {
         // Acquire write lock first to ensure atomicity of nickname check + insert
         let mut users = self.users.write().await;
 
         // For shared accounts, check nickname uniqueness while holding the lock
-        if let Some(ref nickname) = params.nickname {
-            let nickname_lower = nickname.to_lowercase();
+        // (Regular accounts have nickname == username, so this check is redundant for them,
+        // but we do it anyway for consistency)
+        if params.is_shared {
+            let nickname_lower = params.nickname.to_lowercase();
 
             for user in users.values() {
-                // Check against existing nicknames (other shared account sessions)
-                if let Some(ref existing_nickname) = user.nickname
-                    && existing_nickname.to_lowercase() == nickname_lower
-                {
+                // Check against existing nicknames (all sessions have nicknames now)
+                if user.nickname.to_lowercase() == nickname_lower {
                     return Err(AddUserError::NicknameInUse);
-                }
-
-                // Check against logged-in usernames (regular accounts)
-                // This ensures a shared account can't use a nickname that matches
-                // a logged-in regular user's username
-                if user.username.to_lowercase() == nickname_lower {
-                    return Err(AddUserError::NicknameMatchesUsername);
                 }
             }
         }

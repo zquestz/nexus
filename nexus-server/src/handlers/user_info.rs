@@ -5,13 +5,13 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
-use nexus_common::validators::{self, UsernameError};
+use nexus_common::validators::{self, NicknameError};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-    err_user_not_found, err_username_empty, err_username_invalid, err_username_too_long,
+    HandlerContext, err_authentication, err_database, err_nickname_empty, err_nickname_invalid,
+    err_nickname_not_found, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
@@ -19,7 +19,7 @@ use crate::db::Permission;
 
 /// Handle a userinfo request from the client
 pub async fn handle_user_info<W>(
-    requested_username: String,
+    nickname: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -34,14 +34,14 @@ where
             .await;
     };
 
-    // Validate username format
-    if let Err(e) = validators::validate_username(&requested_username) {
+    // Validate nickname format
+    if let Err(e) = validators::validate_nickname(&nickname) {
         let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            NicknameError::Empty => err_nickname_empty(ctx.locale),
+            NicknameError::TooLong => {
+                err_nickname_too_long(ctx.locale, validators::MAX_NICKNAME_LENGTH)
             }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+            NicknameError::InvalidCharacters => err_nickname_invalid(ctx.locale),
         };
         let response = ServerMessage::UserInfoResponse {
             success: false,
@@ -72,35 +72,41 @@ where
             .await;
     }
 
-    // Look up by display name:
-    // 1. First try to find by nickname (for shared account users)
-    // 2. Then fall back to username lookup, but filter out shared accounts
-    //    (shared accounts can only be found by their nickname, not account username)
-    let (target_sessions, lookup_by_nickname) = if let Some(session) = ctx
-        .user_manager
-        .get_session_by_nickname(&requested_username)
-        .await
-    {
-        // Found a shared account user by nickname - return just that session
-        (vec![session], true)
-    } else {
-        // Look up all sessions for target username (case-insensitive)
-        // Filter out shared account sessions - they can only be found by nickname
-        let sessions: Vec<_> = ctx
-            .user_manager
-            .get_sessions_by_username(&requested_username)
-            .await
-            .into_iter()
-            .filter(|s| s.nickname.is_none()) // Only regular users, not shared accounts
-            .collect();
-        (sessions, false)
-    };
+    // Look up by nickname (display name):
+    // Since nickname is always populated (equals username for regular accounts),
+    // we first try to find by nickname, then get all sessions for that user.
+    let (target_sessions, lookup_by_nickname) =
+        if let Some(session) = ctx.user_manager.get_session_by_nickname(&nickname).await {
+            // Found user by nickname
+            if session.is_shared {
+                // Shared account - return just this one session (each has unique nickname)
+                (vec![session], true)
+            } else {
+                // Regular account - get ALL sessions for this user (they share the same nickname)
+                let sessions = ctx
+                    .user_manager
+                    .get_sessions_by_username(&session.username)
+                    .await;
+                (sessions, true)
+            }
+        } else {
+            // Fall back to username lookup for regular accounts only
+            // Filter out shared account sessions - they can only be found by nickname
+            let sessions: Vec<_> = ctx
+                .user_manager
+                .get_sessions_by_username(&nickname)
+                .await
+                .into_iter()
+                .filter(|s| !s.is_shared) // Only regular users, not shared accounts
+                .collect();
+            (sessions, false)
+        };
 
     if target_sessions.is_empty() {
         // User not found - send response with error
         let response = ServerMessage::UserInfoResponse {
             success: false,
-            error: Some(err_user_not_found(ctx.locale, &requested_username)),
+            error: Some(err_nickname_not_found(ctx.locale, &nickname)),
             user: None,
         };
         return ctx.send_message(&response).await;
@@ -112,9 +118,9 @@ where
         target_sessions
             .first()
             .map(|s| s.username.clone())
-            .unwrap_or_else(|| requested_username.clone())
+            .unwrap_or_else(|| nickname.clone())
     } else {
-        requested_username.clone()
+        nickname.clone()
     };
 
     // Fetch target user account for admin status and created_at
@@ -150,17 +156,12 @@ where
         .max_by_key(|s| s.login_time)
         .and_then(|s| s.avatar.clone());
 
-    // Get nickname for shared account users
-    // If looked up by nickname, use that session's nickname
-    // Otherwise, for shared accounts looked up by username, get nickname from first session
-    let nickname = if lookup_by_nickname {
-        target_sessions.first().and_then(|s| s.nickname.clone())
-    } else if target_account.is_shared {
-        // Shared account looked up by username - get nickname from first session
-        target_sessions.first().and_then(|s| s.nickname.clone())
-    } else {
-        None
-    };
+    // Get nickname (display name) for the user from the session
+    // (nickname is always populated - equals username for regular accounts)
+    let display_nickname = target_sessions
+        .first()
+        .map(|s| s.nickname.clone())
+        .unwrap_or_else(|| target_account.username.clone());
 
     // Collect IP addresses from all sessions (for admins only)
     let addresses: Vec<String> = target_sessions
@@ -178,7 +179,7 @@ where
         // Admin gets all fields including addresses
         UserInfoDetailed {
             username: actual_username,
-            nickname,
+            nickname: display_nickname,
             login_time: earliest_login,
             is_shared: target_account.is_shared,
             session_ids,
@@ -193,7 +194,7 @@ where
         // Non-admin gets all fields except addresses
         UserInfoDetailed {
             username: actual_username,
-            nickname,
+            nickname: display_nickname,
             login_time: earliest_login,
             is_shared: target_account.is_shared,
             session_ids,
@@ -270,7 +271,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "alice".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -327,7 +328,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "alice".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -423,7 +424,7 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "requester".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -444,7 +445,7 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "target".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -547,7 +548,7 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "admin".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -568,7 +569,7 @@ mod tests {
                 features: vec![FEATURE_CHAT.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "target".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -681,7 +682,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "admin1".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -702,7 +703,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "admin2".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -840,7 +841,7 @@ mod tests {
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(avatar_data.clone()),
-                nickname: None,
+                nickname: "alice".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -912,7 +913,7 @@ mod tests {
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(old_avatar),
-                nickname: None,
+                nickname: "alice".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -936,7 +937,7 @@ mod tests {
                 features: vec![],
                 locale: "en".to_string(),
                 avatar: Some(new_avatar.clone()),
-                nickname: None,
+                nickname: "alice".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -1064,7 +1065,7 @@ mod tests {
                 );
                 assert_eq!(
                     user_info.nickname,
-                    Some("Nick1".to_string()),
+                    "Nick1".to_string(),
                     "Should include nickname"
                 );
                 assert!(user_info.is_shared, "Should be marked as shared");
@@ -1168,8 +1169,8 @@ mod tests {
                 let user_info = user.unwrap();
                 assert!(!user_info.is_shared, "Regular account should not be shared");
                 assert_eq!(
-                    user_info.nickname, None,
-                    "Regular account should have no nickname"
+                    user_info.nickname, user_info.username,
+                    "Regular account should have nickname == username"
                 );
             }
             _ => panic!("Expected UserInfoResponse"),

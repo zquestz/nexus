@@ -214,10 +214,10 @@ impl NexusApp {
 
         // Build ordered list of tabs: Server first, then PMs alphabetically
         let mut tabs = vec![ChatTab::Server];
-        let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
-        pm_usernames.sort();
-        for username in pm_usernames {
-            tabs.push(ChatTab::UserMessage(username));
+        let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
+        pm_nicknames.sort();
+        for nickname in pm_nicknames {
+            tabs.push(ChatTab::UserMessage(nickname));
         }
 
         // Find current tab index and move to next (with wrap)
@@ -242,10 +242,10 @@ impl NexusApp {
 
         // Build ordered list of tabs: Server first, then PMs alphabetically
         let mut tabs = vec![ChatTab::Server];
-        let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
-        pm_usernames.sort();
-        for username in pm_usernames {
-            tabs.push(ChatTab::UserMessage(username));
+        let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
+        pm_nicknames.sort();
+        for nickname in pm_nicknames {
+            tabs.push(ChatTab::UserMessage(nickname));
         }
 
         // Find current tab index and move to previous (with wrap)

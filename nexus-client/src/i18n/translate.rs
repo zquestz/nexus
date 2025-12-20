@@ -33,7 +33,7 @@ pub fn t(key: &str) -> String {
 ///
 /// # Example
 /// ```ignore
-/// let msg = t_args("msg-user-connected", &[("username", "alice")]);
+/// let msg = t_args("msg-user-connected", &[("nickname", "alice")]);
 /// ```
 pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
     translate_with_args(get_locale(), key, args)
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_translation_with_args_english() {
-        let result = translate_with_args("en", "msg-user-connected", &[("username", "alice")]);
+        let result = translate_with_args("en", "msg-user-connected", &[("nickname", "alice")]);
         // Fluent adds Unicode directional markers around substituted values
         assert!(result.contains("alice"));
         assert!(result.contains("connected"));

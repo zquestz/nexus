@@ -171,7 +171,7 @@ where
             .broadcast_user_event(
                 ServerMessage::UserDisconnected {
                     session_id: id,
-                    username: user.display_name().to_string(),
+                    nickname: user.nickname.clone(),
                 },
                 &db.users,
                 Some(id), // Exclude the disconnecting user
@@ -250,20 +250,20 @@ where
         ClientMessage::UserEdit { username } => {
             handlers::handle_user_edit(username, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserInfo { username } => {
-            handlers::handle_user_info(username, conn_state.session_id, ctx).await?;
+        ClientMessage::UserInfo { nickname } => {
+            handlers::handle_user_info(nickname, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserKick { username } => {
-            handlers::handle_user_kick(username, conn_state.session_id, ctx).await?;
+        ClientMessage::UserKick { nickname } => {
+            handlers::handle_user_kick(nickname, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserList { all } => {
             handlers::handle_user_list(all, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserMessage {
-            to_username,
+            to_nickname,
             message,
         } => {
-            handlers::handle_user_message(to_username, message, conn_state.session_id, ctx).await?;
+            handlers::handle_user_message(to_nickname, message, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserUpdate {
             username,

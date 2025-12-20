@@ -92,10 +92,11 @@ label-server-name = 이름:
 label-server-description = 설명:
 label-server-version = 버전:
 label-chat-topic = 채팅 주제:
-label-chat-topic-set-by = 주제 설정자:
+label-chat-topic-set-by = 토픽 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
 label-avatar = 아바타:
-label-details = 기술 세부 정보
+label-server-image = 서버 이미지:
+label-details = 기술 세부사항
 label-chat-options = 채팅 옵션
 label-appearance = 외관
 label-image = 이미지
@@ -122,6 +123,10 @@ permission-user_delete = 사용자 삭제
 permission-user_edit = 사용자 편집
 permission-user_kick = 사용자 추방
 permission-user_message = 사용자 메시지
+permission-news_list = 뉴스 목록
+permission-news_create = 뉴스 작성
+permission-news_edit = 뉴스 편집
+permission-news_delete = 뉴스 삭제
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = 사용자가 성공적으로 추방되었습니다
-msg-user-kicked-success-name = 사용자 '{ $username }'이(가) 성공적으로 추방되었습니다
+msg-user-kicked-success-name = 사용자 '{ $nickname }'이(가) 성공적으로 추방되었습니다
 msg-broadcast-sent = 브로드캐스트가 성공적으로 전송되었습니다
 msg-user-created = 사용자가 성공적으로 생성되었습니다
 msg-user-created-name = 사용자 '{ $username }'이(가) 성공적으로 생성되었습니다
@@ -213,8 +218,8 @@ msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 confirm-delete-user = '{ $username }' 사용자를 삭제하시겠습니까?
 confirm-delete-news = 이 게시물을 삭제하시겠습니까?
-msg-user-connected = { $username }님이 연결되었습니다
-msg-user-disconnected = { $username }님의 연결이 해제되었습니다
+msg-user-connected = { $nickname }님이 연결되었습니다
+msg-user-disconnected = { $nickname }님의 연결이 해제되었습니다
 msg-disconnected = 연결 해제됨: { $error }
 msg-connection-cancelled = 인증서 불일치로 연결이 취소되었습니다
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = 메시지에 잘못된 문자가 포함되어 �
 err-username-empty = 사용자 이름은 비워둘 수 없습니다
 err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max }자)
 err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있습니다
+err-nickname-empty = 닉네임은 비워둘 수 없습니다
+err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max }자)
+err-nickname-invalid = 닉네임에 잘못된 문자가 포함되어 있습니다
 err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max }자)
 err-passwords-do-not-match = 비밀번호가 일치하지 않습니다
 err-current-password-required = 현재 비밀번호는 필수입니다
@@ -325,6 +333,7 @@ user-info-role = 역할:
 user-info-role-admin = 관리자
 user-info-role-shared = 공유
 user-info-role-user = 사용자
+user-info-nickname = 별명:
 user-info-account = 계정: { $username }
 user-info-connected = 연결됨:
 user-info-connected-value = { $duration } 전
@@ -404,9 +413,6 @@ cmd-serverinfo-end = 서버 정보 끝
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = 이미지 선택
-button-clear-image = 지우기
-label-server-image = 서버 이미지:
 err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
 err-server-image-invalid-format = 서버 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
 err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)

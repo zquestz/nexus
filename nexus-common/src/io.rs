@@ -334,7 +334,8 @@ mod tests {
         assert_eq!(
             server_message_type(&ServerMessage::ChatMessage {
                 session_id: 1,
-                username: "test".to_string(),
+                nickname: "test".to_string(),
+                is_admin: false,
                 is_shared: false,
                 message: "hi".to_string(),
             }),
@@ -381,7 +382,8 @@ mod tests {
     async fn test_send_and_receive_server_message() {
         let message = ServerMessage::ChatMessage {
             session_id: 42,
-            username: "alice".to_string(),
+            nickname: "alice".to_string(),
+            is_admin: false,
             is_shared: false,
             message: "Hi there!".to_string(),
         };
@@ -403,12 +405,14 @@ mod tests {
         match received.message {
             ServerMessage::ChatMessage {
                 session_id,
-                username,
+                nickname,
+                is_admin,
                 is_shared,
                 message,
             } => {
                 assert_eq!(session_id, 42);
-                assert_eq!(username, "alice");
+                assert_eq!(nickname, "alice");
+                assert!(!is_admin);
                 assert!(!is_shared);
                 assert_eq!(message, "Hi there!");
             }

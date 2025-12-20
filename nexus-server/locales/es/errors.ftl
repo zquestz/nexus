@@ -6,6 +6,8 @@ err-nickname-empty = El apodo no puede estar vacío
 err-nickname-in-use = El apodo ya está en uso
 err-nickname-invalid = El apodo contiene caracteres inválidos (se permiten letras, números y símbolos - sin espacios ni caracteres de control)
 err-nickname-is-username = El apodo no puede ser un nombre de usuario existente
+err-nickname-not-found = Usuario '{ $nickname }' no encontrado
+err-nickname-not-online = El usuario '{ $nickname }' no está en línea
 err-nickname-required = Se requiere apodo para cuentas compartidas
 err-nickname-too-long = El apodo es demasiado largo (máx. { $max_length } caracteres)
 
@@ -13,8 +15,10 @@ err-nickname-too-long = El apodo es demasiado largo (máx. { $max_length } carac
 err-shared-cannot-be-admin = Las cuentas compartidas no pueden ser administradores
 err-shared-cannot-change-password = No se puede cambiar la contraseña de una cuenta compartida
 err-shared-invalid-permissions = Las cuentas compartidas no pueden tener estos permisos: { $permissions }
+err-shared-message-requires-nickname = Las cuentas compartidas solo pueden recibir mensajes por apodo
+err-shared-kick-requires-nickname = Las cuentas compartidas solo pueden ser expulsadas por apodo
 
-# Errores de validación de avatar
+# Errores de Validación de Avatar
 err-avatar-invalid-format = Formato de avatar no válido (debe ser una URI de datos con codificación base64)
 err-avatar-too-large = El avatar es demasiado grande (máx. { $max_length } caracteres)
 err-avatar-unsupported-type = Tipo de avatar no compatible (solo PNG, WebP o SVG)

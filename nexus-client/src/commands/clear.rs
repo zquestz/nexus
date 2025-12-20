@@ -29,8 +29,8 @@ pub fn execute(
         ChatTab::Server => {
             conn.chat_messages.clear();
         }
-        ChatTab::UserMessage(username) => {
-            if let Some(messages) = conn.user_messages.get_mut(username) {
+        ChatTab::UserMessage(nickname) => {
+            if let Some(messages) = conn.user_messages.get_mut(nickname) {
                 messages.clear();
             }
         }

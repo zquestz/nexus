@@ -6,12 +6,17 @@ use iced::Task;
 
 impl NexusApp {
     /// Handle incoming server broadcast message
+    ///
+    /// The protocol sends `username` for broadcasts. Since shared accounts cannot
+    /// broadcast, the sender's username always equals their nickname, so we can
+    /// store it directly in the ChatMessage.nickname field for display.
     pub fn handle_server_broadcast(
         &mut self,
         connection_id: usize,
         username: String,
         message: String,
     ) -> Task<Message> {
+        // username == nickname for broadcasters (shared accounts can't broadcast)
         self.add_chat_message(connection_id, ChatMessage::broadcast(username, message))
     }
 

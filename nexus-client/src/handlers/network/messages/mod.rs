@@ -50,10 +50,11 @@ impl NexusApp {
         match msg {
             ServerMessage::ChatMessage {
                 session_id: _,
-                username,
+                nickname,
+                is_admin,
                 is_shared,
                 message,
-            } => self.handle_chat_message(connection_id, username, message, is_shared),
+            } => self.handle_chat_message(connection_id, nickname, message, is_admin, is_shared),
 
             ServerMessage::ChatTopicUpdated { topic, username } => {
                 self.handle_chat_topic(connection_id, topic, username)
@@ -120,8 +121,8 @@ impl NexusApp {
 
             ServerMessage::UserDisconnected {
                 session_id,
-                username,
-            } => self.handle_user_disconnected(connection_id, session_id, username),
+                nickname,
+            } => self.handle_user_disconnected(connection_id, session_id, nickname),
 
             ServerMessage::UserEditResponse {
                 success,
@@ -154,8 +155,8 @@ impl NexusApp {
             ServerMessage::UserKickResponse {
                 success,
                 error,
-                username,
-            } => self.handle_user_kick_response(connection_id, success, error, username),
+                nickname,
+            } => self.handle_user_kick_response(connection_id, success, error, nickname),
 
             ServerMessage::UserListResponse {
                 success,
@@ -164,15 +165,15 @@ impl NexusApp {
             } => self.handle_user_list_response(connection_id, message_id, success, users),
 
             ServerMessage::UserMessage {
-                from_username,
+                from_nickname,
                 from_admin,
-                to_username,
+                to_nickname,
                 message,
             } => self.handle_user_message(
                 connection_id,
-                from_username,
+                from_nickname,
                 from_admin,
-                to_username,
+                to_nickname,
                 message,
             ),
 

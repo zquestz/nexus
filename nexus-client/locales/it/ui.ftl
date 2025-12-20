@@ -95,7 +95,8 @@ label-chat-topic = Argomento Chat:
 label-chat-topic-set-by = Argomento Impostato Da:
 label-max-connections-per-ip = Max Connessioni Per IP:
 label-avatar = Icona:
-label-details = Dettagli tecnici
+label-server-image = Immagine del server:
+label-details = Dettagli Tecnici
 label-chat-options = Opzioni chat
 label-appearance = Aspetto
 label-image = Immagine
@@ -122,6 +123,10 @@ permission-user_delete = Elimina Utente
 permission-user_edit = Modifica Utente
 permission-user_kick = Espelli Utente
 permission-user_message = Messaggio Utente
+permission-news_list = Lista Notizie
+permission-news_create = Crea Notizia
+permission-news_edit = Modifica Notizia
+permission-news_delete = Elimina Notizia
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Utente espulso con successo
-msg-user-kicked-success-name = Utente '{ $username }' espulso con successo
+msg-user-kicked-success-name = Utente '{ $nickname }' espulso con successo
 msg-broadcast-sent = Broadcast inviato con successo
 msg-user-created = Utente creato con successo
 msg-user-created-name = Utente '{ $username }' creato con successo
@@ -215,8 +220,8 @@ msg-server-info-updated = Configurazione del server aggiornata
 msg-topic-display = Argomento: { $topic }
 confirm-delete-user = Sei sicuro di voler eliminare l'utente '{ $username }'?
 confirm-delete-news = Sei sicuro di voler eliminare questa pubblicazione?
-msg-user-connected = { $username } si è connesso
-msg-user-disconnected = { $username } si è disconnesso
+msg-user-connected = { $nickname } si è connesso
+msg-user-disconnected = { $nickname } si è disconnesso
 msg-disconnected = Disconnesso: { $error }
 msg-connection-cancelled = Connessione annullata per certificato non corrispondente
 
@@ -259,6 +264,9 @@ err-message-invalid-characters = Il messaggio contiene caratteri non validi
 err-username-empty = Il nome utente non può essere vuoto
 err-username-too-long = Il nome utente è troppo lungo (max { $max } caratteri)
 err-username-invalid = Il nome utente contiene caratteri non validi
+err-nickname-empty = Il soprannome non può essere vuoto
+err-nickname-too-long = Il soprannome è troppo lungo (max { $max } caratteri)
+err-nickname-invalid = Il soprannome contiene caratteri non validi
 err-password-too-long = La password è troppo lunga (max { $max } caratteri)
 err-passwords-do-not-match = Le password non corrispondono
 err-current-password-required = La password attuale è obbligatoria
@@ -327,6 +335,7 @@ user-info-role = Ruolo:
 user-info-role-admin = admin
 user-info-role-shared = condiviso
 user-info-role-user = utente
+user-info-nickname = Nickname:
 user-info-account = Account: { $username }
 user-info-connected = Connesso:
 user-info-connected-value = { $duration } fa
@@ -427,9 +436,6 @@ cmd-serverinfo-end = Fine informazioni server
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = Scegli immagine
-button-clear-image = Cancella
-label-server-image = Immagine del server:
 err-server-image-too-large = L'immagine del server è troppo grande (massimo 512KB)
 err-server-image-invalid-format = Formato immagine del server non valido (deve essere un URI di dati con codifica base64)
 err-server-image-unsupported-type = Tipo di immagine del server non supportato (solo PNG, WebP, JPEG o SVG)

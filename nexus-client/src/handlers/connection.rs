@@ -249,13 +249,15 @@ impl NexusApp {
     }
 
     /// Close a user message tab
-    pub fn handle_close_user_message_tab(&mut self, username: String) -> Task<Message> {
+    ///
+    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    pub fn handle_close_user_message_tab(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            conn.user_messages.remove(&username);
+            conn.user_messages.remove(&nickname);
 
-            let tab = ChatTab::UserMessage(username);
+            let tab = ChatTab::UserMessage(nickname);
             conn.unread_tabs.remove(&tab);
             conn.scroll_states.remove(&tab);
 
@@ -263,6 +265,10 @@ impl NexusApp {
                 conn.active_chat_tab = ChatTab::Server;
                 return self.handle_show_chat_view();
             }
+
+            // Even when closing a non-active tab, we need to restore scroll position
+            // because Iced may reset the scrollable when the tab bar re-renders
+            return self.scroll_chat_if_visible(false);
         }
         Task::none()
     }
@@ -347,8 +353,8 @@ impl NexusApp {
 
                 let msg = match &conn.active_chat_tab {
                     ChatTab::Server => ClientMessage::ChatSend { message },
-                    ChatTab::UserMessage(username) => ClientMessage::UserMessage {
-                        to_username: username.clone(),
+                    ChatTab::UserMessage(nickname) => ClientMessage::UserMessage {
+                        to_nickname: nickname.clone(),
                         message,
                     },
                 };

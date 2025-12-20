@@ -20,7 +20,7 @@ fn get_keywords() -> (String, String, String) {
 /// Usage:
 /// - `/window` or `/w` - List open tabs
 /// - `/window close` or `/w close` - Close current PM tab
-/// - `/window close <username>` or `/w close <username>` - Close specific user's PM tab
+/// - `/window close <nickname>` or `/w close <nickname>` - Close specific user's PM tab
 /// - `/window next` or `/w next` - Switch to next tab
 /// - `/window prev` or `/w prev` - Switch to previous tab
 pub fn execute(
@@ -58,7 +58,7 @@ pub fn execute(
             // /window close - close current tab
             close_current_tab(app, connection_id)
         } else if args.len() == 2 {
-            // /window close <username> - close specific tab
+            // /window close <nickname> - close specific tab
             let target = &args[1];
             let target_lower = target.to_lowercase();
 
@@ -66,11 +66,11 @@ pub fn execute(
             let matching_user = conn
                 .user_messages
                 .keys()
-                .find(|username| username.to_lowercase() == target_lower)
+                .find(|nickname| nickname.to_lowercase() == target_lower)
                 .cloned();
 
-            if let Some(username) = matching_user {
-                Task::done(Message::CloseUserMessageTab(username))
+            if let Some(nickname) = matching_user {
+                Task::done(Message::CloseUserMessageTab(nickname))
             } else {
                 let error_msg = t_args("cmd-window-not-found", &[("name", target.as_str())]);
                 app.add_chat_message(connection_id, ChatMessage::error(error_msg))
@@ -93,11 +93,11 @@ fn list_tabs(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
 
     let mut tabs = vec![t("chat-tab-server")];
 
-    let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
-    pm_usernames.sort();
+    let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
+    pm_nicknames.sort();
 
-    for username in pm_usernames {
-        tabs.push(username);
+    for nickname in pm_nicknames {
+        tabs.push(nickname);
     }
 
     let tab_list = tabs.join(", ");
@@ -120,8 +120,8 @@ fn close_current_tab(app: &mut NexusApp, connection_id: usize) -> Task<Message> 
             connection_id,
             ChatMessage::error(t("cmd-window-close-server")),
         ),
-        ChatTab::UserMessage(username) => {
-            Task::done(Message::CloseUserMessageTab(username.clone()))
+        ChatTab::UserMessage(nickname) => {
+            Task::done(Message::CloseUserMessageTab(nickname.clone()))
         }
     }
 }

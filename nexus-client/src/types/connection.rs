@@ -111,7 +111,8 @@ pub struct ServerConnection {
     pub unread_tabs: HashSet<ChatTab>,
     /// Currently online users
     pub online_users: Vec<UserInfo>,
-    /// Username of expanded user in user list (None if no user expanded)
+    /// Display name of expanded user in user list (None if no user expanded)
+    /// For shared accounts this is the nickname, for regular accounts the username.
     pub expanded_user: Option<String>,
     /// Channel for sending commands to server
     tx: CommandSender,

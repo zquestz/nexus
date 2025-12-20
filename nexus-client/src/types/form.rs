@@ -16,7 +16,7 @@ use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
 /// Password change form state (for User Info panel)
 ///
 /// Tracks the form fields when a user is changing their own password.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PasswordChangeState {
     /// Current password (required for verification)
     pub current_password: String,
@@ -26,12 +26,20 @@ pub struct PasswordChangeState {
     pub confirm_password: String,
     /// Error message to display
     pub error: Option<String>,
+    /// Panel to return to after cancel/success (e.g., UserInfo)
+    pub return_to_panel: Option<super::ActivePanel>,
 }
 
 impl PasswordChangeState {
-    /// Create a new empty password change state
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a new empty password change state with a return panel
+    pub fn new(return_to_panel: Option<super::ActivePanel>) -> Self {
+        Self {
+            current_password: String::new(),
+            new_password: String::new(),
+            confirm_password: String::new(),
+            error: None,
+            return_to_panel,
+        }
     }
 }
 
@@ -263,6 +271,8 @@ pub struct UserManagementState {
     pub mode: UserManagementMode,
     /// All users from database (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
     pub all_users: Option<Result<Vec<UserInfo>, String>>,
+    /// Panel to return to after edit (e.g., UserInfo if edit was triggered from there)
+    pub return_to_panel: Option<super::ActivePanel>,
     /// Username for create user form
     pub username: String,
     /// Password for create user form
@@ -288,6 +298,7 @@ impl Default for UserManagementState {
         Self {
             mode: UserManagementMode::List,
             all_users: None,
+            return_to_panel: None,
             username: String::new(),
             password: String::new(),
             is_admin: false,
@@ -311,6 +322,7 @@ impl UserManagementState {
         self.clear_create_form();
         self.edit_error = None;
         self.list_error = None;
+        self.return_to_panel = None;
     }
 
     /// Clear the create user form fields

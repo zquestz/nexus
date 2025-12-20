@@ -95,6 +95,7 @@ label-chat-topic = チャットトピック:
 label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
 label-avatar = アバター:
+label-server-image = サーバー画像:
 label-details = 技術詳細
 label-chat-options = チャットオプション
 label-appearance = 外観
@@ -122,6 +123,10 @@ permission-user_delete = ユーザー削除
 permission-user_edit = ユーザー編集
 permission-user_kick = ユーザーキック
 permission-user_message = ユーザーメッセージ
+permission-news_list = ニュース一覧
+permission-news_create = ニュース作成
+permission-news_edit = ニュース編集
+permission-news_delete = ニュース削除
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = ユーザーを正常にキックしました
-msg-user-kicked-success-name = ユーザー '{ $username }' を正常にキックしました
+msg-user-kicked-success-name = ユーザー '{ $nickname }' を正常にキックしました
 msg-broadcast-sent = ブロードキャストを正常に送信しました
 msg-user-created = ユーザーを正常に作成しました
 msg-user-created-name = ユーザー '{ $username }' を正常に作成しました
@@ -213,8 +218,8 @@ msg-server-info-updated = サーバー設定が更新されました
 msg-topic-display = トピック: { $topic }
 confirm-delete-user = ユーザー '{ $username }' を削除してもよろしいですか？
 confirm-delete-news = この投稿を削除してもよろしいですか？
-msg-user-connected = { $username } が接続しました
-msg-user-disconnected = { $username } が切断しました
+msg-user-connected = { $nickname } が接続しました
+msg-user-disconnected = { $nickname } が切断しました
 msg-disconnected = 切断されました: { $error }
 msg-connection-cancelled = 証明書の不一致のため接続がキャンセルされました
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = メッセージに無効な文字が含まれ�
 err-username-empty = ユーザー名は空にできません
 err-username-too-long = ユーザー名が長すぎます（最大{ $max }文字）
 err-username-invalid = ユーザー名に無効な文字が含まれています
+err-nickname-empty = ニックネームは空にできません
+err-nickname-too-long = ニックネームが長すぎます（最大{ $max }文字）
+err-nickname-invalid = ニックネームに無効な文字が含まれています
 err-password-too-long = パスワードが長すぎます（最大{ $max }文字）
 err-passwords-do-not-match = パスワードが一致しません
 err-current-password-required = 現在のパスワードは必須です
@@ -325,6 +333,7 @@ user-info-role = 役割:
 user-info-role-admin = 管理者
 user-info-role-shared = 共有
 user-info-role-user = ユーザー
+user-info-nickname = ニックネーム:
 user-info-account = アカウント: { $username }
 user-info-connected = 接続:
 user-info-connected-value = { $duration }前
@@ -404,9 +413,6 @@ cmd-serverinfo-end = サーバー情報終了
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = 画像を選択
-button-clear-image = クリア
-label-server-image = サーバー画像:
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
 err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
 err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）

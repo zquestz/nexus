@@ -140,7 +140,7 @@ where
                 .broadcast_user_event(
                     ServerMessage::UserDisconnected {
                         session_id,
-                        username: removed_user.display_name().to_string(),
+                        nickname: removed_user.nickname.clone(),
                     },
                     &ctx.db.users,
                     Some(session_id), // Exclude the deleted user
@@ -548,7 +548,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "online_user".to_string(),
             })
             .await
             .expect("Failed to add user");

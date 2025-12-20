@@ -96,6 +96,7 @@ label-chat-topic = Sujet du Chat :
 label-chat-topic-set-by = Sujet Défini Par :
 label-max-connections-per-ip = Max. Connexions Par IP :
 label-avatar = Icône :
+label-server-image = Image du serveur :
 label-details = Détails techniques
 label-chat-options = Options de chat
 label-appearance = Apparence
@@ -123,6 +124,10 @@ permission-user_delete = Supprimer Utilisateur
 permission-user_edit = Modifier Utilisateur
 permission-user_kick = Expulser Utilisateur
 permission-user_message = Message Utilisateur
+permission-news_list = Liste des Actualités
+permission-news_create = Créer Actualité
+permission-news_edit = Modifier Actualité
+permission-news_delete = Supprimer Actualité
 
 # =============================================================================
 # Tooltips
@@ -130,6 +135,7 @@ permission-user_message = Message Utilisateur
 
 tooltip-chat = Chat
 tooltip-broadcast = Diffusion
+tooltip-news = Actualités
 tooltip-manage-users = Gérer les Utilisateurs
 tooltip-server-info = Infos Serveur
 tooltip-about = À propos
@@ -188,7 +194,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Utilisateur expulsé avec succès
-msg-user-kicked-success-name = Utilisateur '{ $username }' expulsé avec succès
+msg-user-kicked-success-name = Utilisateur '{ $nickname }' expulsé avec succès
 msg-broadcast-sent = Diffusion envoyée avec succès
 msg-user-created = Utilisateur créé avec succès
 msg-user-created-name = Utilisateur '{ $username }' créé avec succès
@@ -213,8 +219,8 @@ msg-server-info-updated = Configuration du serveur mise à jour
 msg-topic-display = Sujet : { $topic }
 confirm-delete-user = Êtes-vous sûr de vouloir supprimer l'utilisateur '{ $username }' ?
 confirm-delete-news = Êtes-vous sûr de vouloir supprimer cette publication ?
-msg-user-connected = { $username } s'est connecté
-msg-user-disconnected = { $username } s'est déconnecté
+msg-user-connected = { $nickname } s'est connecté
+msg-user-disconnected = { $nickname } s'est déconnecté
 msg-disconnected = Déconnecté : { $error }
 msg-connection-cancelled = Connexion annulée en raison d'un certificat non concordant
 
@@ -257,6 +263,9 @@ err-message-invalid-characters = Le message contient des caractères invalides
 err-username-empty = Le nom d'utilisateur ne peut pas être vide
 err-username-too-long = Le nom d'utilisateur est trop long (max { $max } caractères)
 err-username-invalid = Le nom d'utilisateur contient des caractères invalides
+err-nickname-empty = Le pseudonyme ne peut pas être vide
+err-nickname-too-long = Le pseudonyme est trop long (max { $max } caractères)
+err-nickname-invalid = Le pseudonyme contient des caractères invalides
 err-password-too-long = Le mot de passe est trop long (max { $max } caractères)
 err-passwords-do-not-match = Les mots de passe ne correspondent pas
 err-current-password-required = Le mot de passe actuel est requis
@@ -325,6 +334,7 @@ user-info-role = Rôle :
 user-info-role-admin = admin
 user-info-role-shared = partagé
 user-info-role-user = utilisateur
+user-info-nickname = Pseudo :
 user-info-account = Compte : { $username }
 user-info-connected = Connecté :
 user-info-connected-value = il y a { $duration }
@@ -425,9 +435,6 @@ cmd-serverinfo-end = Fin des informations du serveur
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = Choisir une image
-button-clear-image = Effacer
-label-server-image = Image du serveur :
 err-server-image-too-large = L'image du serveur est trop grande (maximum 512 Ko)
 err-server-image-invalid-format = Format d'image du serveur invalide (doit être une URI de données avec encodage base64)
 err-server-image-unsupported-type = Type d'image du serveur non pris en charge (PNG, WebP, JPEG ou SVG uniquement)

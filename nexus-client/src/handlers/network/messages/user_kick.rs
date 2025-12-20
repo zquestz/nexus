@@ -12,23 +12,21 @@ impl NexusApp {
         connection_id: usize,
         success: bool,
         error: Option<String>,
-        username: Option<String>,
+        nickname: Option<String>,
     ) -> Task<Message> {
         let message = if success {
-            // Show success message with username if available
-            if let Some(ref name) = username {
+            // Show success message with nickname if available
+            if let Some(ref name) = nickname {
                 ChatMessage::info(t_args(
                     "msg-user-kicked-success-name",
-                    &[("username", name)],
+                    &[("nickname", name)],
                 ))
             } else {
                 ChatMessage::info(t("msg-user-kicked-success"))
             }
         } else {
-            ChatMessage::error(t_args(
-                "err-failed-send-message",
-                &[("error", &error.unwrap_or_default())],
-            ))
+            // Show the server's error message directly
+            ChatMessage::error(error.unwrap_or_default())
         };
         self.add_chat_message(connection_id, message)
     }

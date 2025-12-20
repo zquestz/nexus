@@ -78,15 +78,16 @@ pub fn execute(
     }
 
     // Build IRC-style user list: @admin user1 user2
+    // nickname is always the display name (== username for regular accounts)
     let user_count = conn.online_users.len();
     let user_list: String = conn
         .online_users
         .iter()
         .map(|user| {
             if user.is_admin {
-                format!("@{}", user.username)
+                format!("@{}", user.nickname)
             } else {
-                user.username.clone()
+                user.nickname.clone()
             }
         })
         .collect::<Vec<_>>()

@@ -24,8 +24,8 @@ pub struct NewSessionParams {
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
     pub avatar: Option<String>,
-    /// Nickname for shared account users (required for shared, None for regular)
-    pub nickname: Option<String>,
+    /// Display name (always populated; equals username for regular accounts)
+    pub nickname: String,
 }
 
 /// Represents a logged-in user session
@@ -61,8 +61,8 @@ pub struct UserSession {
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
     pub avatar: Option<String>,
-    /// Nickname for shared account users (Some for shared, None for regular)
-    pub nickname: Option<String>,
+    /// Display name (always populated; equals username for regular accounts)
+    pub nickname: String,
 }
 
 impl UserSession {
@@ -98,14 +98,6 @@ impl UserSession {
         } else {
             self.permissions.contains(&permission)
         }
-    }
-
-    /// Returns the display name for this session
-    ///
-    /// For shared accounts, returns the nickname.
-    /// For regular accounts, returns the username.
-    pub fn display_name(&self) -> &str {
-        self.nickname.as_deref().unwrap_or(&self.username)
     }
 }
 

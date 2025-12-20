@@ -68,7 +68,7 @@ pub async fn add_test_user(
             features: vec!["chat".to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: None,
+            nickname: username.to_string(),
         })
         .await
         .expect("Failed to add user to UserManager");

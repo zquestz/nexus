@@ -237,13 +237,13 @@ pub enum Message {
     UserManagementUpdatePressed,
     /// Server info edit: Update button pressed (save changes)
     UpdateServerInfoPressed,
-    /// User list: Info icon clicked on expanded user
+    /// User list: Info icon clicked on expanded user (nickname)
     UserInfoIconClicked(String),
-    /// User list: Kick icon clicked on expanded user (disconnect - future)
+    /// User list: Kick icon clicked on expanded user (nickname)
     UserKickIconClicked(String),
-    /// User list: User item clicked (expand/collapse)
+    /// User list: User item clicked (expand/collapse) (nickname)
     UserListItemClicked(String),
-    /// User list: Message icon clicked on expanded user (private message - future)
+    /// User list: Message icon clicked on expanded user (nickname)
     UserMessageIconClicked(String),
     /// Connection form: Username field changed
     UsernameChanged(String),

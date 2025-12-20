@@ -5,7 +5,7 @@ use nexus_common::framing::MessageId;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::InputId;
-use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting};
+use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting, UserManagementMode};
 use iced::Task;
 use iced::widget::{Id, operation};
 
@@ -191,10 +191,17 @@ impl NexusApp {
         if success {
             // Handle password change success
             if matches!(routing, Some(ResponseRouting::PasswordChangeResult)) {
-                // Clear password change state and return to chat
+                // Get return panel before clearing state
+                let return_panel = self
+                    .connections
+                    .get(&connection_id)
+                    .and_then(|conn| conn.password_change_state.as_ref())
+                    .and_then(|state| state.return_to_panel);
+
+                // Clear password change state and return to original panel
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
                     conn.password_change_state = None;
-                    conn.active_panel = ActivePanel::None;
+                    conn.active_panel = return_panel.unwrap_or(ActivePanel::None);
                 }
                 // Show success message in chat
                 return self.add_chat_message(
@@ -249,11 +256,20 @@ impl NexusApp {
 
     // ==================== Helper Functions ====================
 
-    /// Return to user management list view and refresh the list
+    /// Return to user management list view (or original panel) and refresh the list
     fn return_to_user_management_list(&mut self, connection_id: usize) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
+
+        // Check if we should return to a different panel (e.g., UserInfo)
+        if let Some(return_panel) = conn.user_management.return_to_panel {
+            conn.user_management.return_to_panel = None;
+            conn.user_management.mode = UserManagementMode::List;
+            conn.user_management.edit_error = None;
+            conn.active_panel = return_panel;
+            return Task::none();
+        }
 
         // Reset to list mode
         conn.user_management.reset_to_list();

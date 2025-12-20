@@ -5,19 +5,19 @@ use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, UsernameError};
+use nexus_common::validators::{self, NicknameError};
 
 /// Execute the /kick command
 ///
 /// Kicks a user from the server (disconnects them).
-/// Usage: /kick <username>
+/// Usage: /kick <nickname>
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // /kick takes exactly 1 argument (username)
+    // /kick takes exactly 1 argument (nickname)
     if args.len() != 1 {
         let error_msg = t_args("cmd-kick-usage", &[("command", invoked_name)]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
@@ -27,23 +27,23 @@ pub fn execute(
         return Task::none();
     };
 
-    let username = &args[0];
+    let nickname = &args[0];
 
-    // Validate username
-    if let Err(e) = validators::validate_username(username) {
+    // Validate nickname
+    if let Err(e) = validators::validate_nickname(nickname) {
         let error_msg = match e {
-            UsernameError::Empty => t("err-username-empty"),
-            UsernameError::TooLong => t_args(
-                "err-username-too-long",
-                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+            NicknameError::Empty => t("err-nickname-empty"),
+            NicknameError::TooLong => t_args(
+                "err-nickname-too-long",
+                &[("max", &validators::MAX_NICKNAME_LENGTH.to_string())],
             ),
-            UsernameError::InvalidCharacters => t("err-username-invalid"),
+            NicknameError::InvalidCharacters => t("err-nickname-invalid"),
         };
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let msg = ClientMessage::UserKick {
-        username: username.clone(),
+        nickname: nickname.clone(),
     };
 
     if let Err(e) = conn.send(msg) {

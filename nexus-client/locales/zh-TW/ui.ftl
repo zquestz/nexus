@@ -95,6 +95,7 @@ label-chat-topic = 聊天主題：
 label-chat-topic-set-by = 主題設定者：
 label-max-connections-per-ip = 每IP最大連線數：
 label-avatar = 頭像：
+label-server-image = 伺服器圖片：
 label-details = 技術詳情
 label-chat-options = 聊天選項
 label-appearance = 外觀
@@ -122,6 +123,10 @@ permission-user_delete = 刪除使用者
 permission-user_edit = 編輯使用者
 permission-user_kick = 踢除使用者
 permission-user_message = 使用者訊息
+permission-news_list = 新聞列表
+permission-news_create = 建立新聞
+permission-news_edit = 編輯新聞
+permission-news_delete = 刪除新聞
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = 使用者已成功踢除
-msg-user-kicked-success-name = 使用者 '{ $username }' 已成功踢除
+msg-user-kicked-success-name = 使用者 '{ $nickname }' 已成功踢除
 msg-broadcast-sent = 廣播已成功傳送
 msg-user-created = 使用者已成功建立
 msg-user-created-name = 使用者 '{ $username }' 已成功建立
@@ -213,8 +218,8 @@ msg-server-info-updated = 伺服器設定已更新
 msg-topic-display = 主題：{ $topic }
 confirm-delete-user = 確定要刪除使用者 '{ $username }' 嗎？
 confirm-delete-news = 確定要刪除此貼文嗎？
-msg-user-connected = { $username } 已連線
-msg-user-disconnected = { $username } 已中斷連線
+msg-user-connected = { $nickname } 已連線
+msg-user-disconnected = { $nickname } 已中斷連線
 msg-disconnected = 已中斷連線：{ $error }
 msg-connection-cancelled = 由於憑證不符，連線已取消
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = 訊息包含無效字元
 err-username-empty = 使用者名稱不能為空
 err-username-too-long = 使用者名稱過長（最多{ $max }個字元）
 err-username-invalid = 使用者名稱包含無效字元
+err-nickname-empty = 暱稱不能為空
+err-nickname-too-long = 暱稱過長（最多{ $max }個字元）
+err-nickname-invalid = 暱稱包含無效字元
 err-password-too-long = 密碼過長（最多{ $max }個字元）
 err-passwords-do-not-match = 密碼不符
 err-current-password-required = 目前密碼是必填的
@@ -325,6 +333,7 @@ user-info-role = 角色：
 user-info-role-admin = 管理員
 user-info-role-shared = 共享
 user-info-role-user = 使用者
+user-info-nickname = 暱稱：
 user-info-account = 帳戶：{ $username }
 user-info-connected = 已連線：
 user-info-connected-value = { $duration }前
@@ -404,9 +413,6 @@ cmd-serverinfo-end = 伺服器資訊結束
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = 選擇圖片
-button-clear-image = 清除
-label-server-image = 伺服器圖片:
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
 err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）

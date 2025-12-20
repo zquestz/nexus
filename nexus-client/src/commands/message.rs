@@ -5,20 +5,20 @@ use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, MessageError, UsernameError};
+use nexus_common::validators::{self, MessageError, NicknameError};
 
 /// Execute the /message command
 ///
 /// Sends a message to a user. If a message tab for that user already exists,
 /// switches to it.
-/// Usage: /message <username> <message>
+/// Usage: /message <nickname> <message>
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // Need at least username and one word of message
+    // Need at least nickname and one word of message
     if args.len() < 2 {
         let error_msg = t_args("cmd-message-usage", &[("command", invoked_name)]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
@@ -28,18 +28,18 @@ pub fn execute(
         return Task::none();
     };
 
-    let username = &args[0];
+    let nickname = &args[0];
     let message = args[1..].join(" ");
 
-    // Validate username
-    if let Err(e) = validators::validate_username(username) {
+    // Validate nickname
+    if let Err(e) = validators::validate_nickname(nickname) {
         let error_msg = match e {
-            UsernameError::Empty => t("err-username-empty"),
-            UsernameError::TooLong => t_args(
-                "err-username-too-long",
-                &[("max", &validators::MAX_USERNAME_LENGTH.to_string())],
+            NicknameError::Empty => t("err-nickname-empty"),
+            NicknameError::TooLong => t_args(
+                "err-nickname-too-long",
+                &[("max", &validators::MAX_NICKNAME_LENGTH.to_string())],
             ),
-            UsernameError::InvalidCharacters => t("err-username-invalid"),
+            NicknameError::InvalidCharacters => t("err-nickname-invalid"),
         };
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
@@ -62,7 +62,7 @@ pub fn execute(
     }
 
     let msg = ClientMessage::UserMessage {
-        to_username: username.clone(),
+        to_nickname: nickname.clone(),
         message,
     };
 
@@ -78,7 +78,7 @@ pub fn execute(
     if let Some(conn) = app.connections.get_mut(&connection_id) {
         conn.pending_requests.track(
             message_id,
-            ResponseRouting::OpenMessageTab(username.clone()),
+            ResponseRouting::OpenMessageTab(nickname.clone()),
         );
     }
 

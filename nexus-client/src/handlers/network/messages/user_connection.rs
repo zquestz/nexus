@@ -25,12 +25,8 @@ impl NexusApp {
         // Compute hash of incoming avatar for comparison
         let new_avatar_hash = compute_avatar_hash(user.avatar.as_deref());
 
-        // Display name is nickname for shared accounts, username for regular
-        let display_name = user
-            .nickname
-            .as_deref()
-            .unwrap_or(&user.username)
-            .to_string();
+        // Nickname is always populated (equals username for regular accounts)
+        let nickname = user.nickname.clone();
 
         // For shared accounts, each session is a separate entry (don't merge)
         // For regular accounts, merge sessions by username
@@ -40,7 +36,7 @@ impl NexusApp {
             if let Some(existing_user) = conn
                 .online_users
                 .iter_mut()
-                .find(|u| u.is_shared && u.nickname.as_deref() == user.nickname.as_deref())
+                .find(|u| u.is_shared && u.nickname == user.nickname)
             {
                 // Nickname already exists - merge session_ids (edge case)
                 for session_id in &user.session_ids {
@@ -52,12 +48,8 @@ impl NexusApp {
                 // Update avatar if it changed
                 if existing_user.avatar_hash != new_avatar_hash {
                     existing_user.avatar_hash = new_avatar_hash;
-                    conn.avatar_cache.remove(&display_name);
-                    get_or_create_avatar(
-                        &mut conn.avatar_cache,
-                        &display_name,
-                        user.avatar.as_deref(),
-                    );
+                    conn.avatar_cache.remove(&nickname);
+                    get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
                 }
 
                 false
@@ -73,12 +65,8 @@ impl NexusApp {
                 });
                 sort_user_list(&mut conn.online_users);
 
-                // Cache avatar by display name (nickname)
-                get_or_create_avatar(
-                    &mut conn.avatar_cache,
-                    &display_name,
-                    user.avatar.as_deref(),
-                );
+                // Cache avatar by nickname
+                get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
 
                 true
             }
@@ -99,12 +87,8 @@ impl NexusApp {
                 // Update avatar if it changed (latest login wins)
                 if existing_user.avatar_hash != new_avatar_hash {
                     existing_user.avatar_hash = new_avatar_hash;
-                    conn.avatar_cache.remove(&display_name);
-                    get_or_create_avatar(
-                        &mut conn.avatar_cache,
-                        &display_name,
-                        user.avatar.as_deref(),
-                    );
+                    conn.avatar_cache.remove(&nickname);
+                    get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
                 }
 
                 false
@@ -120,12 +104,8 @@ impl NexusApp {
                 });
                 sort_user_list(&mut conn.online_users);
 
-                // Cache avatar by display name (username for regular accounts)
-                get_or_create_avatar(
-                    &mut conn.avatar_cache,
-                    &display_name,
-                    user.avatar.as_deref(),
-                );
+                // Cache avatar by nickname (equals username for regular accounts)
+                get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
 
                 true
             }
@@ -135,7 +115,7 @@ impl NexusApp {
         if is_new_user && self.config.settings.show_connection_notifications {
             self.add_chat_message(
                 connection_id,
-                ChatMessage::system(t_args("msg-user-connected", &[("username", &display_name)])),
+                ChatMessage::system(t_args("msg-user-connected", &[("nickname", &nickname)])),
             )
         } else {
             Task::none()
@@ -144,22 +124,22 @@ impl NexusApp {
 
     /// Handle user disconnected notification
     ///
-    /// The `username` parameter is the display name (nickname for shared accounts,
-    /// actual username for regular accounts).
+    /// The `nickname` parameter is the display name (nickname for shared accounts,
+    /// username for regular accounts - since nickname always equals username for regular accounts).
     pub fn handle_user_disconnected(
         &mut self,
         connection_id: usize,
         session_id: u32,
-        username: String,
+        nickname: String,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
         // Remove the specific session_id from the user's sessions
-        // We look up by session_id since username is the display name which may differ
+        // We look up by session_id since nickname may differ from username for shared accounts
         let mut is_last_session = false;
-        let mut display_name_to_remove: Option<String> = None;
+        let mut nickname_to_remove: Option<String> = None;
 
         if let Some(user) = conn
             .online_users
@@ -170,37 +150,31 @@ impl NexusApp {
 
             // If user has no more sessions, remove them entirely
             if user.session_ids.is_empty() {
-                // Get display name for avatar cache removal
-                display_name_to_remove = Some(user.display_name().to_string());
+                // Get nickname for avatar cache removal
+                nickname_to_remove = Some(user.nickname.clone());
                 is_last_session = true;
             }
         }
 
         // Remove user from list and cache if this was their last session
-        if let Some(ref display_name) = display_name_to_remove {
-            // For shared accounts, remove by nickname match; for regular, by username
-            conn.online_users
-                .retain(|u| u.display_name() != display_name);
+        if let Some(ref nickname) = nickname_to_remove {
+            // Remove by nickname
+            conn.online_users.retain(|u| u.nickname != *nickname);
 
             // Clear expanded_user if the disconnected user was expanded
-            // (expanded_user stores username, not display_name, so check both)
-            if conn.expanded_user.as_ref().is_some_and(|expanded| {
-                conn.online_users
-                    .iter()
-                    .all(|u| &u.username != expanded && u.nickname.as_ref() != Some(expanded))
-            }) {
+            if conn.expanded_user.as_deref() == Some(nickname.as_str()) {
                 conn.expanded_user = None;
             }
 
-            // Remove from avatar cache (keyed by display name)
-            conn.avatar_cache.remove(display_name);
+            // Remove from avatar cache (keyed by nickname)
+            conn.avatar_cache.remove(nickname);
         }
 
         // Only announce if this was their last session (fully offline) and notifications are enabled
         if is_last_session && self.config.settings.show_connection_notifications {
             self.add_chat_message(
                 connection_id,
-                ChatMessage::system(t_args("msg-user-disconnected", &[("username", &username)])),
+                ChatMessage::system(t_args("msg-user-disconnected", &[("nickname", &nickname)])),
             )
         } else {
             Task::none()

@@ -6,6 +6,8 @@ err-nickname-empty = Nickname cannot be empty
 err-nickname-in-use = Nickname is already in use
 err-nickname-invalid = Nickname contains invalid characters (letters, numbers, and symbols allowed - no whitespace or control characters)
 err-nickname-is-username = Nickname cannot be an existing username
+err-nickname-not-found = User '{ $nickname }' not found
+err-nickname-not-online = User '{ $nickname }' is not online
 err-nickname-required = Nickname required for shared accounts
 err-nickname-too-long = Nickname is too long (max { $max_length } characters)
 
@@ -13,6 +15,8 @@ err-nickname-too-long = Nickname is too long (max { $max_length } characters)
 err-shared-cannot-be-admin = Shared accounts cannot be admins
 err-shared-cannot-change-password = Cannot change password on shared account
 err-shared-invalid-permissions = Shared accounts cannot have these permissions: { $permissions }
+err-shared-message-requires-nickname = Shared accounts can only be messaged by nickname
+err-shared-kick-requires-nickname = Shared accounts can only be kicked by nickname
 
 # Avatar Validation Errors
 err-avatar-invalid-format = Invalid avatar format (must be a data URI with base64 encoding)

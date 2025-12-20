@@ -63,39 +63,27 @@ impl UserManager {
     /// Check if a nickname is already in use by an active session (case-insensitive)
     ///
     /// Used during login to ensure nickname uniqueness for shared accounts.
-    /// This checks against both nicknames (for shared accounts) and usernames
-    /// (for regular accounts that don't have nicknames).
+    /// Since nickname is always populated (equals username for regular accounts),
+    /// this effectively checks against all display names of logged-in users.
     pub async fn is_nickname_in_use(&self, nickname: &str) -> bool {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
-        users.values().any(|u| {
-            // Check against nickname if present (shared accounts)
-            if let Some(ref user_nickname) = u.nickname
-                && user_nickname.to_lowercase() == nickname_lower
-            {
-                return true;
-            }
-            // Also check against username for regular accounts
-            // This ensures a shared account can't use a nickname that matches
-            // a logged-in regular user's username
-            u.username.to_lowercase() == nickname_lower
-        })
+        users
+            .values()
+            .any(|u| u.nickname.to_lowercase() == nickname_lower)
     }
 
     /// Get a session by nickname (case-insensitive)
     ///
-    /// Used for routing private messages to shared account users.
+    /// Since nickname is always populated (equals username for regular accounts),
+    /// this finds any user by their display name.
     /// Returns None if no session with that nickname is found.
     pub async fn get_session_by_nickname(&self, nickname: &str) -> Option<UserSession> {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
         users
             .values()
-            .find(|u| {
-                u.nickname
-                    .as_ref()
-                    .is_some_and(|n| n.to_lowercase() == nickname_lower)
-            })
+            .find(|u| u.nickname.to_lowercase() == nickname_lower)
             .cloned()
     }
 }
@@ -105,12 +93,8 @@ mod tests {
     use super::*;
     use crate::users::user::NewSessionParams;
 
-    /// Create a test session params with the given username and optional nickname
-    fn test_session_params(
-        username: &str,
-        nickname: Option<&str>,
-        is_shared: bool,
-    ) -> NewSessionParams {
+    /// Create a test session params with the given username and nickname
+    fn test_session_params(username: &str, nickname: &str, is_shared: bool) -> NewSessionParams {
         let (tx, _rx) = mpsc::unbounded_channel();
         NewSessionParams {
             session_id: 0, // Will be assigned by add_user
@@ -125,7 +109,7 @@ mod tests {
             features: vec![],
             locale: "en".to_string(),
             avatar: None,
-            nickname: nickname.map(|s| s.to_string()),
+            nickname: nickname.to_string(),
         }
     }
 
@@ -147,7 +131,7 @@ mod tests {
         let manager = UserManager::new();
 
         // Add a shared account user with nickname "Nick1"
-        let params = test_session_params("shared_acct", Some("Nick1"), true);
+        let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
@@ -161,23 +145,22 @@ mod tests {
 
         // Different nicknames should not be in use
         assert!(!manager.is_nickname_in_use("Nick2").await);
-        assert!(!manager.is_nickname_in_use("alice").await);
     }
 
     #[tokio::test]
     async fn test_is_nickname_in_use_matches_username() {
         let manager = UserManager::new();
 
-        // Add a regular user (no nickname) with username "alice"
-        let params = test_session_params("alice", None, false);
+        // Add a regular user (nickname == username) with username "alice"
+        let params = test_session_params("alice", "alice", false);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // The username should be detected as "in use" for nickname purposes
+        // The nickname (which equals username for regular users) should be in use
         // This prevents a shared account from using a nickname that matches
-        // a logged-in regular user's username
+        // a logged-in regular user's username/nickname
         assert!(manager.is_nickname_in_use("alice").await);
         // Case-insensitive
         assert!(manager.is_nickname_in_use("Alice").await);
@@ -191,39 +174,39 @@ mod tests {
     async fn test_is_nickname_in_use_multiple_users() {
         let manager = UserManager::new();
 
-        // Add a regular user "alice"
-        let params1 = test_session_params("alice", None, false);
+        // Add a regular user "alice" (nickname == username)
+        let params1 = test_session_params("alice", "alice", false);
         manager
             .add_user(params1)
             .await
             .expect("add_user should succeed");
 
         // Add a shared account user with nickname "Nick1"
-        let params2 = test_session_params("shared_acct", Some("Nick1"), true);
+        let params2 = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params2)
             .await
             .expect("add_user should succeed");
 
-        // Both should be detected
+        // Both nicknames should be detected
         assert!(manager.is_nickname_in_use("alice").await);
         assert!(manager.is_nickname_in_use("Nick1").await);
 
-        // The shared account's username IS also detected - this is intentional
-        // defense in depth to prevent any collision with logged-in usernames
-        assert!(manager.is_nickname_in_use("shared_acct").await);
+        // The shared account's username is NOT the nickname, so not detected
+        // (the nickname "Nick1" is what's checked, not "shared_acct")
+        assert!(!manager.is_nickname_in_use("shared_acct").await);
 
         // Other names should not be in use
         assert!(!manager.is_nickname_in_use("bob").await);
     }
 
     #[tokio::test]
-    async fn test_is_nickname_in_use_shared_account_username_also_blocked() {
+    async fn test_is_nickname_in_use_shared_account_username_not_blocked() {
         let manager = UserManager::new();
 
         // Add a shared account user with nickname "Nick1"
         // The shared account's username is "shared_acct"
-        let params = test_session_params("shared_acct", Some("Nick1"), true);
+        let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
@@ -232,12 +215,10 @@ mod tests {
         // The nickname "Nick1" should be in use
         assert!(manager.is_nickname_in_use("Nick1").await);
 
-        // The shared account's username is ALSO blocked - this is intentional.
-        // The check is against ALL usernames of logged-in sessions, regardless
-        // of whether they are shared or regular accounts. This provides defense
-        // in depth against any edge cases where a nickname could collide with
-        // a logged-in account name.
-        assert!(manager.is_nickname_in_use("shared_acct").await);
+        // The shared account's username is NOT checked - only nicknames are.
+        // For shared accounts, nickname != username, so shared_acct is available.
+        // (The DB username uniqueness check prevents collisions with account names)
+        assert!(!manager.is_nickname_in_use("shared_acct").await);
     }
 
     // =========================================================================
@@ -251,15 +232,18 @@ mod tests {
         // Empty manager
         assert!(manager.get_session_by_nickname("alice").await.is_none());
 
-        // Add a regular user (no nickname)
-        let params = test_session_params("alice", None, false);
+        // Add a regular user (nickname == username)
+        let params = test_session_params("alice", "alice", false);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Regular users don't have nicknames, so this should not find them
-        assert!(manager.get_session_by_nickname("alice").await.is_none());
+        // Regular users have nickname == username, so this WILL find them
+        assert!(manager.get_session_by_nickname("alice").await.is_some());
+
+        // But searching for a different name won't find them
+        assert!(manager.get_session_by_nickname("bob").await.is_none());
     }
 
     #[tokio::test]
@@ -267,7 +251,7 @@ mod tests {
         let manager = UserManager::new();
 
         // Add a shared account user with nickname "Nick1"
-        let params = test_session_params("shared_acct", Some("Nick1"), true);
+        let params = test_session_params("shared_acct", "Nick1", true);
         let session_id = manager
             .add_user(params)
             .await
@@ -279,7 +263,7 @@ mod tests {
         let session = session.unwrap();
         assert_eq!(session.session_id, session_id);
         assert_eq!(session.username, "shared_acct");
-        assert_eq!(session.nickname, Some("Nick1".to_string()));
+        assert_eq!(session.nickname, "Nick1");
     }
 
     #[tokio::test]
@@ -287,7 +271,7 @@ mod tests {
         let manager = UserManager::new();
 
         // Add a shared account user with nickname "Nick1"
-        let params = test_session_params("shared_acct", Some("Nick1"), true);
+        let params = test_session_params("shared_acct", "Nick1", true);
         let session_id = manager
             .add_user(params)
             .await
@@ -325,13 +309,13 @@ mod tests {
         let manager = UserManager::new();
 
         // Add a shared account user with nickname "Nick1"
-        let params = test_session_params("shared_acct", Some("Nick1"), true);
+        let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Should NOT find by the account's username
+        // Should NOT find by the account's username (nickname is "Nick1", not "shared_acct")
         assert!(
             manager
                 .get_session_by_nickname("shared_acct")
@@ -339,7 +323,7 @@ mod tests {
                 .is_none()
         );
 
-        // Should only find by nickname
+        // Should find by nickname
         assert!(manager.get_session_by_nickname("Nick1").await.is_some());
     }
 
@@ -348,13 +332,13 @@ mod tests {
         let manager = UserManager::new();
 
         // Add two shared account users with different nicknames
-        let params1 = test_session_params("shared_acct", Some("Nick1"), true);
+        let params1 = test_session_params("shared_acct", "Nick1", true);
         let session_id1 = manager
             .add_user(params1)
             .await
             .expect("add_user should succeed");
 
-        let params2 = test_session_params("shared_acct", Some("Nick2"), true);
+        let params2 = test_session_params("shared_acct", "Nick2", true);
         let session_id2 = manager
             .add_user(params2)
             .await

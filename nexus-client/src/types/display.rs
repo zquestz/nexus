@@ -30,7 +30,7 @@ impl Default for ScrollState {
     }
 }
 
-/// Type of chat message (prevents username spoofing)
+/// Type of chat message (prevents nickname spoofing)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessageType {
     /// Regular chat message from a user
@@ -49,15 +49,20 @@ pub enum MessageType {
 /// Chat message for display
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
-    /// Username of the sender (for Chat/Broadcast types)
-    pub username: String,
+    /// Display name of the sender (nickname)
+    ///
+    /// For chat messages, this is the sender's nickname (display name).
+    /// For broadcast messages, this is also the nickname (since shared
+    /// accounts cannot broadcast, nickname always equals username for broadcasters).
+    /// For system/error/info messages, this is an empty string.
+    pub nickname: String,
     /// Message text
     pub message: String,
     /// Type of message (determines rendering style)
     pub message_type: MessageType,
     /// When the message was received (defaults to now if not specified)
     pub timestamp: Option<DateTime<Local>>,
-    /// Whether the sender is an admin (for username coloring)
+    /// Whether the sender is an admin (for nickname coloring)
     pub is_admin: bool,
     /// Whether the sender is a shared account user (for muted coloring)
     pub is_shared: bool,
@@ -66,14 +71,14 @@ pub struct ChatMessage {
 impl ChatMessage {
     /// Create a new chat message with a specific timestamp, admin status, and shared status
     pub fn with_timestamp_and_status(
-        username: impl Into<String>,
+        nickname: impl Into<String>,
         message: impl Into<String>,
         timestamp: DateTime<Local>,
         is_admin: bool,
         is_shared: bool,
     ) -> Self {
         Self {
-            username: username.into(),
+            nickname: nickname.into(),
             message: message.into(),
             message_type: MessageType::Chat,
             timestamp: Some(timestamp),
@@ -85,7 +90,7 @@ impl ChatMessage {
     /// Create a system message
     pub fn system(message: impl Into<String>) -> Self {
         Self {
-            username: String::new(),
+            nickname: String::new(),
             message: message.into(),
             message_type: MessageType::System,
             timestamp: None,
@@ -97,7 +102,7 @@ impl ChatMessage {
     /// Create an error message
     pub fn error(message: impl Into<String>) -> Self {
         Self {
-            username: String::new(),
+            nickname: String::new(),
             message: message.into(),
             message_type: MessageType::Error,
             timestamp: None,
@@ -109,7 +114,7 @@ impl ChatMessage {
     /// Create an info message
     pub fn info(message: impl Into<String>) -> Self {
         Self {
-            username: String::new(),
+            nickname: String::new(),
             message: message.into(),
             message_type: MessageType::Info,
             timestamp: None,
@@ -121,7 +126,7 @@ impl ChatMessage {
     /// Create an info message with a specific timestamp
     pub fn info_with_timestamp(message: impl Into<String>, timestamp: DateTime<Local>) -> Self {
         Self {
-            username: String::new(),
+            nickname: String::new(),
             message: message.into(),
             message_type: MessageType::Info,
             timestamp: Some(timestamp),
@@ -131,9 +136,13 @@ impl ChatMessage {
     }
 
     /// Create a broadcast message from a user
+    ///
+    /// Takes `username` from the protocol. Since shared accounts cannot broadcast,
+    /// the sender's username always equals their nickname, so we store it in the
+    /// nickname field for display.
     pub fn broadcast(username: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            username: username.into(),
+            nickname: username.into(),
             message: message.into(),
             message_type: MessageType::Broadcast,
             timestamp: None,
@@ -151,10 +160,12 @@ impl ChatMessage {
 /// User information for display
 #[derive(Debug, Clone)]
 pub struct UserInfo {
-    /// Username (account name)
+    /// Username (account name / database identifier)
     pub username: String,
-    /// Nickname for shared account users (None for regular users)
-    pub nickname: Option<String>,
+    /// Display name (what users see and type)
+    /// For regular accounts: nickname == username
+    /// For shared accounts: nickname is session-specific
+    pub nickname: String,
     /// Whether user is admin
     pub is_admin: bool,
     /// Whether this is a shared account user
@@ -166,11 +177,4 @@ pub struct UserInfo {
     /// We store a 32-byte hash instead of the full data URI (up to 176KB) to save memory.
     /// The actual decoded avatar is stored in `ServerConnection.avatar_cache`.
     pub avatar_hash: Option<[u8; 32]>,
-}
-
-impl UserInfo {
-    /// Returns the display name for this user (nickname for shared, username for regular)
-    pub fn display_name(&self) -> &str {
-        self.nickname.as_deref().unwrap_or(&self.username)
-    }
 }

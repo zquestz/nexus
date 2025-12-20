@@ -96,7 +96,8 @@ label-chat-topic = Chat Onderwerp:
 label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
 label-avatar = Avatar:
-label-details = Technische details
+label-server-image = Serverafbeelding:
+label-details = Technische Details
 label-chat-options = Chatopties
 label-appearance = Uiterlijk
 label-image = Afbeelding
@@ -123,6 +124,10 @@ permission-user_delete = Gebruiker Verwijderen
 permission-user_edit = Gebruiker Bewerken
 permission-user_kick = Gebruiker Verwijderen
 permission-user_message = Gebruikersbericht
+permission-news_list = Nieuwslijst
+permission-news_create = Nieuws Aanmaken
+permission-news_edit = Nieuws Bewerken
+permission-news_delete = Nieuws Verwijderen
 
 # =============================================================================
 # Tooltips
@@ -147,6 +152,7 @@ tooltip-kick = Verwijderen
 tooltip-add-bookmark = Bladwijzer Toevoegen
 tooltip-close = Sluiten
 tooltip-create-user = Gebruiker Aanmaken
+tooltip-create-news = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
 
 # =============================================================================
@@ -188,7 +194,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Gebruiker succesvol verwijderd
-msg-user-kicked-success-name = Gebruiker '{ $username }' succesvol verwijderd
+msg-user-kicked-success-name = Gebruiker '{ $nickname }' succesvol verwijderd
 msg-broadcast-sent = Broadcast succesvol verzonden
 msg-user-created = Gebruiker succesvol aangemaakt
 msg-user-created-name = Gebruiker '{ $username }' succesvol aangemaakt
@@ -213,8 +219,8 @@ msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
 confirm-delete-user = Weet je zeker dat je gebruiker '{ $username }' wilt verwijderen?
 confirm-delete-news = Weet je zeker dat je dit bericht wilt verwijderen?
-msg-user-connected = { $username } is verbonden
-msg-user-disconnected = { $username } is losgekoppeld
+msg-user-connected = { $nickname } is verbonden
+msg-user-disconnected = { $nickname } is losgekoppeld
 msg-disconnected = Verbinding verbroken: { $error }
 msg-connection-cancelled = Verbinding geannuleerd vanwege niet-overeenkomend certificaat
 
@@ -257,6 +263,9 @@ err-message-invalid-characters = Bericht bevat ongeldige tekens
 err-username-empty = Gebruikersnaam mag niet leeg zijn
 err-username-too-long = Gebruikersnaam is te lang (max { $max } tekens)
 err-username-invalid = Gebruikersnaam bevat ongeldige tekens
+err-nickname-empty = Bijnaam mag niet leeg zijn
+err-nickname-too-long = Bijnaam is te lang (max { $max } tekens)
+err-nickname-invalid = Bijnaam bevat ongeldige tekens
 err-password-too-long = Wachtwoord is te lang (max { $max } tekens)
 err-passwords-do-not-match = Wachtwoorden komen niet overeen
 err-current-password-required = Huidig wachtwoord is vereist
@@ -325,6 +334,7 @@ user-info-role = Rol:
 user-info-role-admin = admin
 user-info-role-shared = gedeeld
 user-info-role-user = gebruiker
+user-info-nickname = Bijnaam:
 user-info-account = Account: { $username }
 user-info-connected = Verbonden:
 user-info-connected-value = { $duration } geleden
@@ -425,9 +435,6 @@ cmd-serverinfo-end = Einde serverinformatie
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = Afbeelding kiezen
-button-clear-image = Wissen
-label-server-image = Serverafbeelding:
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
 err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
 err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)

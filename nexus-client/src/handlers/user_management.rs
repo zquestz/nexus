@@ -55,7 +55,7 @@ impl NexusApp {
 
     /// Handle cancel in user management panel
     ///
-    /// In create/edit mode: returns to list view
+    /// In create/edit mode: returns to original panel if set, otherwise list view
     /// In list mode: closes the panel
     pub fn handle_cancel_user_management(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
@@ -71,16 +71,25 @@ impl NexusApp {
                 self.handle_show_chat_view()
             }
             UserManagementMode::Create | UserManagementMode::Edit { .. } => {
-                // In create/edit mode, return to list
-                conn.user_management.reset_to_list();
-                // Only fetch if we don't already have the list
-                if conn.user_management.all_users.is_none()
-                    && let Ok(message_id) = conn.send(ClientMessage::UserList { all: true })
-                {
-                    conn.pending_requests
-                        .track(message_id, ResponseRouting::PopulateUserManagementList);
+                // Check if we should return to a different panel (e.g., UserInfo)
+                if let Some(return_panel) = conn.user_management.return_to_panel {
+                    conn.user_management.return_to_panel = None;
+                    conn.user_management.mode = UserManagementMode::List;
+                    conn.user_management.edit_error = None;
+                    conn.active_panel = return_panel;
+                    Task::none()
+                } else {
+                    // Return to list mode within User Management
+                    conn.user_management.reset_to_list();
+                    // Only fetch if we don't already have the list
+                    if conn.user_management.all_users.is_none()
+                        && let Ok(message_id) = conn.send(ClientMessage::UserList { all: true })
+                    {
+                        conn.pending_requests
+                            .track(message_id, ResponseRouting::PopulateUserManagementList);
+                    }
+                    Task::none()
                 }
-                Task::none()
             }
             UserManagementMode::ConfirmDelete { .. } => {
                 // Should not happen (modal handles its own cancel)
@@ -110,7 +119,7 @@ impl NexusApp {
     ///
     /// Requests user details from server, then transitions to edit mode.
     /// If called from outside the User Management panel, opens the panel first
-    /// and fetches the user list (so canceling back to list mode shows the list).
+    /// and stores the original panel to return to on cancel/save.
     pub fn handle_user_management_edit_clicked(&mut self, username: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -119,10 +128,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Open the User Management panel if not already open
+        // Track where we came from so we can return there on cancel/save
         if conn.active_panel != ActivePanel::UserManagement {
+            conn.user_management.return_to_panel = Some(conn.active_panel);
             conn.active_panel = ActivePanel::UserManagement;
-            conn.user_management.reset_to_list();
         }
 
         // Request user details from server
@@ -631,27 +640,31 @@ impl NexusApp {
     // ==================== User List Icon Handlers ====================
 
     /// Handle user message icon click (create/switch to PM tab)
-    pub fn handle_user_message_icon_clicked(&mut self, username: String) -> Task<Message> {
+    ///
+    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    pub fn handle_user_message_icon_clicked(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            // Create PM tab entry if it doesn't exist
-            conn.user_messages.entry(username.clone()).or_default();
+            // Create PM tab entry if it doesn't exist (keyed by display name)
+            conn.user_messages.entry(nickname.clone()).or_default();
 
             // Switch to the PM tab
-            let tab = ChatTab::UserMessage(username);
+            let tab = ChatTab::UserMessage(nickname);
             return Task::done(Message::SwitchChatTab(tab));
         }
         Task::none()
     }
 
     /// Handle user kick icon click (kick/disconnect user)
-    pub fn handle_user_kick_icon_clicked(&mut self, username: String) -> Task<Message> {
+    ///
+    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    pub fn handle_user_kick_icon_clicked(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
             // Send UserKick request to server
-            if let Err(e) = conn.send(ClientMessage::UserKick { username }) {
+            if let Err(e) = conn.send(ClientMessage::UserKick { nickname }) {
                 let error_msg = format!("{}: {}", t("err-send-failed"), e);
                 return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
             }
@@ -662,15 +675,17 @@ impl NexusApp {
     }
 
     /// Handle user list item click (expand/collapse accordion)
-    pub fn handle_user_list_item_clicked(&mut self, username: String) -> Task<Message> {
+    ///
+    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    pub fn handle_user_list_item_clicked(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
             // Toggle expansion: if clicking the same user, collapse it; otherwise expand new user
-            if conn.expanded_user.as_ref() == Some(&username) {
+            if conn.expanded_user.as_ref() == Some(&nickname) {
                 conn.expanded_user = None;
             } else {
-                conn.expanded_user = Some(username);
+                conn.expanded_user = Some(nickname);
             }
         }
         Task::none()
@@ -681,7 +696,9 @@ impl NexusApp {
     /// Opens the UserInfo panel and sends a request to the server.
     /// The panel shows a loading state until the response arrives.
     /// Requires user_info permission.
-    pub fn handle_user_info_icon_clicked(&mut self, username: String) -> Task<Message> {
+    ///
+    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    pub fn handle_user_info_icon_clicked(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
@@ -699,11 +716,11 @@ impl NexusApp {
 
             // Send UserInfo request to server and track it
             match conn.send(ClientMessage::UserInfo {
-                username: username.clone(),
+                nickname: nickname.clone(),
             }) {
                 Ok(message_id) => {
                     conn.pending_requests
-                        .track(message_id, ResponseRouting::PopulateUserInfoPanel(username));
+                        .track(message_id, ResponseRouting::PopulateUserInfoPanel(nickname));
                 }
                 Err(e) => {
                     let error_msg = format!("{}: {}", t("err-send-failed"), e);
@@ -725,8 +742,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Initialize password change state and switch to the panel
-        conn.password_change_state = Some(PasswordChangeState::new());
+        // Initialize password change state with return panel and switch to the panel
+        conn.password_change_state = Some(PasswordChangeState::new(Some(conn.active_panel)));
         conn.active_panel = ActivePanel::ChangePassword;
 
         // Focus the current password field and track it
@@ -837,7 +854,7 @@ impl NexusApp {
         operation::focus(Id::from(next_field))
     }
 
-    /// Cancel password change and return to chat
+    /// Cancel password change and return to original panel
     pub fn handle_change_password_cancel_pressed(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -846,9 +863,15 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear password change state and return to chat
+        // Get return panel before clearing state
+        let return_panel = conn
+            .password_change_state
+            .as_ref()
+            .and_then(|state| state.return_to_panel);
+
+        // Clear password change state and return to original panel
         conn.password_change_state = None;
-        conn.active_panel = ActivePanel::None;
+        conn.active_panel = return_panel.unwrap_or(ActivePanel::None);
 
         Task::none()
     }

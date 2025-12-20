@@ -430,7 +430,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "admin".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -754,7 +754,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "creator".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -827,7 +827,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "creator".to_string(),
             })
             .await
             .expect("Failed to add user");

@@ -262,16 +262,16 @@ impl NexusApp {
             // Chat
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
             Message::ChatScrolled(viewport) => self.handle_chat_scrolled(viewport),
-            Message::CloseUserMessageTab(username) => self.handle_close_user_message_tab(username),
+            Message::CloseUserMessageTab(nickname) => self.handle_close_user_message_tab(nickname),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
             Message::SwitchChatTab(tab) => self.handle_switch_chat_tab(tab),
 
             // User list interactions
-            Message::UserInfoIconClicked(username) => self.handle_user_info_icon_clicked(username),
-            Message::UserKickIconClicked(username) => self.handle_user_kick_icon_clicked(username),
-            Message::UserListItemClicked(username) => self.handle_user_list_item_clicked(username),
-            Message::UserMessageIconClicked(username) => {
-                self.handle_user_message_icon_clicked(username)
+            Message::UserInfoIconClicked(nickname) => self.handle_user_info_icon_clicked(nickname),
+            Message::UserKickIconClicked(nickname) => self.handle_user_kick_icon_clicked(nickname),
+            Message::UserListItemClicked(nickname) => self.handle_user_list_item_clicked(nickname),
+            Message::UserMessageIconClicked(nickname) => {
+                self.handle_user_message_icon_clicked(nickname)
             }
 
             // User management

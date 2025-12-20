@@ -20,7 +20,7 @@ pub enum ResponseRouting {
     OpenMessageTab(String),
     /// Display user info in chat (from `/info` command)
     DisplayUserInfoInChat,
-    /// Populate user info panel if username matches (from info icon click)
+    /// Populate user info panel if nickname matches (from info icon click)
     PopulateUserInfoPanel(String),
     /// Populate user management list (from panel open)
     PopulateUserManagementList,

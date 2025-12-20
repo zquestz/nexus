@@ -335,19 +335,14 @@ where
             features,
             locale: locale.clone(),
             avatar: avatar.clone(),
-            nickname: validated_nickname.clone(),
+            nickname: validated_nickname
+                .clone()
+                .unwrap_or_else(|| authenticated_account.username.clone()),
         })
         .await
     {
         Ok(id) => id,
         Err(AddUserError::NicknameInUse) => {
-            return ctx
-                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some("Login"))
-                .await;
-        }
-        Err(AddUserError::NicknameMatchesUsername) => {
-            // This shouldn't happen because we check username_exists() earlier,
-            // but handle it gracefully in case of race condition
             return ctx
                 .send_error_and_disconnect(&err_nickname_in_use(&locale), Some("Login"))
                 .await;
@@ -424,9 +419,11 @@ where
     }
 
     // Notify other users about new connection
+    // nickname is already set correctly: username for regular, validated_nickname for shared
+    let nickname = validated_nickname.unwrap_or_else(|| username.clone());
     let user_info = UserInfo {
         username,
-        nickname: validated_nickname,
+        nickname,
         login_time: current_timestamp(),
         is_admin: authenticated_account.is_admin,
         is_shared: authenticated_account.is_shared,
@@ -1512,7 +1509,7 @@ mod tests {
             .get_user_by_session_id(session_id.unwrap())
             .await
             .expect("session should exist");
-        assert_eq!(session.nickname, Some("Alice".to_string()));
+        assert_eq!(session.nickname, "Alice");
         assert!(session.is_shared);
     }
 
@@ -1597,8 +1594,8 @@ mod tests {
             .await
             .expect("session should exist");
         assert_eq!(
-            session.nickname, None,
-            "Nickname should be None for regular account"
+            session.nickname, "alice",
+            "Nickname should equal username for regular account"
         );
         assert!(!session.is_shared);
     }
@@ -1855,14 +1852,14 @@ mod tests {
             .get_user_by_session_id(session_id1.unwrap())
             .await
             .expect("session 1 should exist");
-        assert_eq!(session1.nickname, Some("Alice".to_string()));
+        assert_eq!(session1.nickname, "Alice");
 
         let session2 = test_ctx
             .user_manager
             .get_user_by_session_id(session_id2.unwrap())
             .await
             .expect("session 2 should exist");
-        assert_eq!(session2.nickname, Some("Bob".to_string()));
+        assert_eq!(session2.nickname, "Bob");
     }
 
     #[tokio::test]

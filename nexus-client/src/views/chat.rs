@@ -157,23 +157,23 @@ fn styled_message<'a>(
     text_widget.into()
 }
 
-/// Check if a username belongs to an admin in the online users list
+/// Check if a nickname (display name) belongs to an admin in the online users list
 ///
 /// Used for server chat messages where admin status isn't embedded in the message.
 /// For private messages, use the `is_admin` field on `ChatMessage` instead.
-fn is_admin_username(conn: &ServerConnection, username: &str) -> bool {
+fn is_admin_by_nickname(conn: &ServerConnection, nickname: &str) -> bool {
     conn.online_users
         .iter()
-        .any(|u| u.display_name() == username && u.is_admin)
+        .any(|u| u.nickname == nickname && u.is_admin)
 }
 
-/// Check if a username belongs to a shared account user.
+/// Check if a nickname (display name) belongs to a shared account user.
 ///
 /// For private messages, use the `is_shared` field on `ChatMessage` instead.
-fn is_shared_username(conn: &ServerConnection, username: &str) -> bool {
+fn is_shared_by_nickname(conn: &ServerConnection, nickname: &str) -> bool {
     conn.online_users
         .iter()
-        .any(|u| u.display_name() == username && u.is_shared)
+        .any(|u| u.nickname == nickname && u.is_shared)
 }
 
 // ============================================================================
@@ -197,15 +197,15 @@ fn create_tab_button(
 /// Create an active tab button (with close button for PM tabs)
 fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Message> {
     // Active PM tabs include a close button
-    if let ChatTab::UserMessage(ref username) = tab {
-        let username_clone = username.clone();
+    if let ChatTab::UserMessage(ref nickname) = tab {
+        let nickname_clone = nickname.clone();
         let close_button = tooltip(
             button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
-                .on_press(Message::CloseUserMessageTab(username_clone))
+                .on_press(Message::CloseUserMessageTab(nickname_clone))
                 .padding(CLOSE_BUTTON_PADDING)
                 .style(close_button_on_primary_style()),
             container(
-                shaped_text(format!("{} {}", t("tooltip-close"), username)).size(TOOLTIP_TEXT_SIZE),
+                shaped_text(format!("{} {}", t("tooltip-close"), nickname)).size(TOOLTIP_TEXT_SIZE),
             )
             .padding(TOOLTIP_BACKGROUND_PADDING)
             .style(tooltip_container_style),
@@ -266,8 +266,8 @@ fn create_inactive_tab_button(
 struct MessageRenderContext<'a> {
     /// Formatted timestamp string (None if timestamps disabled)
     time_str: Option<String>,
-    /// Username/display name of the sender
-    username: &'a str,
+    /// Display name of the sender (nickname)
+    nickname: &'a str,
     /// The message line content
     line: &'a str,
     /// Type of message (Chat, System, Error, etc.)
@@ -347,7 +347,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
             };
             styled_message(
                 ctx.time_str.as_deref(),
-                format!("{} {}: ", t("chat-prefix-broadcast"), ctx.username),
+                format!("{} {}: ", t("chat-prefix-broadcast"), ctx.nickname),
                 ctx.line,
                 &style,
             )
@@ -370,7 +370,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
             };
             styled_message(
                 ctx.time_str.as_deref(),
-                format!("{}: ", ctx.username),
+                format!("{}: ", ctx.nickname),
                 ctx.line,
                 &style,
             )
@@ -391,9 +391,9 @@ fn build_message_list<'a>(
 ) -> Column<'a, Message> {
     let messages = match &conn.active_chat_tab {
         ChatTab::Server => conn.chat_messages.as_slice(),
-        ChatTab::UserMessage(username) => conn
+        ChatTab::UserMessage(nickname) => conn
             .user_messages
-            .get(username)
+            .get(nickname)
             .map(|v| v.as_slice())
             .unwrap_or(&[]),
     };
@@ -404,15 +404,15 @@ fn build_message_list<'a>(
         let time_str = timestamp_settings.format(&msg.get_timestamp());
         // For private messages, use the stored is_admin/is_shared flags.
         // For server chat, fall back to looking up in online users.
-        let username_is_admin = if msg.is_admin {
+        let sender_is_admin = if msg.is_admin {
             true
         } else {
-            is_admin_username(conn, &msg.username)
+            is_admin_by_nickname(conn, &msg.nickname)
         };
-        let username_is_shared = if msg.is_shared {
+        let sender_is_shared = if msg.is_shared {
             true
         } else {
-            is_shared_username(conn, &msg.username)
+            is_shared_by_nickname(conn, &msg.nickname)
         };
 
         // Split message into lines to prevent spoofing via embedded newlines
@@ -420,12 +420,12 @@ fn build_message_list<'a>(
         for line in msg.message.split('\n') {
             let display = render_message_line(MessageRenderContext {
                 time_str: time_str.clone(),
-                username: &msg.username,
+                nickname: &msg.nickname,
                 line,
                 message_type: msg.message_type,
                 theme,
-                is_admin: username_is_admin,
-                is_shared: username_is_shared,
+                is_admin: sender_is_admin,
+                is_shared: sender_is_shared,
                 font_size,
             });
             chat_column = chat_column.push(display);
@@ -478,17 +478,17 @@ fn build_tab_bar(conn: &ServerConnection) -> (iced::widget::Row<'static, Message
     );
     tab_row = tab_row.push(server_tab_button);
 
-    // PM tabs (sorted alphabetically)
-    let mut pm_usernames: Vec<String> = conn.user_messages.keys().cloned().collect();
-    pm_usernames.sort();
+    // PM tabs (sorted alphabetically by nickname/display name)
+    let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
+    pm_nicknames.sort();
 
-    let has_pm_tabs = !pm_usernames.is_empty();
+    let has_pm_tabs = !pm_nicknames.is_empty();
 
-    for username in pm_usernames {
-        let pm_tab = ChatTab::UserMessage(username.clone());
+    for nickname in pm_nicknames {
+        let pm_tab = ChatTab::UserMessage(nickname.clone());
         let is_active = conn.active_chat_tab == pm_tab;
         let has_unread = conn.unread_tabs.contains(&pm_tab);
-        let pm_tab_button = create_tab_button(pm_tab, username, is_active, has_unread);
+        let pm_tab_button = create_tab_button(pm_tab, nickname, is_active, has_unread);
         tab_row = tab_row.push(pm_tab_button);
     }
 

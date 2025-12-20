@@ -92,10 +92,11 @@ label-server-name = Название:
 label-server-description = Описание:
 label-server-version = Версия:
 label-chat-topic = Тема чата:
-label-chat-topic-set-by = Тема установлена:
-label-max-connections-per-ip = Макс. подключений на IP:
+label-chat-topic-set-by = Тема Установлена:
+label-max-connections-per-ip = Макс. Подключений На IP:
 label-avatar = Аватар:
-label-details = Технические детали
+label-server-image = Изображение сервера:
+label-details = Технические Детали
 label-chat-options = Настройки чата
 label-appearance = Внешний вид
 label-image = Изображение
@@ -122,6 +123,10 @@ permission-user_delete = Удаление Пользователя
 permission-user_edit = Редактирование Пользователя
 permission-user_kick = Выгнать Пользователя
 permission-user_message = Сообщение Пользователю
+permission-news_list = Список Новостей
+permission-news_create = Создать Новость
+permission-news_edit = Редактировать Новость
+permission-news_delete = Удалить Новость
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Пользователь успешно выгнан
-msg-user-kicked-success-name = Пользователь '{ $username }' успешно выгнан
+msg-user-kicked-success-name = Пользователь '{ $nickname }' успешно выгнан
 msg-broadcast-sent = Рассылка успешно отправлена
 msg-user-created = Пользователь успешно создан
 msg-user-created-name = Пользователь '{ $username }' успешно создан
@@ -213,8 +218,8 @@ msg-server-info-updated = Конфигурация сервера обновле
 msg-topic-display = Тема: { $topic }
 confirm-delete-user = Вы уверены, что хотите удалить пользователя '{ $username }'?
 confirm-delete-news = Вы уверены, что хотите удалить эту публикацию?
-msg-user-connected = { $username } подключился
-msg-user-disconnected = { $username } отключился
+msg-user-connected = { $nickname } подключился
+msg-user-disconnected = { $nickname } отключился
 msg-disconnected = Отключено: { $error }
 msg-connection-cancelled = Подключение отменено из-за несоответствия сертификата
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = Сообщение содержит недоп�
 err-username-empty = Имя пользователя не может быть пустым
 err-username-too-long = Имя пользователя слишком длинное (макс { $max } символов)
 err-username-invalid = Имя пользователя содержит недопустимые символы
+err-nickname-empty = Псевдоним не может быть пустым
+err-nickname-too-long = Псевдоним слишком длинный (макс { $max } символов)
+err-nickname-invalid = Псевдоним содержит недопустимые символы
 err-password-too-long = Пароль слишком длинный (макс { $max } символов)
 err-passwords-do-not-match = Пароли не совпадают
 err-current-password-required = Текущий пароль обязателен
@@ -325,6 +333,7 @@ user-info-role = Роль:
 user-info-role-admin = админ
 user-info-role-shared = общий
 user-info-role-user = пользователь
+user-info-nickname = Псевдоним:
 user-info-account = Аккаунт: { $username }
 user-info-connected = Подключён:
 user-info-connected-value = { $duration } назад
@@ -432,9 +441,6 @@ cmd-serverinfo-end = Конец информации о сервере
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = Выбрать изображение
-button-clear-image = Очистить
-label-server-image = Изображение сервера:
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
 err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)
 err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)

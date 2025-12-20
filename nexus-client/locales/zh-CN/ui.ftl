@@ -95,6 +95,7 @@ label-chat-topic = 聊天主题：
 label-chat-topic-set-by = 主题设置者：
 label-max-connections-per-ip = 每IP最大连接数：
 label-avatar = 头像：
+label-server-image = 服务器图片：
 label-details = 技术详情
 label-chat-options = 聊天选项
 label-appearance = 外观
@@ -122,6 +123,10 @@ permission-user_delete = 删除用户
 permission-user_edit = 编辑用户
 permission-user_kick = 踢出用户
 permission-user_message = 用户消息
+permission-news_list = 新闻列表
+permission-news_create = 创建新闻
+permission-news_edit = 编辑新闻
+permission-news_delete = 删除新闻
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = 用户已成功踢出
-msg-user-kicked-success-name = 用户 '{ $username }' 已成功踢出
+msg-user-kicked-success-name = 用户 '{ $nickname }' 已成功踢出
 msg-broadcast-sent = 广播已成功发送
 msg-user-created = 用户已成功创建
 msg-user-created-name = 用户 '{ $username }' 已成功创建
@@ -213,8 +218,8 @@ msg-server-info-updated = 服务器配置已更新
 msg-topic-display = 主题：{ $topic }
 confirm-delete-user = 确定要删除用户 '{ $username }' 吗？
 confirm-delete-news = 确定要删除此帖子吗？
-msg-user-connected = { $username } 已连接
-msg-user-disconnected = { $username } 已断开连接
+msg-user-connected = { $nickname } 已连接
+msg-user-disconnected = { $nickname } 已断开连接
 msg-disconnected = 已断开连接：{ $error }
 msg-connection-cancelled = 由于证书不匹配，连接已取消
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = 消息包含无效字符
 err-username-empty = 用户名不能为空
 err-username-too-long = 用户名过长（最多{ $max }个字符）
 err-username-invalid = 用户名包含无效字符
+err-nickname-empty = 昵称不能为空
+err-nickname-too-long = 昵称过长（最多{ $max }个字符）
+err-nickname-invalid = 昵称包含无效字符
 err-password-too-long = 密码过长（最多{ $max }个字符）
 err-passwords-do-not-match = 密码不匹配
 err-current-password-required = 当前密码是必填的
@@ -325,6 +333,7 @@ user-info-role = 角色：
 user-info-role-admin = 管理员
 user-info-role-shared = 共享
 user-info-role-user = 用户
+user-info-nickname = 昵称：
 user-info-account = 账户：{ $username }
 user-info-connected = 已连接：
 user-info-connected-value = { $duration }前
@@ -404,9 +413,6 @@ cmd-serverinfo-end = 服务器信息结束
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = 选择图片
-button-clear-image = 清除
-label-server-image = 服务器图片:
 err-server-image-too-large = 服务器图片太大（最大512KB）
 err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
 err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）

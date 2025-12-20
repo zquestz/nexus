@@ -19,7 +19,7 @@ impl UserManager {
             return;
         }
 
-        // Collect user info before removing them (display_name for proper identification)
+        // Collect user info before removing them (nickname for proper identification)
         let users_to_remove: Vec<(u32, String)> = {
             let users = self.users.read().await;
             session_ids
@@ -27,7 +27,7 @@ impl UserManager {
                 .filter_map(|&session_id| {
                     users
                         .get(&session_id)
-                        .map(|user| (session_id, user.display_name().to_string()))
+                        .map(|user| (session_id, user.nickname.clone()))
                 })
                 .collect()
         };
@@ -43,10 +43,10 @@ impl UserManager {
         // Broadcast disconnection to all remaining clients who have user_list permission
         // We send directly instead of using broadcast_user_event() to avoid infinite recursion
         // at the type level (even though runtime would be safe since users are already removed)
-        for (session_id, display_name) in users_to_remove {
+        for (session_id, nickname) in users_to_remove {
             let message = ServerMessage::UserDisconnected {
                 session_id,
-                username: display_name,
+                nickname,
             };
 
             // Send to users who have user_list permission (ignore send errors)

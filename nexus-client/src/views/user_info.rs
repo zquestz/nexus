@@ -234,37 +234,37 @@ fn build_user_info_content<'a>(
     theme: &Theme,
     avatar_cache: &'a HashMap<String, CachedImage>,
 ) -> iced::widget::Column<'a, Message> {
-    // Header: Avatar + Display name (nickname for shared, username for regular)
+    // Header: Avatar + Nickname (always populated; equals username for regular accounts)
     // For shared accounts, also show the account name below
     let is_admin = user.is_admin.unwrap_or(false);
     let is_shared = user.is_shared;
 
-    // Display name: nickname for shared accounts, username for regular
-    let display_name = user.nickname.as_deref().unwrap_or(&user.username);
+    // Nickname is always populated (equals username for regular accounts)
+    let nickname = &user.nickname;
 
-    // Avatar cache is keyed by display name (nickname for shared, username for regular)
+    // Avatar cache is keyed by nickname (always populated; equals username for regular accounts)
     let avatar_element: Element<'_, Message> =
-        if let Some(cached_avatar) = avatar_cache.get(display_name) {
+        if let Some(cached_avatar) = avatar_cache.get(nickname) {
             cached_avatar.render(USER_INFO_AVATAR_SIZE)
         } else {
             // Fallback: generate identicon (shouldn't happen if cache is properly populated)
-            generate_identicon(display_name).render(USER_INFO_AVATAR_SIZE)
+            generate_identicon(nickname).render(USER_INFO_AVATAR_SIZE)
         };
 
     // Apply color: admin = red, shared = muted, regular = default
-    let display_name_text = if is_admin {
-        shaped_text(display_name)
+    let nickname_text = if is_admin {
+        shaped_text(nickname)
             .size(TITLE_SIZE)
             .color(chat::admin(theme))
     } else if is_shared {
-        shaped_text(display_name)
+        shaped_text(nickname)
             .size(TITLE_SIZE)
             .color(chat::shared(theme))
     } else {
-        shaped_text(display_name).size(TITLE_SIZE)
+        shaped_text(nickname).size(TITLE_SIZE)
     };
 
-    let header_row = row![avatar_element, display_name_text]
+    let header_row = row![avatar_element, nickname_text]
         .spacing(USER_INFO_AVATAR_SPACING)
         .align_y(Center);
 
@@ -305,13 +305,15 @@ fn build_user_info_content<'a>(
     };
     content = content.push(info_row(t("user-info-connected"), connected_value, None));
 
-    // Features
+    // Features (sorted alphabetically for consistent display)
     let features_value = if user.features.is_empty() {
         t("user-info-features-none")
     } else {
+        let mut sorted_features = user.features.clone();
+        sorted_features.sort();
         t_args(
             "user-info-features-value",
-            &[("features", &user.features.join(", "))],
+            &[("features", &sorted_features.join(", "))],
         )
     };
     content = content.push(info_row(t("user-info-features"), features_value, None));

@@ -70,7 +70,7 @@ async fn test_multi_session_partial_disconnect() {
         .broadcast_user_event(
             ServerMessage::UserDisconnected {
                 session_id: session_id2,
-                username: "alice".to_string(),
+                nickname: "alice".to_string(),
             },
             &db.users,
             Some(session_id2), // Exclude disconnected session
@@ -99,10 +99,10 @@ async fn test_multi_session_partial_disconnect() {
     match msg1.unwrap().0 {
         ServerMessage::UserDisconnected {
             session_id,
-            username,
+            nickname,
         } => {
             assert_eq!(session_id, session_id2);
-            assert_eq!(username, "alice");
+            assert_eq!(nickname, "alice");
         }
         _ => panic!("Expected UserDisconnected"),
     }
@@ -197,7 +197,7 @@ async fn test_broadcast_respects_user_list_permission() {
             ServerMessage::UserConnected {
                 user: UserInfo {
                     username: "newuser".to_string(),
-                    nickname: None,
+                    nickname: "newuser".to_string(),
                     is_admin: false,
                     is_shared: false,
                     login_time: chrono::Utc::now().timestamp(),
@@ -281,7 +281,7 @@ async fn test_broadcast_excludes_specified_session() {
             ServerMessage::UserConnected {
                 user: UserInfo {
                     username: "newcomer".to_string(),
-                    nickname: None,
+                    nickname: "newcomer".to_string(),
                     is_admin: false,
                     is_shared: false,
                     login_time: chrono::Utc::now().timestamp(),
@@ -372,7 +372,8 @@ async fn test_broadcast_detects_closed_channels() {
             "chat",
             ServerMessage::ChatMessage {
                 session_id: 999,
-                username: "system".to_string(),
+                nickname: "system".to_string(),
+                is_admin: false,
                 is_shared: false,
                 message: "test".to_string(),
             },

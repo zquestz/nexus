@@ -5,19 +5,20 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, MessageError, UsernameError};
+use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
     HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long, err_database,
     err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
-    err_not_logged_in, err_permission_denied, err_user_not_found, err_user_not_online,
-    err_username_empty, err_username_invalid, err_username_too_long,
+    err_nickname_empty, err_nickname_invalid, err_nickname_not_found, err_nickname_not_online,
+    err_nickname_too_long, err_not_logged_in, err_permission_denied,
+    err_shared_message_requires_nickname,
 };
 use crate::db::Permission;
 
 /// Handle UserMessage command
 pub async fn handle_user_message<W>(
-    to_username: String,
+    to_nickname: String,
     message: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -33,14 +34,14 @@ where
             .await;
     };
 
-    // Validate to_username format
-    if let Err(e) = validators::validate_username(&to_username) {
+    // Validate to_nickname format
+    if let Err(e) = validators::validate_nickname(&to_nickname) {
         let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            NicknameError::Empty => err_nickname_empty(ctx.locale),
+            NicknameError::TooLong => {
+                err_nickname_too_long(ctx.locale, validators::MAX_NICKNAME_LENGTH)
             }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+            NicknameError::InvalidCharacters => err_nickname_invalid(ctx.locale),
         };
         let response = ServerMessage::UserMessageResponse {
             success: false,
@@ -75,13 +76,9 @@ where
     };
 
     // Prevent self-messaging (cheap check before DB queries)
-    // Check both username and nickname for self-message prevention
-    let to_username_lower = to_username.to_lowercase();
-    let is_self_message = to_username_lower == requesting_user_session.username.to_lowercase()
-        || requesting_user_session
-            .nickname
-            .as_ref()
-            .is_some_and(|n| n.to_lowercase() == to_username_lower);
+    // Check against the requesting user's nickname (which is the display name)
+    let to_nickname_lower = to_nickname.to_lowercase();
+    let is_self_message = requesting_user_session.nickname.to_lowercase() == to_nickname_lower;
     if is_self_message {
         let response = ServerMessage::UserMessageResponse {
             success: false,
@@ -103,36 +100,41 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // First, try to find by nickname (for shared account users)
-    // Then fall back to username lookup
-    let target_session_by_nickname = ctx.user_manager.get_session_by_nickname(&to_username).await;
+    // Look up by nickname (display name)
+    // Since nickname is always populated (equals username for regular accounts),
+    // we first try to find by nickname, then fall back to username lookup for
+    // regular accounts only (shared accounts can only be messaged by their nickname).
+    let target_session_by_nickname = ctx.user_manager.get_session_by_nickname(&to_nickname).await;
 
-    // Determine the target display name (for the UserMessage broadcast)
+    // Determine the target nickname (for the UserMessage broadcast)
     // and how to route the message
-    let (target_display_name, route_to_nickname) =
-        if let Some(ref session) = target_session_by_nickname {
-            // Messaging a shared account user by nickname
-            // Use nickname as display name
-            (
-                session
-                    .nickname
-                    .clone()
-                    .unwrap_or_else(|| to_username.clone()),
-                true,
-            )
-        } else {
-            // Messaging by username - look up in database
-            (to_username.clone(), false)
-        };
+    let (target_nickname, route_to_nickname) = if let Some(ref session) = target_session_by_nickname
+    {
+        // Found user by nickname
+        (session.nickname.clone(), true)
+    } else {
+        // Fall back to username lookup for regular accounts
+        (to_nickname.clone(), false)
+    };
 
     // For username-based messaging, look up target user in database
     let target_user_db = if !route_to_nickname {
-        match ctx.db.users.get_user_by_username(&to_username).await {
-            Ok(Some(user)) => Some(user),
+        match ctx.db.users.get_user_by_username(&to_nickname).await {
+            Ok(Some(user)) => {
+                // Shared accounts can only be messaged by nickname, not by account username
+                if user.is_shared {
+                    let response = ServerMessage::UserMessageResponse {
+                        success: false,
+                        error: Some(err_shared_message_requires_nickname(ctx.locale)),
+                    };
+                    return ctx.send_message(&response).await;
+                }
+                Some(user)
+            }
             Ok(None) => {
                 let response = ServerMessage::UserMessageResponse {
                     success: false,
-                    error: Some(err_user_not_found(ctx.locale, &to_username)),
+                    error: Some(err_nickname_not_found(ctx.locale, &to_nickname)),
                 };
                 return ctx.send_message(&response).await;
             }
@@ -159,7 +161,7 @@ where
         if target_sessions.is_empty() {
             let response = ServerMessage::UserMessageResponse {
                 success: false,
-                error: Some(err_user_not_online(ctx.locale, &to_username)),
+                error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
             };
             return ctx.send_message(&response).await;
         }
@@ -172,17 +174,14 @@ where
     };
     ctx.send_message(&response).await?;
 
-    // Get sender's display name (nickname for shared accounts, username for regular)
-    let from_display_name = requesting_user_session
-        .nickname
-        .clone()
-        .unwrap_or_else(|| requesting_user_session.username.clone());
+    // Get sender's nickname
+    let from_nickname = requesting_user_session.nickname.clone();
 
     // Broadcast message to sender and receiver
     let broadcast = ServerMessage::UserMessage {
-        from_username: from_display_name,
+        from_nickname,
         from_admin: requesting_user_session.is_admin,
-        to_username: target_display_name,
+        to_nickname: target_nickname,
         message,
     };
 
@@ -215,7 +214,9 @@ where
 mod tests {
     use super::*;
     use crate::db::Permission;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, login_shared_user, login_user, read_server_message,
+    };
 
     #[tokio::test]
     async fn test_usermessage_requires_login() {
@@ -730,5 +731,103 @@ mod tests {
 
         // The UserMessage broadcast would contain from_username: "Sender" (the nickname)
         // This is verified by the implementation using requesting_user_session.nickname
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_shared_account_requires_nickname() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create sender with permission
+        let _sender_id = login_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+
+        // Create shared account user with nickname "Nick1"
+        let _shared_id = login_shared_user(
+            &mut test_ctx,
+            "shared_acct",
+            "sharedpass",
+            "Nick1",
+            &[Permission::UserMessage],
+        )
+        .await;
+
+        // Try to message by account username (should fail)
+        let result = handle_user_message(
+            "shared_acct".to_string(),
+            "hello".to_string(),
+            Some(1), // sender's session_id
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserMessageResponse { success, error } => {
+                assert!(
+                    !success,
+                    "Should reject messaging shared account by username"
+                );
+                let err_msg = error.as_ref().unwrap();
+                assert!(
+                    err_msg.contains("nickname") && err_msg.contains("messaged"),
+                    "Error should mention nickname and messaged: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_shared_account_by_nickname_succeeds() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create sender with permission
+        let _sender_id = login_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+
+        // Create shared account user with nickname "Nick1"
+        let _shared_id = login_shared_user(
+            &mut test_ctx,
+            "shared_acct",
+            "sharedpass",
+            "Nick1",
+            &[Permission::UserMessage],
+        )
+        .await;
+
+        // Message by nickname (should succeed)
+        let result = handle_user_message(
+            "Nick1".to_string(),
+            "hello".to_string(),
+            Some(1), // sender's session_id
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserMessageResponse { success, error } => {
+                assert!(success, "Should allow messaging shared account by nickname");
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
     }
 }

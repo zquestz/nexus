@@ -42,22 +42,19 @@ impl NexusApp {
 
         // If this was a panel request, only populate if panel is still open, waiting,
         // AND the username matches (to handle rapid clicks on different users)
-        if let Some(ResponseRouting::PopulateUserInfoPanel(requested_username)) = routing {
+        if let Some(ResponseRouting::PopulateUserInfoPanel(requested_nickname)) = routing {
             let panel_waiting = self.connections.get(&connection_id).is_some_and(|conn| {
                 conn.active_panel == ActivePanel::UserInfo && conn.user_info_data.is_none()
             });
 
-            // Check if requested name matches the response (case-insensitive)
-            // Compare against display name: nickname for shared accounts, username for regular
-            let username_matches = match &user {
-                Some(u) => {
-                    let response_display_name = u.nickname.as_deref().unwrap_or(&u.username);
-                    requested_username.to_lowercase() == response_display_name.to_lowercase()
-                }
+            // Check if requested nickname matches the response (case-insensitive)
+            // nickname is always the display name (== username for regular accounts)
+            let nickname_matches = match &user {
+                Some(u) => requested_nickname.to_lowercase() == u.nickname.to_lowercase(),
                 None => true, // Error responses don't have user data, accept them
             };
 
-            if panel_waiting && username_matches {
+            if panel_waiting && nickname_matches {
                 // Populate the panel with the response
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
                     if success {
@@ -104,9 +101,8 @@ impl NexusApp {
         // Build multi-line IRC WHOIS-style output
         let mut lines = Vec::new();
 
-        // Header: display name (nickname for shared, username for regular)
-        let display_name = user.nickname.as_deref().unwrap_or(&user.username);
-        lines.push(format!("[{}]", display_name));
+        // Header: display name (nickname is always populated - equals username for regular accounts)
+        lines.push(format!("[{}]", user.nickname));
 
         // Role (only visible to admins)
         if let Some(is_admin) = user.is_admin {
@@ -258,11 +254,10 @@ impl NexusApp {
             .into_iter()
             .map(|u| {
                 let avatar_hash = compute_avatar_hash(u.avatar.as_deref());
-                // Pre-populate avatar cache using display name (nickname for shared, username for regular)
-                let display_name = u.nickname.as_deref().unwrap_or(&u.username);
-                get_or_create_avatar(&mut conn.avatar_cache, display_name, u.avatar.as_deref());
+                // Pre-populate avatar cache using display name (nickname is always populated)
+                get_or_create_avatar(&mut conn.avatar_cache, &u.nickname, u.avatar.as_deref());
                 ClientUserInfo {
-                    username: u.username,
+                    username: u.username.clone(),
                     nickname: u.nickname,
                     is_admin: u.is_admin,
                     is_shared: u.is_shared,
@@ -277,7 +272,7 @@ impl NexusApp {
 
         // Clear expanded_user if the user is no longer in the list
         if let Some(expanded) = &conn.expanded_user
-            && !conn.online_users.iter().any(|u| &u.username == expanded)
+            && !conn.online_users.iter().any(|u| u.nickname == *expanded)
         {
             conn.expanded_user = None;
         }
@@ -295,7 +290,7 @@ impl NexusApp {
         }
 
         // Build IRC-style user list: @admin user1 user2
-        // Use display name (nickname for shared accounts)
+        // Use account username (not nickname) since /list all shows accounts, not sessions
         let user_count = users.len();
         let user_list: String = users
             .iter()
@@ -343,8 +338,8 @@ impl NexusApp {
             .iter_mut()
             .filter(|u| u.username == previous_username)
         {
-            // Get old display name for cache invalidation
-            let old_display_name = existing_user.display_name().to_string();
+            // Get old nickname for cache invalidation
+            let old_nickname = existing_user.nickname.clone();
 
             // Check if avatar changed (invalidate cache if so)
             let avatar_changed = existing_user.avatar_hash != new_avatar_hash;
@@ -361,21 +356,21 @@ impl NexusApp {
             existing_user.session_ids = user.session_ids.clone();
             existing_user.avatar_hash = new_avatar_hash;
 
-            // Get new display name for cache update
-            let new_display_name = existing_user.display_name().to_string();
+            // Get new nickname for cache update
+            let new_nickname = existing_user.nickname.clone();
 
-            // If display name changed, remove old cache entry
-            if old_display_name != new_display_name {
-                conn.avatar_cache.remove(&old_display_name);
+            // If nickname changed, remove old cache entry
+            if old_nickname != new_nickname {
+                conn.avatar_cache.remove(&old_nickname);
             } else if avatar_changed {
-                // Same display name but avatar changed - invalidate cache
-                conn.avatar_cache.remove(&new_display_name);
+                // Same nickname but avatar changed - invalidate cache
+                conn.avatar_cache.remove(&new_nickname);
             }
 
-            // Pre-populate cache with new avatar (keyed by display name)
+            // Pre-populate cache with new avatar (keyed by nickname)
             get_or_create_avatar(
                 &mut conn.avatar_cache,
-                &new_display_name,
+                &new_nickname,
                 user.avatar.as_deref(),
             );
         }
@@ -384,13 +379,18 @@ impl NexusApp {
         sort_user_list(&mut conn.online_users);
 
         // If username changed, update user_messages HashMap and active tab
+        // Note: PM tabs are keyed by nickname.
+        // For regular accounts, nickname == username, so this rename works correctly.
+        // For shared accounts, nickname is session-specific (not username), so the remove()
+        // will return None and this becomes a no-op, which is correct behavior since
+        // the shared user's nickname (and thus PM tab key) hasn't changed.
         if username_changed {
             // If this is our own username changing, update conn.username
             if conn.username == previous_username {
                 conn.username = new_username.clone();
             }
 
-            // Rename the user_messages entry
+            // Rename the user_messages entry (only affects regular accounts, see note above)
             if let Some(messages) = conn.user_messages.remove(&previous_username) {
                 conn.user_messages.insert(new_username.clone(), messages);
             }
@@ -412,7 +412,10 @@ impl NexusApp {
                 conn.active_chat_tab = new_tab;
             }
 
-            // Update expanded_user if it was set to the old username
+            // Update expanded_user if it was set to the old nickname
+            // (For regular accounts, nickname == username, so this works.
+            // For shared accounts, nickname is session-specific and won't match
+            // previous_username, so this correctly does nothing since nickname didn't change.)
             if conn.expanded_user.as_ref() == Some(&previous_username) {
                 conn.expanded_user = Some(new_username);
             }

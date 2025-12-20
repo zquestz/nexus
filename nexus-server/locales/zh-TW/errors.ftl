@@ -6,6 +6,8 @@ err-nickname-empty = 暱稱不能為空
 err-nickname-in-use = 暱稱已被使用
 err-nickname-invalid = 暱稱包含無效字元（允許字母、數字和符號 - 不允許空格或控制字元）
 err-nickname-is-username = 暱稱不能是已存在的使用者名稱
+err-nickname-not-found = 找不到使用者「{ $nickname }」
+err-nickname-not-online = 使用者「{ $nickname }」不在線上
 err-nickname-required = 共享帳戶需要暱稱
 err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
 
@@ -13,6 +15,8 @@ err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
 err-shared-cannot-be-admin = 共享帳戶不能成為管理員
 err-shared-cannot-change-password = 無法更改共享帳戶的密碼
 err-shared-invalid-permissions = 共享帳戶不能擁有這些權限：{ $permissions }
+err-shared-message-requires-nickname = 共享帳戶只能通過暱稱接收訊息
+err-shared-kick-requires-nickname = 共享帳戶只能通過暱稱踢出
 
 # 頭像驗證錯誤
 err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）

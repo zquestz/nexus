@@ -569,7 +569,7 @@ where
                                 .broadcast_user_event(
                                     ServerMessage::UserDisconnected {
                                         session_id,
-                                        username: removed_user.display_name().to_string(),
+                                        nickname: removed_user.nickname.clone(),
                                     },
                                     &ctx.db.users,
                                     Some(session_id), // Exclude the disabled user
@@ -642,7 +642,9 @@ where
 
                     let user_info = UserInfo {
                         username: updated_account.username.clone(),
-                        nickname: None, // Account-level updates don't have a specific session nickname
+                        // For account-level updates, nickname == username
+                        // (we're broadcasting about the account, not a specific session)
+                        nickname: updated_account.username.clone(),
                         login_time,
                         is_admin: updated_account.is_admin,
                         is_shared: updated_account.is_shared,
@@ -1751,7 +1753,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "editor".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -1962,7 +1964,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "editor".to_string(),
             })
             .await
             .expect("Failed to add user");
@@ -1982,7 +1984,7 @@ mod tests {
                 features: vec![],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
-                nickname: None,
+                nickname: "admin".to_string(),
             })
             .await
             .expect("Failed to add user");

@@ -95,6 +95,7 @@ label-chat-topic = Chat-Thema:
 label-chat-topic-set-by = Chat-Thema gesetzt von:
 label-max-connections-per-ip = Max. Verbindungen pro IP:
 label-avatar = Avatar:
+label-server-image = Serverbild:
 label-details = Technische Details
 label-chat-options = Chat-Optionen
 label-appearance = Erscheinungsbild
@@ -122,6 +123,10 @@ permission-user_delete = Benutzer Löschen
 permission-user_edit = Benutzer Bearbeiten
 permission-user_kick = Benutzer Rauswerfen
 permission-user_message = Benutzernachricht
+permission-news_list = Neuigkeiten Anzeigen
+permission-news_create = Neuigkeiten Erstellen
+permission-news_edit = Neuigkeiten Bearbeiten
+permission-news_delete = Neuigkeiten Löschen
 
 # =============================================================================
 # Tooltips
@@ -188,7 +193,7 @@ chat-prefix-broadcast = [BROADCAST]
 # =============================================================================
 
 msg-user-kicked-success = Benutzer erfolgreich rausgeworfen
-msg-user-kicked-success-name = Benutzer '{ $username }' erfolgreich rausgeworfen
+msg-user-kicked-success-name = Benutzer '{ $nickname }' erfolgreich rausgeworfen
 msg-broadcast-sent = Rundnachricht erfolgreich gesendet
 msg-user-created = Benutzer erfolgreich erstellt
 msg-user-created-name = Benutzer '{ $username }' erfolgreich erstellt
@@ -213,8 +218,8 @@ msg-server-info-updated = Serverkonfiguration aktualisiert
 msg-topic-display = Thema: { $topic }
 confirm-delete-user = Möchten Sie den Benutzer '{ $username }' wirklich löschen?
 confirm-delete-news = Möchten Sie diesen Beitrag wirklich löschen?
-msg-user-connected = { $username } hat sich verbunden
-msg-user-disconnected = { $username } hat sich getrennt
+msg-user-connected = { $nickname } hat sich verbunden
+msg-user-disconnected = { $nickname } hat sich getrennt
 msg-disconnected = Getrennt: { $error }
 msg-connection-cancelled = Verbindung abgebrochen wegen Zertifikat-Nichtübereinstimmung
 
@@ -257,6 +262,9 @@ err-message-invalid-characters = Nachricht enthält ungültige Zeichen
 err-username-empty = Benutzername darf nicht leer sein
 err-username-too-long = Benutzername ist zu lang (max { $max } Zeichen)
 err-username-invalid = Benutzername enthält ungültige Zeichen
+err-nickname-empty = Spitzname darf nicht leer sein
+err-nickname-too-long = Spitzname ist zu lang (max { $max } Zeichen)
+err-nickname-invalid = Spitzname enthält ungültige Zeichen
 err-password-too-long = Passwort ist zu lang (max { $max } Zeichen)
 err-passwords-do-not-match = Passwörter stimmen nicht überein
 err-current-password-required = Aktuelles Passwort ist erforderlich
@@ -324,7 +332,8 @@ user-info-username = Benutzername:
 user-info-role = Rolle:
 user-info-role-admin = admin
 user-info-role-shared = geteilt
-user-info-role-user = benutzer
+user-info-role-user = Benutzer
+user-info-nickname = Spitzname:
 user-info-account = Konto: { $username }
 user-info-connected = Verbunden:
 user-info-connected-value = vor { $duration }
@@ -425,9 +434,6 @@ cmd-serverinfo-end = Ende der Server-Informationen
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
-button-choose-image = Bild auswählen
-button-clear-image = Löschen
-label-server-image = Serverbild:
 err-server-image-too-large = Das Serverbild ist zu groß (maximal 512KB)
 err-server-image-invalid-format = Ungültiges Serverbild-Format (muss eine Data-URI mit Base64-Kodierung sein)
 err-server-image-unsupported-type = Nicht unterstützter Serverbild-Typ (nur PNG, WebP, JPEG oder SVG)

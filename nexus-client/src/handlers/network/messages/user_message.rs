@@ -12,43 +12,43 @@ impl NexusApp {
     pub fn handle_user_message(
         &mut self,
         connection_id: usize,
-        from_username: String,
+        from_nickname: String,
         from_admin: bool,
-        to_username: String,
+        to_nickname: String,
         message: String,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
-        // Get current user's display name for comparison
-        // For shared accounts, this is the nickname; for regular accounts, this is the username
-        let current_display_name = conn
+        // Get current user's nickname for comparison
+        // nickname is always populated - equals username for regular accounts
+        let current_nickname = conn
             .online_users
             .iter()
             .find(|u| u.username == conn.username)
-            .map(|u| u.display_name())
+            .map(|u| u.nickname.as_str())
             .unwrap_or(&conn.username);
 
         // Determine which user we're chatting with (the other person)
-        // Compare against display name since from_username is the sender's display name
-        let other_user = if from_username == current_display_name {
-            to_username
+        // Compare against nickname since from_nickname is the sender's nickname
+        let other_user = if from_nickname == current_nickname {
+            to_nickname
         } else {
-            from_username.clone()
+            from_nickname.clone()
         };
 
-        // Look up is_shared status from online_users (from_username is display name)
+        // Look up is_shared status from online_users (from_nickname is display name)
         let is_shared = conn
             .online_users
             .iter()
-            .find(|u| u.display_name() == from_username)
+            .find(|u| u.nickname == from_nickname)
             .map(|u| u.is_shared)
             .unwrap_or(false);
 
         // Add message to PM tab history (creates entry if doesn't exist)
         let chat_msg = ChatMessage::with_timestamp_and_status(
-            from_username,
+            from_nickname,
             message,
             Local::now(),
             from_admin,
@@ -85,8 +85,8 @@ impl NexusApp {
 
         if success {
             // Switch to tab if this was a /msg command
-            if let Some(ResponseRouting::OpenMessageTab(username)) = routing {
-                return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(username)));
+            if let Some(ResponseRouting::OpenMessageTab(nickname)) = routing {
+                return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(nickname)));
             }
             return Task::none();
         }

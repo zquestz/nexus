@@ -11,7 +11,7 @@
 //! let cancel = t("button-cancel"); // "Cancel"
 //!
 //! // Translation with parameters
-//! let msg = t_args("msg-user-connected", &[("username", "alice")]);
+//! let msg = t_args("msg-user-connected", &[("nickname", "alice")]);
 //! ```
 //!
 //! ## Permission Translation
