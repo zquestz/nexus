@@ -245,12 +245,8 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     chat::admin(theme),
                 ));
 
-            // Tooltip: "Nickname (account)" for shared, just nickname for regular
-            let tooltip_text = if user_is_shared {
-                format!("{} ({})", user.nickname, user.username)
-            } else {
-                nickname.clone()
-            };
+            // Tooltip: just show nickname (useful when truncated)
+            let tooltip_text = nickname.clone();
 
             // Wrap button in tooltip showing full name (useful when truncated)
             let user_button_with_tooltip = tooltip(
