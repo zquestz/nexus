@@ -23,7 +23,7 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
-- Granular permission system (12 permissions)
+- Granular permission system (16 permissions)
 - Multi-server bookmarks with auto-connect
 - Admin panel for user management (create/edit/delete) and server configuration (name, description, image)
 - SQLite database with Argon2id password hashing
