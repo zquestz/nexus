@@ -302,7 +302,7 @@ impl NexusApp {
         let new_bookmark = ServerBookmark {
             name: self.connection_form.server_name.clone(),
             address: self.connection_form.server_address.clone(),
-            port: self.connection_form.port.clone(),
+            port: self.connection_form.port,
             username: self.connection_form.username.clone(),
             password: self.connection_form.password.clone(),
             nickname: self.connection_form.nickname.clone(),

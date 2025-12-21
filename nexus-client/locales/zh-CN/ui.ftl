@@ -65,10 +65,14 @@ placeholder-new-password = 新密码
 placeholder-confirm-password = 确认密码
 placeholder-message = 输入消息...
 placeholder-no-permission = 无权限
-placeholder-broadcast-message = 输入广播消息...
+placeholder-broadcast-message = 广播消息
 placeholder-server-description = 服务器描述
-placeholder-news-body = 输入内容...
+placeholder-news-body = 新闻内容
 placeholder-nickname-optional = 昵称（可选）
+placeholder-proxy-address = 代理地址
+placeholder-proxy-port = 9050
+placeholder-proxy-username = 用户名（可选）
+placeholder-proxy-password = 密码（可选）
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = 内容：
 label-news-image = 图片：
 label-identity = 身份
 label-nickname = 昵称：
+label-network = 网络
+label-use-socks5-proxy = 使用 SOCKS5 代理
+label-proxy-address = 地址：
+label-proxy-port = 端口：
+label-proxy-username = 用户名：
+label-proxy-password = 密码：
 
 # =============================================================================
 # Permission Display Names
@@ -423,5 +433,13 @@ err-news-empty = 帖子必须包含文字或图片
 err-news-body-too-long = 内容过长（{ $length }个字符，最多{ $max }个）
 err-news-body-invalid-characters = 内容包含无效的控制字符
 err-news-image-decode-failed = 图片解码失败。文件可能已损坏。
-err-news-image-too-large = 图片过大（最大512KB）
+
+# Proxy errors
+err-proxy-connection-failed = 连接代理失败：{ $error }
+err-proxy-connection-timeout = 代理连接在 { $seconds } 秒后超时
+err-proxy-address-required = 启用代理时需要代理地址
+err-proxy-port-invalid = 代理端口必须在 1 到 65535 之间
+err-news-image-too-large = 图片太大（最大512KB）
 err-news-image-unsupported-type = 不支持的图片格式（仅支持PNG、WebP、JPEG或SVG）
+
+label-port = 端口：

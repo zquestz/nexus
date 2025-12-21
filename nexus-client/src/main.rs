@@ -364,6 +364,15 @@ impl NexusApp {
             }
             Message::ToggleSettings => self.handle_toggle_settings(),
             Message::Use24HourTimeToggled(enabled) => self.handle_use_24_hour_time_toggled(enabled),
+            Message::ProxyEnabledToggled(enabled) => self.handle_proxy_enabled_toggled(enabled),
+            Message::ProxyAddressChanged(address) => self.handle_proxy_address_changed(address),
+            Message::ProxyPortChanged(port) => self.handle_proxy_port_changed(port),
+            Message::ProxyUsernameChanged(username) => self.handle_proxy_username_changed(username),
+            Message::ProxyPasswordChanged(password) => self.handle_proxy_password_changed(password),
+            Message::SettingsTabPressed => self.handle_settings_tab_pressed(),
+            Message::SettingsFocusResult(nickname, address, port, username, password) => {
+                self.handle_settings_focus_result(nickname, address, port, username, password)
+            }
 
             // About
             Message::CloseAbout => self.handle_close_about(),
@@ -506,6 +515,7 @@ impl NexusApp {
             ui_state: &self.ui_state,
             active_panel: self.active_panel(),
             news_body_content,
+            proxy: &self.config.settings.proxy,
         };
 
         let main_view = views::main_layout(config);

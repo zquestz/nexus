@@ -126,6 +126,8 @@ pub enum InputId {
     EditServerInfoName,
     /// Server info edit: Description input
     EditServerInfoDescription,
+    /// Server info edit: Max connections per IP input
+    EditServerInfoMaxConnections,
     /// Broadcast panel: Message input
     BroadcastMessage,
     /// Chat: Message input
@@ -144,6 +146,14 @@ pub enum InputId {
     BookmarkNickname,
     /// Settings panel: Nickname input
     SettingsNickname,
+    /// Settings panel: Proxy address input
+    ProxyAddress,
+    /// Settings panel: Proxy port input
+    ProxyPort,
+    /// Settings panel: Proxy username input
+    ProxyUsername,
+    /// Settings panel: Proxy password input
+    ProxyPassword,
 }
 
 impl From<InputId> for Id {
@@ -165,6 +175,7 @@ impl From<InputId> for Id {
             InputId::EditNewPassword => "InputId::EditNewPassword",
             InputId::EditServerInfoName => "InputId::EditServerInfoName",
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
+            InputId::EditServerInfoMaxConnections => "InputId::EditServerInfoMaxConnections",
             InputId::BroadcastMessage => "InputId::BroadcastMessage",
             InputId::ChatInput => "InputId::ChatInput",
             InputId::ChangePasswordCurrent => "InputId::ChangePasswordCurrent",
@@ -174,6 +185,10 @@ impl From<InputId> for Id {
             InputId::Nickname => "InputId::Nickname",
             InputId::BookmarkNickname => "InputId::BookmarkNickname",
             InputId::SettingsNickname => "InputId::SettingsNickname",
+            InputId::ProxyAddress => "InputId::ProxyAddress",
+            InputId::ProxyPort => "InputId::ProxyPort",
+            InputId::ProxyUsername => "InputId::ProxyUsername",
+            InputId::ProxyPassword => "InputId::ProxyPassword",
         })
     }
 }

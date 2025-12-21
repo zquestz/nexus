@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use iced::futures::{SinkExt, Stream};
 use iced::stream;
@@ -63,8 +64,10 @@ pub(super) async fn setup_communication_channels(
     let (msg_tx, msg_rx) = mpsc::unbounded_channel::<(MessageId, ServerMessage)>();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    // Spawn background task for bidirectional communication
-    spawn_network_task(reader, writer, cmd_rx, msg_tx, shutdown_rx);
+    // Spawn separate reader and writer tasks for cancel-safety
+    // The reader task only reads and never gets cancelled mid-frame
+    // The writer task uses select! safely since cmd_rx.recv() is cancel-safe
+    spawn_reader_writer_tasks(reader, writer, cmd_rx, msg_tx, shutdown_rx);
 
     // Register connection in global registry with pre-assigned ID
     register_connection(connection_id, msg_rx).await;
@@ -88,45 +91,125 @@ pub(super) async fn setup_communication_channels(
     })
 }
 
-/// Spawn background task to handle bidirectional communication
-fn spawn_network_task(
-    mut reader: Reader,
-    mut writer: Writer,
-    mut cmd_rx: CommandReceiver,
+/// Spawn separate reader and writer tasks for cancel-safe bidirectional communication
+///
+/// This solves the cancel-safety issue where `tokio::select!` could cancel a read
+/// mid-frame when a write was ready. By using separate tasks:
+/// - The reader task runs a simple loop without select!, so reads are never cancelled
+/// - The writer task uses select! safely because `cmd_rx.recv()` is cancel-safe
+/// - Both tasks share an `AtomicBool` to signal each other to stop
+fn spawn_reader_writer_tasks(
+    reader: Reader,
+    writer: Writer,
+    cmd_rx: CommandReceiver,
     msg_tx: mpsc::UnboundedSender<(MessageId, ServerMessage)>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
+    // Shared flag to signal both tasks to stop
+    let stop_flag = Arc::new(AtomicBool::new(false));
+
+    // Spawn reader task
+    let reader_stop = stop_flag.clone();
+    let reader_msg_tx = msg_tx;
     tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                // Read from server using new framing format
-                result = read_server_message(&mut reader) => {
-                    match result {
-                        Ok(Some(received)) => {
-                            // Send message ID and message to UI
-                            if msg_tx.send((received.message_id, received.message)).is_err() {
-                                break; // UI closed
-                            }
-                        }
-                        Ok(None) => break, // Connection closed cleanly
-                        Err(_) => break, // Error reading
-                    }
-                }
-                // Send to server using the message ID provided by caller
-                Some((message_id, msg)) = cmd_rx.recv() => {
-                    if send_client_message_with_id(&mut writer, &msg, message_id).await.is_err() {
-                        break;
-                    }
-                }
-                // Shutdown signal
-                _ = &mut shutdown_rx => {
-                    // Properly close TLS connection with shutdown
-                    let _ = writer.get_mut().shutdown().await;
+        spawn_reader_task(reader, reader_msg_tx, reader_stop).await;
+    });
+
+    // Spawn writer task
+    let writer_stop = stop_flag;
+    tokio::spawn(async move {
+        spawn_writer_task(writer, cmd_rx, shutdown_rx, writer_stop).await;
+    });
+}
+
+/// Reader task - reads messages from server and forwards to UI
+///
+/// This task runs a simple loop without `select!`, ensuring reads are never
+/// cancelled mid-frame. When the connection closes or an error occurs,
+/// it sets the stop flag to signal the writer task.
+async fn spawn_reader_task(
+    mut reader: Reader,
+    msg_tx: mpsc::UnboundedSender<(MessageId, ServerMessage)>,
+    stop_flag: Arc<AtomicBool>,
+) {
+    loop {
+        // Check if we should stop (writer signaled an error)
+        if stop_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
+        // Read the next message - this is now cancel-safe since we're not in a select!
+        match read_server_message(&mut reader).await {
+            Ok(Some(received)) => {
+                // Send message ID and message to UI
+                if msg_tx
+                    .send((received.message_id, received.message))
+                    .is_err()
+                {
+                    // UI receiver dropped, signal writer to stop
+                    stop_flag.store(true, Ordering::Relaxed);
                     break;
                 }
             }
+            Ok(None) => {
+                // Connection closed cleanly, signal writer to stop
+                stop_flag.store(true, Ordering::Relaxed);
+                break;
+            }
+            Err(_) => {
+                // Error reading, signal writer to stop
+                stop_flag.store(true, Ordering::Relaxed);
+                break;
+            }
         }
-    });
+    }
+}
+
+/// Writer task - sends messages from UI to server
+///
+/// This task uses `select!` to handle both outgoing messages and shutdown signals.
+/// This is safe because `cmd_rx.recv()` is cancel-safe (no partial state).
+async fn spawn_writer_task(
+    mut writer: Writer,
+    mut cmd_rx: CommandReceiver,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    stop_flag: Arc<AtomicBool>,
+) {
+    loop {
+        // Check if reader signaled us to stop
+        if stop_flag.load(Ordering::Relaxed) {
+            // Gracefully close the TLS connection
+            let _ = writer.get_mut().shutdown().await;
+            break;
+        }
+
+        tokio::select! {
+            // Send to server using the message ID provided by caller
+            Some((message_id, msg)) = cmd_rx.recv() => {
+                if send_client_message_with_id(&mut writer, &msg, message_id).await.is_err() {
+                    // Error sending, signal reader to stop
+                    stop_flag.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+            // Shutdown signal from UI
+            _ = &mut shutdown_rx => {
+                // Signal reader to stop
+                stop_flag.store(true, Ordering::Relaxed);
+                // Gracefully close the TLS connection
+                let _ = writer.get_mut().shutdown().await;
+                break;
+            }
+            // Also check the stop flag periodically
+            // This ensures we exit if the reader stopped but cmd_rx is empty
+            else => {
+                // cmd_rx closed (UI dropped the sender)
+                stop_flag.store(true, Ordering::Relaxed);
+                let _ = writer.get_mut().shutdown().await;
+                break;
+            }
+        }
+    }
 }
 
 /// Register connection in global registry with pre-assigned ID

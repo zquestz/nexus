@@ -66,10 +66,14 @@ placeholder-new-password = Nouveau Mot de Passe
 placeholder-confirm-password = Confirmer le Mot de Passe
 placeholder-message = Tapez un message...
 placeholder-no-permission = Pas de permission
-placeholder-broadcast-message = Entrez le message de diffusion...
+placeholder-broadcast-message = Message de diffusion
 placeholder-server-description = Description du serveur
-placeholder-news-body = Entrez le contenu...
+placeholder-news-body = Contenu de l'article
 placeholder-nickname-optional = Pseudo (optionnel)
+placeholder-proxy-address = Adresse du proxy
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Nom d'utilisateur (optionnel)
+placeholder-proxy-password = Mot de passe (optionnel)
 
 # =============================================================================
 # Labels
@@ -107,6 +111,12 @@ label-news-body = Contenu:
 label-news-image = Image:
 label-identity = Identité
 label-nickname = Pseudo:
+label-network = Réseau
+label-use-socks5-proxy = Utiliser un proxy SOCKS5
+label-proxy-address = Adresse:
+label-proxy-port = Port:
+label-proxy-username = Nom d'utilisateur:
+label-proxy-password = Mot de passe:
 
 # =============================================================================
 # Permission Display Names
@@ -445,5 +455,13 @@ err-news-empty = La publication doit contenir du texte ou une image
 err-news-body-too-long = Le contenu est trop long ({ $length } caractères, max { $max })
 err-news-body-invalid-characters = Le contenu contient des caractères de contrôle invalides
 err-news-image-decode-failed = Échec du décodage de l'image. Le fichier peut être corrompu.
+
+# Proxy errors
+err-proxy-connection-failed = Échec de connexion au proxy: { $error }
+err-proxy-connection-timeout = Délai de connexion au proxy dépassé après { $seconds } secondes
+err-proxy-address-required = L'adresse du proxy est requise lorsque le proxy est activé
+err-proxy-port-invalid = Le port du proxy doit être compris entre 1 et 65535
 err-news-image-too-large = L'image est trop volumineuse (max 512 Ko)
 err-news-image-unsupported-type = Type d'image non supporté (PNG, WebP, JPEG ou SVG uniquement)
+
+label-port = Port:

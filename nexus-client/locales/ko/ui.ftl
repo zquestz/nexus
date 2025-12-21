@@ -65,10 +65,14 @@ placeholder-new-password = 새 비밀번호
 placeholder-confirm-password = 비밀번호 확인
 placeholder-message = 메시지를 입력하세요...
 placeholder-no-permission = 권한 없음
-placeholder-broadcast-message = 방송 메시지 입력...
+placeholder-broadcast-message = 방송 메시지
 placeholder-server-description = 서버 설명
-placeholder-news-body = 내용을 입력하세요...
+placeholder-news-body = 뉴스 내용
 placeholder-nickname-optional = 별명 (선택사항)
+placeholder-proxy-address = 프록시 주소
+placeholder-proxy-port = 9050
+placeholder-proxy-username = 사용자명 (선택사항)
+placeholder-proxy-password = 비밀번호 (선택사항)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = 내용:
 label-news-image = 이미지:
 label-identity = 신원
 label-nickname = 별명:
+label-network = 네트워크
+label-use-socks5-proxy = SOCKS5 프록시 사용
+label-proxy-address = 주소:
+label-proxy-port = 포트:
+label-proxy-username = 사용자명:
+label-proxy-password = 비밀번호:
 
 # =============================================================================
 # Permission Display Names
@@ -421,7 +431,15 @@ err-server-image-decode-failed = 이미지를 디코딩할 수 없습니다. 파
 err-failed-read-image = 이미지를 읽을 수 없습니다: { $error }
 err-news-empty = 게시물에는 텍스트 또는 이미지가 필요합니다
 err-news-body-too-long = 내용이 너무 깁니다 ({ $length }자, 최대 { $max }자)
-err-news-body-invalid-characters = 내용에 잘못된 제어 문자가 포함되어 있습니다
+err-news-body-invalid-characters = 본문에 잘못된 제어 문자가 포함되어 있습니다
 err-news-image-decode-failed = 이미지를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
+
+# Proxy errors
+err-proxy-connection-failed = 프록시 연결 실패: { $error }
+err-proxy-connection-timeout = { $seconds }초 후 프록시 연결 시간 초과
+err-proxy-address-required = 프록시가 활성화된 경우 프록시 주소가 필요합니다
+err-proxy-port-invalid = 프록시 포트는 1에서 65535 사이여야 합니다
 err-news-image-too-large = 이미지가 너무 큽니다 (최대 512KB)
-err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG, SVG만 지원)
+err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG, SVG만 가능)
+
+label-port = 포트:

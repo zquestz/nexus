@@ -1,19 +1,58 @@
 //! Server bookmark types
 
-use nexus_common::DEFAULT_PORT_STR;
+use nexus_common::DEFAULT_PORT;
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize port from either a number or a string (for backward compatibility)
+fn deserialize_port<'de, D>(deserializer: D) -> Result<u16, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Unexpected, Visitor};
+
+    struct PortVisitor;
+
+    impl<'de> Visitor<'de> for PortVisitor {
+        type Value = u16;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a port number as integer or string")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<u16, E>
+        where
+            E: de::Error,
+        {
+            u16::try_from(value)
+                .map_err(|_| de::Error::invalid_value(Unexpected::Unsigned(value), &self))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<u16, E>
+        where
+            E: de::Error,
+        {
+            value
+                .parse()
+                .map_err(|_| de::Error::invalid_value(Unexpected::Str(value), &self))
+        }
+    }
+
+    deserializer.deserialize_any(PortVisitor)
+}
 
 /// Server bookmark configuration
 ///
 /// Stores connection details for a server that can be saved and reused.
 /// Supports optional username/password for quick connect and auto-connect flag.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerBookmark {
     /// Display name for the bookmark
     pub name: String,
     /// Server address (IPv4 or IPv6)
     pub address: String,
     /// Server port number
-    pub port: String,
+    #[serde(deserialize_with = "deserialize_port")]
+    pub port: u16,
     /// Optional username for quick connect
     pub username: String,
     /// Optional password for quick connect
@@ -34,7 +73,7 @@ impl Default for ServerBookmark {
         Self {
             name: String::new(),
             address: String::new(),
-            port: DEFAULT_PORT_STR.to_string(),
+            port: DEFAULT_PORT,
             username: String::new(),
             password: String::new(),
             nickname: String::new(),

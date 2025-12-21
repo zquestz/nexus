@@ -7,7 +7,7 @@ use crate::style::{
     AVATAR_MAX_CACHE_SIZE, NEWS_IMAGE_MAX_CACHE_WIDTH, SERVER_IMAGE_MAX_CACHE_WIDTH,
 };
 use nexus_common::protocol::{NewsItem, UserInfo};
-use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT_STR};
+use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT};
 
 // =============================================================================
 // Password Change State
@@ -221,7 +221,7 @@ pub struct ConnectionFormState {
     /// Server address (IPv4 or IPv6)
     pub server_address: String,
     /// Server port number
-    pub port: String,
+    pub port: u16,
     /// Username for authentication
     pub username: String,
     /// Password for authentication
@@ -241,7 +241,7 @@ impl Default for ConnectionFormState {
         Self {
             server_name: String::new(),
             server_address: String::new(),
-            port: DEFAULT_PORT_STR.to_string(),
+            port: DEFAULT_PORT,
             username: String::new(),
             password: String::new(),
             nickname: String::new(),
@@ -257,7 +257,7 @@ impl ConnectionFormState {
     pub fn clear(&mut self) {
         self.server_name.clear();
         self.server_address.clear();
-        self.port = DEFAULT_PORT_STR.to_string();
+        self.port = DEFAULT_PORT;
         self.username.clear();
         self.password.clear();
         self.nickname.clear();

@@ -2,7 +2,7 @@
 
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
-use crate::network::ConnectionParams;
+use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, InputId, Message, PendingRequests, ResponseRouting,
     ScrollableId,
@@ -35,7 +35,7 @@ impl NexusApp {
     }
 
     /// Handle port field change
-    pub fn handle_port_changed(&mut self, port: String) -> Task<Message> {
+    pub fn handle_port_changed(&mut self, port: u16) -> Task<Message> {
         self.connection_form.port = port;
         self.connection_form.error = None;
         self.focused_field = InputId::Port;
@@ -84,13 +84,7 @@ impl NexusApp {
 
         self.connection_form.error = None;
 
-        let port: u16 = match self.connection_form.port.parse() {
-            Ok(p) => p,
-            Err(_) => {
-                self.connection_form.error = Some(t("err-port-invalid"));
-                return Task::none();
-            }
-        };
+        let port = self.connection_form.port;
 
         self.connection_form.is_connecting = true;
 
@@ -108,6 +102,18 @@ impl NexusApp {
         let connection_id = self.next_connection_id;
         self.next_connection_id += 1;
 
+        // Build proxy config if enabled
+        let proxy = if self.config.settings.proxy.enabled {
+            Some(ProxyConfig {
+                address: self.config.settings.proxy.address.clone(),
+                port: self.config.settings.proxy.port,
+                username: self.config.settings.proxy.username.clone(),
+                password: self.config.settings.proxy.password.clone(),
+            })
+        } else {
+            None
+        };
+
         Task::perform(
             async move {
                 network::connect_to_server(ConnectionParams {
@@ -119,6 +125,7 @@ impl NexusApp {
                     locale,
                     avatar,
                     connection_id,
+                    proxy,
                 })
                 .await
             },
@@ -460,10 +467,12 @@ impl NexusApp {
         nickname_focused: bool,
     ) -> Task<Message> {
         // Determine next field based on which is currently focused
+        // Note: Port is skipped because NumberInput handles its own Tab key
         let next_field = if name_focused {
             InputId::ServerAddress
         } else if address_focused {
-            InputId::Port
+            // Skip Port (NumberInput)
+            InputId::Username
         } else if port_focused {
             InputId::Username
         } else if username_focused {

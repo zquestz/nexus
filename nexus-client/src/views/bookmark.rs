@@ -9,8 +9,9 @@ use crate::style::{
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
+use iced::widget::{Id, Row, Space, button, checkbox, column, row, text, text_input};
 use iced::{Center, Element, Fill};
+use iced_aw::NumberInput;
 
 // ============================================================================
 // Bookmark Edit View
@@ -29,9 +30,9 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
     };
 
     // Validate required fields (username/password are optional)
-    let can_save = !state.bookmark.name.trim().is_empty()
-        && !state.bookmark.address.trim().is_empty()
-        && !state.bookmark.port.trim().is_empty();
+    // Port is always valid since it's a u16
+    let can_save =
+        !state.bookmark.name.trim().is_empty() && !state.bookmark.address.trim().is_empty();
 
     // Helper for on_submit - avoid action when form is invalid
     // Note: We send a no-op message to prevent submit when invalid
@@ -79,13 +80,23 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .into(),
-        text_input(&t("placeholder-port"), &state.bookmark.port)
-            .on_input(Message::BookmarkPortChanged)
-            .on_submit(submit_action.clone())
+        {
+            let port_label = shaped_text(t("label-port")).size(TEXT_SIZE);
+            let port_input: Element<'_, Message> = NumberInput::new(
+                &state.bookmark.port,
+                1..=65535,
+                Message::BookmarkPortChanged,
+            )
             .id(Id::from(InputId::BookmarkPort))
             .padding(INPUT_PADDING)
-            .size(TEXT_SIZE)
-            .into(),
+            .into();
+            Row::new()
+                .push(port_label)
+                .push(port_input)
+                .spacing(ELEMENT_SPACING)
+                .align_y(Center)
+                .into()
+        },
         text_input(
             &t("placeholder-username-optional"),
             &state.bookmark.username,

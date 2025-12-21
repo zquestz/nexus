@@ -5,6 +5,56 @@ use crate::style::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use super::theme::ThemePreference;
 
 // =============================================================================
+// Proxy Settings
+// =============================================================================
+
+/// Default SOCKS5 proxy address (localhost for Tor)
+pub const DEFAULT_PROXY_ADDRESS: &str = "127.0.0.1";
+
+/// Default SOCKS5 proxy port (Tor default)
+pub const DEFAULT_PROXY_PORT: u16 = 9050;
+
+/// SOCKS5 proxy configuration
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProxySettings {
+    /// Whether to use a proxy
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Proxy server address (hostname or IP)
+    #[serde(default)]
+    pub address: String,
+
+    /// Proxy server port (default: 9050 for Tor)
+    #[serde(default = "default_proxy_port")]
+    pub port: u16,
+
+    /// Optional username for authentication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+
+    /// Optional password for authentication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            address: DEFAULT_PROXY_ADDRESS.to_string(),
+            port: DEFAULT_PROXY_PORT,
+            username: None,
+            password: None,
+        }
+    }
+}
+
+fn default_proxy_port() -> u16 {
+    DEFAULT_PROXY_PORT
+}
+
+// =============================================================================
 // Constants
 // =============================================================================
 
@@ -80,6 +130,10 @@ pub struct Settings {
     /// Window Y position (None = system default)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_y: Option<i32>,
+
+    /// SOCKS5 proxy settings
+    #[serde(default)]
+    pub proxy: ProxySettings,
 }
 
 impl Default for Settings {
@@ -97,6 +151,7 @@ impl Default for Settings {
             window_height: default_window_height(),
             window_x: None,
             window_y: None,
+            proxy: ProxySettings::default(),
         }
     }
 }
@@ -123,6 +178,7 @@ impl std::fmt::Debug for Settings {
                 &self.avatar.as_ref().map(|a| format!("<{} bytes>", a.len())),
             )
             .field("nickname", &self.nickname)
+            .field("proxy", &self.proxy)
             .finish()
     }
 }

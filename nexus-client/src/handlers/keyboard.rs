@@ -55,8 +55,7 @@ impl NexusApp {
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // On bookmark edit screen, try to save
                 let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
-                    && !self.bookmark_edit.bookmark.address.trim().is_empty()
-                    && !self.bookmark_edit.bookmark.port.trim().is_empty();
+                    && !self.bookmark_edit.bookmark.address.trim().is_empty();
                 if can_save {
                     return self.update(Message::SaveBookmark);
                 }
@@ -150,10 +149,8 @@ impl NexusApp {
                 }
             } else if self.active_connection.is_none() {
                 // On connection screen, try to connect
-                let can_connect = !self.connection_form.server_address.trim().is_empty()
-                    && !self.connection_form.port.trim().is_empty()
-                    && !self.connection_form.username.trim().is_empty()
-                    && !self.connection_form.password.trim().is_empty();
+                let can_connect = !self.connection_form.server_name.trim().is_empty()
+                    && !self.connection_form.server_address.trim().is_empty();
                 if can_connect {
                     return self.update(Message::ConnectPressed);
                 }
@@ -307,9 +304,8 @@ impl NexusApp {
             // No Tab navigation needed
             return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
-            // Settings panel has one text input (nickname), focus it
-            self.focused_field = InputId::SettingsNickname;
-            return operation::focus(Id::from(InputId::SettingsNickname));
+            // Settings panel: check actual focus and cycle through fields
+            return self.update(Message::SettingsTabPressed);
         } else if self.active_connection.is_some() {
             // In chat view, Tab refocuses the chat input
             self.focused_field = InputId::ChatInput;

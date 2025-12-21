@@ -214,9 +214,13 @@ fn list_view<'a>(
     };
 
     // Title row with create button on the right
+    // We add an invisible spacer on the left to balance the button width for proper centering
+    let button_width =
+        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
     let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
         row![
             Space::new().width(SCROLLBAR_PADDING),
+            Space::new().width(button_width), // Balance the create button on the right
             shaped_text(t("title-news"))
                 .size(TITLE_SIZE)
                 .width(Fill)
@@ -432,7 +436,6 @@ fn form_view<'a>(
     let has_content = !body_text.trim().is_empty() || !news_management.form_image.is_empty();
 
     // Body text editor
-    let body_label = shaped_text(t("label-news-body")).size(TEXT_SIZE);
     let body_editor: Element<'a, Message> = if let Some(content) = body_content {
         text_editor(content)
             .id(Id::from(InputId::NewsBody))
@@ -452,8 +455,6 @@ fn form_view<'a>(
     };
 
     // Image picker
-    let image_label = shaped_text(t("label-news-image")).size(TEXT_SIZE);
-
     let pick_image_button = button(shaped_text(t("button-choose-image")).size(TEXT_SIZE))
         .on_press(Message::NewsPickImagePressed)
         .padding(BUTTON_PADDING)
@@ -530,10 +531,8 @@ fn form_view<'a>(
     }
 
     items.extend([
-        image_label.into(),
         image_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
-        body_label.into(),
         body_editor,
         Space::new().height(SPACER_SIZE_MEDIUM).into(),
         row![Space::new().width(Fill), cancel_button, submit_button]

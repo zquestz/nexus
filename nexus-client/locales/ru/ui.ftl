@@ -65,10 +65,14 @@ placeholder-new-password = Новый пароль
 placeholder-confirm-password = Подтвердите пароль
 placeholder-message = Введите сообщение...
 placeholder-no-permission = Нет разрешения
-placeholder-broadcast-message = Введите сообщение для рассылки...
+placeholder-broadcast-message = Сообщение рассылки
 placeholder-server-description = Описание сервера
-placeholder-news-body = Введите содержимое...
+placeholder-news-body = Содержимое новости
 placeholder-nickname-optional = Псевдоним (опционально)
+placeholder-proxy-address = Адрес прокси
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Имя пользователя (опционально)
+placeholder-proxy-password = Пароль (опционально)
 
 # =============================================================================
 # Labels
@@ -104,8 +108,14 @@ label-general = Общие
 label-limits = Ограничения
 label-news-body = Содержимое:
 label-news-image = Изображение:
-label-identity = Идентификация
+label-identity = Личность
 label-nickname = Псевдоним:
+label-network = Сеть
+label-use-socks5-proxy = Использовать SOCKS5 прокси
+label-proxy-address = Адрес:
+label-proxy-port = Порт:
+label-proxy-username = Имя пользователя:
+label-proxy-password = Пароль:
 
 # =============================================================================
 # Permission Display Names
@@ -451,5 +461,13 @@ err-news-empty = Публикация должна содержать текст
 err-news-body-too-long = Содержимое слишком длинное ({ $length } символов, максимум { $max })
 err-news-body-invalid-characters = Содержимое содержит недопустимые управляющие символы
 err-news-image-decode-failed = Не удалось декодировать изображение. Возможно, файл повреждён.
-err-news-image-too-large = Изображение слишком большое (максимум 512КБ)
+
+# Proxy errors
+err-proxy-connection-failed = Не удалось подключиться к прокси: { $error }
+err-proxy-connection-timeout = Время ожидания подключения к прокси истекло через { $seconds } секунд
+err-proxy-address-required = Адрес прокси обязателен, когда прокси включен
+err-proxy-port-invalid = Порт прокси должен быть от 1 до 65535
+err-news-image-too-large = Изображение слишком большое (максимум 512 КБ)
 err-news-image-unsupported-type = Неподдерживаемый тип изображения (только PNG, WebP, JPEG или SVG)
+
+label-port = Порт:

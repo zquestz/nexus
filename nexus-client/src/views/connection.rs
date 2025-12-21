@@ -10,6 +10,7 @@ use crate::style::{
 use crate::types::{ConnectionFormState, InputId, Message};
 use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
 use iced::{Center, Element, Fill};
+use iced_aw::NumberInput;
 
 // ============================================================================
 // Connection Form View
@@ -22,9 +23,8 @@ use iced::{Center, Element, Fill};
 /// for servers that don't require authentication.
 pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> {
     // Validate required fields (username and password are optional)
-    let can_connect = !form.server_name.trim().is_empty()
-        && !form.server_address.trim().is_empty()
-        && !form.port.trim().is_empty();
+    // Port is always valid since it's a u16
+    let can_connect = !form.server_name.trim().is_empty() && !form.server_address.trim().is_empty();
 
     // Helper for on_submit - use no-op when form is invalid
     let submit_action = if can_connect {
@@ -52,12 +52,15 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let port_input = text_input(&t("placeholder-port"), &form.port)
-        .on_input(Message::PortChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::Port))
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    let port_label = shaped_text(t("label-port")).size(TEXT_SIZE);
+    let port_number_input: Element<'_, Message> =
+        NumberInput::new(&form.port, 1..=65535, Message::PortChanged)
+            .id(Id::from(InputId::Port))
+            .padding(INPUT_PADDING)
+            .into();
+    let port_input = row![port_label, port_number_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
 
     let username_input = text_input(&t("placeholder-username-optional"), &form.username)
         .on_input(Message::UsernameChanged)

@@ -66,10 +66,14 @@ placeholder-new-password = Nieuw Wachtwoord
 placeholder-confirm-password = Bevestig Wachtwoord
 placeholder-message = Typ een bericht...
 placeholder-no-permission = Geen toestemming
-placeholder-broadcast-message = Voer broadcastbericht in...
+placeholder-broadcast-message = Broadcastbericht
 placeholder-server-description = Serverbeschrijving
-placeholder-news-body = Voer inhoud in...
+placeholder-news-body = Nieuwsinhoud
 placeholder-nickname-optional = Bijnaam (optioneel)
+placeholder-proxy-address = Proxy-adres
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Gebruikersnaam (optioneel)
+placeholder-proxy-password = Wachtwoord (optioneel)
 
 # =============================================================================
 # Labels
@@ -107,6 +111,12 @@ label-news-body = Inhoud:
 label-news-image = Afbeelding:
 label-identity = Identiteit
 label-nickname = Bijnaam:
+label-network = Netwerk
+label-use-socks5-proxy = SOCKS5 Proxy gebruiken
+label-proxy-address = Adres:
+label-proxy-port = Poort:
+label-proxy-username = Gebruikersnaam:
+label-proxy-password = Wachtwoord:
 
 # =============================================================================
 # Permission Display Names
@@ -445,5 +455,13 @@ err-news-empty = Bericht moet tekst of een afbeelding bevatten
 err-news-body-too-long = Inhoud is te lang ({ $length } tekens, maximaal { $max })
 err-news-body-invalid-characters = Inhoud bevat ongeldige controletekens
 err-news-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
-err-news-image-too-large = Afbeelding is te groot (maximaal 512KB)
+
+# Proxy errors
+err-proxy-connection-failed = Verbinding met proxy mislukt: { $error }
+err-proxy-connection-timeout = Proxy-verbinding time-out na { $seconds } seconden
+err-proxy-address-required = Proxy-adres is vereist wanneer proxy is ingeschakeld
+err-proxy-port-invalid = Proxy-poort moet tussen 1 en 65535 liggen
+err-news-image-too-large = De afbeelding is te groot (max 512KB)
 err-news-image-unsupported-type = Niet-ondersteund afbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+
+label-port = Poort:

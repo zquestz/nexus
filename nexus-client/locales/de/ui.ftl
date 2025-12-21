@@ -65,10 +65,14 @@ placeholder-new-password = Neues Passwort
 placeholder-confirm-password = Passwort bestätigen
 placeholder-message = Nachricht eingeben...
 placeholder-no-permission = Keine Berechtigung
-placeholder-broadcast-message = Rundnachricht eingeben...
+placeholder-broadcast-message = Rundnachricht
 placeholder-server-description = Serverbeschreibung
-placeholder-news-body = Inhalt eingeben...
+placeholder-news-body = Nachrichteninhalt
 placeholder-nickname-optional = Spitzname (optional)
+placeholder-proxy-address = Proxy-Adresse
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Benutzername (optional)
+placeholder-proxy-password = Passwort (optional)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = Inhalt:
 label-news-image = Bild:
 label-identity = Identität
 label-nickname = Spitzname:
+label-network = Netzwerk
+label-use-socks5-proxy = SOCKS5-Proxy verwenden
+label-proxy-address = Adresse:
+label-proxy-port = Port:
+label-proxy-username = Benutzername:
+label-proxy-password = Passwort:
 
 # =============================================================================
 # Permission Display Names
@@ -444,5 +454,13 @@ err-news-empty = Der Beitrag muss Text oder ein Bild enthalten
 err-news-body-too-long = Der Inhalt ist zu lang ({ $length } Zeichen, maximal { $max })
 err-news-body-invalid-characters = Der Inhalt enthält ungültige Steuerzeichen
 err-news-image-decode-failed = Bild konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
+
+# Proxy errors
+err-proxy-connection-failed = Verbindung zum Proxy fehlgeschlagen: { $error }
+err-proxy-connection-timeout = Proxy-Verbindung nach { $seconds } Sekunden abgelaufen
+err-proxy-address-required = Proxy-Adresse ist erforderlich, wenn Proxy aktiviert ist
+err-proxy-port-invalid = Proxy-Port muss zwischen 1 und 65535 liegen
 err-news-image-too-large = Das Bild ist zu groß (maximal 512KB)
 err-news-image-unsupported-type = Nicht unterstützter Bildtyp (nur PNG, WebP, JPEG oder SVG)
+
+label-port = Port:

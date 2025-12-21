@@ -65,10 +65,14 @@ placeholder-new-password = Nova Senha
 placeholder-confirm-password = Confirmar Senha
 placeholder-message = Digite uma mensagem...
 placeholder-no-permission = Sem permissão
-placeholder-broadcast-message = Digite a mensagem de transmissão...
+placeholder-broadcast-message = Mensagem de transmissão
 placeholder-server-description = Descrição do servidor
-placeholder-news-body = Digite o conteúdo...
+placeholder-news-body = Conteúdo da notícia
 placeholder-nickname-optional = Apelido (opcional)
+placeholder-proxy-address = Endereço do proxy
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Usuário (opcional)
+placeholder-proxy-password = Senha (opcional)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = Conteúdo:
 label-news-image = Imagem:
 label-identity = Identidade
 label-nickname = Apelido:
+label-network = Rede
+label-use-socks5-proxy = Usar Proxy SOCKS5
+label-proxy-address = Endereço:
+label-proxy-port = Porta:
+label-proxy-username = Usuário:
+label-proxy-password = Senha:
 
 # =============================================================================
 # Permission Display Names
@@ -444,5 +454,13 @@ err-news-empty = A publicação deve ter texto ou uma imagem
 err-news-body-too-long = O conteúdo é muito longo ({ $length } caracteres, máximo { $max })
 err-news-body-invalid-characters = O conteúdo contém caracteres de controle inválidos
 err-news-image-decode-failed = Falha ao decodificar a imagem. O arquivo pode estar corrompido.
+
+# Proxy errors
+err-proxy-connection-failed = Falha ao conectar ao proxy: { $error }
+err-proxy-connection-timeout = Tempo limite da conexão com o proxy após { $seconds } segundos
+err-proxy-address-required = O endereço do proxy é obrigatório quando o proxy está ativado
+err-proxy-port-invalid = A porta do proxy deve estar entre 1 e 65535
 err-news-image-too-large = A imagem é muito grande (máximo 512KB)
 err-news-image-unsupported-type = Tipo de imagem não suportado (apenas PNG, WebP, JPEG ou SVG)
+
+label-port = Porta:

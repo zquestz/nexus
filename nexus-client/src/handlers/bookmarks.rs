@@ -2,7 +2,7 @@
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
-use crate::network::ConnectionParams;
+use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::Task;
 use iced::widget::{Id, operation};
@@ -42,7 +42,7 @@ impl NexusApp {
     }
 
     /// Handle bookmark port field change
-    pub fn handle_bookmark_port_changed(&mut self, port: String) -> Task<Message> {
+    pub fn handle_bookmark_port_changed(&mut self, port: u16) -> Task<Message> {
         self.bookmark_edit.bookmark.port = port;
         self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkPort;
@@ -141,17 +141,7 @@ impl NexusApp {
             let connection_id = self.next_connection_id;
             self.next_connection_id += 1;
 
-            let port: u16 = match bookmark.port.parse() {
-                Ok(p) => p,
-                Err(_) => {
-                    self.connecting_bookmarks.remove(&index);
-                    self.connection_form.error = Some(t_args(
-                        "err-invalid-port-bookmark",
-                        &[("name", &bookmark.name)],
-                    ));
-                    return Task::none();
-                }
-            };
+            let port = bookmark.port;
 
             let server_address = bookmark.address.clone();
             let username = bookmark.username.clone();
@@ -166,6 +156,18 @@ impl NexusApp {
             let avatar = self.config.settings.avatar.clone();
             let display_name = bookmark.name.clone();
 
+            // Build proxy config if enabled
+            let proxy = if self.config.settings.proxy.enabled {
+                Some(ProxyConfig {
+                    address: self.config.settings.proxy.address.clone(),
+                    port: self.config.settings.proxy.port,
+                    username: self.config.settings.proxy.username.clone(),
+                    password: self.config.settings.proxy.password.clone(),
+                })
+            } else {
+                None
+            };
+
             return Task::perform(
                 async move {
                     crate::network::connect_to_server(ConnectionParams {
@@ -177,6 +179,7 @@ impl NexusApp {
                         locale,
                         avatar,
                         connection_id,
+                        proxy,
                     })
                     .await
                 },
@@ -267,10 +270,12 @@ impl NexusApp {
         nickname_focused: bool,
     ) -> Task<Message> {
         // Determine next field based on which is currently focused
+        // Note: Port is skipped because NumberInput handles its own Tab key
         let next_field = if name_focused {
             InputId::BookmarkAddress
         } else if address_focused {
-            InputId::BookmarkPort
+            // Skip BookmarkPort (NumberInput)
+            InputId::BookmarkUsername
         } else if port_focused {
             InputId::BookmarkUsername
         } else if username_focused {
@@ -299,12 +304,7 @@ impl NexusApp {
         if self.bookmark_edit.bookmark.address.trim().is_empty() {
             return Some(t("err-address-required"));
         }
-        if self.bookmark_edit.bookmark.port.trim().is_empty() {
-            return Some(t("err-port-required"));
-        }
-        if self.bookmark_edit.bookmark.port.parse::<u16>().is_err() {
-            return Some(t("err-port-invalid"));
-        }
+
         None
     }
 }

@@ -1,5 +1,6 @@
 //! View configuration struct for passing state to view rendering
 
+use crate::config::settings::ProxySettings;
 use crate::types::{
     ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
     SettingsFormState, UiState, UserManagementState,
@@ -69,6 +70,9 @@ pub struct ViewConfig<'a> {
 
     /// News body editor content (stored outside ServerConnection because not Clone)
     pub news_body_content: Option<&'a text_editor::Content>,
+
+    /// SOCKS5 proxy settings (from config)
+    pub proxy: &'a ProxySettings,
 }
 
 /// Toolbar state configuration

@@ -65,10 +65,14 @@ placeholder-new-password = 新しいパスワード
 placeholder-confirm-password = パスワードを確認
 placeholder-message = メッセージを入力...
 placeholder-no-permission = 権限がありません
-placeholder-broadcast-message = ブロードキャストメッセージを入力...
-placeholder-server-description = サーバーの説明
-placeholder-news-body = 内容を入力...
+placeholder-broadcast-message = ブロードキャストメッセージ
+placeholder-server-description = サーバー説明
+placeholder-news-body = ニュース内容
 placeholder-nickname-optional = ニックネーム（任意）
+placeholder-proxy-address = プロキシアドレス
+placeholder-proxy-port = 9050
+placeholder-proxy-username = ユーザー名（任意）
+placeholder-proxy-password = パスワード（任意）
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = 本文:
 label-news-image = 画像:
 label-identity = アイデンティティ
 label-nickname = ニックネーム:
+label-network = ネットワーク
+label-use-socks5-proxy = SOCKS5プロキシを使用
+label-proxy-address = アドレス:
+label-proxy-port = ポート:
+label-proxy-username = ユーザー名:
+label-proxy-password = パスワード:
 
 # =============================================================================
 # Permission Display Names
@@ -420,8 +430,16 @@ err-server-image-unsupported-type = サポートされていないサーバー�
 err-server-image-decode-failed = 画像のデコードに失敗しました。ファイルが破損している可能性があります。
 err-failed-read-image = 画像の読み込みに失敗しました: { $error }
 err-news-empty = 投稿にはテキストまたは画像が必要です
-err-news-body-too-long = 内容が長すぎます（{ $length }文字、最大{ $max }文字）
-err-news-body-invalid-characters = 内容に無効な制御文字が含まれています
+err-news-body-too-long = 本文が長すぎます（{ $length }文字、最大{ $max }文字）
+err-news-body-invalid-characters = 本文に無効な制御文字が含まれています
 err-news-image-decode-failed = 画像のデコードに失敗しました。ファイルが破損している可能性があります。
+
+# Proxy errors
+err-proxy-connection-failed = プロキシへの接続に失敗しました: { $error }
+err-proxy-connection-timeout = プロキシ接続が{ $seconds }秒後にタイムアウトしました
+err-proxy-address-required = プロキシが有効な場合、プロキシアドレスは必須です
+err-proxy-port-invalid = プロキシポートは1から65535の間である必要があります
 err-news-image-too-large = 画像が大きすぎます（最大512KB）
 err-news-image-unsupported-type = サポートされていない画像形式です（PNG、WebP、JPEG、SVGのみ）
+
+label-port = ポート:

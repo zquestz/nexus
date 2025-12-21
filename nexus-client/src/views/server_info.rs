@@ -188,18 +188,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     form_items.push(general_heading.into());
 
     // Server name input
-    let name_label = shaped_text(t("label-server-name")).size(TEXT_SIZE);
     let name_input = text_input(&t("placeholder-server-name"), &edit_state.name)
         .on_input(Message::EditServerInfoNameChanged)
         .on_submit(Message::UpdateServerInfoPressed)
         .id(Id::from(InputId::EditServerInfoName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
-    form_items.push(name_label.into());
     form_items.push(name_input.into());
 
     // Server description input
-    let desc_label = shaped_text(t("label-server-description")).size(TEXT_SIZE);
     let desc_input = text_input(
         &t("placeholder-server-description"),
         &edit_state.description,
@@ -209,7 +206,6 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .id(Id::from(InputId::EditServerInfoDescription))
     .padding(INPUT_PADDING)
     .size(TEXT_SIZE);
-    form_items.push(desc_label.into());
     form_items.push(desc_input.into());
 
     form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
@@ -277,6 +273,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         1..=u32::MAX,
         Message::EditServerInfoMaxConnectionsChanged,
     )
+    .id(Id::from(InputId::EditServerInfoMaxConnections))
     .padding(INPUT_PADDING)
     .into();
     let max_conn_row = row![max_conn_label, max_conn_input]

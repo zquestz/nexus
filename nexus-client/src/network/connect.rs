@@ -22,8 +22,9 @@ use super::types::{ConnectionParams, LoginInfo, Reader, Writer};
 /// handle for sending messages to the server.
 pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnection, String> {
     // Establish TCP connection and get certificate fingerprint
+    // If proxy is configured, tunnel through SOCKS5
     let (tls_stream, fingerprint) =
-        establish_connection(&params.server_address, params.port).await?;
+        establish_connection(&params.server_address, params.port, params.proxy.as_ref()).await?;
 
     let (reader, writer) = tokio::io::split(tls_stream);
     let buf_reader = BufReader::new(reader);

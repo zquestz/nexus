@@ -65,10 +65,14 @@ placeholder-new-password = Nuova Password
 placeholder-confirm-password = Conferma Password
 placeholder-message = Scrivi un messaggio...
 placeholder-no-permission = Nessun permesso
-placeholder-broadcast-message = Inserisci messaggio broadcast...
+placeholder-broadcast-message = Messaggio broadcast
 placeholder-server-description = Descrizione del server
-placeholder-news-body = Inserisci contenuto...
+placeholder-news-body = Contenuto notizia
 placeholder-nickname-optional = Nickname (opzionale)
+placeholder-proxy-address = Indirizzo proxy
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Nome utente (opzionale)
+placeholder-proxy-password = Password (opzionale)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = Corpo:
 label-news-image = Immagine:
 label-identity = Identità
 label-nickname = Nickname:
+label-network = Rete
+label-use-socks5-proxy = Usa Proxy SOCKS5
+label-proxy-address = Indirizzo:
+label-proxy-port = Porta:
+label-proxy-username = Nome utente:
+label-proxy-password = Password:
 
 # =============================================================================
 # Permission Display Names
@@ -446,5 +456,13 @@ err-news-empty = La pubblicazione deve contenere testo o un'immagine
 err-news-body-too-long = Il contenuto è troppo lungo ({ $length } caratteri, massimo { $max })
 err-news-body-invalid-characters = Il contenuto contiene caratteri di controllo non validi
 err-news-image-decode-failed = Impossibile decodificare l'immagine. Il file potrebbe essere corrotto.
-err-news-image-too-large = L'immagine è troppo grande (massimo 512KB)
+
+# Proxy errors
+err-proxy-connection-failed = Connessione al proxy fallita: { $error }
+err-proxy-connection-timeout = Timeout connessione proxy dopo { $seconds } secondi
+err-proxy-address-required = L'indirizzo del proxy è richiesto quando il proxy è abilitato
+err-proxy-port-invalid = La porta del proxy deve essere compresa tra 1 e 65535
+err-news-image-too-large = L'immagine è troppo grande (max 512KB)
 err-news-image-unsupported-type = Tipo di immagine non supportato (solo PNG, WebP, JPEG o SVG)
+
+label-port = Porta:

@@ -65,10 +65,14 @@ placeholder-new-password = Nova Palavra-passe
 placeholder-confirm-password = Confirmar Palavra-passe
 placeholder-message = Escreva uma mensagem...
 placeholder-no-permission = Sem permissão
-placeholder-broadcast-message = Introduza mensagem de difusão...
+placeholder-broadcast-message = Mensagem de difusão
 placeholder-server-description = Descrição do servidor
-placeholder-news-body = Introduza o conteúdo...
+placeholder-news-body = Conteúdo da notícia
 placeholder-nickname-optional = Alcunha (opcional)
+placeholder-proxy-address = Endereço do proxy
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Utilizador (opcional)
+placeholder-proxy-password = Palavra-passe (opcional)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = Corpo:
 label-news-image = Imagem:
 label-identity = Identidade
 label-nickname = Alcunha:
+label-network = Rede
+label-use-socks5-proxy = Usar Proxy SOCKS5
+label-proxy-address = Endereço:
+label-proxy-port = Porta:
+label-proxy-username = Utilizador:
+label-proxy-password = Palavra-passe:
 
 # =============================================================================
 # Permission Display Names
@@ -445,5 +455,13 @@ err-news-empty = A publicação deve ter texto ou uma imagem
 err-news-body-too-long = O conteúdo é demasiado longo ({ $length } caracteres, máximo { $max })
 err-news-body-invalid-characters = O conteúdo contém caracteres de controlo inválidos
 err-news-image-decode-failed = Falha ao descodificar a imagem. O ficheiro pode estar corrompido.
+
+# Proxy errors
+err-proxy-connection-failed = Falha ao ligar ao proxy: { $error }
+err-proxy-connection-timeout = Tempo limite da ligação ao proxy após { $seconds } segundos
+err-proxy-address-required = O endereço do proxy é obrigatório quando o proxy está ativado
+err-proxy-port-invalid = A porta do proxy deve estar entre 1 e 65535
 err-news-image-too-large = A imagem é demasiado grande (máximo 512KB)
 err-news-image-unsupported-type = Tipo de imagem não suportado (apenas PNG, WebP, JPEG ou SVG)
+
+label-port = Porta:

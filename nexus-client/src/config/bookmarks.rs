@@ -122,7 +122,7 @@ mod tests {
             ServerBookmark {
                 name: "Updated".to_string(),
                 address: "200::2".to_string(),
-                port: "8000".to_string(),
+                port: 8000,
                 auto_connect: true,
                 ..Default::default()
             },
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Updated");
         assert_eq!(config.bookmarks[0].address, "200::2");
-        assert_eq!(config.bookmarks[0].port, "8000");
+        assert_eq!(config.bookmarks[0].port, 8000);
         assert!(config.bookmarks[0].auto_connect);
     }
 

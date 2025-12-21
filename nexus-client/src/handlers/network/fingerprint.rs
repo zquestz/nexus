@@ -39,7 +39,7 @@ impl NexusApp {
                         received: fingerprint.to_string(),
                         bookmark_name: bookmark.name.clone(),
                         server_address: bookmark.address.clone(),
-                        server_port: bookmark.port.clone(),
+                        server_port: bookmark.port.to_string(),
                     }))
                 }
             }

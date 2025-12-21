@@ -30,7 +30,7 @@ pub enum Message {
     /// Bookmark editor: Password field changed
     BookmarkPasswordChanged(String),
     /// Bookmark editor: Port field changed
-    BookmarkPortChanged(String),
+    BookmarkPortChanged(u16),
     /// Bookmark editor: Username field changed
     BookmarkUsernameChanged(String),
     /// Bookmark editor: Nickname field changed
@@ -84,6 +84,10 @@ pub enum Message {
     ServerInfoEditTabPressed,
     /// Server info edit: Focus check result for Tab navigation (name, description)
     ServerInfoEditFocusResult(bool, bool),
+    /// Settings panel: Tab pressed, check focus and move to next field
+    SettingsTabPressed,
+    /// Settings panel: Focus check result for Tab navigation (nickname, proxy address, port, username, password)
+    SettingsFocusResult(bool, bool, bool, bool, bool),
     /// Chat: Message input field changed
     ChatInputChanged(String),
     /// Chat scrollable: scroll position changed
@@ -124,7 +128,7 @@ pub enum Message {
     /// Connection form: Password field changed
     PasswordChanged(String),
     /// Connection form: Port field changed
-    PortChanged(String),
+    PortChanged(u16),
     /// Keyboard: Navigate to previous chat tab (Ctrl+Shift+Tab)
     PrevChatTab,
     /// Bookmark editor: Save button pressed
@@ -289,4 +293,16 @@ pub enum Message {
     NewsClearImagePressed,
     /// News: Submit button pressed (create or edit)
     NewsSubmitPressed,
+
+    // ==================== Proxy Settings ====================
+    /// Settings panel: Proxy enabled checkbox toggled
+    ProxyEnabledToggled(bool),
+    /// Settings panel: Proxy address field changed
+    ProxyAddressChanged(String),
+    /// Settings panel: Proxy port field changed
+    ProxyPortChanged(u16),
+    /// Settings panel: Proxy username field changed
+    ProxyUsernameChanged(String),
+    /// Settings panel: Proxy password field changed
+    ProxyPasswordChanged(String),
 }

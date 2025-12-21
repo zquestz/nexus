@@ -2,7 +2,7 @@
 
 use super::chat::TimestampSettings;
 use super::layout::scrollable_panel;
-use crate::config::settings::CHAT_FONT_SIZES;
+use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
@@ -10,10 +10,11 @@ use crate::style::{
     INPUT_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
     error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
-use crate::types::{Message, SettingsFormState};
+use crate::types::{InputId, Message, SettingsFormState};
 use iced::widget::button as btn;
-use iced::widget::{Column, Space, button, checkbox, pick_list, row, text_input};
+use iced::widget::{Column, Id, Space, button, checkbox, pick_list, row, text_input};
 use iced::{Center, Element, Fill, Theme};
+use iced_aw::NumberInput;
 
 // ============================================================================
 // Settings View
@@ -30,6 +31,7 @@ pub fn settings_view<'a>(
     timestamp_settings: TimestampSettings,
     settings_form: Option<&'a SettingsFormState>,
     nickname: &'a str,
+    proxy: &'a ProxySettings,
 ) -> Element<'a, Message> {
     // Extract avatar state from settings form (only present when panel is open)
     let (avatar, default_avatar, error) = settings_form
@@ -47,6 +49,29 @@ pub fn settings_view<'a>(
         .width(Fill)
         .align_x(Center);
 
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(error) = error {
+        form_items.push(
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    // ==================== Appearance Section ====================
+    let appearance_heading = shaped_text(t("label-appearance"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    form_items.push(appearance_heading.into());
+
     // Theme picker row
     let theme_label = shaped_text(t("label-theme")).size(TEXT_SIZE);
     let theme_picker =
@@ -54,67 +79,15 @@ pub fn settings_view<'a>(
     let theme_row = row![theme_label, theme_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
+    form_items.push(theme_row.into());
 
-    // Chat font size picker row
-    let font_size_label = shaped_text(t("label-chat-font-size")).size(TEXT_SIZE);
-    let font_size_picker = pick_list(
-        CHAT_FONT_SIZES,
-        Some(chat_font_size),
-        Message::ChatFontSizeSelected,
-    )
-    .text_size(TEXT_SIZE);
-    let font_size_row = row![font_size_label, font_size_picker]
-        .spacing(ELEMENT_SPACING)
-        .align_y(Center);
+    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
 
-    // Connection notifications checkbox
-    let notifications_checkbox = checkbox(show_connection_notifications)
-        .label(t("label-show-connection-notifications"))
-        .on_toggle(Message::ConnectionNotificationsToggled)
-        .text_size(TEXT_SIZE);
-
-    // Timestamp settings
-    let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)
-        .label(t("label-show-timestamps"))
-        .on_toggle(Message::ShowTimestampsToggled)
-        .text_size(TEXT_SIZE);
-
-    // 24-hour time checkbox (disabled if timestamps are hidden)
-    let time_format_checkbox = if timestamp_settings.show_timestamps {
-        checkbox(timestamp_settings.use_24_hour_time)
-            .label(t("label-use-24-hour-time"))
-            .on_toggle(Message::Use24HourTimeToggled)
-            .text_size(TEXT_SIZE)
-    } else {
-        checkbox(timestamp_settings.use_24_hour_time)
-            .label(t("label-use-24-hour-time"))
-            .text_size(TEXT_SIZE)
-    };
-
-    // Show seconds checkbox (disabled if timestamps are hidden)
-    let seconds_checkbox = if timestamp_settings.show_timestamps {
-        checkbox(timestamp_settings.show_seconds)
-            .label(t("label-show-seconds"))
-            .on_toggle(Message::ShowSecondsToggled)
-            .text_size(TEXT_SIZE)
-    } else {
-        checkbox(timestamp_settings.show_seconds)
-            .label(t("label-show-seconds"))
-            .text_size(TEXT_SIZE)
-    };
-
-    // Indent the dependent timestamp options
-    let time_format_row = row![Space::new().width(20), time_format_checkbox];
-    let seconds_row = row![Space::new().width(20), seconds_checkbox];
-
-    // Nickname input
-    let nickname_input = text_input(&t("placeholder-nickname-optional"), nickname)
-        .on_input(Message::SettingsNicknameChanged)
-        .id(iced::widget::Id::from(
-            crate::types::InputId::SettingsNickname,
-        ))
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    // ==================== Identity Section ====================
+    let identity_heading = shaped_text(t("label-identity"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    form_items.push(identity_heading.into());
 
     // Avatar section
     let avatar_preview: Element<'_, Message> = if let Some(av) = avatar {
@@ -148,8 +121,170 @@ pub fn settings_view<'a>(
     let avatar_row = row![avatar_preview, avatar_buttons]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
+    form_items.push(avatar_row.into());
 
-    let buttons: iced::widget::Row<'_, Message> = row![
+    // Nickname input
+    let nickname_input = text_input(&t("placeholder-nickname-optional"), nickname)
+        .on_input(Message::SettingsNicknameChanged)
+        .on_submit(Message::SaveSettings)
+        .id(Id::from(InputId::SettingsNickname))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+    form_items.push(nickname_input.into());
+
+    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+
+    // ==================== Chat Options Section ====================
+    let chat_heading = shaped_text(t("label-chat-options"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    form_items.push(chat_heading.into());
+
+    // Chat font size picker row
+    let font_size_label = shaped_text(t("label-chat-font-size")).size(TEXT_SIZE);
+    let font_size_picker = pick_list(
+        CHAT_FONT_SIZES,
+        Some(chat_font_size),
+        Message::ChatFontSizeSelected,
+    )
+    .text_size(TEXT_SIZE);
+    let font_size_row = row![font_size_label, font_size_picker]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    form_items.push(font_size_row.into());
+
+    // Connection notifications checkbox
+    let notifications_checkbox = checkbox(show_connection_notifications)
+        .label(t("label-show-connection-notifications"))
+        .on_toggle(Message::ConnectionNotificationsToggled)
+        .text_size(TEXT_SIZE);
+    form_items.push(notifications_checkbox.into());
+
+    // Timestamp settings
+    let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)
+        .label(t("label-show-timestamps"))
+        .on_toggle(Message::ShowTimestampsToggled)
+        .text_size(TEXT_SIZE);
+    form_items.push(timestamps_checkbox.into());
+
+    // 24-hour time checkbox (disabled if timestamps are hidden, indented)
+    let time_format_checkbox = if timestamp_settings.show_timestamps {
+        checkbox(timestamp_settings.use_24_hour_time)
+            .label(t("label-use-24-hour-time"))
+            .on_toggle(Message::Use24HourTimeToggled)
+            .text_size(TEXT_SIZE)
+    } else {
+        checkbox(timestamp_settings.use_24_hour_time)
+            .label(t("label-use-24-hour-time"))
+            .text_size(TEXT_SIZE)
+    };
+    let time_format_row = row![Space::new().width(20), time_format_checkbox];
+    form_items.push(time_format_row.into());
+
+    // Show seconds checkbox (disabled if timestamps are hidden, indented)
+    let seconds_checkbox = if timestamp_settings.show_timestamps {
+        checkbox(timestamp_settings.show_seconds)
+            .label(t("label-show-seconds"))
+            .on_toggle(Message::ShowSecondsToggled)
+            .text_size(TEXT_SIZE)
+    } else {
+        checkbox(timestamp_settings.show_seconds)
+            .label(t("label-show-seconds"))
+            .text_size(TEXT_SIZE)
+    };
+    let seconds_row = row![Space::new().width(20), seconds_checkbox];
+    form_items.push(seconds_row.into());
+
+    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+
+    // ==================== Network Section ====================
+    let network_heading = shaped_text(t("label-network"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    form_items.push(network_heading.into());
+
+    // Proxy enabled checkbox
+    let proxy_enabled_checkbox = checkbox(proxy.enabled)
+        .label(t("label-use-socks5-proxy"))
+        .on_toggle(Message::ProxyEnabledToggled)
+        .text_size(TEXT_SIZE);
+    form_items.push(proxy_enabled_checkbox.into());
+
+    // Proxy address input (disabled when proxy is disabled)
+    let proxy_address_input = if proxy.enabled {
+        text_input(&t("placeholder-proxy-address"), &proxy.address)
+            .on_input(Message::ProxyAddressChanged)
+            .on_submit(Message::SaveSettings)
+            .id(Id::from(InputId::ProxyAddress))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    } else {
+        text_input(&t("placeholder-proxy-address"), &proxy.address)
+            .id(Id::from(InputId::ProxyAddress))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    };
+    form_items.push(proxy_address_input.into());
+
+    // Proxy port input with label (disabled when proxy is disabled)
+    let proxy_port_label = shaped_text(t("label-proxy-port")).size(TEXT_SIZE);
+    let proxy_port_input: Element<'_, Message> = if proxy.enabled {
+        NumberInput::new(&proxy.port, 1..=65535, Message::ProxyPortChanged)
+            .id(Id::from(InputId::ProxyPort))
+            .padding(INPUT_PADDING)
+            .into()
+    } else {
+        NumberInput::new(&proxy.port, 1..=65535, Message::ProxyPortChanged)
+            .on_input_maybe(None::<fn(u16) -> Message>)
+            .id(Id::from(InputId::ProxyPort))
+            .padding(INPUT_PADDING)
+            .into()
+    };
+    let proxy_port_row = row![proxy_port_label, proxy_port_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    form_items.push(proxy_port_row.into());
+
+    // Proxy username input (optional, disabled when proxy is disabled)
+    let proxy_username_value = proxy.username.as_deref().unwrap_or("");
+    let proxy_username_input = if proxy.enabled {
+        text_input(&t("placeholder-proxy-username"), proxy_username_value)
+            .on_input(Message::ProxyUsernameChanged)
+            .on_submit(Message::SaveSettings)
+            .id(Id::from(InputId::ProxyUsername))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    } else {
+        text_input(&t("placeholder-proxy-username"), proxy_username_value)
+            .id(Id::from(InputId::ProxyUsername))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    };
+    form_items.push(proxy_username_input.into());
+
+    // Proxy password input (optional, disabled when proxy is disabled)
+    let proxy_password_value = proxy.password.as_deref().unwrap_or("");
+    let proxy_password_input = if proxy.enabled {
+        text_input(&t("placeholder-proxy-password"), proxy_password_value)
+            .on_input(Message::ProxyPasswordChanged)
+            .on_submit(Message::SaveSettings)
+            .id(Id::from(InputId::ProxyPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+            .secure(true)
+    } else {
+        text_input(&t("placeholder-proxy-password"), proxy_password_value)
+            .id(Id::from(InputId::ProxyPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+            .secure(true)
+    };
+    form_items.push(proxy_password_input.into());
+
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // ==================== Buttons ====================
+    let buttons = row![
         Space::new().width(Fill),
         button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
             .on_press(Message::CancelSettings)
@@ -161,55 +296,7 @@ pub fn settings_view<'a>(
     ]
     .spacing(ELEMENT_SPACING);
 
-    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
-
-    // Show error if present
-    if let Some(error) = error {
-        form_items.push(
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into(),
-        );
-        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
-    } else {
-        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-    }
-
-    // Appearance subheading
-    let appearance_heading = shaped_text(t("label-appearance"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-
-    // Chat subheading
-    let chat_heading = shaped_text(t("label-chat-options"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-
-    // Identity subheading (avatar + nickname)
-    let identity_heading = shaped_text(t("label-identity"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-
-    form_items.extend([
-        appearance_heading.into(),
-        theme_row.into(),
-        Space::new().height(SPACER_SIZE_SMALL).into(),
-        identity_heading.into(),
-        avatar_row.into(),
-        nickname_input.into(),
-        Space::new().height(SPACER_SIZE_SMALL).into(),
-        chat_heading.into(),
-        font_size_row.into(),
-        notifications_checkbox.into(),
-        timestamps_checkbox.into(),
-        time_format_row.into(),
-        seconds_row.into(),
-        Space::new().height(SPACER_SIZE_MEDIUM).into(),
-        buttons.into(),
-    ]);
+    form_items.push(buttons.into());
 
     let form = Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)

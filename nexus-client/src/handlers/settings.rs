@@ -5,8 +5,9 @@ use crate::config::settings::{AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZ
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
-use crate::types::{ActivePanel, Message, SettingsFormState};
+use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
 use iced::Task;
+use iced::widget::{Id, operation};
 use rfd::AsyncFileDialog;
 
 impl NexusApp {
@@ -105,6 +106,107 @@ impl NexusApp {
             self.config.settings.nickname = Some(nickname);
         }
         Task::none()
+    }
+
+    // ==================== Proxy ====================
+
+    /// Handle proxy enabled toggle
+    pub fn handle_proxy_enabled_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.proxy.enabled = enabled;
+        Task::none()
+    }
+
+    /// Handle proxy address field change
+    pub fn handle_proxy_address_changed(&mut self, address: String) -> Task<Message> {
+        self.config.settings.proxy.address = address;
+        Task::none()
+    }
+
+    /// Handle proxy port field change
+    pub fn handle_proxy_port_changed(&mut self, port: u16) -> Task<Message> {
+        self.config.settings.proxy.port = port;
+        Task::none()
+    }
+
+    /// Handle proxy username field change
+    pub fn handle_proxy_username_changed(&mut self, username: String) -> Task<Message> {
+        if username.is_empty() {
+            self.config.settings.proxy.username = None;
+        } else {
+            self.config.settings.proxy.username = Some(username);
+        }
+        Task::none()
+    }
+
+    /// Handle proxy password field change
+    pub fn handle_proxy_password_changed(&mut self, password: String) -> Task<Message> {
+        if password.is_empty() {
+            self.config.settings.proxy.password = None;
+        } else {
+            self.config.settings.proxy.password = Some(password);
+        }
+        Task::none()
+    }
+
+    // ==================== Tab Navigation ====================
+
+    /// Handle Tab key press in settings panel - check which field is focused
+    pub fn handle_settings_tab_pressed(&mut self) -> Task<Message> {
+        let check_nickname = operation::is_focused(Id::from(InputId::SettingsNickname));
+        let check_address = operation::is_focused(Id::from(InputId::ProxyAddress));
+        let check_port = operation::is_focused(Id::from(InputId::ProxyPort));
+        let check_username = operation::is_focused(Id::from(InputId::ProxyUsername));
+        let check_password = operation::is_focused(Id::from(InputId::ProxyPassword));
+
+        Task::batch([
+            check_nickname.map(|focused| (0, focused)),
+            check_address.map(|focused| (1, focused)),
+            check_port.map(|focused| (2, focused)),
+            check_username.map(|focused| (3, focused)),
+            check_password.map(|focused| (4, focused)),
+        ])
+        .collect()
+        .map(|results: Vec<(u8, bool)>| {
+            let nickname = results.iter().any(|(i, f)| *i == 0 && *f);
+            let address = results.iter().any(|(i, f)| *i == 1 && *f);
+            let port = results.iter().any(|(i, f)| *i == 2 && *f);
+            let username = results.iter().any(|(i, f)| *i == 3 && *f);
+            let password = results.iter().any(|(i, f)| *i == 4 && *f);
+            Message::SettingsFocusResult(nickname, address, port, username, password)
+        })
+    }
+
+    /// Handle focus check result and move to next field
+    pub fn handle_settings_focus_result(
+        &mut self,
+        nickname: bool,
+        address: bool,
+        port: bool,
+        username: bool,
+        password: bool,
+    ) -> Task<Message> {
+        // Cycle through fields: nickname -> address -> port -> username -> password -> nickname
+        if nickname {
+            self.focused_field = InputId::ProxyAddress;
+            operation::focus(Id::from(InputId::ProxyAddress))
+        } else if address {
+            // Skip ProxyPort (NumberInput handles its own Tab key)
+            self.focused_field = InputId::ProxyUsername;
+            operation::focus(Id::from(InputId::ProxyUsername))
+        } else if port {
+            self.focused_field = InputId::ProxyUsername;
+            operation::focus(Id::from(InputId::ProxyUsername))
+        } else if username {
+            self.focused_field = InputId::ProxyPassword;
+            operation::focus(Id::from(InputId::ProxyPassword))
+        } else if password {
+            self.focused_field = InputId::SettingsNickname;
+            operation::focus(Id::from(InputId::SettingsNickname))
+        } else {
+            // No field focused, start with nickname
+            self.focused_field = InputId::SettingsNickname;
+            operation::focus(Id::from(InputId::SettingsNickname))
+        }
     }
 
     // ==================== Avatar ====================

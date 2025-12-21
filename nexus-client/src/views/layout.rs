@@ -7,6 +7,7 @@ use super::constants::{
 use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
 use super::user_info::{password_change_view, user_info_view};
+use crate::config::settings::ProxySettings;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -54,6 +55,8 @@ struct ServerContentContext<'a> {
     news_body_content: Option<&'a text_editor::Content>,
     /// Default nickname for shared accounts
     nickname: &'a str,
+    /// SOCKS5 proxy settings
+    proxy: &'a ProxySettings,
 }
 
 // ============================================================================
@@ -201,6 +204,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 settings_form: config.settings_form,
                 news_body_content: config.news_body_content,
                 nickname: config.nickname,
+                proxy: config.proxy,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -222,6 +226,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         },
                         config.settings_form,
                         config.nickname,
+                        config.proxy,
                     )
                 ]
                 .width(Fill)
@@ -570,6 +575,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 ctx.timestamp_settings,
                 ctx.settings_form,
                 ctx.nickname,
+                ctx.proxy,
             )
         ]
         .width(Fill)

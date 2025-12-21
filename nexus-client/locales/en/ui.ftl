@@ -64,11 +64,15 @@ placeholder-current-password = Current Password
 placeholder-new-password = New Password
 placeholder-confirm-password = Confirm Password
 placeholder-message = Type a message...
-placeholder-no-permission = No permission
-placeholder-broadcast-message = Enter broadcast message...
-placeholder-server-description = Server description
-placeholder-news-body = Enter news content...
+placeholder-no-permission = No Permission
+placeholder-broadcast-message = Broadcast Message
+placeholder-server-description = Server Description
+placeholder-news-body = News Content
 placeholder-nickname-optional = Nickname (optional)
+placeholder-proxy-address = Proxy Address
+placeholder-proxy-port = 9050
+placeholder-proxy-username = Username (optional)
+placeholder-proxy-password = Password (optional)
 
 # =============================================================================
 # Labels
@@ -106,6 +110,12 @@ label-news-body = Body:
 label-news-image = Image:
 label-identity = Identity
 label-nickname = Nickname:
+label-network = Network
+label-use-socks5-proxy = Use SOCKS5 Proxy
+label-proxy-address = Address:
+label-proxy-port = Port:
+label-proxy-username = Username:
+label-proxy-password = Password:
 
 # =============================================================================
 # Permission Display Names
@@ -298,6 +308,12 @@ err-news-empty = News post must have either body text or an image
 err-news-body-too-long = Body is too long ({ $length } characters, max { $max })
 err-news-body-invalid-characters = Body contains invalid control characters
 err-news-image-decode-failed = Failed to decode image. The file may be corrupted.
+
+# Proxy errors
+err-proxy-connection-failed = Failed to connect to proxy: { $error }
+err-proxy-connection-timeout = Proxy connection timed out after { $seconds } seconds
+err-proxy-address-required = Proxy address is required when proxy is enabled
+err-proxy-port-invalid = Proxy port must be between 1 and 65535
 err-news-image-too-large = Image is too large (max 512KB)
 err-news-image-unsupported-type = Unsupported image type (PNG, WebP, JPEG, or SVG only)
 
@@ -453,3 +469,5 @@ cmd-serverinfo-end = End of server info
 
 about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
+
+label-port = Port:
