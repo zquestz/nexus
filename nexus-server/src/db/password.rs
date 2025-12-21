@@ -83,8 +83,8 @@ pub fn hash_password(password: &str) -> Result<String, PasswordError> {
 /// that could reveal information about the password or hash.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PasswordError> {
     // Validate password format (failsafe - handlers should also validate)
-    // If this fails, it indicates a bug or attack bypassing handler validation
-    if let Err(e) = validators::validate_password(password) {
+    // Use validate_password_input since empty passwords are valid for guest accounts
+    if let Err(e) = validators::validate_password_input(password) {
         return Err(PasswordError::Validation(e));
     }
 

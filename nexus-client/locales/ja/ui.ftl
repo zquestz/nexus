@@ -331,6 +331,7 @@ fingerprint-warning = これはセキュリティ上の問題（MITM攻撃）ま
 user-info-username = ユーザー名:
 user-info-role = 役割:
 user-info-role-admin = 管理者
+user-info-role-guest = ゲスト
 user-info-role-shared = 共有
 user-info-role-user = ユーザー
 user-info-nickname = ニックネーム:

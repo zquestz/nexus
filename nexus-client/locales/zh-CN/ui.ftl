@@ -331,6 +331,7 @@ fingerprint-warning = 这可能表示存在安全问题（中间人攻击）或�
 user-info-username = 用户名：
 user-info-role = 角色：
 user-info-role-admin = 管理员
+user-info-role-guest = 访客
 user-info-role-shared = 共享
 user-info-role-user = 用户
 user-info-nickname = 昵称：

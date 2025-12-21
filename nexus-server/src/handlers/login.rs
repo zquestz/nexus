@@ -14,14 +14,14 @@ use super::{
     err_authentication, err_avatar_invalid_format, err_avatar_too_large,
     err_avatar_unsupported_type, err_database, err_failed_to_create_user,
     err_features_empty_feature, err_features_feature_too_long, err_features_invalid_characters,
-    err_features_too_many, err_handshake_required, err_invalid_credentials,
+    err_features_too_many, err_guest_disabled, err_handshake_required, err_invalid_credentials,
     err_locale_invalid_characters, err_locale_too_long, err_nickname_empty, err_nickname_in_use,
     err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
-    err_password_empty, err_password_too_long, err_username_empty, err_username_invalid,
-    err_username_too_long,
+    err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
+use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Permission};
 use crate::users::manager::AddUserError;
 use crate::users::user::NewSessionParams;
@@ -47,7 +47,7 @@ where
     W: AsyncWrite + Unpin,
 {
     let LoginRequest {
-        username,
+        username: raw_username,
         password,
         features,
         locale,
@@ -55,6 +55,13 @@ where
         nickname,
         handshake_complete,
     } = request;
+
+    // Normalize empty username to "guest" for guest login
+    let username = if raw_username.is_empty() {
+        GUEST_USERNAME.to_string()
+    } else {
+        raw_username
+    };
 
     // Verify handshake completed
     if !handshake_complete {
@@ -86,16 +93,13 @@ where
             .await;
     }
 
-    // Validate password
-    if let Err(e) = validators::validate_password(&password) {
-        let error_msg = match e {
-            PasswordError::Empty => err_password_empty(&locale),
-            PasswordError::TooLong => {
-                err_password_too_long(&locale, validators::MAX_PASSWORD_LENGTH)
-            }
-        };
+    // Validate password input (empty is allowed for guest login)
+    if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .send_error_and_disconnect(
+                &err_password_too_long(&locale, validators::MAX_PASSWORD_LENGTH),
+                Some("Login"),
+            )
             .await;
     }
 
@@ -157,38 +161,49 @@ where
     // Authenticate user or create first admin
     let authenticated_account = if let Some(account) = account {
         // User exists - verify password
-        match db::verify_password(&password, &account.hashed_password) {
-            Ok(true) => {
-                // Password is correct - check if account is enabled
-                if !account.enabled {
-                    eprintln!(
-                        "Login from {} for disabled account: {}",
-                        ctx.peer_addr, username
-                    );
+        // Special case: guest account has empty password hash - password must be empty
+        let password_valid = if account.hashed_password.is_empty() {
+            // Empty hash means password must be empty (guest account)
+            password.is_empty()
+        } else {
+            // Normal password verification
+            match db::verify_password(&password, &account.hashed_password) {
+                Ok(valid) => valid,
+                Err(e) => {
+                    eprintln!("Password verification error for {}: {}", username, e);
                     return ctx
-                        .send_error_and_disconnect(
-                            &err_account_disabled(&locale, &username),
-                            Some("Login"),
-                        )
+                        .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
                         .await;
                 }
-                account
             }
-            Ok(false) => {
+        };
+
+        if password_valid {
+            // Password is correct - check if account is enabled
+            if !account.enabled {
                 eprintln!(
-                    "Login from {} failed: invalid credentials for {}",
+                    "Login from {} for disabled account: {}",
                     ctx.peer_addr, username
                 );
+                // Use user-friendly error for guest account
+                let error_msg = if username.to_lowercase() == GUEST_USERNAME {
+                    err_guest_disabled(&locale)
+                } else {
+                    err_account_disabled(&locale, &username)
+                };
                 return ctx
-                    .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
+                    .send_error_and_disconnect(&error_msg, Some("Login"))
                     .await;
             }
-            Err(e) => {
-                eprintln!("Password verification error for {}: {}", username, e);
-                return ctx
-                    .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
-                    .await;
-            }
+            account
+        } else {
+            eprintln!(
+                "Login from {} failed: invalid credentials for {}",
+                ctx.peer_addr, username
+            );
+            return ctx
+                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
+                .await;
         }
     } else {
         // User doesn't exist - try to create as first user (atomic operation)
@@ -2074,5 +2089,307 @@ mod tests {
             "Login with nickname matching logged-in username should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    // ========================================================================
+    // Guest Account Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_guest_login_with_empty_username() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Login with empty username and empty password (guest login)
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: String::new(), // Empty username
+            password: String::new(), // Empty password
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("GuestUser".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Guest login should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::LoginResponse {
+                success, is_admin, ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert_eq!(is_admin, Some(false), "Guest should not be admin");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_with_guest_username() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Login with "guest" username and empty password
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "guest".to_string(),
+            password: String::new(), // Empty password
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("AnotherGuest".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Guest login should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_with_nonempty_password_fails() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Try to login as guest with a non-empty password
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "guest".to_string(),
+            password: "somepassword".to_string(), // Non-empty password
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("BadGuest".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err(), "Guest login with password should fail");
+        assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_disabled_fails() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Guest account is disabled by default from migration
+
+        // Try to login as guest
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: String::new(), // Empty username = guest
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("DisabledGuest".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err(), "Guest login should fail when disabled");
+        assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_requires_nickname() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Try to login as guest without nickname
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: String::new(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None, // No nickname
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err(), "Guest login without nickname should fail");
+        assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_case_insensitive_username() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Login with "GUEST" (uppercase)
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "GUEST".to_string(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("CaseTest".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Guest login with uppercase should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_returns_is_shared_true() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Enable guest account
+        test_ctx
+            .db
+            .users
+            .update_user(
+                "guest",
+                None,
+                None,
+                None,
+                Some(true), // enabled
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Login as guest
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: String::new(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("SharedGuest".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Guest login should succeed");
+
+        // Verify the user is marked as shared in UserManager
+        let user = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id.unwrap())
+            .await;
+        assert!(user.is_some(), "User should exist in manager");
+        assert!(user.unwrap().is_shared, "Guest should be marked as shared");
+    }
+
+    #[tokio::test]
+    async fn test_first_admin_created_with_guest_account_existing() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Guest account exists from migration but is disabled
+        // First non-guest user should become admin
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "firstadmin".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "First user login should succeed");
+        assert!(session_id.is_some(), "Session ID should be set");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::LoginResponse {
+                success, is_admin, ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert_eq!(is_admin, Some(true), "First non-guest user should be admin");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
     }
 }

@@ -67,6 +67,30 @@ pub fn err_shared_invalid_permissions(locale: &str, permissions: &str) -> String
 }
 
 // ========================================================================
+// Guest Account Errors
+// ========================================================================
+
+/// Get translated "guest disabled" error
+pub fn err_guest_disabled(locale: &str) -> String {
+    t(locale, "err-guest-disabled")
+}
+
+/// Get translated "cannot rename guest" error
+pub fn err_cannot_rename_guest(locale: &str) -> String {
+    t(locale, "err-cannot-rename-guest")
+}
+
+/// Get translated "cannot change guest password" error
+pub fn err_cannot_change_guest_password(locale: &str) -> String {
+    t(locale, "err-cannot-change-guest-password")
+}
+
+/// Get translated "cannot delete guest" error
+pub fn err_cannot_delete_guest(locale: &str) -> String {
+    t(locale, "err-cannot-delete-guest")
+}
+
+// ========================================================================
 // Account & Session Errors
 // ========================================================================
 

@@ -331,6 +331,7 @@ fingerprint-warning = 이는 보안 문제(MITM 공격)를 나타내거나 서�
 user-info-username = 사용자명:
 user-info-role = 역할:
 user-info-role-admin = 관리자
+user-info-role-guest = 게스트
 user-info-role-shared = 공유
 user-info-role-user = 사용자
 user-info-nickname = 별명:

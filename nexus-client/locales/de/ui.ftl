@@ -330,7 +330,8 @@ fingerprint-warning = Dies könnte auf ein Sicherheitsproblem (MITM-Angriff) hin
 
 user-info-username = Benutzername:
 user-info-role = Rolle:
-user-info-role-admin = admin
+user-info-role-admin = Admin
+user-info-role-guest = Gast
 user-info-role-shared = geteilt
 user-info-role-user = Benutzer
 user-info-nickname = Spitzname:

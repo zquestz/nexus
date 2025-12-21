@@ -675,9 +675,10 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 let users = users.unwrap();
-                assert_eq!(users.len(), 2, "Should have 2 accounts");
+                assert_eq!(users.len(), 3, "Should have 3 accounts (guest, alice, bob)");
 
-                // Both accounts should be present
+                // All accounts should be present
+                assert!(users.iter().any(|u| u.username == "guest"));
                 assert!(users.iter().any(|u| u.username == "bob"));
                 assert!(users.iter().any(|u| u.username == "alice"));
 
@@ -786,8 +787,12 @@ mod tests {
                 assert!(success);
                 let users = users.expect("users should be present");
 
-                // Should include the admin and the shared account
-                assert_eq!(users.len(), 2, "Should have admin and shared account");
+                // Should include guest, the admin, and the shared account
+                assert_eq!(
+                    users.len(),
+                    3,
+                    "Should have guest, admin and shared account"
+                );
 
                 // Find the shared account
                 let shared_account = users.iter().find(|u| u.username == "shared_acct");
@@ -889,17 +894,18 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 let users = users.unwrap();
-                assert_eq!(users.len(), 8, "Should have 8 users");
+                assert_eq!(users.len(), 9, "Should have 9 users (including guest)");
 
                 // Extract usernames in order
                 let usernames: Vec<&str> = users.iter().map(|u| u.username.as_str()).collect();
 
                 // Verify alphabetical order (case-insensitive)
-                // shared should come between quest and steve
+                // guest comes between bob and kalani, shared comes between quest and steve
                 assert_eq!(
                     usernames,
                     vec![
-                        "alice", "bob", "kalani", "love", "Lovelady", "quest", "shared", "steve"
+                        "alice", "bob", "guest", "kalani", "love", "Lovelady", "quest", "shared",
+                        "steve"
                     ],
                     "Users should be sorted alphabetically by nickname (case-insensitive)"
                 );
@@ -971,7 +977,7 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 let users = users.unwrap();
-                assert_eq!(users.len(), 5, "Should have 5 users");
+                assert_eq!(users.len(), 6, "Should have 6 users (including guest)");
 
                 // Extract nicknames in order (nickname == username for regular accounts)
                 let nicknames: Vec<&str> = users.iter().map(|u| u.nickname.as_str()).collect();
@@ -979,7 +985,7 @@ mod tests {
                 // Verify alphabetical order (case-insensitive)
                 assert_eq!(
                     nicknames,
-                    vec!["Admin", "apple", "Banana", "cherry", "Zebra"],
+                    vec!["Admin", "apple", "Banana", "cherry", "guest", "Zebra"],
                     "Users should be sorted alphabetically by nickname (case-insensitive)"
                 );
             }

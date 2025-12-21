@@ -331,6 +331,7 @@ fingerprint-warning = Это может указывать на проблему
 user-info-username = Имя пользователя:
 user-info-role = Роль:
 user-info-role-admin = админ
+user-info-role-guest = гость
 user-info-role-shared = общий
 user-info-role-user = пользователь
 user-info-nickname = Псевдоним:

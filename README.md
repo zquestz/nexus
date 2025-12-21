@@ -24,6 +24,8 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
 - Granular permission system (16 permissions)
+- **Shared accounts** - Multiple users can share one account with unique nicknames
+- **Guest access** - Passwordless guest account for casual users (disabled by default)
 - Multi-server bookmarks with auto-connect
 - Admin panel for user management (create/edit/delete) and server configuration (name, description, image)
 - SQLite database with Argon2id password hashing
@@ -94,6 +96,22 @@ cargo build --release
 ```
 
 Use the GUI to manage server bookmarks, chat, view users, and manage permissions.
+
+## Guest Access
+
+The server includes a built-in guest account that allows passwordless login. It is **disabled by default** for security.
+
+**To enable guest access:**
+1. Connect to the server as an admin
+2. Open User Management panel
+3. Find the "guest" account and enable it
+
+**Guest login from client:**
+- Leave username and password empty
+- Provide a nickname (required)
+- Connect
+
+Guest users appear with a muted color in the user list and have limited permissions (chat, view users, send private messages). The guest account cannot be deleted, renamed, or given a password.
 
 ## Platform Integration
 

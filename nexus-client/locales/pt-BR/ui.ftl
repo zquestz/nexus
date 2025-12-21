@@ -331,6 +331,7 @@ fingerprint-warning = Isso pode indicar um problema de segurança (ataque MITM) 
 user-info-username = Nome de usuário:
 user-info-role = Função:
 user-info-role-admin = admin
+user-info-role-guest = convidado
 user-info-role-shared = compartilhado
 user-info-role-user = usuário
 user-info-nickname = Apelido:

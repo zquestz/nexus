@@ -110,7 +110,9 @@ pub fn settings_view<'a>(
     // Nickname input
     let nickname_input = text_input(&t("placeholder-nickname-optional"), nickname)
         .on_input(Message::SettingsNicknameChanged)
-        .id(iced::widget::Id::from(crate::types::InputId::Nickname))
+        .id(iced::widget::Id::from(
+            crate::types::InputId::SettingsNickname,
+        ))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 

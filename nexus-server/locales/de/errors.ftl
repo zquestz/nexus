@@ -18,6 +18,12 @@ err-shared-invalid-permissions = Gemeinsame Konten können diese Berechtigungen 
 err-shared-message-requires-nickname = Gemeinsame Konten können nur über den Spitznamen Nachrichten empfangen
 err-shared-kick-requires-nickname = Gemeinsame Konten können nur über den Spitznamen gekickt werden
 
+# Gastkonto-Fehler
+err-guest-disabled = Gastzugang ist auf diesem Server nicht aktiviert
+err-cannot-rename-guest = Das Gastkonto kann nicht umbenannt werden
+err-cannot-change-guest-password = Das Passwort des Gastkontos kann nicht geändert werden
+err-cannot-delete-guest = Das Gastkonto kann nicht gelöscht werden
+
 # Avatar-Validierungsfehler
 err-avatar-invalid-format = Ungültiges Avatar-Format (muss eine Data-URI mit Base64-Kodierung sein)
 err-avatar-too-large = Avatar ist zu groß (max. { $max_length } Zeichen)

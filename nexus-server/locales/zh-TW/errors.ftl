@@ -18,6 +18,12 @@ err-shared-invalid-permissions = 共享帳戶不能擁有這些權限：{ $permi
 err-shared-message-requires-nickname = 共享帳戶只能通過暱稱接收訊息
 err-shared-kick-requires-nickname = 共享帳戶只能通過暱稱踢出
 
+# 訪客帳戶錯誤
+err-guest-disabled = 此伺服器未啟用訪客存取
+err-cannot-rename-guest = 訪客帳戶無法重新命名
+err-cannot-change-guest-password = 訪客帳戶的密碼無法變更
+err-cannot-delete-guest = 訪客帳戶無法刪除
+
 # 頭像驗證錯誤
 err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）
 err-avatar-too-large = 頭像太大（最多{ $max_length }個字元）

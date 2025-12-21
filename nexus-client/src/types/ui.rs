@@ -142,6 +142,8 @@ pub enum InputId {
     Nickname,
     /// Bookmark editor: Nickname input
     BookmarkNickname,
+    /// Settings panel: Nickname input
+    SettingsNickname,
 }
 
 impl From<InputId> for Id {
@@ -171,6 +173,7 @@ impl From<InputId> for Id {
             InputId::NewsBody => "InputId::NewsBody",
             InputId::Nickname => "InputId::Nickname",
             InputId::BookmarkNickname => "InputId::BookmarkNickname",
+            InputId::SettingsNickname => "InputId::SettingsNickname",
         })
     }
 }

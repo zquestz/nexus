@@ -18,6 +18,12 @@ err-shared-invalid-permissions = Gedeelde accounts kunnen deze rechten niet hebb
 err-shared-message-requires-nickname = Gedeelde accounts kunnen alleen berichten ontvangen via bijnaam
 err-shared-kick-requires-nickname = Gedeelde accounts kunnen alleen worden verwijderd via bijnaam
 
+# Gastaccount-fouten
+err-guest-disabled = Gasttoegang is niet ingeschakeld op deze server
+err-cannot-rename-guest = Het gastaccount kan niet worden hernoemd
+err-cannot-change-guest-password = Het wachtwoord van het gastaccount kan niet worden gewijzigd
+err-cannot-delete-guest = Het gastaccount kan niet worden verwijderd
+
 # Avatar Validatiefouten
 err-avatar-invalid-format = Ongeldig avatar-formaat (moet een data-URI zijn met base64-codering)
 err-avatar-too-large = Avatar is te groot (max. { $max_length } tekens)

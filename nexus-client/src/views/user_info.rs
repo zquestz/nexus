@@ -273,8 +273,11 @@ fn build_user_info_content<'a>(
 
     // Role (only shown if is_admin field is present)
     if user.is_admin.is_some() {
+        let is_guest = user.username.to_lowercase() == "guest";
         let role_value = if is_admin {
             t("user-info-role-admin")
+        } else if is_guest {
+            t("user-info-role-guest")
         } else if is_shared {
             t("user-info-role-shared")
         } else {

@@ -308,8 +308,8 @@ impl NexusApp {
             return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
             // Settings panel has one text input (nickname), focus it
-            self.focused_field = InputId::Nickname;
-            return operation::focus(Id::from(InputId::Nickname));
+            self.focused_field = InputId::SettingsNickname;
+            return operation::focus(Id::from(InputId::SettingsNickname));
         } else if self.active_connection.is_some() {
             // In chat view, Tab refocuses the chat input
             self.focused_field = InputId::ChatInput;

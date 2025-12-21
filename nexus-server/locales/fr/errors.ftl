@@ -18,6 +18,12 @@ err-shared-invalid-permissions = Les comptes partagés ne peuvent pas avoir ces 
 err-shared-message-requires-nickname = Les comptes partagés ne peuvent recevoir des messages que par pseudonyme
 err-shared-kick-requires-nickname = Les comptes partagés ne peuvent être expulsés que par pseudonyme
 
+# Erreurs de compte invité
+err-guest-disabled = L'accès invité n'est pas activé sur ce serveur
+err-cannot-rename-guest = Le compte invité ne peut pas être renommé
+err-cannot-change-guest-password = Le mot de passe du compte invité ne peut pas être modifié
+err-cannot-delete-guest = Le compte invité ne peut pas être supprimé
+
 # Erreurs de Validation d'Avatar
 err-avatar-invalid-format = Format d'avatar invalide (doit être une URI de données avec encodage base64)
 err-avatar-too-large = L'avatar est trop volumineux (max. { $max_length } caractères)

@@ -28,6 +28,9 @@ use nexus_common::is_shared_account_permission;
 // Edit User Context
 // ============================================================================
 
+/// Guest account username (case-insensitive comparison)
+const GUEST_USERNAME: &str = "guest";
+
 /// Context for rendering the edit user form
 struct EditUserContext<'a> {
     /// Connection state (for permission checking)
@@ -44,6 +47,8 @@ struct EditUserContext<'a> {
     is_admin: bool,
     /// Is shared account flag (immutable - display only)
     is_shared: bool,
+    /// Is guest account (username/password cannot be changed)
+    is_guest: bool,
     /// Enabled flag
     enabled: bool,
     /// Permissions list with enabled state
@@ -231,8 +236,10 @@ fn list_view<'a>(
                     // Delete button (danger style like disconnect)
                     // Hidden for self (server rejects self-delete anyway)
                     // Hidden for admin users when current user is not admin
+                    // Hidden for guest account (cannot be deleted)
+                    let is_guest = user.username.to_lowercase() == GUEST_USERNAME;
                     let can_delete_this_user =
-                        can_delete && !is_self && (conn.is_admin || !user.is_admin);
+                        can_delete && !is_self && !is_guest && (conn.is_admin || !user.is_admin);
                     if can_delete_this_user {
                         let delete_btn = tooltip(
                             danger_delete_button(
@@ -544,20 +551,37 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
         Message::ValidateUserManagementEdit
     };
 
-    let username_input = text_input(&t("placeholder-username"), ctx.new_username)
-        .on_input(Message::UserManagementEditUsernameChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::EditNewUsername))
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    // Username input - disabled for guest account (cannot be renamed)
+    let username_input = if ctx.is_guest {
+        text_input(&t("placeholder-username"), ctx.new_username)
+            .id(Id::from(InputId::EditNewUsername))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    } else {
+        text_input(&t("placeholder-username"), ctx.new_username)
+            .on_input(Message::UserManagementEditUsernameChanged)
+            .on_submit(submit_action.clone())
+            .id(Id::from(InputId::EditNewUsername))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    };
 
-    let password_input = text_input(&t("placeholder-password-keep-current"), ctx.new_password)
-        .on_input(Message::UserManagementEditPasswordChanged)
-        .on_submit(submit_action)
-        .id(Id::from(InputId::EditNewPassword))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    // Password input - disabled for guest account (password cannot be changed)
+    let password_input = if ctx.is_guest {
+        text_input(&t("placeholder-password-keep-current"), ctx.new_password)
+            .id(Id::from(InputId::EditNewPassword))
+            .secure(true)
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    } else {
+        text_input(&t("placeholder-password-keep-current"), ctx.new_password)
+            .on_input(Message::UserManagementEditPasswordChanged)
+            .on_submit(submit_action)
+            .id(Id::from(InputId::EditNewPassword))
+            .secure(true)
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+    };
 
     // Admin checkbox - disabled when is_shared (shared accounts can't be admin)
     let admin_checkbox = if ctx.conn.is_admin && !ctx.is_shared {
@@ -736,6 +760,7 @@ pub fn users_view<'a>(
             new_password,
             is_admin: *is_admin,
             is_shared: *is_shared,
+            is_guest: original_username.to_lowercase() == GUEST_USERNAME,
             enabled: *enabled,
             permissions,
         }),

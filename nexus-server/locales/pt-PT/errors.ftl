@@ -18,6 +18,12 @@ err-shared-invalid-permissions = Contas partilhadas não podem ter estas permiss
 err-shared-message-requires-nickname = Contas partilhadas só podem receber mensagens pela alcunha
 err-shared-kick-requires-nickname = Contas partilhadas só podem ser expulsas pela alcunha
 
+# Erros de conta de convidado
+err-guest-disabled = O acesso de convidado não está activado neste servidor
+err-cannot-rename-guest = A conta de convidado não pode ser renomeada
+err-cannot-change-guest-password = A palavra-passe da conta de convidado não pode ser alterada
+err-cannot-delete-guest = A conta de convidado não pode ser eliminada
+
 # Erros de Validação de Avatar
 err-avatar-invalid-format = Formato de avatar inválido (deve ser uma URI de dados com codificação base64)
 err-avatar-too-large = O avatar é demasiado grande (máx. { $max_length } caracteres)

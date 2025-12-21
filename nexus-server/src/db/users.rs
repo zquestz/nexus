@@ -332,11 +332,14 @@ impl UserDb {
         // Start a transaction for atomicity
         let mut tx = self.pool.begin().await?;
 
-        // Check if any users exist (within transaction)
-        let count: (i64,) = sqlx::query_as(SQL_COUNT_USERS).fetch_one(&mut *tx).await?;
+        // Check if any non-guest users exist (within transaction)
+        // The guest account is excluded so the first real user becomes admin
+        let count: (i64,) = sqlx::query_as(SQL_COUNT_NON_GUEST_USERS)
+            .fetch_one(&mut *tx)
+            .await?;
 
         if count.0 > 0 {
-            // Users exist - rollback and return None
+            // Non-guest users exist - rollback and return None
             tx.rollback().await?;
             return Ok(None);
         }
@@ -1079,14 +1082,14 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // No users exist yet
+        // Only guest account exists (from migration) - should still allow first real user
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count, 0);
+        assert_eq!(count, 1, "Should only have guest account from migration");
 
-        // Create first user
+        // Create first user (guest account is excluded from the check)
         let result = db
             .create_first_user_if_none_exist("admin", "hash123")
             .await
@@ -1098,12 +1101,12 @@ mod tests {
         assert!(user.is_admin, "First user should be admin");
         assert!(user.enabled, "First user should be enabled");
 
-        // Verify user exists in database
+        // Verify user exists in database (guest + admin)
         let (count_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count_after, 1);
+        assert_eq!(count_after, 2, "Should have guest and admin");
     }
 
     #[tokio::test]
@@ -1111,12 +1114,12 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create a user first
+        // Create a non-guest user first
         db.create_user("existing", "hash", false, false, true, &Permissions::new())
             .await
             .unwrap();
 
-        // Try to create first user when users already exist
+        // Try to create first user when non-guest users already exist
         let result = db
             .create_first_user_if_none_exist("admin", "hash123")
             .await
@@ -1124,12 +1127,12 @@ mod tests {
 
         assert!(result.is_none(), "Should return None when users exist");
 
-        // Verify no additional user was created
+        // Verify no additional user was created (guest + existing)
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count, 1, "Should still have only one user");
+        assert_eq!(count, 2, "Should still have only guest and existing user");
     }
 
     #[tokio::test]
@@ -1299,7 +1302,11 @@ mod tests {
             .unwrap();
 
         let all_users = db.get_all_users().await.unwrap();
-        assert_eq!(all_users.len(), 3);
+        assert_eq!(
+            all_users.len(),
+            4,
+            "Should have guest, alice, shared_acct, bob"
+        );
 
         // Find each user and verify is_shared
         let alice = all_users.iter().find(|u| u.username == "alice").unwrap();

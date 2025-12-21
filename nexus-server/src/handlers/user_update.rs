@@ -12,15 +12,17 @@ use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameEr
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_disabled_by_admin, err_authentication,
-    err_cannot_demote_last_admin, err_cannot_disable_last_admin, err_cannot_edit_admin,
-    err_cannot_edit_self, err_current_password_incorrect, err_current_password_required,
-    err_database, err_not_logged_in, err_password_empty, err_password_too_long,
-    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
+    err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
+    err_current_password_incorrect, err_current_password_required, err_database, err_not_logged_in,
+    err_password_empty, err_password_too_long, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_shared_cannot_change_password, err_shared_invalid_permissions,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
     err_username_invalid, err_username_too_long,
 };
+use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Permission, Permissions, hash_password, verify_password};
 
 /// User update request parameters
@@ -219,6 +221,32 @@ where
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(error_msg),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Prevent renaming the guest account
+    if let Some(ref new_username) = request.requested_username
+        && request.username.to_lowercase() == GUEST_USERNAME
+        && new_username.to_lowercase() != GUEST_USERNAME
+    {
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_cannot_rename_guest(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Prevent changing the guest account password
+    if let Some(ref new_password) = request.requested_password
+        && !new_password.trim().is_empty()
+        && request.username.to_lowercase() == GUEST_USERNAME
+    {
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_cannot_change_guest_password(ctx.locale)),
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -2268,6 +2296,263 @@ mod tests {
                     "Should successfully update shared account permissions"
                 );
                 assert!(error.is_none(), "Should have no error");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_rename_guest_account() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = hash_password(password).expect("hash should work");
+        test_ctx
+            .db
+            .users
+            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Login as admin
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: "admin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "admin".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Try to rename guest account
+        let request = UserUpdateRequest {
+            username: "guest".to_string(),
+            current_password: None,
+            requested_username: Some("notguest".to_string()),
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Handler should return Ok");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should fail to rename guest account");
+                assert!(error.is_some(), "Should have error message");
+                let error_msg = error.unwrap();
+                assert!(
+                    error_msg.contains("guest") || error_msg.contains("renamed"),
+                    "Error should mention guest account cannot be renamed"
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_guest_account_other_fields_allowed() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = hash_password(password).expect("hash should work");
+        test_ctx
+            .db
+            .users
+            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Login as admin
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: "admin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "admin".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Enable the guest account (should be allowed)
+        let request = UserUpdateRequest {
+            username: "guest".to_string(),
+            current_password: None,
+            requested_username: None, // Not renaming
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(true), // Enable guest
+            requested_permissions: None,
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Handler should return Ok");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "Should succeed enabling guest account");
+                assert!(error.is_none(), "Should have no error");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_guest_account_permissions() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = hash_password(password).expect("hash should work");
+        test_ctx
+            .db
+            .users
+            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Login as admin
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: "admin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "admin".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Update guest account permissions (should succeed with allowed permissions)
+        let request = UserUpdateRequest {
+            username: "guest".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec![
+                "chat_send".to_string(),
+                "chat_receive".to_string(),
+                "user_list".to_string(),
+            ]),
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Handler should return Ok");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "Should succeed updating guest permissions");
+                assert!(error.is_none(), "Should have no error");
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_change_guest_password() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let password = "password";
+        let hashed = hash_password(password).expect("hash should work");
+        test_ctx
+            .db
+            .users
+            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Login as admin
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: "admin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "admin".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Try to change guest account password
+        let request = UserUpdateRequest {
+            username: "guest".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Handler should return Ok");
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should fail to change guest password");
+                assert!(error.is_some(), "Should have error message");
             }
             _ => panic!("Expected UserUpdateResponse"),
         }

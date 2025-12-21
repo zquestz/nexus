@@ -11,11 +11,12 @@ use nexus_common::validators::{self, UsernameError};
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_admin,
-    err_cannot_delete_last_admin, err_cannot_delete_self, err_database, err_not_logged_in,
-    err_permission_denied, err_user_not_found, err_username_empty, err_username_invalid,
-    err_username_too_long,
+    err_cannot_delete_guest, err_cannot_delete_last_admin, err_cannot_delete_self, err_database,
+    err_not_logged_in, err_permission_denied, err_user_not_found, err_username_empty,
+    err_username_invalid, err_username_too_long,
 };
 use crate::db::Permission;
+use crate::db::sql::GUEST_USERNAME;
 
 /// Handle UserDelete command
 pub async fn handle_user_delete<W>(
@@ -66,6 +67,16 @@ where
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_cannot_delete_self(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Prevent deleting the guest account (cheap check before DB queries)
+    if target_username.to_lowercase() == GUEST_USERNAME {
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(err_cannot_delete_guest(ctx.locale)),
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -675,5 +686,75 @@ mod tests {
         // Verify target is deleted
         let deleted = test_ctx.db.users.get_user_by_id(target.id).await.unwrap();
         assert!(deleted.is_none(), "Target user should be deleted");
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_cannot_delete_guest() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to delete the guest account
+        let result = handle_user_delete(
+            "guest".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Should receive error response
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Should not be able to delete guest account");
+                assert!(error.is_some(), "Should have error message");
+                assert!(
+                    error.unwrap().contains("guest"),
+                    "Error should mention guest"
+                );
+                assert!(username.is_none(), "Should not have username on failure");
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userdelete_cannot_delete_guest_case_insensitive() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Try to delete the guest account with different casing
+        let result = handle_user_delete(
+            "GUEST".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Should receive error response
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Should not be able to delete GUEST account");
+                assert!(error.is_some(), "Should have error message");
+                assert!(username.is_none(), "Should not have username on failure");
+            }
+            _ => panic!("Expected UserDeleteResponse"),
+        }
     }
 }

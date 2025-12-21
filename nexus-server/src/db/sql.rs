@@ -49,14 +49,22 @@ pub const SQL_SET_CHAT_STATE: &str = "INSERT OR REPLACE INTO chat_state (key, va
 // User Query Operations
 // ========================================================================
 
-/// Count all users in the database
+/// Guest account username constant
+///
+/// The guest account is a special shared account that allows passwordless login.
+/// This username is reserved and cannot be used for other accounts.
+pub const GUEST_USERNAME: &str = "guest";
+
+/// Count non-guest users in the database
 ///
 /// **Parameters:** None
 ///
-/// **Returns:** `(count: i64)` - Total number of users
+/// **Returns:** `(count: i64)` - Total number of non-guest users
 ///
-/// **Note:** Used in `create_first_user_if_none_exist()` to check if any users exist.
-pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+/// **Note:** Used in `create_first_user_if_none_exist()` to check if any real users exist.
+/// The guest account is excluded so the first non-guest user becomes admin.
+pub const SQL_COUNT_NON_GUEST_USERS: &str =
+    "SELECT COUNT(*) FROM users WHERE LOWER(username) != 'guest'";
 
 /// Select user by username (case-insensitive lookup)
 ///

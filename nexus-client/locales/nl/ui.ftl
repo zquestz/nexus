@@ -332,6 +332,7 @@ fingerprint-warning = Dit kan wijzen op een beveiligingsprobleem (MITM-aanval) o
 user-info-username = Gebruikersnaam:
 user-info-role = Rol:
 user-info-role-admin = admin
+user-info-role-guest = gast
 user-info-role-shared = gedeeld
 user-info-role-user = gebruiker
 user-info-nickname = Bijnaam:

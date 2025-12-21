@@ -333,6 +333,7 @@ fingerprint-warning = Questo potrebbe indicare un problema di sicurezza (attacco
 user-info-username = Nome utente:
 user-info-role = Ruolo:
 user-info-role-admin = admin
+user-info-role-guest = ospite
 user-info-role-shared = condiviso
 user-info-role-user = utente
 user-info-nickname = Nickname:

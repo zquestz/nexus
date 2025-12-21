@@ -18,6 +18,12 @@ err-shared-invalid-permissions = Shared accounts cannot have these permissions: 
 err-shared-message-requires-nickname = Shared accounts can only be messaged by nickname
 err-shared-kick-requires-nickname = Shared accounts can only be kicked by nickname
 
+# Guest Account Errors
+err-guest-disabled = Guest access is not enabled on this server
+err-cannot-rename-guest = The guest account cannot be renamed
+err-cannot-change-guest-password = The guest account password cannot be changed
+err-cannot-delete-guest = The guest account cannot be deleted
+
 # Avatar Validation Errors
 err-avatar-invalid-format = Invalid avatar format (must be a data URI with base64 encoding)
 err-avatar-too-large = Avatar is too large (max { $max_length } characters)

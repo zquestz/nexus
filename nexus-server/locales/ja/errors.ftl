@@ -18,6 +18,12 @@ err-shared-invalid-permissions = 共有アカウントはこれらの権限を�
 err-shared-message-requires-nickname = 共有アカウントにはニックネームでのみメッセージを送信できます
 err-shared-kick-requires-nickname = 共有アカウントはニックネームでのみキックできます
 
+# ゲストアカウントエラー
+err-guest-disabled = このサーバーではゲストアクセスが有効になっていません
+err-cannot-rename-guest = ゲストアカウントの名前は変更できません
+err-cannot-change-guest-password = ゲストアカウントのパスワードは変更できません
+err-cannot-delete-guest = ゲストアカウントは削除できません
+
 # アバター検証エラー
 err-avatar-invalid-format = アバター形式が無効です（base64エンコードのデータURIである必要があります）
 err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }文字）

@@ -37,11 +37,12 @@ impl NexusApp {
             Ok(conn) => {
                 self.connection_form.error = None;
 
-                // Find if this connection matches a bookmark (username case-insensitive)
+                // Find if this connection matches a bookmark (username/nickname case-insensitive)
                 let bookmark_index = self.config.bookmarks.iter().position(|b| {
                     b.address == self.connection_form.server_address
                         && b.port == self.connection_form.port
                         && b.username.to_lowercase() == self.connection_form.username.to_lowercase()
+                        && b.nickname.to_lowercase() == self.connection_form.nickname.to_lowercase()
                 });
 
                 // Verify and save certificate fingerprint
