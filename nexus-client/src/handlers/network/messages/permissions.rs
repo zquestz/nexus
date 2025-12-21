@@ -23,8 +23,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        let had_user_list =
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+        let had_user_list = conn.has_permission(PERMISSION_USER_LIST);
 
         let has_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 

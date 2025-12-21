@@ -73,7 +73,7 @@ fn format_timestamp(iso_timestamp: &str) -> String {
 /// Check if the current user can edit this news item
 fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
     let is_own_post = news_item.author.to_lowercase() == conn.username.to_lowercase();
-    let has_edit_perm = conn.permissions.iter().any(|p| p == PERMISSION_NEWS_EDIT);
+    let has_edit_perm = conn.has_permission(PERMISSION_NEWS_EDIT);
     let is_admin_post = news_item.author_is_admin;
 
     // Can edit if: own post OR (has edit permission AND (not admin post OR user is admin))
@@ -83,7 +83,7 @@ fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
 /// Check if the current user can delete this news item
 fn can_delete_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
     let is_own_post = news_item.author.to_lowercase() == conn.username.to_lowercase();
-    let has_delete_perm = conn.permissions.iter().any(|p| p == PERMISSION_NEWS_DELETE);
+    let has_delete_perm = conn.has_permission(PERMISSION_NEWS_DELETE);
     let is_admin_post = news_item.author_is_admin;
 
     // Can delete if: own post OR (has delete permission AND (not admin post OR user is admin))
@@ -132,7 +132,7 @@ fn list_view<'a>(
     news_image_cache: &'a HashMap<i64, CachedImage>,
 ) -> Element<'a, Message> {
     // Check permissions
-    let can_create = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_NEWS_CREATE);
+    let can_create = conn.has_permission(PERMISSION_NEWS_CREATE);
 
     // Build scrollable content (news list or status message)
     let scroll_content_inner: Element<'a, Message> = match &news_management.news_items {

@@ -38,9 +38,8 @@ pub fn execute(
         };
 
         // Check if user has user_edit OR user_delete permission
-        let has_edit = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
-        let has_delete =
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_DELETE);
+        let has_edit = conn.has_permission(PERMISSION_USER_EDIT);
+        let has_delete = conn.has_permission(PERMISSION_USER_DELETE);
 
         if !has_edit && !has_delete {
             let error_msg = t("cmd-list-all-no-permission");

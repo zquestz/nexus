@@ -323,16 +323,8 @@ impl NexusApp {
             ParseResult::Message(message) => {
                 // Check permission before sending
                 let has_permission = match &conn.active_chat_tab {
-                    ChatTab::Server => {
-                        conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SEND)
-                    }
-                    ChatTab::UserMessage(_) => {
-                        conn.is_admin
-                            || conn
-                                .permissions
-                                .iter()
-                                .any(|p| p == PERMISSION_USER_MESSAGE)
-                    }
+                    ChatTab::Server => conn.has_permission(PERMISSION_CHAT_SEND),
+                    ChatTab::UserMessage(_) => conn.has_permission(PERMISSION_USER_MESSAGE),
                 };
 
                 if !has_permission {

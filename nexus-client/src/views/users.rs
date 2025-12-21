@@ -104,7 +104,7 @@ where
         let on_toggle_clone = on_toggle.clone();
 
         // Check if this permission is allowed for the current user
-        let user_can_toggle = conn.is_admin || conn.permissions.contains(permission);
+        let user_can_toggle = conn.has_permission(permission);
 
         // Check if this permission is forbidden for shared accounts
         let forbidden_for_shared = is_shared && !is_shared_account_permission(permission);
@@ -150,9 +150,9 @@ fn list_view<'a>(
     current_username: &str,
 ) -> Element<'a, Message> {
     // Check permissions
-    let can_create = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_CREATE);
-    let can_edit = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
-    let can_delete = conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_DELETE);
+    let can_create = conn.has_permission(PERMISSION_USER_CREATE);
+    let can_edit = conn.has_permission(PERMISSION_USER_EDIT);
+    let can_delete = conn.has_permission(PERMISSION_USER_DELETE);
 
     // Build scrollable content (user list or status message)
     let scroll_content_inner: Element<'a, Message> = match &user_management.all_users {

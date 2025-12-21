@@ -207,24 +207,6 @@ static COMMAND_MAP: LazyLock<HashMap<&'static str, usize>> = LazyLock::new(|| {
     map
 });
 
-/// Check if user has any of the required permissions for a command
-fn has_permission(is_admin: bool, user_permissions: &[String], required: &[&str]) -> bool {
-    // Empty permissions = always allowed
-    if required.is_empty() {
-        return true;
-    }
-
-    // Admins have all permissions
-    if is_admin {
-        return true;
-    }
-
-    // Check if user has any of the required permissions
-    required
-        .iter()
-        .any(|req| user_permissions.iter().any(|p| p == *req))
-}
-
 /// Get command info by name or alias (for /help <command>)
 pub fn get_command_info(name: &str) -> Option<&'static CommandInfo> {
     COMMAND_MAP
@@ -233,12 +215,19 @@ pub fn get_command_info(name: &str) -> Option<&'static CommandInfo> {
 }
 
 /// Get list of commands the user has permission to use (for /help display)
-pub fn command_list_for_user(
+pub(crate) fn command_list_for_permissions(
     is_admin: bool,
     permissions: &[String],
 ) -> impl Iterator<Item = &'static CommandInfo> {
     COMMANDS.iter().filter_map(move |reg| {
-        if has_permission(is_admin, permissions, reg.info.permissions) {
+        let has_permission = reg.info.permissions.is_empty()
+            || is_admin
+            || reg
+                .info
+                .permissions
+                .iter()
+                .any(|req| permissions.iter().any(|p| p == *req));
+        if has_permission {
             Some(&reg.info)
         } else {
             None
@@ -322,13 +311,12 @@ pub fn execute_command(
         let reg = &COMMANDS[index];
 
         // Check permissions
-        let (is_admin, permissions) = app
+        let has_permission = app
             .connections
             .get(&connection_id)
-            .map(|conn| (conn.is_admin, conn.permissions.clone()))
-            .unwrap_or((false, Vec::new()));
+            .is_some_and(|conn| conn.has_any_permission(reg.info.permissions));
 
-        if has_permission(is_admin, &permissions, reg.info.permissions) {
+        if has_permission {
             return (reg.handler)(app, connection_id, &command.name, &command.args);
         }
     }
@@ -464,33 +452,6 @@ mod tests {
     }
 
     #[test]
-    fn test_has_permission_empty_always_allowed() {
-        assert!(has_permission(false, &[], &[]));
-        assert!(has_permission(true, &[], &[]));
-    }
-
-    #[test]
-    fn test_has_permission_admin_always_allowed() {
-        assert!(has_permission(true, &[], &["user_list"]));
-        assert!(has_permission(true, &[], &["user_list", "user_info"]));
-    }
-
-    #[test]
-    fn test_has_permission_user_with_permission() {
-        let perms = vec!["user_list".to_string(), "chat_send".to_string()];
-        assert!(has_permission(false, &perms, &["user_list"]));
-        assert!(has_permission(false, &perms, &["chat_send"]));
-        assert!(has_permission(false, &perms, &["user_list", "user_info"])); // any match
-    }
-
-    #[test]
-    fn test_has_permission_user_without_permission() {
-        let perms = vec!["chat_send".to_string()];
-        assert!(!has_permission(false, &perms, &["user_list"]));
-        assert!(!has_permission(false, &perms, &["user_list", "user_info"]));
-    }
-
-    #[test]
     fn test_get_command_info_by_name() {
         let info = get_command_info("help").expect("help command should exist");
         assert_eq!(info.name, "help");
@@ -521,13 +482,13 @@ mod tests {
 
     #[test]
     fn test_command_list_for_user_admin_sees_all() {
-        let commands: Vec<_> = command_list_for_user(true, &[]).collect();
+        let commands: Vec<_> = command_list_for_permissions(true, &[]).collect();
         assert_eq!(commands.len(), COMMANDS.len());
     }
 
     #[test]
     fn test_command_list_for_user_no_perms_sees_public() {
-        let commands: Vec<_> = command_list_for_user(false, &[]).collect();
+        let commands: Vec<_> = command_list_for_permissions(false, &[]).collect();
         // Should see help and clear (no permissions required)
         assert!(commands.iter().any(|c| c.name == "help"));
         assert!(commands.iter().any(|c| c.name == "clear"));
@@ -539,7 +500,7 @@ mod tests {
     #[test]
     fn test_command_list_for_user_with_permission() {
         let perms = vec!["user_list".to_string()];
-        let commands: Vec<_> = command_list_for_user(false, &perms).collect();
+        let commands: Vec<_> = command_list_for_permissions(false, &perms).collect();
         // Should see list command now
         assert!(commands.iter().any(|c| c.name == "list"));
         // Still shouldn't see kick

@@ -219,11 +219,10 @@ impl NexusApp {
         username: String,
         display_name: String,
     ) -> Option<ConnectionRegistration> {
+        let should_request_userlist = conn.has_permission(PERMISSION_USER_LIST);
         let shutdown_handle = conn.shutdown?;
         let chat_topic = conn.chat_topic.clone();
         let chat_topic_set_by = conn.chat_topic_set_by.clone();
-        let should_request_userlist =
-            conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_LIST);
 
         let cached_server_image = if conn.server_image.is_empty() {
             None

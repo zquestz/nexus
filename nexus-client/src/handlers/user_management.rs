@@ -351,9 +351,7 @@ impl NexusApp {
             .user_management
             .permissions
             .iter()
-            .filter(|(perm_name, enabled)| {
-                *enabled && (conn.is_admin || conn.permissions.contains(perm_name))
-            })
+            .filter(|(perm_name, enabled)| *enabled && conn.has_permission(perm_name))
             .map(|(name, _)| name.clone())
             .collect();
 
@@ -585,9 +583,7 @@ impl NexusApp {
         // Only send permissions that the current user has (or all if admin)
         let requested_permissions: Vec<String> = permissions
             .iter()
-            .filter(|(perm_name, perm_enabled)| {
-                *perm_enabled && (conn.is_admin || conn.permissions.contains(perm_name))
-            })
+            .filter(|(perm_name, perm_enabled)| *perm_enabled && conn.has_permission(perm_name))
             .map(|(name, _)| name.clone())
             .collect();
 
@@ -703,9 +699,7 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
             // Check permission (admins always have access)
-            let has_permission =
-                conn.is_admin || conn.permissions.iter().any(|p| p == PERMISSION_USER_INFO);
-            if !has_permission {
+            if !conn.has_permission(PERMISSION_USER_INFO) {
                 return Task::none();
             }
 

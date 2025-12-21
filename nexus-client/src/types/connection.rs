@@ -149,6 +149,28 @@ pub struct ServerConnection {
 }
 
 impl ServerConnection {
+    /// Check if the user has a specific permission
+    ///
+    /// Admins implicitly have all permissions. For non-admins, checks
+    /// if the permission is in their permissions list.
+    pub fn has_permission(&self, permission: &str) -> bool {
+        self.is_admin || self.permissions.iter().any(|p| p == permission)
+    }
+
+    /// Check if the user has any of the specified permissions
+    ///
+    /// Returns true if:
+    /// - The permissions slice is empty (no permissions required)
+    /// - The user is an admin (admins have all permissions)
+    /// - The user has any of the specified permissions
+    pub fn has_any_permission(&self, permissions: &[&str]) -> bool {
+        permissions.is_empty()
+            || self.is_admin
+            || permissions
+                .iter()
+                .any(|req| self.permissions.iter().any(|p| p == *req))
+    }
+
     /// Send a message to the server
     ///
     /// Generates a new message ID and sends the message through the channel.
@@ -239,4 +261,14 @@ pub struct NetworkConnection {
     pub certificate_fingerprint: String,
     /// Locale accepted by the server
     pub locale: String,
+}
+
+impl NetworkConnection {
+    /// Check if the user has a specific permission
+    ///
+    /// Admins implicitly have all permissions. For non-admins, checks
+    /// if the permission is in their permissions list.
+    pub fn has_permission(&self, permission: &str) -> bool {
+        self.is_admin || self.permissions.iter().any(|p| p == permission)
+    }
 }

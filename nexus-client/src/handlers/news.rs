@@ -19,7 +19,8 @@ impl NexusApp {
 
     /// Toggle the news panel
     ///
-    /// When opening, fetches the news list from the server.
+    /// When opening for the first time, fetches the news list from the server.
+    /// Subsequent opens use the cached list (kept in sync via NewsUpdated broadcasts).
     pub fn handle_toggle_news(&mut self) -> Task<Message> {
         if self.active_panel() == ActivePanel::News {
             return Task::none();
@@ -36,20 +37,22 @@ impl NexusApp {
 
         // Reset to list mode and clear any previous state
         conn.news_management.reset_to_list();
-        conn.news_management.news_items = None; // Trigger loading state
 
         // Clear the text editor content
         self.news_body_content.remove(&conn_id);
 
-        // Request news list from server
-        match conn.send(ClientMessage::NewsList) {
-            Ok(message_id) => {
-                conn.pending_requests
-                    .track(message_id, ResponseRouting::PopulateNewsList);
-            }
-            Err(e) => {
-                conn.news_management.news_items =
-                    Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+        // Only fetch if we don't have news items cached
+        // (NewsUpdated broadcasts keep the list in sync after initial fetch)
+        if conn.news_management.news_items.is_none() {
+            match conn.send(ClientMessage::NewsList) {
+                Ok(message_id) => {
+                    conn.pending_requests
+                        .track(message_id, ResponseRouting::PopulateNewsList);
+                }
+                Err(e) => {
+                    conn.news_management.news_items =
+                        Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+                }
             }
         }
 

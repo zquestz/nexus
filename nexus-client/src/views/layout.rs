@@ -147,7 +147,10 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         .unwrap_or((false, &[]));
 
     // Check if user has permission to view user list
-    let can_view_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+    let can_view_user_list = config
+        .active_connection
+        .and_then(|id| config.connections.get(&id))
+        .is_some_and(|conn| conn.has_permission(PERMISSION_USER_LIST));
 
     // Get server name from active connection
     let server_name = config
@@ -274,17 +277,14 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
     // Need to capture this for the closures
     let active_panel = state.active_panel;
 
-    // Check permissions (avoid string allocations)
-    let has_broadcast = state.is_admin
-        || state
-            .permissions
-            .iter()
-            .any(|p| p == PERMISSION_USER_BROADCAST);
-    let has_news = state.is_admin || state.permissions.iter().any(|p| p == PERMISSION_NEWS_LIST);
-    let has_user_management = state.is_admin
-        || state.permissions.iter().any(|p| {
-            p == PERMISSION_USER_CREATE || p == PERMISSION_USER_EDIT || p == PERMISSION_USER_DELETE
-        });
+    // Check permissions
+    let has_broadcast = state.has_permission(PERMISSION_USER_BROADCAST);
+    let has_news = state.has_permission(PERMISSION_NEWS_LIST);
+    let has_user_management = state.has_any_permission(&[
+        PERMISSION_USER_CREATE,
+        PERMISSION_USER_EDIT,
+        PERMISSION_USER_DELETE,
+    ]);
 
     let toolbar = container(
         row![
@@ -596,20 +596,10 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 .height(Fill)
                 .into()
         }
-        ActivePanel::UserInfo => stack![
-            chat,
-            user_info_view(
-                &ctx.conn.user_info_data,
-                ctx.theme,
-                ctx.conn.is_admin,
-                &ctx.conn.permissions,
-                &ctx.conn.username,
-                &ctx.conn.avatar_cache,
-            )
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into(),
+        ActivePanel::UserInfo => stack![chat, user_info_view(ctx.conn, ctx.theme)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::ChangePassword => stack![
             chat,
             password_change_view(ctx.conn.password_change_state.as_ref())

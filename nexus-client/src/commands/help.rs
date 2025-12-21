@@ -1,7 +1,7 @@
 //! /help command implementation
 
 use crate::NexusApp;
-use crate::commands::{command_list_for_user, get_command_info};
+use crate::commands::{command_list_for_permissions, get_command_info};
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use iced::Task;
@@ -17,12 +17,14 @@ pub fn execute(
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // Get user's permissions for filtering
-    let (is_admin, permissions) = app
+    // Extract permission info first, then release the borrow
+    let Some((is_admin, permissions)) = app
         .connections
         .get(&connection_id)
         .map(|conn| (conn.is_admin, conn.permissions.clone()))
-        .unwrap_or((false, Vec::new()));
+    else {
+        return Task::none();
+    };
 
     // If a command name is provided, show help for that specific command
     if args.len() == 1 {
@@ -42,7 +44,7 @@ pub fn execute(
     tasks.push(app.add_chat_message(connection_id, ChatMessage::info(t("cmd-help-header"))));
 
     // List available commands (filtered by permission)
-    for cmd in command_list_for_user(is_admin, &permissions) {
+    for cmd in command_list_for_permissions(is_admin, &permissions) {
         let aliases = if cmd.aliases.is_empty() {
             String::new()
         } else {

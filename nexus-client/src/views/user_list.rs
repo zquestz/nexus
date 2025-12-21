@@ -87,20 +87,16 @@ fn create_user_toolbar<'a>(
     nickname: &'a str,
     current_nickname: &'a str,
     target_is_admin: bool,
-    current_user_is_admin: bool,
-    permissions: &[String],
+    conn: &ServerConnection,
     theme: &Theme,
 ) -> Row<'a, Message> {
     let nickname_owned = nickname.to_string();
     let is_self = nickname == current_nickname;
 
-    // Check permissions (admins have all permissions)
-    let has_user_info_permission =
-        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_INFO);
-    let has_user_message_permission =
-        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_MESSAGE);
-    let has_user_kick_permission =
-        current_user_is_admin || permissions.iter().any(|p| p == PERMISSION_USER_KICK);
+    // Check permissions
+    let has_user_info_permission = conn.has_permission(PERMISSION_USER_INFO);
+    let has_user_message_permission = conn.has_permission(PERMISSION_USER_MESSAGE);
+    let has_user_kick_permission = conn.has_permission(PERMISSION_USER_KICK);
 
     // Build toolbar row
     let mut toolbar_row = row![].spacing(NO_SPACING).width(Fill);
@@ -181,8 +177,6 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         .find(|u| u.session_ids.contains(&conn.session_id))
         .map(|u| u.nickname.as_str())
         .unwrap_or(&conn.username);
-    let is_admin = conn.is_admin;
-    let permissions = &conn.permissions;
 
     let title = shaped_text(t("title-users"))
         .size(USER_LIST_TITLE_SIZE)
@@ -275,8 +269,7 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     &user.nickname,
                     current_nickname,
                     user.is_admin,
-                    is_admin,
-                    permissions,
+                    conn,
                     theme,
                 );
                 let toolbar_row = container(toolbar)

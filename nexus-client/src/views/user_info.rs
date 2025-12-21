@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use super::constants::PERMISSION_USER_EDIT;
 use super::layout::scrollable_panel;
 use crate::avatar::generate_identicon;
 use crate::handlers::network::constants::DATETIME_FORMAT;
@@ -13,27 +14,21 @@ use crate::style::{
     SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING,
     chat, error_text_style, shaped_text, shaped_text_wrapped,
 };
-use crate::types::{InputId, Message, PasswordChangeState};
+use crate::types::{InputId, Message, PasswordChangeState, ServerConnection};
 use iced::widget::button as btn;
 use iced::widget::{Id, Space, button, column, row, text_input};
 use iced::{Center, Color, Element, Fill, Theme};
 use nexus_common::protocol::UserInfoDetailed;
 
-use super::constants::PERMISSION_USER_EDIT;
-
 /// Render the user info panel
 ///
 /// Displays user information received from the server.
 /// Shows loading state, error state, or user details depending on data.
-pub fn user_info_view<'a>(
-    data: &Option<Result<UserInfoDetailed, String>>,
-    theme: Theme,
-    is_admin: bool,
-    permissions: &[String],
-    current_username: &str,
-    avatar_cache: &'a HashMap<String, CachedImage>,
-) -> Element<'a, Message> {
-    let has_edit_permission = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_EDIT);
+pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'a, Message> {
+    let has_edit_permission = conn.has_permission(PERMISSION_USER_EDIT);
+    let data = &conn.user_info_data;
+    let current_username = &conn.username;
+    let avatar_cache = &conn.avatar_cache;
 
     let mut content = column![].spacing(ELEMENT_SPACING);
 
