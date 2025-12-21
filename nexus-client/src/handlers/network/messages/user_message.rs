@@ -92,12 +92,43 @@ impl NexusApp {
             return Task::none();
         }
 
-        self.add_chat_message(
-            connection_id,
-            ChatMessage::error(t_args(
-                "err-failed-send-message",
-                &[("error", &error.unwrap_or_default())],
-            )),
-        )
+        // Build error message
+        let error_msg = ChatMessage::error(t_args(
+            "err-failed-send-message",
+            &[("error", &error.unwrap_or_default())],
+        ));
+
+        // Route error to the appropriate tab
+        match routing {
+            Some(ResponseRouting::OpenMessageTab(nickname))
+            | Some(ResponseRouting::ShowErrorInMessageTab(nickname)) => {
+                let Some(conn) = self.connections.get_mut(&connection_id) else {
+                    return Task::none();
+                };
+
+                // Only add to PM tab if it still exists (user didn't close it)
+                if conn.user_messages.contains_key(&nickname) {
+                    conn.user_messages
+                        .get_mut(&nickname)
+                        .unwrap()
+                        .push(error_msg);
+
+                    // Scroll to bottom if we're viewing this tab
+                    let pm_tab = ChatTab::UserMessage(nickname);
+                    if conn.active_chat_tab == pm_tab {
+                        return self.scroll_chat_if_visible(true);
+                    }
+
+                    Task::none()
+                } else {
+                    // Tab was closed, fall back to server chat
+                    self.add_chat_message(connection_id, error_msg)
+                }
+            }
+            _ => {
+                // Default: add to server chat
+                self.add_chat_message(connection_id, error_msg)
+            }
+        }
     }
 }

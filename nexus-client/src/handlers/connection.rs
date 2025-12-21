@@ -3,7 +3,10 @@
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::ConnectionParams;
-use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message, ScrollableId};
+use crate::types::{
+    ActivePanel, ChatMessage, ChatTab, InputId, Message, PendingRequests, ResponseRouting,
+    ScrollableId,
+};
 use crate::views::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::{NexusApp, network};
 use iced::Task;
@@ -351,24 +354,39 @@ impl NexusApp {
                     return Task::none();
                 };
 
-                let msg = match &conn.active_chat_tab {
-                    ChatTab::Server => ClientMessage::ChatSend { message },
-                    ChatTab::UserMessage(nickname) => ClientMessage::UserMessage {
-                        to_nickname: nickname.clone(),
-                        message,
-                    },
+                let (msg, pm_nickname) = match &conn.active_chat_tab {
+                    ChatTab::Server => (ClientMessage::ChatSend { message }, None),
+                    ChatTab::UserMessage(nickname) => (
+                        ClientMessage::UserMessage {
+                            to_nickname: nickname.clone(),
+                            message,
+                        },
+                        Some(nickname.clone()),
+                    ),
                 };
 
-                if let Err(e) = conn.send(msg) {
-                    let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                    return self.add_chat_error(conn_id, error_msg);
-                }
+                let send_result = conn.send(msg);
 
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    conn.message_input.clear();
-                }
+                match send_result {
+                    Ok(message_id) => {
+                        if let Some(conn) = self.connections.get_mut(&conn_id) {
+                            conn.message_input.clear();
 
-                Task::none()
+                            // Track PM messages so errors go to the correct tab
+                            if let Some(nickname) = pm_nickname {
+                                conn.pending_requests.track(
+                                    message_id,
+                                    ResponseRouting::ShowErrorInMessageTab(nickname),
+                                );
+                            }
+                        }
+                        Task::none()
+                    }
+                    Err(e) => {
+                        let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                        self.add_chat_error(conn_id, error_msg)
+                    }
+                }
             }
         }
     }

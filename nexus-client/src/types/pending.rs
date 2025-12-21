@@ -18,6 +18,8 @@ pub enum ResponseRouting {
     DisplayListInChat,
     /// Open PM tab on success (from `/msg` command)
     OpenMessageTab(String),
+    /// Show error in PM tab on failure (from PM tab message send)
+    ShowErrorInMessageTab(String),
     /// Display user info in chat (from `/info` command)
     DisplayUserInfoInChat,
     /// Populate user info panel if nickname matches (from info icon click)
