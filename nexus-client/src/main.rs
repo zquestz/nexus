@@ -23,7 +23,7 @@ use iced::{Element, Subscription, Task, Theme};
 use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
 use types::{
     BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
-    ServerConnection, SettingsFormState, UiState, ViewConfig,
+    ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
 };
 
 /// Application entry point
@@ -98,6 +98,8 @@ struct NexusApp {
     ui_state: UiState,
     /// Settings panel form state (present when settings panel is open)
     settings_form: Option<SettingsFormState>,
+    /// Active settings tab (persisted across panel opens)
+    settings_tab: SettingsTab,
 
     // -------------------------------------------------------------------------
     // Async / Transient
@@ -132,6 +134,7 @@ impl Default for NexusApp {
             // UI State
             ui_state: UiState::default(),
             settings_form: None,
+            settings_tab: SettingsTab::default(),
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
             bookmark_errors: HashMap::new(),
@@ -358,6 +361,7 @@ impl NexusApp {
             Message::SaveSettings => self.handle_save_settings(),
             Message::ShowSecondsToggled(enabled) => self.handle_show_seconds_toggled(enabled),
             Message::ShowTimestampsToggled(enabled) => self.handle_show_timestamps_toggled(enabled),
+            Message::SettingsTabSelected(tab) => self.handle_settings_tab_selected(tab),
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
             Message::SettingsNicknameChanged(nickname) => {
                 self.handle_settings_nickname_changed(nickname)
@@ -370,8 +374,8 @@ impl NexusApp {
             Message::ProxyUsernameChanged(username) => self.handle_proxy_username_changed(username),
             Message::ProxyPasswordChanged(password) => self.handle_proxy_password_changed(password),
             Message::SettingsTabPressed => self.handle_settings_tab_pressed(),
-            Message::SettingsFocusResult(nickname, address, port, username, password) => {
-                self.handle_settings_focus_result(nickname, address, port, username, password)
+            Message::SettingsNetworkFocusResult(address, port, username, password) => {
+                self.handle_settings_network_focus_result(address, port, username, password)
             }
 
             // About

@@ -386,12 +386,26 @@ impl UserManagementState {
 // Settings Form State
 // =============================================================================
 
+/// Settings panel tab identifiers
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    /// General settings (theme, avatar, nickname)
+    #[default]
+    General,
+    /// Chat settings (font size, timestamps, notifications)
+    Chat,
+    /// Network settings (proxy configuration)
+    Network,
+}
+
 /// Settings panel form state
 ///
 /// Stores a snapshot of the configuration when the settings panel is opened,
 /// allowing the user to cancel and restore the original settings.
 #[derive(Clone)]
 pub struct SettingsFormState {
+    /// Currently active settings tab
+    pub active_tab: SettingsTab,
     /// Original config snapshot to restore on cancel
     pub original_config: Config,
     /// Error message to display (e.g., avatar load failure)
@@ -501,7 +515,9 @@ impl ServerInfoEditState {
 
 impl SettingsFormState {
     /// Create a new settings form state with a snapshot of the current config
-    pub fn new(config: &Config) -> Self {
+    ///
+    /// The `last_tab` parameter restores the previously selected tab when reopening the panel.
+    pub fn new(config: &Config, last_tab: SettingsTab) -> Self {
         // Decode avatar from config if present
         let cached_avatar = config
             .settings
@@ -512,6 +528,7 @@ impl SettingsFormState {
         let default_avatar = generate_identicon("default");
 
         Self {
+            active_tab: last_tab,
             original_config: config.clone(),
             error: None,
             cached_avatar,

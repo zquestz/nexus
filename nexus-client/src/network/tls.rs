@@ -152,6 +152,8 @@ fn is_loopback_address(address: &str) -> bool {
 }
 
 /// Check if an address is in the Yggdrasil range (0200::/7)
+///
+/// Returns false for IPv4 addresses since Yggdrasil only uses IPv6.
 fn is_yggdrasil_address(address: &str) -> bool {
     normalize_address(address)
         .parse::<Ipv6Addr>()

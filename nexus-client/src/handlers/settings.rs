@@ -5,7 +5,7 @@ use crate::config::settings::{AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZ
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
-use crate::types::{ActivePanel, InputId, Message, SettingsFormState};
+use crate::types::{ActivePanel, InputId, Message, SettingsFormState, SettingsTab};
 use iced::Task;
 use iced::widget::{Id, operation};
 use rfd::AsyncFileDialog;
@@ -16,15 +16,36 @@ impl NexusApp {
     /// Show Settings panel (does nothing if already shown)
     ///
     /// Takes a snapshot of the current config so it can be restored on cancel.
+    /// Focuses the appropriate field based on the active tab.
     pub fn handle_toggle_settings(&mut self) -> Task<Message> {
         if self.active_panel() == ActivePanel::Settings {
             return Task::none();
         }
 
         // Snapshot current config for potential cancel/restore
-        self.settings_form = Some(SettingsFormState::new(&self.config));
+        self.settings_form = Some(SettingsFormState::new(&self.config, self.settings_tab));
         self.set_active_panel(ActivePanel::Settings);
-        Task::none()
+
+        // Focus the appropriate field for the active tab
+        self.focus_settings_tab_field()
+    }
+
+    /// Focus the appropriate input field for the current settings tab
+    fn focus_settings_tab_field(&mut self) -> Task<Message> {
+        match self.settings_tab {
+            SettingsTab::General => {
+                self.focused_field = InputId::SettingsNickname;
+                operation::focus(Id::from(InputId::SettingsNickname))
+            }
+            SettingsTab::Chat => {
+                // Chat tab has no text input fields
+                Task::none()
+            }
+            SettingsTab::Network => {
+                self.focused_field = InputId::ProxyAddress;
+                operation::focus(Id::from(InputId::ProxyAddress))
+            }
+        }
     }
 
     /// Cancel settings panel and restore original config
@@ -51,6 +72,20 @@ impl NexusApp {
         }
 
         self.handle_show_chat_view()
+    }
+
+    /// Handle settings tab selection
+    ///
+    /// Updates the active tab and focuses the appropriate field.
+    pub fn handle_settings_tab_selected(&mut self, tab: SettingsTab) -> Task<Message> {
+        // Update both the form state and the persistent tab state
+        self.settings_tab = tab;
+        if let Some(form) = &mut self.settings_form {
+            form.active_tab = tab;
+        }
+
+        // Focus the appropriate field for the new tab
+        self.focus_settings_tab_field()
     }
 
     // ==================== Theme & Display ====================
@@ -151,61 +186,74 @@ impl NexusApp {
     // ==================== Tab Navigation ====================
 
     /// Handle Tab key press in settings panel - check which field is focused
+    ///
+    /// Tab navigation is scoped to the active settings tab:
+    /// - General tab: nickname (single field)
+    /// - Chat tab: no focusable fields (only checkboxes/pickers)
+    /// - Network tab: address -> username -> password (skips port NumberInput)
     pub fn handle_settings_tab_pressed(&mut self) -> Task<Message> {
-        let check_nickname = operation::is_focused(Id::from(InputId::SettingsNickname));
-        let check_address = operation::is_focused(Id::from(InputId::ProxyAddress));
-        let check_port = operation::is_focused(Id::from(InputId::ProxyPort));
-        let check_username = operation::is_focused(Id::from(InputId::ProxyUsername));
-        let check_password = operation::is_focused(Id::from(InputId::ProxyPassword));
+        match self.settings_tab {
+            SettingsTab::General => {
+                // General tab only has nickname field - focus it
+                self.focused_field = InputId::SettingsNickname;
+                operation::focus(Id::from(InputId::SettingsNickname))
+            }
+            SettingsTab::Chat => {
+                // Chat tab has no text input fields, just checkboxes and pickers
+                Task::none()
+            }
+            SettingsTab::Network => {
+                // Network tab: cycle through proxy fields
+                let check_address = operation::is_focused(Id::from(InputId::ProxyAddress));
+                let check_port = operation::is_focused(Id::from(InputId::ProxyPort));
+                let check_username = operation::is_focused(Id::from(InputId::ProxyUsername));
+                let check_password = operation::is_focused(Id::from(InputId::ProxyPassword));
 
-        Task::batch([
-            check_nickname.map(|focused| (0, focused)),
-            check_address.map(|focused| (1, focused)),
-            check_port.map(|focused| (2, focused)),
-            check_username.map(|focused| (3, focused)),
-            check_password.map(|focused| (4, focused)),
-        ])
-        .collect()
-        .map(|results: Vec<(u8, bool)>| {
-            let nickname = results.iter().any(|(i, f)| *i == 0 && *f);
-            let address = results.iter().any(|(i, f)| *i == 1 && *f);
-            let port = results.iter().any(|(i, f)| *i == 2 && *f);
-            let username = results.iter().any(|(i, f)| *i == 3 && *f);
-            let password = results.iter().any(|(i, f)| *i == 4 && *f);
-            Message::SettingsFocusResult(nickname, address, port, username, password)
-        })
+                Task::batch([
+                    check_address.map(|focused| (0, focused)),
+                    check_port.map(|focused| (1, focused)),
+                    check_username.map(|focused| (2, focused)),
+                    check_password.map(|focused| (3, focused)),
+                ])
+                .collect()
+                .map(|results: Vec<(u8, bool)>| {
+                    let address = results.iter().any(|(i, f)| *i == 0 && *f);
+                    let port = results.iter().any(|(i, f)| *i == 1 && *f);
+                    let username = results.iter().any(|(i, f)| *i == 2 && *f);
+                    let password = results.iter().any(|(i, f)| *i == 3 && *f);
+                    Message::SettingsNetworkFocusResult(address, port, username, password)
+                })
+            }
+        }
     }
 
-    /// Handle focus check result and move to next field
-    pub fn handle_settings_focus_result(
+    /// Handle focus check result for Network tab and move to next field
+    pub fn handle_settings_network_focus_result(
         &mut self,
-        nickname: bool,
         address: bool,
         port: bool,
         username: bool,
         password: bool,
     ) -> Task<Message> {
-        // Cycle through fields: nickname -> address -> port -> username -> password -> nickname
-        if nickname {
-            self.focused_field = InputId::ProxyAddress;
-            operation::focus(Id::from(InputId::ProxyAddress))
-        } else if address {
-            // Skip ProxyPort (NumberInput handles its own Tab key)
+        // Cycle through Network tab fields: address -> username -> password -> address
+        // (skips port because NumberInput handles its own Tab key)
+        if address {
             self.focused_field = InputId::ProxyUsername;
             operation::focus(Id::from(InputId::ProxyUsername))
         } else if port {
+            // If somehow focused on port, move to username
             self.focused_field = InputId::ProxyUsername;
             operation::focus(Id::from(InputId::ProxyUsername))
         } else if username {
             self.focused_field = InputId::ProxyPassword;
             operation::focus(Id::from(InputId::ProxyPassword))
         } else if password {
-            self.focused_field = InputId::SettingsNickname;
-            operation::focus(Id::from(InputId::SettingsNickname))
+            self.focused_field = InputId::ProxyAddress;
+            operation::focus(Id::from(InputId::ProxyAddress))
         } else {
-            // No field focused, start with nickname
-            self.focused_field = InputId::SettingsNickname;
-            operation::focus(Id::from(InputId::SettingsNickname))
+            // No field focused, start with address
+            self.focused_field = InputId::ProxyAddress;
+            operation::focus(Id::from(InputId::ProxyAddress))
         }
     }
 

@@ -5,6 +5,7 @@ use iced::widget::{markdown, text_editor};
 
 use nexus_common::framing::MessageId;
 
+use super::form::SettingsTab;
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::image::ImagePickerError;
 
@@ -86,8 +87,8 @@ pub enum Message {
     ServerInfoEditFocusResult(bool, bool),
     /// Settings panel: Tab pressed, check focus and move to next field
     SettingsTabPressed,
-    /// Settings panel: Focus check result for Tab navigation (nickname, proxy address, port, username, password)
-    SettingsFocusResult(bool, bool, bool, bool, bool),
+    /// Settings panel Network tab: Focus check result for Tab navigation (address, port, username, password)
+    SettingsNetworkFocusResult(bool, bool, bool, bool),
     /// Chat: Message input field changed
     ChatInputChanged(String),
     /// Chat scrollable: scroll position changed
@@ -183,6 +184,8 @@ pub enum Message {
     ShowSecondsToggled(bool),
     /// Settings panel: Show timestamps checkbox toggled
     ShowTimestampsToggled(bool),
+    /// Settings panel: Tab selected
+    SettingsTabSelected(SettingsTab),
     /// Toolbar: Toggle Settings panel
     ToggleSettings,
     /// Settings panel: Theme selected from picker

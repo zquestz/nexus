@@ -15,7 +15,7 @@ pub use connection::{NetworkConnection, ServerConnection, ServerConnectionParams
 pub use display::{ChatMessage, ChatTab, MessageType, ScrollState, UserInfo};
 pub use form::{
     ConnectionFormState, NewsManagementMode, NewsManagementState, PasswordChangeState,
-    ServerInfoEditState, SettingsFormState, UserManagementMode, UserManagementState,
+    ServerInfoEditState, SettingsFormState, SettingsTab, UserManagementMode, UserManagementState,
 };
 pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;

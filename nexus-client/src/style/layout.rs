@@ -45,6 +45,9 @@ pub const CLOSE_BUTTON_PADDING: iced::Padding = iced::Padding {
     left: SMALL_PADDING,
 };
 
+/// Settings tab label padding (compact tabs)
+pub const TAB_LABEL_PADDING: f32 = 2.0;
+
 /// Tab content padding (standard padding with extra right space for close button)
 pub const TAB_CONTENT_PADDING: iced::Padding = iced::Padding {
     top: INPUT_PADDING,
@@ -91,6 +94,9 @@ pub const CHAT_SPACING: f32 = 3.0;
 
 /// Small spacing (general use)
 pub const SMALL_SPACING: f32 = 5.0;
+
+/// Indentation for nested/child checkboxes (e.g., timestamp sub-options)
+pub const CHECKBOX_INDENT: f32 = 20.0;
 
 /// Medium vertical spacer (between sections)
 pub const SPACER_SIZE_MEDIUM: f32 = 10.0;
@@ -158,6 +164,12 @@ pub const USER_LIST_AVATAR_SPACING: f32 = 8.0;
 
 /// Avatar size in user info panel
 pub const USER_INFO_AVATAR_SIZE: f32 = 64.0;
+
+/// Title row height for panels with action buttons (matches news/users panels)
+///
+/// Calculated as: SIDEBAR_ACTION_ICON_SIZE (18.0) + vertical padding from ICON_BUTTON_PADDING
+/// Note: Uses hardcoded value to avoid circular dependency with icons module.
+pub const TITLE_ROW_HEIGHT_WITH_ACTION: f32 = 18.0 + ICON_BUTTON_PADDING_VERTICAL * 2.0;
 
 /// Spacing between avatar and username in user info panel
 pub const USER_INFO_AVATAR_SPACING: f32 = 12.0;

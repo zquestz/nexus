@@ -201,7 +201,14 @@ impl NexusApp {
     }
 
     /// Navigate to the next chat tab (wraps around)
+    ///
+    /// Only works when chat is visible (no panel active).
     pub fn handle_next_chat_tab(&mut self) -> Task<Message> {
+        // Only switch chat tabs when chat is visible (no panel active)
+        if self.active_panel() != ActivePanel::None {
+            return Task::none();
+        }
+
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -229,7 +236,14 @@ impl NexusApp {
     }
 
     /// Navigate to the previous chat tab (wraps around)
+    ///
+    /// Only works when chat is visible (no panel active).
     pub fn handle_prev_chat_tab(&mut self) -> Task<Message> {
+        // Only switch chat tabs when chat is visible (no panel active)
+        if self.active_panel() != ActivePanel::None {
+            return Task::none();
+        }
+
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };

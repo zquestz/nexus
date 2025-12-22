@@ -1,28 +1,36 @@
 //! Settings panel view
 
 use super::chat::TimestampSettings;
-use super::layout::scrollable_panel;
 use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::style::{
-    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING,
-    INPUT_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE, TITLE_SIZE,
-    error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
+    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, ELEMENT_SPACING, FORM_MAX_WIDTH,
+    FORM_PADDING, INPUT_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING,
+    TEXT_SIZE, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE, content_background_style,
+    error_text_style, shaped_text, shaped_text_wrapped,
 };
-use crate::types::{InputId, Message, SettingsFormState};
+use crate::types::{InputId, Message, SettingsFormState, SettingsTab};
 use iced::widget::button as btn;
-use iced::widget::{Column, Id, Space, button, checkbox, pick_list, row, text_input};
+use iced::widget::{
+    Column, Id, Space, button, checkbox, container, pick_list, row, scrollable, text_input,
+};
 use iced::{Center, Element, Fill, Theme};
 use iced_aw::NumberInput;
+use iced_aw::TabLabel;
+use iced_aw::Tabs;
 
 // ============================================================================
 // Settings View
 // ============================================================================
 
-/// Render the settings panel
+/// Render the settings panel with tabbed layout
 ///
-/// Shows application settings that can be modified and saved to disk.
+/// Shows application settings organized into tabs:
+/// - General: Theme, avatar, nickname
+/// - Chat: Font size, timestamps, notifications
+/// - Network: Proxy configuration
+///
 /// Cancel restores original settings, Save persists changes.
 pub fn settings_view<'a>(
     current_theme: Theme,
@@ -33,27 +41,81 @@ pub fn settings_view<'a>(
     nickname: &'a str,
     proxy: &'a ProxySettings,
 ) -> Element<'a, Message> {
-    // Extract avatar state from settings form (only present when panel is open)
-    let (avatar, default_avatar, error) = settings_form
+    // Extract state from settings form (only present when panel is open)
+    let (avatar, default_avatar, error, active_tab) = settings_form
         .map(|f| {
             (
                 f.cached_avatar.as_ref(),
                 Some(&f.default_avatar),
                 f.error.as_deref(),
+                f.active_tab,
             )
         })
-        .unwrap_or((None, None, None));
+        .unwrap_or((None, None, None, SettingsTab::General));
 
-    let title = shaped_text(t("title-settings"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    // Build tab content
+    let general_content = general_tab_content(current_theme, avatar, default_avatar, nickname);
+    let chat_content = chat_tab_content(
+        chat_font_size,
+        show_connection_notifications,
+        timestamp_settings,
+    );
+    let network_content = network_tab_content(proxy);
 
-    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+    // Create tabs widget with compact styling
+    let tabs = Tabs::new(Message::SettingsTabSelected)
+        .push(
+            SettingsTab::General,
+            TabLabel::Text(t("tab-general")),
+            general_content,
+        )
+        .push(
+            SettingsTab::Chat,
+            TabLabel::Text(t("tab-chat")),
+            chat_content,
+        )
+        .push(
+            SettingsTab::Network,
+            TabLabel::Text(t("tab-network")),
+            network_content,
+        )
+        .set_active_tab(&active_tab)
+        .tab_bar_position(iced_aw::TabBarPosition::Top)
+        .text_size(TEXT_SIZE)
+        .tab_label_padding(TAB_LABEL_PADDING);
+
+    // Buttons row
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::CancelSettings)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
+            .on_press(Message::SaveSettings)
+            .padding(BUTTON_PADDING),
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    // Build the form
+    let mut content_items: Vec<Element<'_, Message>> = Vec::new();
+
+    content_items.push(
+        container(
+            shaped_text(t("title-settings"))
+                .size(TITLE_SIZE)
+                .width(Fill)
+                .align_x(Center),
+        )
+        // Title row height matches news/users panels (which have action buttons)
+        .height(TITLE_ROW_HEIGHT_WITH_ACTION)
+        .align_y(Center)
+        .into(),
+    );
 
     // Show error if present
     if let Some(error) = error {
-        form_items.push(
+        content_items.push(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
                 .width(Fill)
@@ -61,16 +123,45 @@ pub fn settings_view<'a>(
                 .style(error_text_style)
                 .into(),
         );
-        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+        content_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else {
-        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+        content_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     }
 
-    // ==================== Appearance Section ====================
-    let appearance_heading = shaped_text(t("label-appearance"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(appearance_heading.into());
+    content_items.push(tabs.into());
+    content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    content_items.push(buttons.into());
+
+    let content = Column::with_children(content_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
+
+    // Scrollable, top-aligned, with background
+    let scrollable_content = scrollable(container(content).width(Fill).center_x(Fill)).width(Fill);
+
+    container(scrollable_content)
+        .width(Fill)
+        .height(Fill)
+        .style(content_background_style)
+        .into()
+}
+
+// ============================================================================
+// Tab Content Builders
+// ============================================================================
+
+/// Build the General tab content (theme, avatar, nickname)
+fn general_tab_content<'a>(
+    current_theme: Theme,
+    avatar: Option<&'a crate::image::CachedImage>,
+    default_avatar: Option<&'a crate::image::CachedImage>,
+    nickname: &'a str,
+) -> Element<'a, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    // Space between tab bar and first content
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Theme picker row
     let theme_label = shaped_text(t("label-theme")).size(TEXT_SIZE);
@@ -79,15 +170,7 @@ pub fn settings_view<'a>(
     let theme_row = row![theme_label, theme_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
-    form_items.push(theme_row.into());
-
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
-
-    // ==================== Identity Section ====================
-    let identity_heading = shaped_text(t("label-identity"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(identity_heading.into());
+    items.push(theme_row.into());
 
     // Avatar section
     let avatar_preview: Element<'_, Message> = if let Some(av) = avatar {
@@ -121,24 +204,33 @@ pub fn settings_view<'a>(
     let avatar_row = row![avatar_preview, avatar_buttons]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
-    form_items.push(avatar_row.into());
+    items.push(avatar_row.into());
 
-    // Nickname input
+    // Nickname input (placeholder guides the user)
     let nickname_input = text_input(&t("placeholder-nickname-optional"), nickname)
         .on_input(Message::SettingsNicknameChanged)
         .on_submit(Message::SaveSettings)
         .id(Id::from(InputId::SettingsNickname))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
-    form_items.push(nickname_input.into());
+    items.push(nickname_input.into());
 
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .width(Fill)
+        .into()
+}
 
-    // ==================== Chat Options Section ====================
-    let chat_heading = shaped_text(t("label-chat-options"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(chat_heading.into());
+/// Build the Chat tab content (font size, notifications, timestamps)
+fn chat_tab_content(
+    chat_font_size: u8,
+    show_connection_notifications: bool,
+    timestamp_settings: TimestampSettings,
+) -> Element<'static, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    // Space between tab bar and first content
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Chat font size picker row
     let font_size_label = shaped_text(t("label-chat-font-size")).size(TEXT_SIZE);
@@ -151,21 +243,21 @@ pub fn settings_view<'a>(
     let font_size_row = row![font_size_label, font_size_picker]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
-    form_items.push(font_size_row.into());
+    items.push(font_size_row.into());
 
     // Connection notifications checkbox
     let notifications_checkbox = checkbox(show_connection_notifications)
         .label(t("label-show-connection-notifications"))
         .on_toggle(Message::ConnectionNotificationsToggled)
         .text_size(TEXT_SIZE);
-    form_items.push(notifications_checkbox.into());
+    items.push(notifications_checkbox.into());
 
     // Timestamp settings
     let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)
         .label(t("label-show-timestamps"))
         .on_toggle(Message::ShowTimestampsToggled)
         .text_size(TEXT_SIZE);
-    form_items.push(timestamps_checkbox.into());
+    items.push(timestamps_checkbox.into());
 
     // 24-hour time checkbox (disabled if timestamps are hidden, indented)
     let time_format_checkbox = if timestamp_settings.show_timestamps {
@@ -178,8 +270,8 @@ pub fn settings_view<'a>(
             .label(t("label-use-24-hour-time"))
             .text_size(TEXT_SIZE)
     };
-    let time_format_row = row![Space::new().width(20), time_format_checkbox];
-    form_items.push(time_format_row.into());
+    let time_format_row = row![Space::new().width(CHECKBOX_INDENT), time_format_checkbox];
+    items.push(time_format_row.into());
 
     // Show seconds checkbox (disabled if timestamps are hidden, indented)
     let seconds_checkbox = if timestamp_settings.show_timestamps {
@@ -192,23 +284,28 @@ pub fn settings_view<'a>(
             .label(t("label-show-seconds"))
             .text_size(TEXT_SIZE)
     };
-    let seconds_row = row![Space::new().width(20), seconds_checkbox];
-    form_items.push(seconds_row.into());
+    let seconds_row = row![Space::new().width(CHECKBOX_INDENT), seconds_checkbox];
+    items.push(seconds_row.into());
 
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .width(Fill)
+        .into()
+}
 
-    // ==================== Network Section ====================
-    let network_heading = shaped_text(t("label-network"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(network_heading.into());
+/// Build the Network tab content (proxy configuration)
+fn network_tab_content(proxy: &ProxySettings) -> Element<'_, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    // Space between tab bar and first content
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Proxy enabled checkbox
     let proxy_enabled_checkbox = checkbox(proxy.enabled)
         .label(t("label-use-socks5-proxy"))
         .on_toggle(Message::ProxyEnabledToggled)
         .text_size(TEXT_SIZE);
-    form_items.push(proxy_enabled_checkbox.into());
+    items.push(proxy_enabled_checkbox.into());
 
     // Proxy address input (disabled when proxy is disabled)
     let proxy_address_input = if proxy.enabled {
@@ -224,7 +321,7 @@ pub fn settings_view<'a>(
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
     };
-    form_items.push(proxy_address_input.into());
+    items.push(proxy_address_input.into());
 
     // Proxy port input with label (disabled when proxy is disabled)
     let proxy_port_label = shaped_text(t("label-proxy-port")).size(TEXT_SIZE);
@@ -243,7 +340,7 @@ pub fn settings_view<'a>(
     let proxy_port_row = row![proxy_port_label, proxy_port_input]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
-    form_items.push(proxy_port_row.into());
+    items.push(proxy_port_row.into());
 
     // Proxy username input (optional, disabled when proxy is disabled)
     let proxy_username_value = proxy.username.as_deref().unwrap_or("");
@@ -260,7 +357,7 @@ pub fn settings_view<'a>(
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
     };
-    form_items.push(proxy_username_input.into());
+    items.push(proxy_username_input.into());
 
     // Proxy password input (optional, disabled when proxy is disabled)
     let proxy_password_value = proxy.password.as_deref().unwrap_or("");
@@ -279,29 +376,10 @@ pub fn settings_view<'a>(
             .size(TEXT_SIZE)
             .secure(true)
     };
-    form_items.push(proxy_password_input.into());
+    items.push(proxy_password_input.into());
 
-    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-
-    // ==================== Buttons ====================
-    let buttons = row![
-        Space::new().width(Fill),
-        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
-            .on_press(Message::CancelSettings)
-            .padding(BUTTON_PADDING)
-            .style(btn::secondary),
-        button(shaped_text(t("button-save")).size(TEXT_SIZE))
-            .on_press(Message::SaveSettings)
-            .padding(BUTTON_PADDING),
-    ]
-    .spacing(ELEMENT_SPACING);
-
-    form_items.push(buttons.into());
-
-    let form = Column::with_children(form_items)
+    Column::with_children(items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
-
-    scrollable_panel(form)
+        .width(Fill)
+        .into()
 }
