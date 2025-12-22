@@ -97,6 +97,18 @@ cargo build --release
 
 Use the GUI to manage server bookmarks, chat, view users, and manage permissions.
 
+### SOCKS5 Proxy Support
+
+The client supports SOCKS5 proxy connections for privacy or to access servers through SSH tunnels:
+
+1. Open Settings panel
+2. Enable proxy and configure address/port (default: 127.0.0.1:9050 for Tor)
+3. Optionally add username/password for authenticated proxies
+
+**Automatic bypass:** The proxy is automatically bypassed for:
+- Loopback addresses (`localhost`, `127.x.x.x`, `::1`)
+- Yggdrasil mesh network addresses (`0200::/7` range)
+
 ## Guest Access
 
 The server includes a built-in guest account that allows passwordless login. It is **disabled by default** for security.
