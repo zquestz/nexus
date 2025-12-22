@@ -38,6 +38,7 @@ rfd = "0.16"
 base64 = "0.22"
 identicon-rs = "7.0"
 image = "0.25"
+ipnet = "2.11"
 
 [build-dependencies]
 iced_fontello = "0.13.2"

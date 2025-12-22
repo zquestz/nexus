@@ -1,6 +1,6 @@
 //! TLS configuration and connection establishment
 
-use std::net::ToSocketAddrs;
+use std::net::{IpAddr, Ipv6Addr, ToSocketAddrs};
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
@@ -13,7 +13,7 @@ use tokio_socks::tcp::Socks5Stream;
 
 use crate::i18n::{t, t_args};
 
-use super::constants::CONNECTION_TIMEOUT;
+use super::constants::{CONNECTION_TIMEOUT, YGGDRASIL_NETWORK};
 use super::types::{ProxyConfig, TlsStream};
 
 /// Global TLS connector (accepts any certificate, no hostname verification)
@@ -104,8 +104,8 @@ pub(super) async fn establish_connection(
     // Server name for TLS (doesn't matter - we accept any cert and disable SNI)
     let server_name = ServerName::try_from("localhost").expect("'localhost' is a valid DNS name");
 
-    // Bypass proxy for localhost/loopback addresses
-    let use_proxy = proxy.filter(|_| !is_loopback_address(address));
+    // Bypass proxy for localhost/loopback and Yggdrasil addresses
+    let use_proxy = proxy.filter(|_| !should_bypass_proxy(address));
 
     let (tls_stream, fingerprint) = if let Some(proxy_config) = use_proxy {
         // Connect through SOCKS5 proxy
@@ -118,30 +118,44 @@ pub(super) async fn establish_connection(
     Ok((tls_stream, fingerprint))
 }
 
-/// Check if an address is a loopback/localhost address that should bypass the proxy
+/// Check if an address should bypass the proxy
+///
+/// Bypasses:
+/// - Localhost/loopback addresses (127.x.x.x, ::1)
+/// - Yggdrasil mesh network addresses (0200::/7)
+fn should_bypass_proxy(address: &str) -> bool {
+    is_loopback_address(address) || is_yggdrasil_address(address)
+}
+
+/// Normalize an address by removing brackets and zone identifiers
+///
+/// Handles formats like: "127.0.0.1", "::1", "[::1]", "::1%eth0", "[::1%eth0]"
+fn normalize_address(address: &str) -> &str {
+    let trimmed = address.trim_start_matches('[').trim_end_matches(']');
+    trimmed.split('%').next().unwrap_or(trimmed)
+}
+
+/// Check if an address is a loopback/localhost address
+///
+/// Matches:
+/// - "localhost" hostname
+/// - IPv4 loopback (127.x.x.x)
+/// - IPv6 loopback (::1)
 fn is_loopback_address(address: &str) -> bool {
-    let addr_lower = address.to_lowercase();
-
-    // Check for localhost hostname
-    if addr_lower == "localhost" {
+    if address.eq_ignore_ascii_case("localhost") {
         return true;
     }
 
-    // Check for IPv4 loopback (127.x.x.x)
-    if addr_lower.starts_with("127.") {
-        return true;
-    }
+    normalize_address(address)
+        .parse::<IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
 
-    // Check for IPv6 loopback (::1)
-    // Handle formats: "::1", "[::1]", "::1%iface", "[::1%iface]"
-    // Zone identifier always comes after the address (inside brackets if bracketed)
-    let trimmed = addr_lower.trim_start_matches('[').trim_end_matches(']');
-    let without_zone = trimmed.split('%').next().unwrap_or(trimmed);
-    if without_zone == "::1" {
-        return true;
-    }
-
-    false
+/// Check if an address is in the Yggdrasil range (0200::/7)
+fn is_yggdrasil_address(address: &str) -> bool {
+    normalize_address(address)
+        .parse::<Ipv6Addr>()
+        .is_ok_and(|ip| YGGDRASIL_NETWORK.contains(&ip))
 }
 
 /// Establish a direct TLS connection (no proxy)
@@ -271,35 +285,112 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_loopback_localhost() {
+    fn test_bypass_localhost() {
+        assert!(should_bypass_proxy("localhost"));
+        assert!(should_bypass_proxy("LOCALHOST"));
+        assert!(should_bypass_proxy("LocalHost"));
+    }
+
+    #[test]
+    fn test_bypass_ipv4_loopback() {
+        assert!(should_bypass_proxy("127.0.0.1"));
+        assert!(should_bypass_proxy("127.0.0.2"));
+        assert!(should_bypass_proxy("127.255.255.255"));
+    }
+
+    #[test]
+    fn test_bypass_ipv6_loopback() {
+        assert!(should_bypass_proxy("::1"));
+        assert!(should_bypass_proxy("[::1]"));
+        assert!(should_bypass_proxy("::1%lo"));
+        assert!(should_bypass_proxy("[::1%lo]"));
+    }
+
+    #[test]
+    fn test_bypass_yggdrasil() {
+        // Start of range (0200::/7)
+        assert!(should_bypass_proxy("200::1"));
+        assert!(should_bypass_proxy("[200::1]"));
+        assert!(should_bypass_proxy("200:abcd:1234::1"));
+        assert!(should_bypass_proxy("[200:abcd:1234::1]"));
+
+        // Middle of range
+        assert!(should_bypass_proxy("201::1"));
+        assert!(should_bypass_proxy("2ff::1"));
+        assert!(should_bypass_proxy("300::1"));
+        assert!(should_bypass_proxy("3fe::1"));
+
+        // End of range
+        assert!(should_bypass_proxy("3ff::1"));
+        assert!(should_bypass_proxy(
+            "3ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+        ));
+
+        // With zone identifier
+        assert!(should_bypass_proxy("200::1%eth0"));
+        assert!(should_bypass_proxy("[200::1%eth0]"));
+
+        // Case insensitive
+        assert!(should_bypass_proxy("2FF::1"));
+        assert!(should_bypass_proxy("3FF:ABCD::1"));
+    }
+
+    #[test]
+    fn test_not_bypass() {
+        // Regular IPv4
+        assert!(!should_bypass_proxy("192.168.1.1"));
+        assert!(!should_bypass_proxy("10.0.0.1"));
+
+        // Hostnames
+        assert!(!should_bypass_proxy("example.com"));
+        assert!(!should_bypass_proxy("local"));
+        assert!(!should_bypass_proxy("localhost.localdomain"));
+
+        // Regular IPv6 (not loopback, not Yggdrasil)
+        assert!(!should_bypass_proxy("::2"));
+        assert!(!should_bypass_proxy("2001:db8::1"));
+        assert!(!should_bypass_proxy("fe80::1"));
+
+        // Just outside Yggdrasil range
+        assert!(!should_bypass_proxy("1ff::1")); // Below 200::
+        assert!(!should_bypass_proxy("400::1")); // Above 3ff::
+    }
+
+    #[test]
+    fn test_is_loopback_address() {
+        // Localhost hostname
         assert!(is_loopback_address("localhost"));
         assert!(is_loopback_address("LOCALHOST"));
-        assert!(is_loopback_address("LocalHost"));
-    }
 
-    #[test]
-    fn test_is_loopback_ipv4() {
+        // IPv4 loopback
         assert!(is_loopback_address("127.0.0.1"));
-        assert!(is_loopback_address("127.0.0.2"));
         assert!(is_loopback_address("127.255.255.255"));
-    }
 
-    #[test]
-    fn test_is_loopback_ipv6() {
+        // IPv6 loopback
         assert!(is_loopback_address("::1"));
         assert!(is_loopback_address("[::1]"));
         assert!(is_loopback_address("::1%lo"));
-        assert!(is_loopback_address("[::1%lo]"));
+
+        // Not loopback
+        assert!(!is_loopback_address("192.168.1.1"));
+        assert!(!is_loopback_address("example.com"));
+        assert!(!is_loopback_address("200::1"));
     }
 
     #[test]
-    fn test_not_loopback() {
-        assert!(!is_loopback_address("192.168.1.1"));
-        assert!(!is_loopback_address("10.0.0.1"));
-        assert!(!is_loopback_address("example.com"));
-        assert!(!is_loopback_address("::2"));
-        assert!(!is_loopback_address("2001:db8::1"));
-        assert!(!is_loopback_address("local"));
-        assert!(!is_loopback_address("localhost.localdomain"));
+    fn test_is_yggdrasil_address() {
+        // In range (0x200-0x3ff)
+        assert!(is_yggdrasil_address("200::1"));
+        assert!(is_yggdrasil_address("3ff::1"));
+        assert!(is_yggdrasil_address("[200::1]"));
+        assert!(is_yggdrasil_address("200::1%eth0"));
+        assert!(is_yggdrasil_address("2FF::1")); // Case insensitive
+
+        // Out of range
+        assert!(!is_yggdrasil_address("1ff::1"));
+        assert!(!is_yggdrasil_address("400::1"));
+        assert!(!is_yggdrasil_address("::1"));
+        assert!(!is_yggdrasil_address("2001:db8::1"));
+        assert!(!is_yggdrasil_address("localhost"));
     }
 }
