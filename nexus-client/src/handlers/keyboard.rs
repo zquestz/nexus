@@ -321,9 +321,8 @@ impl NexusApp {
             // Settings panel: check actual focus and cycle through fields
             return self.update(Message::SettingsTabPressed);
         } else if self.active_connection.is_some() {
-            // In chat view, Tab refocuses the chat input
-            self.focused_field = InputId::ChatInput;
-            return operation::focus(Id::from(InputId::ChatInput));
+            // In chat view, Tab triggers nickname completion
+            return self.update(Message::ChatTabComplete);
         } else if self.active_connection.is_none() {
             // On connection screen, check actual focus and cycle
             return self.update(Message::ConnectionFormTabPressed);

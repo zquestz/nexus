@@ -6,6 +6,28 @@ use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
+/// State for tab completion in chat input
+#[derive(Debug, Clone)]
+pub struct TabCompletionState {
+    /// List of matching nicknames (sorted alphabetically)
+    pub matches: Vec<String>,
+    /// Current index in the matches list
+    pub index: usize,
+    /// Position in the input where the prefix starts (for truncation during cycling)
+    pub start_pos: usize,
+}
+
+impl TabCompletionState {
+    /// Create a new tab completion state
+    pub fn new(matches: Vec<String>, start_pos: usize) -> Self {
+        Self {
+            matches,
+            index: 0,
+            start_pos,
+        }
+    }
+}
+
 use super::{
     ActivePanel, ChatMessage, ChatTab, NewsManagementState, PasswordChangeState, ResponseRouting,
     ScrollState, ServerInfoEditState, UserInfo, UserManagementState,
@@ -146,6 +168,8 @@ pub struct ServerConnection {
     pub news_image_cache: HashMap<i64, CachedImage>,
     /// Cached parsed markdown for news items (keyed by news item ID)
     pub news_markdown_cache: HashMap<i64, Vec<markdown::Item>>,
+    /// Tab completion state for chat input (None when not completing)
+    pub tab_completion: Option<TabCompletionState>,
 }
 
 impl ServerConnection {
@@ -224,6 +248,7 @@ impl ServerConnection {
             news_management: NewsManagementState::default(),
             news_image_cache: HashMap::new(),
             news_markdown_cache: HashMap::new(),
+            tab_completion: None,
         }
     }
 }

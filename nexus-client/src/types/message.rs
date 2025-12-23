@@ -91,6 +91,8 @@ pub enum Message {
     SettingsNetworkFocusResult(bool, bool, bool, bool),
     /// Chat: Message input field changed
     ChatInputChanged(String),
+    /// Chat: Tab key pressed for nickname completion
+    ChatTabComplete,
     /// Chat scrollable: scroll position changed
     ChatScrolled(iced::widget::scrollable::Viewport),
     /// Close a user message tab

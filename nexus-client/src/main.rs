@@ -264,6 +264,7 @@ impl NexusApp {
 
             // Chat
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
+            Message::ChatTabComplete => self.handle_chat_tab_complete(),
             Message::ChatScrolled(viewport) => self.handle_chat_scrolled(viewport),
             Message::CloseUserMessageTab(nickname) => self.handle_close_user_message_tab(nickname),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
