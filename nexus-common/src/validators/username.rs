@@ -5,6 +5,9 @@
 /// Maximum length for usernames in characters
 pub const MAX_USERNAME_LENGTH: usize = 32;
 
+/// Characters that are not allowed in usernames (path-sensitive)
+const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*'];
+
 /// Validation error for usernames
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsernameError {
@@ -25,6 +28,7 @@ pub enum UsernameError {
 ///   - Unicode letters (any language)
 ///   - ASCII graphic characters (printable non-space: `!` through `~`)
 ///   - No whitespace or control characters
+///   - No path-sensitive characters: `/`, `\`, `:`, `.`, `<`, `>`, `"`, `|`, `?`, `*`
 ///
 /// # Errors
 ///
@@ -37,6 +41,9 @@ pub fn validate_username(username: &str) -> Result<(), UsernameError> {
         return Err(UsernameError::TooLong);
     }
     for ch in username.chars() {
+        if FORBIDDEN_CHARS.contains(&ch) {
+            return Err(UsernameError::InvalidCharacters);
+        }
         if !ch.is_alphabetic() && !ch.is_ascii_graphic() {
             return Err(UsernameError::InvalidCharacters);
         }
@@ -54,7 +61,6 @@ mod tests {
         assert!(validate_username("Alice123").is_ok());
         assert!(validate_username("user_name").is_ok());
         assert!(validate_username("user-name").is_ok());
-        assert!(validate_username("user.name").is_ok());
         assert!(validate_username(&"a".repeat(MAX_USERNAME_LENGTH)).is_ok());
         // Unicode letters
         assert!(validate_username("用户").is_ok());
@@ -95,6 +101,64 @@ mod tests {
         );
         assert_eq!(
             validate_username("user\nname"),
+            Err(UsernameError::InvalidCharacters)
+        );
+    }
+
+    #[test]
+    fn test_path_sensitive_characters() {
+        // Forward slash (Unix path separator)
+        assert_eq!(
+            validate_username("user/name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Backslash (Windows path separator)
+        assert_eq!(
+            validate_username("user\\name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Colon (Windows drive, macOS resource fork)
+        assert_eq!(
+            validate_username("user:name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Dot (directory traversal, hidden files)
+        assert_eq!(
+            validate_username("user.name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username(".."),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username(".hidden"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Windows reserved characters
+        assert_eq!(
+            validate_username("user<name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username("user>name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username("user\"name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username("user|name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Wildcards
+        assert_eq!(
+            validate_username("user?name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username("user*name"),
             Err(UsernameError::InvalidCharacters)
         );
     }

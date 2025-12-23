@@ -7,6 +7,9 @@
 /// Maximum length for nicknames in characters
 pub const MAX_NICKNAME_LENGTH: usize = 32;
 
+/// Characters that are not allowed in nicknames (path-sensitive)
+const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*'];
+
 /// Validation error for nicknames
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NicknameError {
@@ -27,6 +30,7 @@ pub enum NicknameError {
 ///   - Unicode letters (any language)
 ///   - ASCII graphic characters (printable non-space: `!` through `~`)
 ///   - No whitespace or control characters
+///   - No path-sensitive characters: `/`, `\`, `:`, `.`, `<`, `>`, `"`, `|`, `?`, `*`
 ///
 /// # Errors
 ///
@@ -39,6 +43,9 @@ pub fn validate_nickname(nickname: &str) -> Result<(), NicknameError> {
         return Err(NicknameError::TooLong);
     }
     for ch in nickname.chars() {
+        if FORBIDDEN_CHARS.contains(&ch) {
+            return Err(NicknameError::InvalidCharacters);
+        }
         if !ch.is_alphabetic() && !ch.is_ascii_graphic() {
             return Err(NicknameError::InvalidCharacters);
         }
@@ -56,7 +63,6 @@ mod tests {
         assert!(validate_nickname("Alice123").is_ok());
         assert!(validate_nickname("nick_name").is_ok());
         assert!(validate_nickname("nick-name").is_ok());
-        assert!(validate_nickname("nick.name").is_ok());
         assert!(validate_nickname(&"a".repeat(MAX_NICKNAME_LENGTH)).is_ok());
         // Unicode letters
         assert!(validate_nickname("用户").is_ok());
@@ -97,6 +103,64 @@ mod tests {
         );
         assert_eq!(
             validate_nickname("nick\nname"),
+            Err(NicknameError::InvalidCharacters)
+        );
+    }
+
+    #[test]
+    fn test_path_sensitive_characters() {
+        // Forward slash (Unix path separator)
+        assert_eq!(
+            validate_nickname("nick/name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Backslash (Windows path separator)
+        assert_eq!(
+            validate_nickname("nick\\name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Colon (Windows drive, macOS resource fork)
+        assert_eq!(
+            validate_nickname("nick:name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Dot (directory traversal, hidden files)
+        assert_eq!(
+            validate_nickname("nick.name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname(".."),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname(".hidden"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Windows reserved characters
+        assert_eq!(
+            validate_nickname("nick<name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname("nick>name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname("nick\"name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname("nick|name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Wildcards
+        assert_eq!(
+            validate_nickname("nick?name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname("nick*name"),
             Err(NicknameError::InvalidCharacters)
         );
     }
