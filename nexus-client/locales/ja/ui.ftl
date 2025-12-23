@@ -19,6 +19,7 @@ button-clear-avatar = クリア
 button-choose-image = 画像を選択
 button-clear-image = クリア
 button-change-password = パスワードを変更
+button-browse = 参照
 
 # =============================================================================
 # Titles
@@ -73,6 +74,7 @@ placeholder-proxy-address = プロキシアドレス
 placeholder-proxy-port = 9050
 placeholder-proxy-username = ユーザー名（任意）
 placeholder-proxy-password = パスワード（任意）
+placeholder-download-location = ダウンロード場所が設定されていません
 
 # =============================================================================
 # Labels
@@ -116,6 +118,7 @@ label-proxy-address = アドレス:
 label-proxy-port = ポート:
 label-proxy-username = ユーザー名:
 label-proxy-password = パスワード:
+label-download-location = ダウンロード場所:
 
 # =============================================================================
 # Permission Display Names
@@ -185,6 +188,7 @@ news-updated = 更新済み
 tab-general = 一般
 tab-chat = チャット
 tab-network = ネットワーク
+tab-files = ファイル
 
 # =============================================================================
 # Chat Tab Labels

@@ -1,14 +1,15 @@
 //! Settings panel view
 
 use super::chat::TimestampSettings;
-use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings};
+use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings, default_download_path};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
+use crate::image::CachedImage;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, ELEMENT_SPACING, FORM_MAX_WIDTH,
-    FORM_PADDING, INPUT_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING,
-    TEXT_SIZE, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE, content_background_style,
-    error_text_style, shaped_text, shaped_text_wrapped,
+    FORM_PADDING, INPUT_PADDING, PATH_DISPLAY_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
+    TAB_LABEL_PADDING, TEXT_SIZE, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE,
+    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, SettingsFormState, SettingsTab};
 use iced::widget::button as btn;
@@ -21,6 +22,30 @@ use iced_aw::TabLabel;
 use iced_aw::Tabs;
 
 // ============================================================================
+// Settings View Data
+// ============================================================================
+
+/// Data needed to render the settings panel
+pub struct SettingsViewData<'a> {
+    /// Current theme for styling
+    pub current_theme: Theme,
+    /// Show user connect/disconnect notifications in chat
+    pub show_connection_notifications: bool,
+    /// Font size for chat messages
+    pub chat_font_size: u8,
+    /// Timestamp display settings
+    pub timestamp_settings: TimestampSettings,
+    /// Settings form state (present when panel is open)
+    pub settings_form: Option<&'a SettingsFormState>,
+    /// Default nickname for shared accounts
+    pub nickname: &'a str,
+    /// SOCKS5 proxy settings
+    pub proxy: &'a ProxySettings,
+    /// Download path for file transfers
+    pub download_path: Option<&'a str>,
+}
+
+// ============================================================================
 // Settings View
 // ============================================================================
 
@@ -29,20 +54,19 @@ use iced_aw::Tabs;
 /// Shows application settings organized into tabs:
 /// - General: Theme, avatar, nickname
 /// - Chat: Font size, timestamps, notifications
+/// - Files: Download location
 /// - Network: Proxy configuration
 ///
 /// Cancel restores original settings, Save persists changes.
-pub fn settings_view<'a>(
-    current_theme: Theme,
-    show_connection_notifications: bool,
-    chat_font_size: u8,
-    timestamp_settings: TimestampSettings,
-    settings_form: Option<&'a SettingsFormState>,
-    nickname: &'a str,
-    proxy: &'a ProxySettings,
-) -> Element<'a, Message> {
+pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
     // Extract state from settings form (only present when panel is open)
-    let (avatar, default_avatar, error, active_tab) = settings_form
+    let (avatar, default_avatar, error, active_tab): (
+        Option<&CachedImage>,
+        Option<&CachedImage>,
+        Option<&str>,
+        SettingsTab,
+    ) = data
+        .settings_form
         .map(|f| {
             (
                 f.cached_avatar.as_ref(),
@@ -54,13 +78,16 @@ pub fn settings_view<'a>(
         .unwrap_or((None, None, None, SettingsTab::General));
 
     // Build tab content
-    let general_content = general_tab_content(current_theme, avatar, default_avatar, nickname);
+    let general_content =
+        general_tab_content(data.current_theme, avatar, default_avatar, data.nickname);
     let chat_content = chat_tab_content(
-        chat_font_size,
-        show_connection_notifications,
-        timestamp_settings,
+        data.chat_font_size,
+        data.show_connection_notifications,
+        data.timestamp_settings,
     );
-    let network_content = network_tab_content(proxy);
+    let network_content = network_tab_content(data.proxy);
+
+    let files_content = files_tab_content(data.download_path);
 
     // Create tabs widget with compact styling
     let tabs = Tabs::new(Message::SettingsTabSelected)
@@ -73,6 +100,11 @@ pub fn settings_view<'a>(
             SettingsTab::Chat,
             TabLabel::Text(t("tab-chat")),
             chat_content,
+        )
+        .push(
+            SettingsTab::Files,
+            TabLabel::Text(t("tab-files")),
+            files_content,
         )
         .push(
             SettingsTab::Network,
@@ -286,6 +318,46 @@ fn chat_tab_content(
     };
     let seconds_row = row![Space::new().width(CHECKBOX_INDENT), seconds_checkbox];
     items.push(seconds_row.into());
+
+    Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .width(Fill)
+        .into()
+}
+
+/// Build the Files tab content (download location)
+fn files_tab_content(download_path: Option<&str>) -> Element<'static, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    // Space between tab bar and first content
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // Download location label
+    let download_label = shaped_text(t("label-download-location")).size(TEXT_SIZE);
+    items.push(download_label.into());
+
+    // Get current download path (from live config or system default)
+    // Only call default_download_path() if no path is configured
+    let path_display = match download_path {
+        Some(path) => path.to_string(),
+        None => default_download_path().unwrap_or_else(|| t("placeholder-download-location")),
+    };
+
+    // Path display (read-only style, no left padding to align with label) with Browse button
+    let path_text = shaped_text(path_display).size(TEXT_SIZE);
+    let path_container = container(path_text)
+        .padding(PATH_DISPLAY_PADDING)
+        .width(Fill);
+
+    let browse_button = button(shaped_text(t("button-browse")).size(TEXT_SIZE))
+        .on_press(Message::BrowseDownloadPathPressed)
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
+
+    let path_row = row![path_container, browse_button]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    items.push(path_row.into());
 
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)

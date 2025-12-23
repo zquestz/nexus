@@ -19,6 +19,7 @@ button-clear-avatar = 清除
 button-choose-image = 選擇圖片
 button-clear-image = 清除
 button-change-password = 修改密碼
+button-browse = 瀏覽
 
 # =============================================================================
 # Titles
@@ -73,6 +74,7 @@ placeholder-proxy-address = 代理伺服器地址
 placeholder-proxy-port = 9050
 placeholder-proxy-username = 使用者名稱（選填）
 placeholder-proxy-password = 密碼（選填）
+placeholder-download-location = 未設定下載位置
 
 # =============================================================================
 # Labels
@@ -113,9 +115,10 @@ label-nickname = 暱稱：
 label-network = 網路
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
-label-proxy-port = 連接埠：
-label-proxy-username = 使用者名稱：
-label-proxy-password = 密碼：
+label-proxy-port = 連接埠:
+label-proxy-username = 使用者名稱:
+label-proxy-password = 密碼:
+label-download-location = 下載位置:
 
 # =============================================================================
 # Permission Display Names
@@ -185,6 +188,7 @@ news-updated = 已更新
 tab-general = 一般
 tab-chat = 聊天
 tab-network = 網路
+tab-files = 檔案
 
 # =============================================================================
 # Chat Tab Labels

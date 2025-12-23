@@ -19,6 +19,7 @@ button-clear-avatar = Очистить
 button-choose-image = Выбрать изображение
 button-clear-image = Очистить
 button-change-password = Изменить пароль
+button-browse = Обзор
 
 # =============================================================================
 # Titles
@@ -71,8 +72,9 @@ placeholder-news-body = Содержимое новости
 placeholder-nickname-optional = Псевдоним (опционально)
 placeholder-proxy-address = Адрес прокси
 placeholder-proxy-port = 9050
-placeholder-proxy-username = Имя пользователя (опционально)
-placeholder-proxy-password = Пароль (опционально)
+placeholder-proxy-username = Имя пользователя (необязательно)
+placeholder-proxy-password = Пароль (необязательно)
+placeholder-download-location = Папка загрузки не установлена
 
 # =============================================================================
 # Labels
@@ -116,6 +118,7 @@ label-proxy-address = Адрес:
 label-proxy-port = Порт:
 label-proxy-username = Имя пользователя:
 label-proxy-password = Пароль:
+label-download-location = Папка загрузки:
 
 # =============================================================================
 # Permission Display Names
@@ -185,6 +188,7 @@ news-updated = Обновлено
 tab-general = Общие
 tab-chat = Чат
 tab-network = Сеть
+tab-files = Файлы
 
 # =============================================================================
 # Chat Tab Labels

@@ -57,6 +57,8 @@ struct ServerContentContext<'a> {
     nickname: &'a str,
     /// SOCKS5 proxy settings
     proxy: &'a ProxySettings,
+    /// Download path for file transfers
+    download_path: Option<&'a str>,
 }
 
 // ============================================================================
@@ -118,7 +120,7 @@ use super::{
     chat::{TimestampSettings, chat_view},
     connection::connection_form_view,
     server_list::server_list_panel,
-    settings::settings_view,
+    settings::{SettingsViewData, settings_view},
     user_list::user_list_panel,
     users::users_view,
 };
@@ -208,6 +210,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 news_body_content: config.news_body_content,
                 nickname: config.nickname,
                 proxy: config.proxy,
+                download_path: config.download_path,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -218,19 +221,20 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
             match config.active_panel {
                 ActivePanel::Settings => stack![
                     conn_form,
-                    settings_view(
-                        config.theme.clone(),
-                        config.show_connection_notifications,
-                        config.chat_font_size,
-                        TimestampSettings {
+                    settings_view(SettingsViewData {
+                        current_theme: config.theme.clone(),
+                        show_connection_notifications: config.show_connection_notifications,
+                        chat_font_size: config.chat_font_size,
+                        timestamp_settings: TimestampSettings {
                             show_timestamps: config.show_timestamps,
                             use_24_hour_time: config.use_24_hour_time,
                             show_seconds: config.show_seconds,
                         },
-                        config.settings_form,
-                        config.nickname,
-                        config.proxy,
-                    )
+                        settings_form: config.settings_form,
+                        nickname: config.nickname,
+                        proxy: config.proxy,
+                        download_path: config.download_path,
+                    })
                 ]
                 .width(Fill)
                 .height(Fill)
@@ -568,15 +572,16 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
         }
         ActivePanel::Settings => stack![
             chat,
-            settings_view(
-                ctx.theme.clone(),
-                ctx.show_connection_notifications,
-                ctx.chat_font_size,
-                ctx.timestamp_settings,
-                ctx.settings_form,
-                ctx.nickname,
-                ctx.proxy,
-            )
+            settings_view(SettingsViewData {
+                current_theme: ctx.theme.clone(),
+                show_connection_notifications: ctx.show_connection_notifications,
+                chat_font_size: ctx.chat_font_size,
+                timestamp_settings: ctx.timestamp_settings,
+                settings_form: ctx.settings_form,
+                nickname: ctx.nickname,
+                proxy: ctx.proxy,
+                download_path: ctx.download_path,
+            })
         ]
         .width(Fill)
         .height(Fill)

@@ -299,6 +299,12 @@ pub enum Message {
     /// News: Submit button pressed (create or edit)
     NewsSubmitPressed,
 
+    // ==================== Files Settings ====================
+    /// Settings panel: Browse download path button pressed
+    BrowseDownloadPathPressed,
+    /// Settings panel: Download path selected from folder picker
+    DownloadPathSelected(Option<String>),
+
     // ==================== Proxy Settings ====================
     /// Settings panel: Proxy enabled checkbox toggled
     ProxyEnabledToggled(bool),

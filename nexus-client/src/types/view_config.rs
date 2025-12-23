@@ -73,6 +73,9 @@ pub struct ViewConfig<'a> {
 
     /// SOCKS5 proxy settings (from config)
     pub proxy: &'a ProxySettings,
+
+    /// Download path for file transfers (from config)
+    pub download_path: Option<&'a str>,
 }
 
 /// Toolbar state configuration

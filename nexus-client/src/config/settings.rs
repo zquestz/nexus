@@ -84,6 +84,11 @@ pub struct Settings {
     #[serde(default)]
     pub theme: ThemePreference,
 
+    /// Download location for file transfers
+    /// Defaults to system downloads directory if not set
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_path: Option<String>,
+
     /// Font size for chat messages (9-16)
     #[serde(default = "default_chat_font_size")]
     pub chat_font_size: u8,
@@ -140,6 +145,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: ThemePreference::default(),
+            download_path: None,
             chat_font_size: default_chat_font_size(),
             show_connection_notifications: default_true(),
             show_timestamps: default_true(),
@@ -165,6 +171,7 @@ impl std::fmt::Debug for Settings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Settings")
             .field("theme", &self.theme)
+            .field("download_path", &self.download_path)
             .field("chat_font_size", &self.chat_font_size)
             .field(
                 "show_connection_notifications",
@@ -181,6 +188,13 @@ impl std::fmt::Debug for Settings {
             .field("proxy", &self.proxy)
             .finish()
     }
+}
+
+/// Get the default download directory path
+///
+/// Returns the system downloads directory, or None if it cannot be determined.
+pub fn default_download_path() -> Option<String> {
+    dirs::download_dir().map(|p| p.to_string_lossy().into_owned())
 }
 
 fn default_chat_font_size() -> u8 {
@@ -211,6 +225,7 @@ mod tests {
     fn test_default_settings() {
         let settings = Settings::default();
         assert_eq!(settings.theme, ThemePreference::default());
+        assert!(settings.download_path.is_none());
         assert_eq!(settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
         assert!(settings.show_connection_notifications);
         assert!(settings.show_timestamps);
@@ -222,6 +237,12 @@ mod tests {
         assert_eq!(settings.window_height, WINDOW_HEIGHT);
         assert!(settings.window_x.is_none());
         assert!(settings.window_y.is_none());
+    }
+
+    #[test]
+    fn test_default_download_path() {
+        // Just verify it doesn't panic - actual path depends on system
+        let _path = default_download_path();
     }
 
     #[test]

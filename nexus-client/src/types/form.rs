@@ -396,6 +396,8 @@ pub enum SettingsTab {
     Chat,
     /// Network settings (proxy configuration)
     Network,
+    /// Files settings (download location)
+    Files,
 }
 
 /// Settings panel form state

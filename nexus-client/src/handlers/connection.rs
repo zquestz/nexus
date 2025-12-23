@@ -352,7 +352,7 @@ impl NexusApp {
         }
 
         // Sort matches alphabetically for consistent ordering
-        matches.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        matches.sort_unstable_by_key(|a| a.to_lowercase());
 
         // Apply first match using truncate-and-append
         conn.message_input.truncate(start_pos);

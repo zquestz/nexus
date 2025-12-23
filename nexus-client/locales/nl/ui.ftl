@@ -20,6 +20,7 @@ button-clear-avatar = Wissen
 button-choose-image = Afbeelding Kiezen
 button-clear-image = Wissen
 button-change-password = Wachtwoord Wijzigen
+button-browse = Bladeren
 
 # =============================================================================
 # Titles
@@ -74,6 +75,7 @@ placeholder-proxy-address = Proxy-adres
 placeholder-proxy-port = 9050
 placeholder-proxy-username = Gebruikersnaam (optioneel)
 placeholder-proxy-password = Wachtwoord (optioneel)
+placeholder-download-location = Geen downloadlocatie ingesteld
 
 # =============================================================================
 # Labels
@@ -117,6 +119,7 @@ label-proxy-address = Adres:
 label-proxy-port = Poort:
 label-proxy-username = Gebruikersnaam:
 label-proxy-password = Wachtwoord:
+label-download-location = Downloadlocatie:
 
 # =============================================================================
 # Permission Display Names
@@ -186,6 +189,7 @@ news-updated = Bijgewerkt
 tab-general = Algemeen
 tab-chat = Chat
 tab-network = Netwerk
+tab-files = Bestanden
 
 # =============================================================================
 # Chat Tab Labels

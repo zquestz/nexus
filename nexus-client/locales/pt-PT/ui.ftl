@@ -19,6 +19,7 @@ button-clear-avatar = Limpar
 button-choose-image = Escolher Imagem
 button-clear-image = Limpar
 button-change-password = Alterar Palavra-passe
+button-browse = Procurar
 
 # =============================================================================
 # Titles
@@ -71,8 +72,9 @@ placeholder-news-body = Conteúdo da notícia
 placeholder-nickname-optional = Alcunha (opcional)
 placeholder-proxy-address = Endereço do proxy
 placeholder-proxy-port = 9050
-placeholder-proxy-username = Utilizador (opcional)
+placeholder-proxy-username = Nome de utilizador (opcional)
 placeholder-proxy-password = Palavra-passe (opcional)
+placeholder-download-location = Localização de transferência não definida
 
 # =============================================================================
 # Labels
@@ -116,6 +118,7 @@ label-proxy-address = Endereço:
 label-proxy-port = Porta:
 label-proxy-username = Utilizador:
 label-proxy-password = Palavra-passe:
+label-download-location = Local de Transferência:
 
 # =============================================================================
 # Permission Display Names
@@ -185,6 +188,7 @@ news-updated = Actualizado
 tab-general = Geral
 tab-chat = Chat
 tab-network = Rede
+tab-files = Ficheiros
 
 # =============================================================================
 # Chat Tab Labels

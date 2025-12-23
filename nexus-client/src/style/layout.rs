@@ -45,6 +45,14 @@ pub const CLOSE_BUTTON_PADDING: iced::Padding = iced::Padding {
     left: SMALL_PADDING,
 };
 
+/// Path display padding (no left padding to align with label above)
+pub const PATH_DISPLAY_PADDING: iced::Padding = iced::Padding {
+    top: INPUT_PADDING,
+    right: INPUT_PADDING,
+    bottom: INPUT_PADDING,
+    left: 0.0,
+};
+
 /// Settings tab label padding (compact tabs)
 pub const TAB_LABEL_PADDING: f32 = 2.0;
 

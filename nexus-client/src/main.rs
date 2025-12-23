@@ -378,6 +378,8 @@ impl NexusApp {
             Message::SettingsNetworkFocusResult(address, port, username, password) => {
                 self.handle_settings_network_focus_result(address, port, username, password)
             }
+            Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),
+            Message::DownloadPathSelected(path) => self.handle_download_path_selected(path),
 
             // About
             Message::CloseAbout => self.handle_close_about(),
@@ -521,6 +523,7 @@ impl NexusApp {
             active_panel: self.active_panel(),
             news_body_content,
             proxy: &self.config.settings.proxy,
+            download_path: self.config.settings.download_path.as_deref(),
         };
 
         let main_view = views::main_layout(config);

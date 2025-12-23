@@ -1,7 +1,9 @@
 //! Settings panel handlers
 
 use crate::NexusApp;
-use crate::config::settings::{AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN};
+use crate::config::settings::{
+    AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
+};
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
@@ -44,6 +46,10 @@ impl NexusApp {
             SettingsTab::Network => {
                 self.focused_field = InputId::ProxyAddress;
                 operation::focus(Id::from(InputId::ProxyAddress))
+            }
+            SettingsTab::Files => {
+                // Files tab has no text input fields (only browse button)
+                Task::none()
             }
         }
     }
@@ -191,6 +197,7 @@ impl NexusApp {
     /// - General tab: nickname (single field)
     /// - Chat tab: no focusable fields (only checkboxes/pickers)
     /// - Network tab: address -> username -> password (skips port NumberInput)
+    /// - Files tab: no focusable fields (only browse button)
     pub fn handle_settings_tab_pressed(&mut self) -> Task<Message> {
         match self.settings_tab {
             SettingsTab::General => {
@@ -200,6 +207,10 @@ impl NexusApp {
             }
             SettingsTab::Chat => {
                 // Chat tab has no text input fields, just checkboxes and pickers
+                Task::none()
+            }
+            SettingsTab::Files => {
+                // Files tab has no text input fields, just a browse button
                 Task::none()
             }
             SettingsTab::Network => {
@@ -364,6 +375,50 @@ impl NexusApp {
             form.cached_avatar = None;
         }
         self.config.settings.avatar = None;
+        Task::none()
+    }
+
+    // ==================== Download Path ====================
+
+    /// Handle browse download path button pressed - opens folder picker
+    pub fn handle_browse_download_path_pressed(&mut self) -> Task<Message> {
+        // Get the current download path or system default for initial directory
+        let initial_dir = self
+            .config
+            .settings
+            .download_path
+            .clone()
+            .or_else(default_download_path);
+
+        Task::future(async move {
+            let mut dialog = AsyncFileDialog::new();
+
+            // Set initial directory if available
+            if let Some(ref path) = initial_dir {
+                dialog = dialog.set_directory(path);
+            }
+
+            let folder = dialog.pick_folder().await;
+
+            match folder {
+                Some(handle) => {
+                    let path = handle.path().to_string_lossy().into_owned();
+                    Message::DownloadPathSelected(Some(path))
+                }
+                None => {
+                    // User cancelled - no change
+                    Message::DownloadPathSelected(None)
+                }
+            }
+        })
+    }
+
+    /// Handle download path selected from folder picker
+    pub fn handle_download_path_selected(&mut self, path: Option<String>) -> Task<Message> {
+        if let Some(path) = path {
+            self.config.settings.download_path = Some(path);
+        }
+        // If None, user cancelled - no change needed
         Task::none()
     }
 }

@@ -19,6 +19,7 @@ button-clear-avatar = 지우기
 button-choose-image = 이미지 선택
 button-clear-image = 지우기
 button-change-password = 비밀번호 변경
+button-browse = 찾아보기
 
 # =============================================================================
 # Titles
@@ -71,8 +72,9 @@ placeholder-news-body = 뉴스 내용
 placeholder-nickname-optional = 별명 (선택사항)
 placeholder-proxy-address = 프록시 주소
 placeholder-proxy-port = 9050
-placeholder-proxy-username = 사용자명 (선택사항)
-placeholder-proxy-password = 비밀번호 (선택사항)
+placeholder-proxy-username = 사용자 이름 (선택)
+placeholder-proxy-password = 비밀번호 (선택)
+placeholder-download-location = 다운로드 위치가 설정되지 않았습니다
 
 # =============================================================================
 # Labels
@@ -114,8 +116,9 @@ label-network = 네트워크
 label-use-socks5-proxy = SOCKS5 프록시 사용
 label-proxy-address = 주소:
 label-proxy-port = 포트:
-label-proxy-username = 사용자명:
+label-proxy-username = 사용자 이름:
 label-proxy-password = 비밀번호:
+label-download-location = 다운로드 위치:
 
 # =============================================================================
 # Permission Display Names
@@ -185,6 +188,7 @@ news-updated = 수정됨
 tab-general = 일반
 tab-chat = 채팅
 tab-network = 네트워크
+tab-files = 파일
 
 # =============================================================================
 # Chat Tab Labels

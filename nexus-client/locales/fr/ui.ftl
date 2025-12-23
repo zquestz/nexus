@@ -20,6 +20,7 @@ button-clear-avatar = Effacer
 button-choose-image = Choisir une Image
 button-clear-image = Effacer
 button-change-password = Changer le Mot de Passe
+button-browse = Parcourir
 
 # =============================================================================
 # Titles
@@ -70,10 +71,12 @@ placeholder-broadcast-message = Message de diffusion
 placeholder-server-description = Description du serveur
 placeholder-news-body = Contenu de l'article
 placeholder-nickname-optional = Pseudo (optionnel)
-placeholder-proxy-address = Adresse du proxy
+placeholder-nickname-optional = Pseudonyme (facultatif)
+placeholder-proxy-address = Adresse du Proxy
 placeholder-proxy-port = 9050
-placeholder-proxy-username = Nom d'utilisateur (optionnel)
-placeholder-proxy-password = Mot de passe (optionnel)
+placeholder-proxy-username = Nom d'utilisateur (facultatif)
+placeholder-proxy-password = Mot de passe (facultatif)
+placeholder-download-location = Emplacement de téléchargement non défini
 
 # =============================================================================
 # Labels
@@ -117,6 +120,7 @@ label-proxy-address = Adresse:
 label-proxy-port = Port:
 label-proxy-username = Nom d'utilisateur:
 label-proxy-password = Mot de passe:
+label-download-location = Emplacement de téléchargement:
 
 # =============================================================================
 # Permission Display Names
@@ -186,6 +190,7 @@ news-updated = Modifié
 tab-general = Général
 tab-chat = Discussion
 tab-network = Réseau
+tab-files = Fichiers
 
 # =============================================================================
 # Chat Tab Labels
