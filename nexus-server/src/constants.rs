@@ -4,6 +4,28 @@
 //! This file contains only server operator messages (logs, startup, diagnostics)
 
 // =============================================================================
+// File Area Configuration
+// =============================================================================
+
+/// File area root directory name (inside data directory)
+pub const FILES_DIR_NAME: &str = "files";
+
+/// Shared files directory name
+pub const FILES_SHARED_DIR: &str = "shared";
+
+/// User files directory name
+pub const FILES_USERS_DIR: &str = "users";
+
+/// Upload folder suffix (case-insensitive, includes leading space)
+pub const FOLDER_SUFFIX_UPLOAD: &str = " [NEXUS-UL]";
+
+/// Drop box folder suffix (case-insensitive, includes leading space)
+pub const FOLDER_SUFFIX_DROPBOX: &str = " [NEXUS-DB]";
+
+/// Drop box folder suffix prefix for user-specific drop boxes (includes leading space)
+pub const FOLDER_SUFFIX_DROPBOX_PREFIX: &str = " [NEXUS-DB-";
+
+// =============================================================================
 // Connection Limits
 // =============================================================================
 
@@ -431,3 +453,34 @@ pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
 
 /// Error when adding resource to bundle fails
 pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";
+
+// =============================================================================
+// File Area Messages (operator-facing)
+// =============================================================================
+
+/// File area root path display
+pub const MSG_FILE_ROOT: &str = "File area: ";
+
+/// Error when file root directory cannot be determined
+pub const ERR_NO_FILE_ROOT: &str = "Unable to determine file root directory for your platform";
+
+/// Error when creating file area directories fails
+pub const ERR_CREATE_FILE_DIR: &str = "Failed to create file area directory: ";
+
+/// Error when path resolution fails due to invalid path
+pub const ERR_FILE_INVALID_PATH: &str = "Invalid file path";
+
+/// Error when path resolution fails due to access denied (path traversal attempt)
+pub const ERR_FILE_ACCESS_DENIED: &str = "Access denied: path outside file area";
+
+/// Error when path does not exist
+pub const ERR_FILE_NOT_FOUND: &str = "File or directory not found";
+
+/// Error when canonicalization fails
+pub const ERR_FILE_CANONICALIZE: &str = "Failed to resolve path";
+
+/// Error when file root canonicalization fails
+pub const ERR_FILE_ROOT_CANONICALIZE: &str = "Failed to canonicalize file root: ";
+
+/// Error when area root is not absolute
+pub const ERR_FILE_INVALID_AREA_ROOT: &str = "Area root must be an absolute path";

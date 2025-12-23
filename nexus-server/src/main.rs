@@ -5,6 +5,7 @@ mod connection;
 mod connection_tracker;
 mod constants;
 mod db;
+mod files;
 mod handlers;
 mod i18n;
 mod upnp;
@@ -35,6 +36,9 @@ async fn main() {
     // Setup database
     let (database, user_manager, db_path) = setup_db(args.database).await;
 
+    // Setup file area
+    let file_root = setup_file_area(args.file_root);
+
     // Setup network (TCP listener + TLS)
     let (listener, tls_acceptor) = setup_network(args.bind, args.port, &db_path).await;
 
@@ -47,6 +51,9 @@ async fn main() {
 
     // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
+
+    // Suppress unused variable warning until file area is used in handlers
+    let _ = file_root;
 
     // Main server loop - accept incoming connections
     let debug = args.debug;
@@ -355,6 +362,41 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
 
     println!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
     Ok(())
+}
+
+/// Setup file area directories
+///
+/// Returns the canonicalized path to the file area root, ready for use
+/// with `resolve_path()` and other security-sensitive operations.
+fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    // Determine file root path (use provided path or platform default)
+    let root = file_root.unwrap_or_else(|| match files::default_file_root() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("{}{}", ERR_GENERIC, e);
+            std::process::exit(1);
+        }
+    });
+
+    // Initialize file area directories (creates them if needed)
+    if let Err(e) = files::init_file_area(&root) {
+        eprintln!("{}{}", ERR_GENERIC, e);
+        std::process::exit(1);
+    }
+
+    // Canonicalize the path for security - this resolves symlinks and
+    // ensures we have an absolute path for starts_with() checks in resolve_path()
+    let canonical_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("{}{}{}", ERR_GENERIC, ERR_FILE_ROOT_CANONICALIZE, e);
+            std::process::exit(1);
+        }
+    };
+
+    println!("{}{}", MSG_FILE_ROOT, canonical_root.display());
+
+    canonical_root
 }
 
 /// Setup graceful shutdown signal handling (Ctrl+C)
