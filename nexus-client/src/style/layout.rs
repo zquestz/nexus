@@ -229,6 +229,28 @@ pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
 pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
 
 // ============================================================================
+// File Browser
+// ============================================================================
+
+/// Icon size for file browser toolbar buttons (Home, Refresh, Up)
+pub const FILE_TOOLBAR_ICON_SIZE: f32 = 16.0;
+
+/// Button padding for file browser toolbar buttons (compact)
+pub const FILE_TOOLBAR_BUTTON_PADDING: f32 = BUTTON_PADDING / 2.0;
+
+/// Icon size for file/folder icons in the file list
+pub const FILE_LIST_ICON_SIZE: f32 = 16.0;
+
+/// Spacing between file/folder icon and filename
+pub const FILE_LIST_ICON_SPACING: f32 = 8.0;
+
+/// Width of the file size column in the file list
+pub const FILE_SIZE_COLUMN_WIDTH: f32 = 80.0;
+
+/// Width of the modified date column in the file list
+pub const FILE_DATE_COLUMN_WIDTH: f32 = 140.0;
+
+// ============================================================================
 // Fingerprint Dialog Spacing
 // ============================================================================
 

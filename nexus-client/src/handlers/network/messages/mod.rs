@@ -5,6 +5,7 @@
 mod broadcast;
 mod chat;
 mod error;
+mod files;
 mod news;
 mod permissions;
 mod user_admin;
@@ -243,6 +244,20 @@ impl NexusApp {
             ServerMessage::NewsUpdated { action, id } => {
                 self.handle_news_updated(connection_id, action, id)
             }
+
+            ServerMessage::FileListResponse {
+                success,
+                error,
+                path,
+                entries,
+            } => self.handle_file_list_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                path,
+                entries,
+            ),
 
             // Catch-all for any unhandled message types
             _ => Task::none(),

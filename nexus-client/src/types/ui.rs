@@ -24,6 +24,8 @@ pub enum ActivePanel {
     UserManagement,
     /// News panel (view, create, edit, delete news posts)
     News,
+    /// Files panel (browse, upload, download files)
+    Files,
 }
 
 /// UI visibility state for toggleable panels

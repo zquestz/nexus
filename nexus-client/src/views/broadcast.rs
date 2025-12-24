@@ -4,7 +4,7 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
     shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
@@ -20,10 +20,7 @@ use iced::{Center, Element, Fill};
 ///
 /// Shows a form for composing and sending broadcast messages to all connected users.
 pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
-    let title = shaped_text(t("title-broadcast-message"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-broadcast-message"));
 
     let can_send = !conn.broadcast_message.trim().is_empty();
 

@@ -158,6 +158,84 @@ impl NewsManagementState {
 }
 
 // =============================================================================
+// Files Management State
+// =============================================================================
+
+/// Files management panel state (per-connection)
+///
+/// Tracks the current directory path and file listing for the file browser.
+#[derive(Debug, Clone, Default)]
+pub struct FilesManagementState {
+    /// Current directory path (empty string or "/" means home)
+    pub current_path: String,
+    /// File entries in current directory (None = loading, Some = loaded)
+    pub entries: Option<Vec<nexus_common::protocol::FileEntry>>,
+    /// Error message for the panel
+    pub error: Option<String>,
+}
+
+impl FilesManagementState {
+    /// Navigate to a new path
+    pub fn navigate_to(&mut self, path: String) {
+        self.current_path = path;
+        self.entries = None;
+        self.error = None;
+    }
+
+    /// Navigate up one directory level
+    pub fn navigate_up(&mut self) {
+        if self.current_path.is_empty() || self.current_path == "/" {
+            return;
+        }
+
+        // Remove trailing slash if present
+        let path = self.current_path.trim_end_matches('/');
+
+        // Find the last path separator
+        if let Some(pos) = path.rfind('/') {
+            self.current_path = path[..pos].to_string();
+        } else {
+            // No separator found, go to home
+            self.current_path = String::new();
+        }
+
+        self.entries = None;
+        self.error = None;
+    }
+
+    /// Get the display name for a file entry (strips folder type suffixes)
+    pub fn display_name(name: &str) -> String {
+        // Suffixes to strip (case-insensitive, with leading space)
+        const SUFFIX_UPLOAD: &str = " [NEXUS-UL]";
+        const SUFFIX_DROPBOX: &str = " [NEXUS-DB]";
+        const SUFFIX_DROPBOX_PREFIX: &str = " [NEXUS-DB-";
+
+        let name_upper = name.to_uppercase();
+
+        // Check for user-specific dropbox suffix first (e.g., " [NEXUS-DB-alice]")
+        if let Some(pos) = name_upper.rfind(SUFFIX_DROPBOX_PREFIX.to_uppercase().as_str())
+            && name_upper.ends_with(']')
+        {
+            return name[..pos].to_string();
+        }
+
+        // Check for generic dropbox suffix
+        if name_upper.ends_with(SUFFIX_DROPBOX.to_uppercase().as_str()) {
+            let suffix_start = name.len() - SUFFIX_DROPBOX.len();
+            return name[..suffix_start].to_string();
+        }
+
+        // Check for upload suffix
+        if name_upper.ends_with(SUFFIX_UPLOAD.to_uppercase().as_str()) {
+            let suffix_start = name.len() - SUFFIX_UPLOAD.len();
+            return name[..suffix_start].to_string();
+        }
+
+        name.to_string()
+    }
+}
+
+// =============================================================================
 // User Management State
 // =============================================================================
 
@@ -538,5 +616,184 @@ impl SettingsFormState {
             cached_avatar,
             default_avatar,
         }
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // FilesManagementState Tests
+    // =========================================================================
+
+    #[test]
+    fn test_files_management_navigate_to() {
+        let mut state = FilesManagementState::default();
+
+        state.navigate_to("Documents/Photos".to_string());
+
+        assert_eq!(state.current_path, "Documents/Photos");
+        assert!(state.entries.is_none());
+        assert!(state.error.is_none());
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_from_nested() {
+        let mut state = FilesManagementState {
+            current_path: "Documents/Photos/2024".to_string(),
+            entries: Some(vec![]),
+            error: None,
+        };
+
+        state.navigate_up();
+
+        assert_eq!(state.current_path, "Documents/Photos");
+        assert!(state.entries.is_none());
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_from_single_level() {
+        let mut state = FilesManagementState {
+            current_path: "Documents".to_string(),
+            entries: Some(vec![]),
+            error: None,
+        };
+
+        state.navigate_up();
+
+        assert!(state.current_path.is_empty());
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_from_root() {
+        let mut state = FilesManagementState {
+            current_path: String::new(),
+            entries: Some(vec![]),
+            error: None,
+        };
+
+        state.navigate_up();
+
+        assert!(state.current_path.is_empty());
+        // Entries should still be there since we didn't navigate
+        assert!(state.entries.is_some());
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_from_slash() {
+        let mut state = FilesManagementState {
+            current_path: "/".to_string(),
+            entries: Some(vec![]),
+            error: None,
+        };
+
+        state.navigate_up();
+
+        // Should not change when at root
+        assert_eq!(state.current_path, "/");
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_with_trailing_slash() {
+        let mut state = FilesManagementState {
+            current_path: "Documents/Photos/".to_string(),
+            entries: Some(vec![]),
+            error: None,
+        };
+
+        state.navigate_up();
+
+        assert_eq!(state.current_path, "Documents");
+    }
+
+    // =========================================================================
+    // display_name Tests
+    // =========================================================================
+
+    #[test]
+    fn test_display_name_no_suffix() {
+        assert_eq!(
+            FilesManagementState::display_name("My Documents"),
+            "My Documents"
+        );
+    }
+
+    #[test]
+    fn test_display_name_upload_suffix() {
+        assert_eq!(
+            FilesManagementState::display_name("Uploads [NEXUS-UL]"),
+            "Uploads"
+        );
+    }
+
+    #[test]
+    fn test_display_name_upload_suffix_lowercase() {
+        assert_eq!(
+            FilesManagementState::display_name("Uploads [nexus-ul]"),
+            "Uploads"
+        );
+    }
+
+    #[test]
+    fn test_display_name_upload_suffix_mixed_case() {
+        assert_eq!(
+            FilesManagementState::display_name("Uploads [Nexus-UL]"),
+            "Uploads"
+        );
+    }
+
+    #[test]
+    fn test_display_name_dropbox_suffix() {
+        assert_eq!(
+            FilesManagementState::display_name("Admin Inbox [NEXUS-DB]"),
+            "Admin Inbox"
+        );
+    }
+
+    #[test]
+    fn test_display_name_dropbox_suffix_lowercase() {
+        assert_eq!(
+            FilesManagementState::display_name("Admin Inbox [nexus-db]"),
+            "Admin Inbox"
+        );
+    }
+
+    #[test]
+    fn test_display_name_user_dropbox_suffix() {
+        assert_eq!(
+            FilesManagementState::display_name("For Alice [NEXUS-DB-alice]"),
+            "For Alice"
+        );
+    }
+
+    #[test]
+    fn test_display_name_user_dropbox_suffix_mixed_case() {
+        assert_eq!(
+            FilesManagementState::display_name("For Alice [Nexus-DB-Alice]"),
+            "For Alice"
+        );
+    }
+
+    #[test]
+    fn test_display_name_partial_suffix_not_stripped() {
+        // Missing space before bracket - should not be stripped
+        assert_eq!(
+            FilesManagementState::display_name("Uploads[NEXUS-UL]"),
+            "Uploads[NEXUS-UL]"
+        );
+    }
+
+    #[test]
+    fn test_display_name_suffix_in_middle_not_stripped() {
+        // Suffix in middle, not at end - should not be stripped
+        assert_eq!(
+            FilesManagementState::display_name("Files [NEXUS-UL] backup"),
+            "Files [NEXUS-UL] backup"
+        );
     }
 }

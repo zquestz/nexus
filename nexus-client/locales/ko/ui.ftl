@@ -148,6 +148,10 @@ permission-news_delete = 뉴스 삭제
 tooltip-chat = 채팅
 tooltip-broadcast = 브로드캐스트
 tooltip-news = 뉴스
+tooltip-files = 파일
+tooltip-files-up = 위로
+tooltip-files-home = 홈으로 이동
+tooltip-files-refresh = 새로고침
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -180,6 +184,13 @@ user-management-no-users = 사용자를 찾을 수 없습니다
 news-loading = 뉴스 로딩 중...
 news-no-posts = 아직 게시물이 없습니다
 news-updated = 수정됨
+files-loading = 파일 로딩 중...
+files-empty = 이 디렉토리가 비어 있습니다
+files-home = 홈
+files-panel-title = 파일
+files-column-name = 이름
+files-column-size = 크기
+files-column-modified = 수정일
 
 # =============================================================================
 # Settings Tab Labels

@@ -48,6 +48,8 @@ pub enum ResponseRouting {
     NewsDeleteResult,
     /// News show result for refresh (after NewsUpdated broadcast)
     NewsShowForRefresh(i64),
+    /// Populate file list (from panel open or navigation)
+    PopulateFileList,
 }
 
 /// Extension trait for tracking pending requests
@@ -155,6 +157,163 @@ mod tests {
         assert!(matches!(
             pending.get(&id),
             Some(ResponseRouting::OpenMessageTab(name)) if name == "alice"
+        ));
+    }
+
+    #[test]
+    fn test_track_show_error_in_message_tab() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(
+            id,
+            ResponseRouting::ShowErrorInMessageTab("alice".to_string()),
+        );
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::ShowErrorInMessageTab(name)) if name == "alice"
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_user_management_list() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateUserManagementList);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateUserManagementList)
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_user_management_edit() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateUserManagementEdit);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateUserManagementEdit)
+        ));
+    }
+
+    #[test]
+    fn test_track_user_management_create_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::UserManagementCreateResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::UserManagementCreateResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_user_management_update_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::UserManagementUpdateResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::UserManagementUpdateResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_user_management_delete_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::UserManagementDeleteResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::UserManagementDeleteResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_password_change_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PasswordChangeResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PasswordChangeResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_news_list() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateNewsList);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateNewsList)
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_news_edit() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateNewsEdit);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateNewsEdit)
+        ));
+    }
+
+    #[test]
+    fn test_track_news_create_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::NewsCreateResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::NewsCreateResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_news_update_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::NewsUpdateResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::NewsUpdateResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_news_delete_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::NewsDeleteResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::NewsDeleteResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_news_show_for_refresh() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::NewsShowForRefresh(42));
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::NewsShowForRefresh(news_id)) if *news_id == 42
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_file_list() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateFileList);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateFileList)
         ));
     }
 }

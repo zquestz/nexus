@@ -4,7 +4,7 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
@@ -33,10 +33,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         Message::ServerNameChanged(String::new())
     };
 
-    let title = shaped_text(t("title-connect-to-server"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-connect-to-server"));
 
     let server_name_input = text_input(&t("placeholder-server-name"), &form.server_name)
         .on_input(Message::ServerNameChanged)

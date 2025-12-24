@@ -6,7 +6,7 @@ use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FINGERPRINT_DIALOG_MAX_WIDTH, FINGERPRINT_SPACE_AFTER_LABEL,
     FINGERPRINT_SPACE_AFTER_SERVER_INFO, FINGERPRINT_SPACE_AFTER_TITLE,
     FINGERPRINT_SPACE_AFTER_WARNING, FINGERPRINT_SPACE_BEFORE_BUTTONS,
-    FINGERPRINT_SPACE_BETWEEN_SECTIONS, FORM_PADDING, MONOSPACE_FONT, TEXT_SIZE, TITLE_SIZE,
+    FINGERPRINT_SPACE_BETWEEN_SECTIONS, FORM_PADDING, MONOSPACE_FONT, TEXT_SIZE, panel_title,
     shaped_text, shaped_text_wrapped,
 };
 use crate::types::{FingerprintMismatch, Message};
@@ -31,10 +31,7 @@ fn format_fingerprint_multiline(fingerprint: &str) -> String {
 
 /// Create the fingerprint mismatch warning dialog
 pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Element<'a, Message> {
-    let title = shaped_text(t("title-fingerprint-mismatch"))
-        .size(TITLE_SIZE)
-        .width(Length::Fill)
-        .center();
+    let title = panel_title(t("title-fingerprint-mismatch"));
 
     let server_line = shaped_text(format!(
         "{} - [{}]:{}",

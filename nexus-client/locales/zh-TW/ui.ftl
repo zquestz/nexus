@@ -148,6 +148,10 @@ permission-news_delete = 刪除新聞
 tooltip-chat = 聊天
 tooltip-broadcast = 廣播
 tooltip-news = 新聞
+tooltip-files = 檔案
+tooltip-files-up = 上一層
+tooltip-files-home = 返回主目錄
+tooltip-files-refresh = 重新整理
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -180,6 +184,13 @@ user-management-no-users = 找不到使用者
 news-loading = 正在載入新聞...
 news-no-posts = 目前沒有貼文
 news-updated = 已更新
+files-loading = 正在載入檔案...
+files-empty = 此目錄為空
+files-home = 主目錄
+files-panel-title = 檔案
+files-column-name = 名稱
+files-column-size = 大小
+files-column-modified = 修改日期
 
 # =============================================================================
 # Settings Tab Labels

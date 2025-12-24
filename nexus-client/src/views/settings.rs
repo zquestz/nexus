@@ -8,8 +8,8 @@ use crate::image::CachedImage;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, ELEMENT_SPACING, FORM_MAX_WIDTH,
     FORM_PADDING, INPUT_PADDING, PATH_DISPLAY_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
-    TAB_LABEL_PADDING, TEXT_SIZE, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE,
-    content_background_style, error_text_style, shaped_text, shaped_text_wrapped,
+    TAB_LABEL_PADDING, TEXT_SIZE, content_background_style, error_text_style, panel_title,
+    shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, SettingsFormState, SettingsTab};
 use iced::widget::button as btn;
@@ -132,18 +132,7 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
     // Build the form
     let mut content_items: Vec<Element<'_, Message>> = Vec::new();
 
-    content_items.push(
-        container(
-            shaped_text(t("title-settings"))
-                .size(TITLE_SIZE)
-                .width(Fill)
-                .align_x(Center),
-        )
-        // Title row height matches news/users panels (which have action buttons)
-        .height(TITLE_ROW_HEIGHT_WITH_ACTION)
-        .align_y(Center)
-        .into(),
-    );
+    content_items.push(panel_title(t("title-settings")).into());
 
     // Show error if present
     if let Some(error) = error {

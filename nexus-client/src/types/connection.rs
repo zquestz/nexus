@@ -29,8 +29,9 @@ impl TabCompletionState {
 }
 
 use super::{
-    ActivePanel, ChatMessage, ChatTab, NewsManagementState, PasswordChangeState, ResponseRouting,
-    ScrollState, ServerInfoEditState, UserInfo, UserManagementState,
+    ActivePanel, ChatMessage, ChatTab, FilesManagementState, NewsManagementState,
+    PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
+    UserManagementState,
 };
 use crate::image::CachedImage;
 
@@ -170,6 +171,8 @@ pub struct ServerConnection {
     pub news_markdown_cache: HashMap<i64, Vec<markdown::Item>>,
     /// Tab completion state for chat input (None when not completing)
     pub tab_completion: Option<TabCompletionState>,
+    /// Files management panel state
+    pub files_management: FilesManagementState,
 }
 
 impl ServerConnection {
@@ -249,6 +252,7 @@ impl ServerConnection {
             news_image_cache: HashMap::new(),
             news_markdown_cache: HashMap::new(),
             tab_completion: None,
+            files_management: FilesManagementState::default(),
         }
     }
 }

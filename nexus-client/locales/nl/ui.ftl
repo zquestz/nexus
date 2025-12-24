@@ -149,6 +149,10 @@ permission-news_delete = Nieuws Verwijderen
 tooltip-chat = Chat
 tooltip-broadcast = Broadcast
 tooltip-news = Nieuws
+tooltip-files = Bestanden
+tooltip-files-up = Omhoog
+tooltip-files-home = Naar Start
+tooltip-files-refresh = Vernieuwen
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -181,6 +185,13 @@ user-management-no-users = Geen gebruikers gevonden
 news-loading = Nieuws laden...
 news-no-posts = Nog geen berichten
 news-updated = Bijgewerkt
+files-loading = Bestanden laden...
+files-empty = Deze map is leeg
+files-home = Start
+files-panel-title = Bestanden
+files-column-name = Naam
+files-column-size = Grootte
+files-column-modified = Gewijzigd
 
 # =============================================================================
 # Settings Tab Labels

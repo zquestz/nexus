@@ -299,6 +299,20 @@ pub enum Message {
     /// News: Submit button pressed (create or edit)
     NewsSubmitPressed,
 
+    // ==================== Files Panel ====================
+    /// Toolbar: Toggle Files panel
+    ToggleFiles,
+    /// Files: Cancel button pressed (close panel)
+    CancelFiles,
+    /// Files: Navigate to a directory path
+    FileNavigate(String),
+    /// Files: Navigate up one directory level
+    FileNavigateUp,
+    /// Files: Navigate to home directory
+    FileNavigateHome,
+    /// Files: Refresh current directory listing
+    FileRefresh,
+
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed
     BrowseDownloadPathPressed,

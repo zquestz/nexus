@@ -11,8 +11,8 @@ use crate::style::{
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
-    error_text_style, muted_text_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style,
+    error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::InputId;
 use crate::types::{Message, ServerConnection, UserManagementMode, UserManagementState};
@@ -393,10 +393,7 @@ fn create_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
 ) -> Element<'a, Message> {
-    let title = shaped_text(t("title-user-create"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-user-create"));
 
     let can_create =
         !user_management.username.trim().is_empty() && !user_management.password.trim().is_empty();
@@ -531,10 +528,7 @@ fn create_view<'a>(
 
 /// Build the edit user form
 fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
-    let title = shaped_text(t("title-update-user"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-update-user"));
 
     let subtitle = shaped_text_wrapped(ctx.original_username)
         .size(TEXT_SIZE)
@@ -683,10 +677,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
 
 /// Build the delete confirmation modal
 fn confirm_delete_modal<'a>(username: &'a str) -> Element<'a, Message> {
-    let title = shaped_text(t("title-confirm-delete"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t_args("confirm-delete-user", &[("username", username)]))
         .size(TEXT_SIZE)

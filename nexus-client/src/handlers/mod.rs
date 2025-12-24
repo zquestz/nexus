@@ -3,6 +3,7 @@
 mod bookmarks;
 mod broadcast;
 mod connection;
+mod files;
 mod fingerprint;
 mod keyboard;
 pub(crate) mod network;

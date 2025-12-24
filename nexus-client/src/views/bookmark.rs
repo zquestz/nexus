@@ -4,7 +4,7 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, error_text_style, shaped_text,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
     shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
@@ -42,13 +42,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         Message::BookmarkNameChanged(String::new())
     };
 
-    let mut column_items: Vec<Element<'_, Message>> = vec![
-        shaped_text(&dialog_title)
-            .size(TITLE_SIZE)
-            .width(Fill)
-            .align_x(Center)
-            .into(),
-    ];
+    let mut column_items: Vec<Element<'_, Message>> = vec![panel_title(dialog_title).into()];
 
     // Show error if present
     if let Some(error) = &state.error {

@@ -148,6 +148,10 @@ permission-news_delete = 删除新闻
 tooltip-chat = 聊天
 tooltip-broadcast = 广播
 tooltip-news = 新闻
+tooltip-files = 文件
+tooltip-files-up = 返回上级
+tooltip-files-home = 返回主目录
+tooltip-files-refresh = 刷新
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -178,8 +182,15 @@ empty-no-users = 无在线用户
 user-management-loading = 正在加载用户...
 user-management-no-users = 未找到用户
 news-loading = 正在加载新闻...
-news-no-posts = 暂无帖子
+news-no-posts = 暂无新闻
 news-updated = 已更新
+files-loading = 正在加载文件...
+files-empty = 此目录为空
+files-home = 主目录
+files-panel-title = 文件
+files-column-name = 名称
+files-column-size = 大小
+files-column-modified = 修改日期
 
 # =============================================================================
 # Settings Tab Labels

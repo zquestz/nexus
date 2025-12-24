@@ -6,7 +6,7 @@ use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
     SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE,
-    TITLE_SIZE, error_text_style, shaped_text, shaped_text_wrapped, subheading_text_style,
+    error_text_style, panel_title, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
 use crate::types::{InputId, Message, ServerInfoEditState};
 use iced::widget::button as btn;
@@ -63,10 +63,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
 
     // Server name as the title (fallback to generic title if no name)
     let title_text = data.name.clone().unwrap_or_else(|| t("title-server-info"));
-    let title = shaped_text(title_text)
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(title_text);
 
     // Server description directly under title (no label)
     let description_element: Option<Element<'static, Message>> = data
@@ -159,10 +156,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
 
 /// Render the server info edit view (editable form)
 fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, Message> {
-    let title = shaped_text(t("title-edit-server-info"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-edit-server-info"));
 
     let mut form_items: Vec<Element<'static, Message>> = vec![title.into()];
 

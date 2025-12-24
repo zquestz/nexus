@@ -148,6 +148,10 @@ permission-news_delete = ニュース削除
 tooltip-chat = チャット
 tooltip-broadcast = ブロードキャスト
 tooltip-news = ニュース
+tooltip-files = ファイル
+tooltip-files-up = 上へ
+tooltip-files-home = ホームへ移動
+tooltip-files-refresh = 更新
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -179,7 +183,14 @@ user-management-loading = ユーザーを読み込み中...
 user-management-no-users = ユーザーが見つかりません
 news-loading = ニュースを読み込み中...
 news-no-posts = まだ投稿がありません
-news-updated = 更新済み
+news-updated = 更新日時
+files-loading = ファイルを読み込み中...
+files-empty = このディレクトリは空です
+files-home = ホーム
+files-panel-title = ファイル
+files-column-name = 名前
+files-column-size = サイズ
+files-column-modified = 更新日時
 
 # =============================================================================
 # Settings Tab Labels

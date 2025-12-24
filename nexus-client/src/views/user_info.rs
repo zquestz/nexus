@@ -12,7 +12,7 @@ use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM,
     SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING,
-    chat, error_text_style, shaped_text, shaped_text_wrapped,
+    chat, error_text_style, panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, PasswordChangeState, ServerConnection};
 use iced::widget::button as btn;
@@ -118,11 +118,7 @@ pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, 
     let mut content = column![].spacing(ELEMENT_SPACING);
 
     // Title (centered)
-    let title = shaped_text(t("title-change-password"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
-    content = content.push(title);
+    content = content.push(panel_title(t("title-change-password")));
 
     // Error message (if any) - shown under title, centered
     if let Some(error) = &state.error {

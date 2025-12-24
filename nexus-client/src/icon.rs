@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 31ff9bdb0b96b0b0fef46fbbd8338d6056b1727ed59596936a6ca91127097f4b
+// 615624317e57d035ef4cb4bf2ef582fae544f1ba968a2fc7fd4c1a6fda34b327
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -32,6 +32,18 @@ pub fn edit<'a>() -> Text<'a> {
 
 pub fn expand_right<'a>() -> Text<'a> {
     icon("\u{F152}")
+}
+
+pub fn file<'a>() -> Text<'a> {
+    icon("\u{1F4C4}")
+}
+
+pub fn folder<'a>() -> Text<'a> {
+    icon("\u{1F4C1}")
+}
+
+pub fn home<'a>() -> Text<'a> {
+    icon("\u{2302}")
 }
 
 pub fn info<'a>() -> Text<'a> {
@@ -66,12 +78,20 @@ pub fn plus<'a>() -> Text<'a> {
     icon("\u{2B}")
 }
 
+pub fn refresh<'a>() -> Text<'a> {
+    icon("\u{E760}")
+}
+
 pub fn server<'a>() -> Text<'a> {
     icon("\u{F233}")
 }
 
 pub fn trash<'a>() -> Text<'a> {
     icon("\u{E729}")
+}
+
+pub fn up_dir<'a>() -> Text<'a> {
+    icon("\u{25B4}")
 }
 
 pub fn user_plus<'a>() -> Text<'a> {

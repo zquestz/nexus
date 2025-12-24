@@ -4,9 +4,12 @@
 //! All styles derive from Iced's theme palette for compatibility with
 //! all 30 themes (22 built-in Iced + 8 custom Celestial).
 
+use super::shaping::shaped_text;
 use super::ui;
-use iced::widget::{button, container, text};
-use iced::{Background, Border, Color, Theme};
+use super::{TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE};
+use crate::types::Message;
+use iced::widget::{Container, button, container, text};
+use iced::{Background, Border, Center, Color, Fill, Theme};
 
 // ============================================================================
 // Button Styles
@@ -258,4 +261,31 @@ pub fn subheading_text_style(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(ui::muted_text_color(theme)),
     }
+}
+
+// ============================================================================
+// Panel Helpers
+// ============================================================================
+
+/// Build a centered panel title row
+///
+/// Creates a consistent title row for panel headers with proper sizing
+/// and alignment. Used by Bookmark, Broadcast, Connection, Files, Fingerprint,
+/// News, Server Info, Settings, User Info, and User Management panels.
+///
+/// # Example
+/// ```ignore
+/// use crate::style::panel_title;
+///
+/// let title_row = panel_title(t("files-panel-title"));
+/// ```
+pub fn panel_title(title: impl Into<String>) -> Container<'static, Message> {
+    container(
+        shaped_text(title)
+            .size(TITLE_SIZE)
+            .width(Fill)
+            .align_x(Center),
+    )
+    .height(TITLE_ROW_HEIGHT_WITH_ACTION)
+    .align_y(Center)
 }

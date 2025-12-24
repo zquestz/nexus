@@ -459,6 +459,14 @@ impl NexusApp {
             Message::NewsImageLoaded(result) => self.handle_news_image_loaded(result),
             Message::NewsClearImagePressed => self.handle_news_clear_image_pressed(),
             Message::NewsSubmitPressed => self.handle_news_submit_pressed(),
+
+            // Files panel
+            Message::ToggleFiles => self.handle_toggle_files(),
+            Message::CancelFiles => self.handle_cancel_files(),
+            Message::FileNavigate(path) => self.handle_file_navigate(path),
+            Message::FileNavigateUp => self.handle_file_navigate_up(),
+            Message::FileNavigateHome => self.handle_file_navigate_home(),
+            Message::FileRefresh => self.handle_file_refresh(),
         }
     }
 

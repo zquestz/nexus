@@ -14,8 +14,8 @@ use crate::style::{
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
-    error_text_style, muted_text_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style,
+    error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
 use iced::widget::Id;
@@ -422,14 +422,11 @@ fn form_view<'a>(
     body_content: Option<&'a text_editor::Content>,
     is_edit: bool,
 ) -> Element<'a, Message> {
-    let title = shaped_text(if is_edit {
+    let title = panel_title(if is_edit {
         t("title-news-edit")
     } else {
         t("title-news-create")
-    })
-    .size(TITLE_SIZE)
-    .width(Fill)
-    .align_x(Center);
+    });
 
     // Check if we have content (body from editor or image)
     let body_text = body_content.map(|c| c.text()).unwrap_or_default();
@@ -554,10 +551,7 @@ fn form_view<'a>(
 
 /// Build the delete confirmation modal
 fn confirm_delete_modal<'a>() -> Element<'a, Message> {
-    let title = shaped_text(t("title-confirm-delete"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t("confirm-delete-news"))
         .size(TEXT_SIZE)

@@ -10,8 +10,18 @@ use iced::widget::{Id, operation};
 use iced::{Event, Task};
 
 impl NexusApp {
-    /// Handle keyboard events (Tab, Enter, Escape)
+    /// Handle keyboard events (Tab, Enter, Escape, F5)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
+        // Handle F5 for refresh in Files panel
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(key::Named::F5),
+            ..
+        }) = event
+            && self.active_panel() == ActivePanel::Files
+        {
+            return self.update(Message::FileRefresh);
+        }
+
         // Handle Cmd/Ctrl+Shift+Tab for previous chat tab (must be before plain Tab check)
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
@@ -192,6 +202,9 @@ impl NexusApp {
                     ActivePanel::News => {
                         // In news panel, Escape returns to list (or closes if on list)
                         return self.update(Message::CancelNews);
+                    }
+                    ActivePanel::Files => {
+                        return self.update(Message::CancelFiles);
                     }
                     ActivePanel::None => {}
                 }

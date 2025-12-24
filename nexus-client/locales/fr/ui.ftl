@@ -150,6 +150,10 @@ permission-news_delete = Supprimer Actualité
 tooltip-chat = Chat
 tooltip-broadcast = Diffusion
 tooltip-news = Actualités
+tooltip-files = Fichiers
+tooltip-files-up = Remonter
+tooltip-files-home = Aller à l'accueil
+tooltip-files-refresh = Actualiser
 tooltip-manage-users = Gérer les Utilisateurs
 tooltip-server-info = Infos Serveur
 tooltip-about = À propos
@@ -182,6 +186,13 @@ user-management-no-users = Aucun utilisateur trouvé
 news-loading = Chargement des actualités...
 news-no-posts = Aucune publication pour le moment
 news-updated = Modifié
+files-loading = Chargement des fichiers...
+files-empty = Ce répertoire est vide
+files-home = Accueil
+files-panel-title = Fichiers
+files-column-name = Nom
+files-column-size = Taille
+files-column-modified = Modifié
 
 # =============================================================================
 # Settings Tab Labels
