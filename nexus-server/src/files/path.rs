@@ -59,6 +59,25 @@ impl From<PathError> for io::Error {
     }
 }
 
+/// Validate a client-provided path string for directory traversal attempts
+///
+/// This MUST be called on the raw client path string BEFORE joining with area_root,
+/// because Windows normalizes paths during join, removing `..` components.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the path is safe, `Err(PathError::InvalidPath)` if it contains `..`.
+fn validate_client_path(client_path: &str) -> Result<(), PathError> {
+    // Check for ".." in the path - this catches traversal attempts before Windows can normalize them
+    // We check for common patterns: standalone "..", or ".." with path separators
+    for segment in client_path.split(['/', '\\']) {
+        if segment == ".." {
+            return Err(PathError::InvalidPath);
+        }
+    }
+    Ok(())
+}
+
 /// Build a candidate path from an area root and client-provided path string
 ///
 /// This function handles the translation from client virtual paths (e.g., `/Documents/file.txt`)
@@ -84,6 +103,28 @@ impl From<PathError> for io::Error {
 pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
     let normalized = client_path.trim_start_matches(['/', '\\']);
     area_root.join(normalized)
+}
+
+/// Build and validate a candidate path from an area root and client-provided path string
+///
+/// This combines validation and path building. It validates the raw client path string
+/// for traversal attempts BEFORE joining with area_root (important for Windows compatibility).
+///
+/// # Arguments
+///
+/// * `area_root` - The root directory for the user's file area
+/// * `client_path` - The client-provided path (may have leading `/` or `\`)
+///
+/// # Returns
+///
+/// Returns the joined path if valid, or `Err(PathError::InvalidPath)` if the path
+/// contains directory traversal attempts.
+pub fn build_and_validate_candidate_path(
+    area_root: &Path,
+    client_path: &str,
+) -> Result<PathBuf, PathError> {
+    validate_client_path(client_path)?;
+    Ok(build_candidate_path(area_root, client_path))
 }
 
 /// Safely resolve an absolute candidate path within an area root directory
@@ -463,10 +504,8 @@ mod tests {
     #[test]
     fn test_reject_parent_directory() {
         let (_temp, root) = setup_test_area();
-        // Simulate client sending "../etc/passwd" - use build_candidate_path like real code
-        let candidate = build_candidate_path(&root, "../etc/passwd");
-
-        let result = resolve_path(&root, &candidate);
+        // Simulate client sending "../etc/passwd" - validate before building path
+        let result = build_and_validate_candidate_path(&root, "../etc/passwd");
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
@@ -474,9 +513,7 @@ mod tests {
     fn test_reject_parent_in_middle() {
         let (_temp, root) = setup_test_area();
         // Simulate client sending path with .. in the middle
-        let candidate = build_candidate_path(&root, "documents/../../../etc/passwd");
-
-        let result = resolve_path(&root, &candidate);
+        let result = build_and_validate_candidate_path(&root, "documents/../../../etc/passwd");
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
@@ -606,10 +643,8 @@ mod tests {
     #[test]
     fn test_resolve_new_path_reject_traversal() {
         let (_temp, root) = setup_test_area();
-        // Simulate client sending "../newfile.txt" - use build_candidate_path like real code
-        let candidate = build_candidate_path(&root, "../newfile.txt");
-
-        let result = resolve_new_path(&root, &candidate);
+        // Simulate client sending "../newfile.txt" - validate before building path
+        let result = build_and_validate_candidate_path(&root, "../newfile.txt");
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 

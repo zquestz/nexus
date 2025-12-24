@@ -200,12 +200,15 @@ impl From<InputId> for Id {
 pub enum ScrollableId {
     /// Chat messages scrollable area
     ChatMessages,
+    /// Files panel content area
+    FilesContent,
 }
 
 impl From<ScrollableId> for Id {
     fn from(id: ScrollableId) -> Self {
         Id::new(match id {
             ScrollableId::ChatMessages => "ScrollableId::ChatMessages",
+            ScrollableId::FilesContent => "ScrollableId::FilesContent",
         })
     }
 }

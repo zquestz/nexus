@@ -1,11 +1,12 @@
 //! File list response handlers
 
-use iced::Task;
+use iced::widget::scrollable;
+use iced::{Task, widget::operation};
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::FileEntry;
 
 use crate::NexusApp;
-use crate::types::{Message, ResponseRouting};
+use crate::types::{Message, ResponseRouting, ScrollableId};
 
 impl NexusApp {
     /// Handle file list response
@@ -45,6 +46,10 @@ impl NexusApp {
             conn.files_management.error = error;
         }
 
-        Task::none()
+        // Snap scroll to beginning when directory content changes
+        operation::snap_to(
+            ScrollableId::FilesContent,
+            scrollable::RelativeOffset::START,
+        )
     }
 }

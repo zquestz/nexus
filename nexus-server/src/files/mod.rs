@@ -23,7 +23,10 @@ pub mod path;
 
 pub use area::resolve_user_area;
 pub use folder_type::{FolderType, parse_folder_type};
-pub use path::{FileError, allows_upload, build_candidate_path, resolve_new_path, resolve_path};
+pub use path::{
+    FileError, allows_upload, build_and_validate_candidate_path, build_candidate_path,
+    resolve_new_path, resolve_path,
+};
 
 /// Get the default file root path for the platform
 ///

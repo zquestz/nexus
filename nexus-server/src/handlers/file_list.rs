@@ -16,7 +16,7 @@ use super::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    FolderType, allows_upload, build_candidate_path, parse_folder_type, resolve_path,
+    FolderType, allows_upload, build_and_validate_candidate_path, parse_folder_type, resolve_path,
     resolve_user_area,
 };
 
@@ -120,8 +120,19 @@ where
         }
     };
 
-    // Build candidate path and resolve it
-    let candidate = build_candidate_path(&area_root, &path);
+    // Build candidate path (validates for traversal attacks) and resolve it
+    let candidate = match build_and_validate_candidate_path(&area_root, &path) {
+        Ok(p) => p,
+        Err(_) => {
+            let response = ServerMessage::FileListResponse {
+                success: false,
+                error: Some(err_file_path_invalid(ctx.locale)),
+                path: None,
+                entries: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    };
     let resolved = match resolve_path(&area_root, &candidate) {
         Ok(p) => p,
         Err(PathError::NotFound) => {

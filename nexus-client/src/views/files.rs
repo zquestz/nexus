@@ -12,7 +12,7 @@ use crate::style::{
     disabled_icon_button_style, error_text_style, muted_text_style, panel_title, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
-use crate::types::{FilesManagementState, Message};
+use crate::types::{FilesManagementState, Message, ScrollableId};
 use iced::widget::{Space, button, column, container, row, scrollable, table, tooltip};
 use iced::{Center, Element, Fill, Right};
 use nexus_common::protocol::FileEntry;
@@ -348,7 +348,7 @@ pub fn files_view<'a>(files_management: &'a FilesManagementState) -> Element<'a,
         title_row,
         breadcrumbs,
         toolbar,
-        container(scrollable(content)).height(Fill),
+        container(scrollable(content).id(ScrollableId::FilesContent)).height(Fill),
     ]
     .spacing(SPACER_SIZE_SMALL)
     .align_x(Center)
