@@ -136,10 +136,11 @@ pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathE
         return Err(PathError::InvalidPath);
     }
 
-    // Defense-in-depth: Validate path components of the relative portion
-    if let Ok(relative) = candidate.strip_prefix(area_root) {
-        validate_path_components(relative)?;
-    }
+    // Early rejection: Check entire path for parent directory traversal (..)
+    // This must happen BEFORE canonicalize() because:
+    // 1. On Windows, path normalization may cause strip_prefix to fail
+    // 2. We want to reject malicious paths before touching the filesystem
+    validate_path_components(candidate)?;
 
     // Layer 1: Canonicalize to resolve symlinks and get absolute path
     let canonical = candidate.canonicalize().map_err(|e| {
@@ -198,6 +199,11 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 /// * `candidate` - The absolute candidate path for the new item (typically from `build_candidate_path`).
 ///   Must not equal `area_root` (you can't create nameless files).
 ///
+/// # Security
+///
+/// Like `resolve_path`, this function validates components before filesystem access
+/// to ensure cross-platform consistency (especially important on Windows).
+///
 /// # Returns
 ///
 /// Returns the path where the new item should be created if valid.
@@ -224,10 +230,11 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
         return Err(PathError::InvalidPath);
     }
 
-    // Defense-in-depth: Validate path components of the relative portion
-    if let Ok(relative) = candidate.strip_prefix(area_root) {
-        validate_path_components(relative)?;
-    }
+    // Early rejection: Check entire path for parent directory traversal (..)
+    // This must happen BEFORE canonicalize() because:
+    // 1. On Windows, path normalization may cause strip_prefix to fail
+    // 2. We want to reject malicious paths before touching the filesystem
+    validate_path_components(candidate)?;
 
     // Get the parent directory
     let parent = candidate.parent().ok_or(PathError::InvalidPath)?;
