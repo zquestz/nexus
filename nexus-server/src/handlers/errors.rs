@@ -614,3 +614,31 @@ pub fn err_cannot_edit_admin_news(locale: &str) -> String {
 pub fn err_cannot_delete_admin_news(locale: &str) -> String {
     t(locale, "err-cannot-delete-admin-news")
 }
+
+// =============================================================================
+// File Area Errors
+// =============================================================================
+
+/// Get translated "file path too long" error
+pub fn err_file_path_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-file-path-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "file path invalid" error
+pub fn err_file_path_invalid(locale: &str) -> String {
+    t(locale, "err-file-path-invalid")
+}
+
+/// Get translated "file not found" error
+pub fn err_file_not_found(locale: &str) -> String {
+    t(locale, "err-file-not-found")
+}
+
+/// Get translated "file not directory" error
+pub fn err_file_not_directory(locale: &str) -> String {
+    t(locale, "err-file-not-directory")
+}

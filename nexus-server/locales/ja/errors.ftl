@@ -145,3 +145,9 @@ err-news-image-unsupported-type = サポートされていないニュース画�
 err-news-empty-content = ニュースにはテキストまたは画像が必要です
 err-cannot-edit-admin-news = 管理者が投稿したニュースを編集できるのは管理者のみです
 err-cannot-delete-admin-news = 管理者が投稿したニュースを削除できるのは管理者のみです
+
+# ファイルエリアエラー
+err-file-path-too-long = ファイルパスが長すぎます（最大{ $max_length }文字）
+err-file-path-invalid = ファイルパスに無効な文字が含まれています
+err-file-not-found = ファイルまたはディレクトリが見つかりません
+err-file-not-directory = パスはディレクトリではありません

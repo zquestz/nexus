@@ -145,3 +145,9 @@ err-news-image-unsupported-type = Unsupported news image type (PNG, WebP, JPEG, 
 err-news-empty-content = News must have either text content or an image
 err-cannot-edit-admin-news = Only admins can edit news posted by admins
 err-cannot-delete-admin-news = Only admins can delete news posted by admins
+
+# File Area Errors
+err-file-path-too-long = File path is too long (max { $max_length } characters)
+err-file-path-invalid = File path contains invalid characters
+err-file-not-found = File or directory not found
+err-file-not-directory = Path is not a directory

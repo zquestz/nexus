@@ -39,6 +39,8 @@ pub enum Permission {
     NewsEdit,
     /// Permission to delete any news post (without: only own posts)
     NewsDelete,
+    /// Permission to list files and directories
+    FileList,
 }
 
 impl Permission {
@@ -75,6 +77,7 @@ impl Permission {
             "news_create" => Some(Permission::NewsCreate),
             "news_edit" => Some(Permission::NewsEdit),
             "news_delete" => Some(Permission::NewsDelete),
+            "file_list" => Some(Permission::FileList),
             _ => None,
         }
     }
@@ -166,6 +169,7 @@ mod tests {
         assert_eq!(Permission::NewsCreate.as_str(), "news_create");
         assert_eq!(Permission::NewsEdit.as_str(), "news_edit");
         assert_eq!(Permission::NewsDelete.as_str(), "news_delete");
+        assert_eq!(Permission::FileList.as_str(), "file_list");
     }
 
     #[test]
@@ -211,6 +215,7 @@ mod tests {
             Permission::parse("news_delete"),
             Some(Permission::NewsDelete)
         );
+        assert_eq!(Permission::parse("file_list"), Some(Permission::FileList));
     }
 
     #[test]
@@ -283,6 +288,7 @@ mod tests {
             Permission::ChatSend,
             Permission::ChatTopic,
             Permission::ChatTopicEdit,
+            Permission::FileList,
             Permission::NewsCreate,
             Permission::NewsDelete,
             Permission::NewsEdit,

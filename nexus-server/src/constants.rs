@@ -110,6 +110,11 @@ pub const FEATURE_CHAT: &str = "chat";
 /// Feature name for news functionality
 pub const FEATURE_NEWS: &str = "news";
 
+/// Feature name for file area functionality
+/// (Currently unused - will be used for file transfer broadcasts in future phases)
+#[allow(dead_code)]
+pub const FEATURE_FILES: &str = "files";
+
 // =============================================================================
 // Chat State Keys
 // =============================================================================

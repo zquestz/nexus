@@ -2,6 +2,7 @@
 
 use std::io;
 use std::net::SocketAddr;
+use std::path::Path;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -42,6 +43,7 @@ pub async fn handle_connection(
     db: Database,
     debug: bool,
     tls_acceptor: TlsAcceptor,
+    file_root: Option<&'static Path>,
 ) -> io::Result<()> {
     // Perform TLS handshake (mandatory)
     let tls_stream = tls_acceptor
@@ -49,7 +51,7 @@ pub async fn handle_connection(
         .await
         .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
 
-    handle_connection_inner(tls_stream, peer_addr, user_manager, db, debug).await
+    handle_connection_inner(tls_stream, peer_addr, user_manager, db, debug, file_root).await
 }
 
 /// Inner connection handler that works with any AsyncRead + AsyncWrite stream
@@ -59,6 +61,7 @@ async fn handle_connection_inner<S>(
     user_manager: UserManager,
     db: Database,
     debug: bool,
+    file_root: Option<&'static Path>,
 ) -> io::Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -95,6 +98,7 @@ where
                             debug,
                             locale: &locale,
                             message_id: received.message_id,
+                            file_root,
                         };
 
                         if let Err(e) = handle_client_message(
@@ -319,6 +323,9 @@ where
         }
         ClientMessage::NewsDelete { id } => {
             handlers::handle_news_delete(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::FileList { path } => {
+            handlers::handle_file_list(path, conn_state.session_id, ctx).await?;
         }
     }
 

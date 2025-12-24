@@ -142,6 +142,12 @@ err-news-body-invalid-characters = 뉴스 내용에 잘못된 문자가 포함�
 err-news-image-too-large = 뉴스 이미지가 너무 큽니다 (최대 512KB)
 err-news-image-invalid-format = 뉴스 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
 err-news-image-unsupported-type = 지원되지 않는 뉴스 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
-err-news-empty-content = 뉴스에는 텍스트 내용 또는 이미지가 있어야 합니다
-err-cannot-edit-admin-news = 관리자가 게시한 뉴스는 관리자만 편집할 수 있습니다
+err-news-empty-content = 뉴스에는 텍스트 또는 이미지가 있어야 합니다
+err-cannot-edit-admin-news = 관리자가 게시한 뉴스는 관리자만 수정할 수 있습니다
 err-cannot-delete-admin-news = 관리자가 게시한 뉴스는 관리자만 삭제할 수 있습니다
+
+# 파일 영역 오류
+err-file-path-too-long = 파일 경로가 너무 깁니다 (최대 { $max_length }자)
+err-file-path-invalid = 파일 경로에 잘못된 문자가 포함되어 있습니다
+err-file-not-found = 파일 또는 디렉토리를 찾을 수 없습니다
+err-file-not-directory = 경로가 디렉토리가 아닙니다

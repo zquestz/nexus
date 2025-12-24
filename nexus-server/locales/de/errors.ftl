@@ -142,6 +142,12 @@ err-news-body-invalid-characters = News-Text enthält ungültige Zeichen
 err-news-image-too-large = News-Bild ist zu groß (maximal 512KB)
 err-news-image-invalid-format = Ungültiges News-Bild-Format (muss eine Data-URI mit Base64-Kodierung sein)
 err-news-image-unsupported-type = Nicht unterstützter News-Bild-Typ (nur PNG, WebP, JPEG oder SVG)
-err-news-empty-content = News muss entweder Textinhalt oder ein Bild haben
-err-cannot-edit-admin-news = Nur Administratoren können von Administratoren erstellte News bearbeiten
-err-cannot-delete-admin-news = Nur Administratoren können von Administratoren erstellte News löschen
+err-news-empty-content = Nachricht muss entweder Textinhalt oder ein Bild enthalten
+err-cannot-edit-admin-news = Nur Administratoren können von Administratoren erstellte Nachrichten bearbeiten
+err-cannot-delete-admin-news = Nur Administratoren können von Administratoren erstellte Nachrichten löschen
+
+# File Area Errors
+err-file-path-too-long = Dateipfad ist zu lang (maximal { $max_length } Zeichen)
+err-file-path-invalid = Dateipfad enthält ungültige Zeichen
+err-file-not-found = Datei oder Verzeichnis nicht gefunden
+err-file-not-directory = Pfad ist kein Verzeichnis

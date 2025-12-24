@@ -22,7 +22,7 @@ pub mod folder_type;
 pub mod path;
 
 pub use area::resolve_user_area;
-pub use folder_type::{FolderType, display_name, parse_folder_type};
+pub use folder_type::{FolderType, parse_folder_type};
 pub use path::{FileError, allows_upload, build_candidate_path, resolve_new_path, resolve_path};
 
 /// Get the default file root path for the platform

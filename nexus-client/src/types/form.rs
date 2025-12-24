@@ -167,6 +167,7 @@ impl NewsManagementState {
 /// - `chat_receive`: Receive chat messages
 /// - `chat_send`: Send chat messages
 /// - `chat_topic`: View chat topic
+/// - `file_list`: Browse files and directories
 /// - `news_list`: View news posts
 /// - `user_info`: View user information
 /// - `user_list`: View connected users list
@@ -175,6 +176,7 @@ const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "file_list",
     "news_list",
     "user_info",
     "user_list",

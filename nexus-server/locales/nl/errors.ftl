@@ -142,6 +142,12 @@ err-news-body-invalid-characters = Nieuwstekst bevat ongeldige tekens
 err-news-image-too-large = Nieuwsafbeelding is te groot (maximaal 512KB)
 err-news-image-invalid-format = Ongeldig nieuwsafbeeldingsformaat (moet een data-URI met base64-codering zijn)
 err-news-image-unsupported-type = Niet-ondersteund nieuwsafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
-err-news-empty-content = Nieuws moet tekstinhoud of een afbeelding hebben
+err-news-empty-content = Nieuws moet tekstinhoud of een afbeelding bevatten
 err-cannot-edit-admin-news = Alleen beheerders kunnen nieuws bewerken dat door beheerders is geplaatst
 err-cannot-delete-admin-news = Alleen beheerders kunnen nieuws verwijderen dat door beheerders is geplaatst
+
+# File Area Errors
+err-file-path-too-long = Bestandspad is te lang (maximaal { $max_length } tekens)
+err-file-path-invalid = Bestandspad bevat ongeldige tekens
+err-file-not-found = Bestand of map niet gevonden
+err-file-not-directory = Pad is geen map

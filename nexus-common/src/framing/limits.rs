@@ -40,6 +40,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("NewsUpdate", 704170); // id + body (4096) + image (700000) + overhead
     m.insert("NewsDelete", 32);
 
+    // File client messages
+    m.insert("FileList", 4130); // path (4096) + overhead
+
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
     m.insert("ChatMessage", 1164);
@@ -74,6 +77,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("NewsUpdateResponse", 704500); // single NewsItem with body + image
     m.insert("NewsDeleteResponse", 100);
     m.insert("NewsUpdated", 50); // action enum + id
+
+    // File server messages
+    m.insert("FileListResponse", 0); // unlimited (server-trusted, can have many entries)
 
     m
 });
@@ -154,8 +160,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 20; // Added 6 News client messages
-        const SERVER_MESSAGE_COUNT: usize = 30; // Added 7 News server messages
+        const CLIENT_MESSAGE_COUNT: usize = 21; // Added 6 News + 1 File client messages
+        const SERVER_MESSAGE_COUNT: usize = 31; // Added 7 News + 1 File server messages
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;

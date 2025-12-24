@@ -145,3 +145,9 @@ err-news-image-unsupported-type = Tipo de imagem da notícia não suportado (ape
 err-news-empty-content = A notícia deve ter conteúdo de texto ou uma imagem
 err-cannot-edit-admin-news = Apenas administradores podem editar notícias publicadas por administradores
 err-cannot-delete-admin-news = Apenas administradores podem eliminar notícias publicadas por administradores
+
+# File Area Errors
+err-file-path-too-long = Caminho do ficheiro é demasiado longo (máximo { $max_length } caracteres)
+err-file-path-invalid = Caminho do ficheiro contém caracteres inválidos
+err-file-not-found = Ficheiro ou directório não encontrado
+err-file-not-directory = Caminho não é um directório

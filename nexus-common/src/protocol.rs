@@ -118,6 +118,9 @@ pub enum ClientMessage {
     NewsDelete {
         id: i64,
     },
+    FileList {
+        path: String,
+    },
 }
 
 /// Server response messages
@@ -322,6 +325,15 @@ pub enum ServerMessage {
         action: NewsAction,
         id: i64,
     },
+    FileListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entries: Option<Vec<FileEntry>>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -378,6 +390,22 @@ pub struct NewsItem {
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+}
+
+/// File entry in a directory listing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileEntry {
+    /// Filesystem name (including any suffix like ` [NEXUS-UL]`; client strips for display)
+    pub name: String,
+    /// File size in bytes (0 for directories)
+    pub size: u64,
+    /// Last modified time as Unix timestamp
+    pub modified: i64,
+    /// Directory type (None = file, Some = directory with type)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dir_type: Option<String>,
+    /// True if uploads are allowed at this location
+    pub can_upload: bool,
 }
 
 /// Detailed user info. `nickname` is the display name (== username for regular accounts).
@@ -565,6 +593,9 @@ impl std::fmt::Debug for ClientMessage {
             }
             ClientMessage::NewsDelete { id } => {
                 f.debug_struct("NewsDelete").field("id", id).finish()
+            }
+            ClientMessage::FileList { path } => {
+                f.debug_struct("FileList").field("path", path).finish()
             }
         }
     }

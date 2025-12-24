@@ -142,6 +142,12 @@ err-news-body-invalid-characters = 新闻内容包含无效字符
 err-news-image-too-large = 新闻图片太大（最大512KB）
 err-news-image-invalid-format = 新闻图片格式无效（必须是base64编码的数据URI）
 err-news-image-unsupported-type = 不支持的新闻图片类型（仅支持PNG、WebP、JPEG或SVG）
-err-news-empty-content = 新闻必须包含文本内容或图片
-err-cannot-edit-admin-news = 只有管理员才能编辑管理员发布的新闻
-err-cannot-delete-admin-news = 只有管理员才能删除管理员发布的新闻
+err-news-empty-content = 新闻必须包含文字内容或图片
+err-cannot-edit-admin-news = 只有管理员可以编辑管理员发布的新闻
+err-cannot-delete-admin-news = 只有管理员可以删除管理员发布的新闻
+
+# 文件区域错误
+err-file-path-too-long = 文件路径过长（最多{ $max_length }个字符）
+err-file-path-invalid = 文件路径包含无效字符
+err-file-not-found = 文件或目录未找到
+err-file-not-directory = 路径不是目录

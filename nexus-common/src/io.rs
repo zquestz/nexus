@@ -259,6 +259,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::NewsEdit { .. } => "NewsEdit",
         ClientMessage::NewsUpdate { .. } => "NewsUpdate",
         ClientMessage::NewsDelete { .. } => "NewsDelete",
+        ClientMessage::FileList { .. } => "FileList",
     }
 }
 
@@ -296,6 +297,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::NewsUpdateResponse { .. } => "NewsUpdateResponse",
         ServerMessage::NewsDeleteResponse { .. } => "NewsDeleteResponse",
         ServerMessage::NewsUpdated { .. } => "NewsUpdated",
+        ServerMessage::FileListResponse { .. } => "FileListResponse",
     }
 }
 

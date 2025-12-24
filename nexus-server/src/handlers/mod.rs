@@ -4,6 +4,7 @@ mod broadcast;
 mod chat;
 mod chat_topic_update;
 pub mod errors;
+mod file_list;
 mod handshake;
 mod login;
 mod news_create;
@@ -29,6 +30,7 @@ pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
 pub use chat_topic_update::handle_chat_topic_update;
 pub use errors::*;
+pub use file_list::handle_file_list;
 pub use handshake::handle_handshake;
 pub use login::{LoginRequest, handle_login};
 pub use news_create::handle_news_create;
@@ -49,6 +51,7 @@ pub use user_update::{UserUpdateRequest, handle_user_update};
 
 use std::io;
 use std::net::SocketAddr;
+use std::path::Path;
 
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
@@ -71,6 +74,8 @@ pub struct HandlerContext<'a, W> {
     pub locale: &'a str,
     /// Message ID from the incoming request (for response correlation)
     pub message_id: MessageId,
+    /// File area root path (None if file area is not configured)
+    pub file_root: Option<&'static Path>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

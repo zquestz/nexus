@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
@@ -52,8 +53,8 @@ async fn main() {
     // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
 
-    // Suppress unused variable warning until file area is used in handlers
-    let _ = file_root;
+    // Leak the PathBuf to get a 'static reference - it lives for the program lifetime anyway
+    let file_root: &'static Path = Box::leak(file_root.into_boxed_path());
 
     // Main server loop - accept incoming connections
     let debug = args.debug;
@@ -91,6 +92,7 @@ async fn main() {
                         let database = database.clone();
                         let tls_acceptor = tls_acceptor.clone();
 
+
                         // Spawn a new task to handle this connection
                         tokio::spawn(async move {
                             // Hold guard until connection ends to track active connections
@@ -102,6 +104,7 @@ async fn main() {
                                 database,
                                 debug,
                                 tls_acceptor,
+                                Some(file_root),
                             )
                             .await
                             {

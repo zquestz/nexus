@@ -4,6 +4,7 @@
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
 use std::net::SocketAddr;
+use std::path::Path;
 
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
@@ -31,6 +32,7 @@ pub struct TestContext {
     pub peer_addr: SocketAddr,
     pub _rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>, // Keep receiver alive to prevent channel closure
     pub message_id: MessageId,
+    pub file_root: Option<&'static Path>,
 }
 
 impl TestContext {
@@ -45,6 +47,7 @@ impl TestContext {
             debug: false, // Tests don't need debug logging
             locale: DEFAULT_TEST_LOCALE,
             message_id: self.message_id,
+            file_root: self.file_root,
         }
     }
 }
@@ -94,6 +97,7 @@ pub async fn create_test_context() -> TestContext {
         peer_addr,
         _rx: rx,
         message_id,
+        file_root: None,
     }
 }
 

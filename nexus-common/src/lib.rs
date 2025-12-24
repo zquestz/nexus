@@ -47,6 +47,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
+    "file_list",
     "news_create",
     "news_delete",
     "news_edit",
@@ -70,6 +71,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
 /// - `chat_receive`: Receive chat messages from #server
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic (but not edit)
+/// - `file_list`: Browse files and directories (read-only)
 /// - `news_list`: View news posts (but not create/edit/delete)
 /// - `user_info`: View detailed user information
 /// - `user_list`: View the list of connected users
@@ -78,6 +80,7 @@ pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "file_list",
     "news_list",
     "user_info",
     "user_list",
@@ -126,14 +129,14 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (16)
-        assert_eq!(ALL_PERMISSIONS.len(), 16);
+        // Verify we have the expected number of permissions (17)
+        assert_eq!(ALL_PERMISSIONS.len(), 17);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (7)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 7);
+        // Verify we have the expected number of shared account permissions (8)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 8);
     }
 
     #[test]
@@ -142,6 +145,7 @@ mod tests {
         assert!(is_shared_account_permission("chat_receive"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));
+        assert!(is_shared_account_permission("file_list"));
         assert!(is_shared_account_permission("news_list"));
         assert!(is_shared_account_permission("user_info"));
         assert!(is_shared_account_permission("user_list"));

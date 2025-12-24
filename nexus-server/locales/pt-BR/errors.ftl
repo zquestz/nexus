@@ -142,6 +142,12 @@ err-news-body-invalid-characters = O conteúdo da notícia contém caracteres in
 err-news-image-too-large = A imagem da notícia é muito grande (máximo 512KB)
 err-news-image-invalid-format = Formato de imagem da notícia inválido (deve ser uma URI de dados com codificação base64)
 err-news-image-unsupported-type = Tipo de imagem da notícia não suportado (apenas PNG, WebP, JPEG ou SVG)
-err-news-empty-content = A notícia deve ter conteúdo de texto ou uma imagem
+err-news-empty-content = Notícia deve ter conteúdo de texto ou uma imagem
 err-cannot-edit-admin-news = Apenas administradores podem editar notícias publicadas por administradores
 err-cannot-delete-admin-news = Apenas administradores podem excluir notícias publicadas por administradores
+
+# File Area Errors
+err-file-path-too-long = Caminho do arquivo é muito longo (máximo { $max_length } caracteres)
+err-file-path-invalid = Caminho do arquivo contém caracteres inválidos
+err-file-not-found = Arquivo ou diretório não encontrado
+err-file-not-directory = Caminho não é um diretório

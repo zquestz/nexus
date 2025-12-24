@@ -145,3 +145,9 @@ err-news-image-unsupported-type = 不支援的新聞圖片類型（僅支援PNG�
 err-news-empty-content = 新聞必須包含文字內容或圖片
 err-cannot-edit-admin-news = 只有管理員可以編輯管理員發布的新聞
 err-cannot-delete-admin-news = 只有管理員可以刪除管理員發布的新聞
+
+# 檔案區域錯誤
+err-file-path-too-long = 檔案路徑過長（最多{ $max_length }個字元）
+err-file-path-invalid = 檔案路徑包含無效字元
+err-file-not-found = 檔案或目錄未找到
+err-file-not-directory = 路徑不是目錄
