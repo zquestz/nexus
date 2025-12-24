@@ -140,6 +140,7 @@ permission-news_list = Lista Notizie
 permission-news_create = Crea Notizia
 permission-news_edit = Modifica Notizia
 permission-news_delete = Elimina Notizia
+permission-file_list = Elenco File
 
 # =============================================================================
 # Tooltips

@@ -140,6 +140,7 @@ permission-news_list = Список Новостей
 permission-news_create = Создать Новость
 permission-news_edit = Редактировать Новость
 permission-news_delete = Удалить Новость
+permission-file_list = Список Файлов
 
 # =============================================================================
 # Tooltips

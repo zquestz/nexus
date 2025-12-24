@@ -23,13 +23,13 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("Handshake", 65);
     m.insert("Login", 176991);
     m.insert("UserBroadcast", 1061);
-    m.insert("UserCreate", 963);
+    m.insert("UserCreate", 998);
     m.insert("UserDelete", 67);
     m.insert("UserEdit", 65);
     m.insert("UserInfo", 65);
     m.insert("UserKick", 65);
     m.insert("UserList", 31);
-    m.insert("UserUpdate", 1318);
+    m.insert("UserUpdate", 1353);
     m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
     // News client messages
@@ -50,8 +50,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 701469); // includes ServerInfo with image
-    m.insert("PermissionsUpdated", 701407); // includes ServerInfo with image
+    m.insert("LoginResponse", 701504); // includes ServerInfo with image
+    m.insert("PermissionsUpdated", 701442); // includes ServerInfo with image
     m.insert("ServerBroadcast", 1133);
     m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
     m.insert("ServerInfoUpdateResponse", 574);
@@ -59,7 +59,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserCreateResponse", 614);
     m.insert("UserDeleteResponse", 614);
     m.insert("UserDisconnected", 97);
-    m.insert("UserEditResponse", 714);
+    m.insert("UserEditResponse", 749);
     m.insert("UserBroadcastResponse", 571);
     m.insert("UserInfoResponse", 177477);
     m.insert("UserKickResponse", 612);

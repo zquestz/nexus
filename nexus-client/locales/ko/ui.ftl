@@ -140,6 +140,7 @@ permission-news_list = 뉴스 목록
 permission-news_create = 뉴스 작성
 permission-news_edit = 뉴스 편집
 permission-news_delete = 뉴스 삭제
+permission-file_list = 파일 목록
 
 # =============================================================================
 # Tooltips

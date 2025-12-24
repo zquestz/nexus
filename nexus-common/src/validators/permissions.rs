@@ -2,8 +2,11 @@
 //!
 //! Validates permission string lists sent in protocol messages.
 
-/// Maximum number of permissions allowed in a single request
-pub const MAX_PERMISSIONS_COUNT: usize = 16;
+use crate::ALL_PERMISSIONS;
+
+/// Maximum number of permissions allowed in a single request.
+/// This is the length of ALL_PERMISSIONS - users can have at most all permissions.
+pub const MAX_PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 
 /// Maximum length for each permission string in characters
 pub const MAX_PERMISSION_LENGTH: usize = 32;

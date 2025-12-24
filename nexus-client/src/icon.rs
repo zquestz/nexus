@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 615624317e57d035ef4cb4bf2ef582fae544f1ba968a2fc7fd4c1a6fda34b327
+// 0f24ba3ace1efc3a8a3795dca6ecbf5e877c563381a6f94adb13675ba63dd5a6
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -36,6 +36,46 @@ pub fn expand_right<'a>() -> Text<'a> {
 
 pub fn file<'a>() -> Text<'a> {
     icon("\u{1F4C4}")
+}
+
+pub fn file_archive<'a>() -> Text<'a> {
+    icon("\u{F1C6}")
+}
+
+pub fn file_audio<'a>() -> Text<'a> {
+    icon("\u{F1C7}")
+}
+
+pub fn file_code<'a>() -> Text<'a> {
+    icon("\u{F1C9}")
+}
+
+pub fn file_excel<'a>() -> Text<'a> {
+    icon("\u{F1C3}")
+}
+
+pub fn file_image<'a>() -> Text<'a> {
+    icon("\u{F1C5}")
+}
+
+pub fn file_pdf<'a>() -> Text<'a> {
+    icon("\u{F1C1}")
+}
+
+pub fn file_powerpoint<'a>() -> Text<'a> {
+    icon("\u{F1C4}")
+}
+
+pub fn file_text<'a>() -> Text<'a> {
+    icon("\u{F0F6}")
+}
+
+pub fn file_video<'a>() -> Text<'a> {
+    icon("\u{F1C8}")
+}
+
+pub fn file_word<'a>() -> Text<'a> {
+    icon("\u{F1C2}")
 }
 
 pub fn folder<'a>() -> Text<'a> {

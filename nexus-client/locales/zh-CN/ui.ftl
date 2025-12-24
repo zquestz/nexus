@@ -140,6 +140,7 @@ permission-news_list = 新闻列表
 permission-news_create = 创建新闻
 permission-news_edit = 编辑新闻
 permission-news_delete = 删除新闻
+permission-file_list = 文件列表
 
 # =============================================================================
 # Tooltips

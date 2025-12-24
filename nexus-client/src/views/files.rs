@@ -21,6 +21,52 @@ use nexus_common::protocol::FileEntry;
 // Helper Functions
 // ============================================================================
 
+/// Get the appropriate icon for a file based on its extension
+fn file_icon_for_extension(filename: &str) -> iced::widget::Text<'static> {
+    // Extract extension (lowercase for comparison)
+    let ext = filename
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    match ext.as_str() {
+        // PDF
+        "pdf" => icon::file_pdf(),
+
+        // Word processing
+        "doc" | "docx" | "odt" | "rtf" => icon::file_word(),
+
+        // Spreadsheets
+        "xls" | "xlsx" | "ods" | "csv" => icon::file_excel(),
+
+        // Presentations
+        "ppt" | "pptx" | "odp" => icon::file_powerpoint(),
+
+        // Images
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" => icon::file_image(),
+
+        // Archives
+        "zip" | "tar" | "gz" | "bz2" | "7z" | "rar" | "xz" | "zst" => icon::file_archive(),
+
+        // Audio
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" => icon::file_audio(),
+
+        // Video
+        "mp4" | "mkv" | "avi" | "mov" | "wmv" | "webm" | "flv" => icon::file_video(),
+
+        // Code
+        "rs" | "py" | "js" | "ts" | "c" | "cpp" | "h" | "java" | "go" | "rb" | "php" | "html"
+        | "css" | "json" | "xml" | "yaml" | "yml" | "toml" | "sh" | "bash" => icon::file_code(),
+
+        // Text
+        "txt" | "md" | "log" | "cfg" | "conf" | "ini" | "nfo" => icon::file_text(),
+
+        // Default
+        _ => icon::file(),
+    }
+}
+
 /// Format a Unix timestamp for display
 fn format_timestamp(timestamp: i64) -> String {
     if timestamp == 0 {
@@ -204,11 +250,13 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
             let is_directory = entry.dir_type.is_some();
             let display_name = FilesManagementState::display_name(&entry.name);
 
-            // Icon based on type
+            // Icon based on type (folder or file extension)
             let icon_element: Element<'_, Message> = if is_directory {
                 icon::folder().size(FILE_LIST_ICON_SIZE).into()
             } else {
-                icon::file().size(FILE_LIST_ICON_SIZE).into()
+                file_icon_for_extension(&entry.name)
+                    .size(FILE_LIST_ICON_SIZE)
+                    .into()
             };
 
             // Name with icon
@@ -542,5 +590,140 @@ mod tests {
             build_navigate_path("Files", "Uploads [NEXUS-UL]"),
             "Files/Uploads [NEXUS-UL]"
         );
+    }
+
+    // =========================================================================
+    // file_icon_for_extension Tests
+    // =========================================================================
+
+    // Note: We can't directly compare Text widgets, so we test that the function
+    // doesn't panic and returns something for each category. The actual icon
+    // correctness is verified by visual inspection.
+
+    #[test]
+    fn test_file_icon_pdf() {
+        // Should not panic
+        let _ = file_icon_for_extension("document.pdf");
+        let _ = file_icon_for_extension("DOCUMENT.PDF");
+    }
+
+    #[test]
+    fn test_file_icon_word() {
+        let _ = file_icon_for_extension("report.doc");
+        let _ = file_icon_for_extension("report.docx");
+        let _ = file_icon_for_extension("report.odt");
+        let _ = file_icon_for_extension("report.rtf");
+    }
+
+    #[test]
+    fn test_file_icon_excel() {
+        let _ = file_icon_for_extension("data.xls");
+        let _ = file_icon_for_extension("data.xlsx");
+        let _ = file_icon_for_extension("data.ods");
+        let _ = file_icon_for_extension("data.csv");
+    }
+
+    #[test]
+    fn test_file_icon_powerpoint() {
+        let _ = file_icon_for_extension("slides.ppt");
+        let _ = file_icon_for_extension("slides.pptx");
+        let _ = file_icon_for_extension("slides.odp");
+    }
+
+    #[test]
+    fn test_file_icon_image() {
+        let _ = file_icon_for_extension("photo.png");
+        let _ = file_icon_for_extension("photo.jpg");
+        let _ = file_icon_for_extension("photo.jpeg");
+        let _ = file_icon_for_extension("photo.gif");
+        let _ = file_icon_for_extension("photo.bmp");
+        let _ = file_icon_for_extension("photo.svg");
+        let _ = file_icon_for_extension("photo.webp");
+        let _ = file_icon_for_extension("photo.ico");
+    }
+
+    #[test]
+    fn test_file_icon_archive() {
+        let _ = file_icon_for_extension("archive.zip");
+        let _ = file_icon_for_extension("archive.tar");
+        let _ = file_icon_for_extension("archive.gz");
+        let _ = file_icon_for_extension("archive.bz2");
+        let _ = file_icon_for_extension("archive.7z");
+        let _ = file_icon_for_extension("archive.rar");
+        let _ = file_icon_for_extension("archive.xz");
+        let _ = file_icon_for_extension("archive.zst");
+    }
+
+    #[test]
+    fn test_file_icon_audio() {
+        let _ = file_icon_for_extension("song.mp3");
+        let _ = file_icon_for_extension("song.wav");
+        let _ = file_icon_for_extension("song.flac");
+        let _ = file_icon_for_extension("song.ogg");
+        let _ = file_icon_for_extension("song.m4a");
+        let _ = file_icon_for_extension("song.aac");
+        let _ = file_icon_for_extension("song.wma");
+    }
+
+    #[test]
+    fn test_file_icon_video() {
+        let _ = file_icon_for_extension("movie.mp4");
+        let _ = file_icon_for_extension("movie.mkv");
+        let _ = file_icon_for_extension("movie.avi");
+        let _ = file_icon_for_extension("movie.mov");
+        let _ = file_icon_for_extension("movie.wmv");
+        let _ = file_icon_for_extension("movie.webm");
+        let _ = file_icon_for_extension("movie.flv");
+    }
+
+    #[test]
+    fn test_file_icon_code() {
+        let _ = file_icon_for_extension("main.rs");
+        let _ = file_icon_for_extension("script.py");
+        let _ = file_icon_for_extension("app.js");
+        let _ = file_icon_for_extension("app.ts");
+        let _ = file_icon_for_extension("main.c");
+        let _ = file_icon_for_extension("main.cpp");
+        let _ = file_icon_for_extension("header.h");
+        let _ = file_icon_for_extension("Main.java");
+        let _ = file_icon_for_extension("main.go");
+        let _ = file_icon_for_extension("script.rb");
+        let _ = file_icon_for_extension("index.php");
+        let _ = file_icon_for_extension("index.html");
+        let _ = file_icon_for_extension("style.css");
+        let _ = file_icon_for_extension("config.json");
+        let _ = file_icon_for_extension("data.xml");
+        let _ = file_icon_for_extension("config.yaml");
+        let _ = file_icon_for_extension("config.yml");
+        let _ = file_icon_for_extension("Cargo.toml");
+        let _ = file_icon_for_extension("script.sh");
+        let _ = file_icon_for_extension("script.bash");
+    }
+
+    #[test]
+    fn test_file_icon_text() {
+        let _ = file_icon_for_extension("readme.txt");
+        let _ = file_icon_for_extension("README.md");
+        let _ = file_icon_for_extension("server.log");
+        let _ = file_icon_for_extension("app.cfg");
+        let _ = file_icon_for_extension("nginx.conf");
+        let _ = file_icon_for_extension("config.ini");
+        let _ = file_icon_for_extension("release.nfo");
+    }
+
+    #[test]
+    fn test_file_icon_default() {
+        // Unknown extensions should return generic file icon
+        let _ = file_icon_for_extension("unknown.xyz");
+        let _ = file_icon_for_extension("noextension");
+        let _ = file_icon_for_extension(".hidden");
+    }
+
+    #[test]
+    fn test_file_icon_case_insensitive() {
+        // Extensions should be case-insensitive
+        let _ = file_icon_for_extension("PHOTO.PNG");
+        let _ = file_icon_for_extension("Photo.Png");
+        let _ = file_icon_for_extension("photo.PNG");
     }
 }

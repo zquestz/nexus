@@ -138,9 +138,10 @@ permission-user_edit = Gebruiker Bewerken
 permission-user_kick = Gebruiker Verwijderen
 permission-user_message = Gebruikersbericht
 permission-news_list = Nieuwslijst
-permission-news_create = Nieuws Aanmaken
+permission-news_create = Nieuws Maken
 permission-news_edit = Nieuws Bewerken
 permission-news_delete = Nieuws Verwijderen
+permission-file_list = Bestandslijst
 
 # =============================================================================
 # Tooltips
