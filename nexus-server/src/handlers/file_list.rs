@@ -191,7 +191,8 @@ where
             continue;
         };
 
-        let Ok(metadata) = entry.metadata() else {
+        // Use path().metadata() to follow symlinks (entry.metadata() doesn't follow them)
+        let Ok(metadata) = entry.path().metadata() else {
             continue;
         };
 
@@ -853,6 +854,78 @@ mod tests {
                 // Only the upload folder should allow uploads
                 assert!(!plain.can_upload);
                 assert!(upload.can_upload);
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_file_list_symlink_never_leaks_real_path() {
+        use std::os::unix::fs::symlink;
+
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
+
+        // Create an external directory with a distinctive path we can check for
+        let external = tempfile::TempDir::new().expect("Failed to create external dir");
+        let external_path = external.path().to_str().unwrap().to_string();
+        fs::create_dir(external.path().join("subdir")).expect("Failed to create subdir");
+        fs::write(external.path().join("file.txt"), "data").expect("Failed to create file");
+
+        // Create symlink from shared area to external directory
+        let shared = file_area.path().join("shared");
+        let link_path = shared.join("Linked");
+        symlink(external.path(), &link_path).expect("Failed to create symlink");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Navigate into the symlinked directory
+        let result = handle_file_list(
+            "/Linked".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success,
+                error,
+                path,
+                entries,
+            } => {
+                assert!(success);
+
+                // The path must be the client's virtual path, not the real filesystem path
+                let path_str = path.unwrap();
+                assert_eq!(path_str, "/Linked");
+                assert!(
+                    !path_str.contains(&external_path),
+                    "Path must not contain real filesystem path: {}",
+                    external_path
+                );
+
+                // Error should be None
+                assert!(error.is_none());
+
+                // Entry names must be simple filenames, not full paths
+                let entries = entries.expect("Expected entries");
+                for entry in &entries {
+                    assert!(
+                        !entry.name.contains('/'),
+                        "Entry name must not contain path separators: {}",
+                        entry.name
+                    );
+                    assert!(
+                        !entry.name.contains(&external_path),
+                        "Entry name must not contain real filesystem path: {}",
+                        entry.name
+                    );
+                }
             }
             _ => panic!("Expected FileListResponse"),
         }

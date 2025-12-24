@@ -88,12 +88,10 @@ pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
 
 /// Safely resolve an absolute candidate path within an area root directory
 ///
-/// This function provides two layers of defense against directory traversal:
+/// This function validates paths to prevent directory traversal attacks:
 ///
-/// 1. **Canonicalization**: Resolves symlinks to detect escape attempts
-/// 2. **Prefix check**: Verifies the final path is under the allowed root
-///
-/// Additionally, component validation is performed as defense-in-depth.
+/// 1. **Component validation**: Rejects `..` to prevent client-initiated escapes
+/// 2. **Canonicalization**: Resolves symlinks to get the real filesystem path
 ///
 /// # Arguments
 ///
@@ -107,8 +105,15 @@ pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
 /// Returns the canonicalized absolute path if valid, or an error if:
 /// - The area_root is not absolute
 /// - The path contains `..` or other disallowed components
-/// - The path escapes the area root (via symlinks or otherwise)
 /// - The path does not exist
+///
+/// # Symlink Policy
+///
+/// Symlinks are allowed anywhere, including those that point outside the area root.
+/// This lets admins link to external storage (e.g., `shared/Videos -> /mnt/nas/videos`).
+///
+/// Users cannot create symlinks through the BBS protocol (only file uploads), so
+/// any symlinks are admin-created and trusted.
 ///
 /// # Security
 ///
@@ -122,7 +127,7 @@ pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
 /// let root = std::fs::canonicalize("/data/files/users/alice")?;
 /// let candidate = build_candidate_path(&root, "/documents/readme.txt");
 /// let resolved = resolve_path(&root, &candidate)?;
-/// // resolved is now /data/files/users/alice/documents/readme.txt
+/// // resolved is the canonical path (may be outside area_root if symlinks are involved)
 /// ```
 #[must_use = "path resolution result should be used"]
 pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
@@ -151,10 +156,9 @@ pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathE
         }
     })?;
 
-    // Layer 2: Verify the canonical path is still under the area root
-    if !canonical.starts_with(area_root) {
-        return Err(PathError::AccessDenied);
-    }
+    // Note: We intentionally do NOT check if canonical.starts_with(area_root).
+    // Symlinks that point outside the area are allowed - they're admin-created
+    // and trusted. Users cannot create symlinks through the BBS protocol.
 
     Ok(canonical)
 }
@@ -177,9 +181,9 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
             Component::CurDir => {}
             // Parent directory (..) - REJECTED
             Component::ParentDir => return Err(PathError::InvalidPath),
-            // Root directory (/) - allowed (will be caught by prefix check)
+            // Root directory (/) - allowed (absolute paths are fine)
             Component::RootDir => {}
-            // Windows prefix (C:, \\server) - allowed (will be caught by prefix check)
+            // Windows prefix (C:, \\server) - allowed (absolute paths are fine)
             Component::Prefix(_) => {}
         }
     }
@@ -190,7 +194,7 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 /// Resolve a path for a new file/directory that doesn't exist yet
 ///
 /// Similar to `resolve_path` but handles the case where the final component
-/// doesn't exist. Validates the parent directory exists and is under the area root.
+/// doesn't exist. Validates the parent directory exists.
 ///
 /// # Arguments
 ///
@@ -207,8 +211,8 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 /// # Returns
 ///
 /// Returns the path where the new item should be created if valid.
-/// The returned path is NOT canonicalized (since the file doesn't exist),
-/// but the parent directory is verified to exist and be under the area root.
+/// The returned path uses the canonicalized parent joined with the filename.
+/// The parent directory is verified to exist (may be outside area_root via symlink).
 ///
 /// # Errors
 ///
@@ -244,7 +248,8 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
         return Ok(candidate.to_path_buf());
     }
 
-    // Canonicalize the parent to verify it exists and is under the root
+    // Canonicalize the parent to verify it exists
+    // Note: We don't check if it's under area_root - symlinks are trusted (admin-created)
     let canonical_parent = parent.canonicalize().map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             PathError::NotFound
@@ -252,10 +257,6 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
             PathError::CanonicalizeFailed(e.to_string())
         }
     })?;
-
-    if !canonical_parent.starts_with(area_root) {
-        return Err(PathError::AccessDenied);
-    }
 
     // Return the non-canonicalized path (file doesn't exist yet)
     // Join the canonical parent with the filename
@@ -276,7 +277,7 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
 /// # Arguments
 ///
 /// * `area_root` - The canonicalized root directory for the user's file area
-/// * `path` - The canonicalized path to check (must be under area_root)
+/// * `path` - The canonicalized path to check
 ///
 /// # Returns
 ///
@@ -284,8 +285,7 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
 ///
 /// # Note
 ///
-/// This function assumes `path` has already been validated to be under `area_root`.
-/// It does not perform security checks - use `resolve_path` first.
+/// This function assumes `path` has already been validated via `resolve_path`.
 #[must_use]
 pub fn allows_upload(area_root: &Path, path: &Path) -> bool {
     // Start from the path and walk up to (but not including) the area root
@@ -488,19 +488,47 @@ mod tests {
     }
 
     #[test]
-    fn test_symlink_escape() {
+    fn test_symlink_to_external_allowed() {
         let (_temp, root) = setup_test_area();
 
-        // Create a symlink that points outside the area
+        // Symlinks pointing outside the area are allowed (admin-created, trusted)
         #[cfg(unix)]
         {
             use std::os::unix::fs::symlink;
-            let link_path = root.join("escape");
-            symlink("/tmp", &link_path).expect("Failed to create symlink");
 
-            let candidate = build_candidate_path(&root, "escape");
+            // Create a temp directory outside the area to link to
+            let external = TempDir::new().expect("Failed to create external dir");
+            let external_path = external.path().canonicalize().unwrap();
+            fs::write(external_path.join("external.txt"), "external").unwrap();
+
+            // Create symlink pointing outside
+            let link_path = root.join("documents/external_link");
+            symlink(&external_path, &link_path).expect("Failed to create symlink");
+
+            // Should be allowed - admin-created symlink
+            let candidate = build_candidate_path(&root, "documents/external_link/external.txt");
             let result = resolve_path(&root, &candidate);
-            assert_eq!(result, Err(PathError::AccessDenied));
+            assert!(result.is_ok());
+            assert!(result.unwrap().ends_with("external.txt"));
+        }
+    }
+
+    #[test]
+    fn test_symlink_within_area_allowed() {
+        let (_temp, root) = setup_test_area();
+
+        // Symlink that stays within the area root should work
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            // Create symlink from one folder to another (both within area)
+            let link_path = root.join("doc_link");
+            symlink(root.join("documents"), &link_path).expect("Failed to create symlink");
+
+            let candidate = build_candidate_path(&root, "doc_link/readme.txt");
+            let result = resolve_path(&root, &candidate);
+            assert!(result.is_ok());
         }
     }
 
@@ -623,20 +651,27 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_new_path_symlink_escape() {
+    fn test_resolve_new_path_via_symlink_allowed() {
         let (_temp, root) = setup_test_area();
 
-        // Create a symlink that points outside the area
+        // Symlinks are trusted (admin-created), so creating files through them is allowed
         #[cfg(unix)]
         {
             use std::os::unix::fs::symlink;
-            let link_path = root.join("escape_link");
-            symlink("/tmp", &link_path).expect("Failed to create symlink");
 
-            // Trying to create a new file through the symlink should fail
-            let candidate = build_candidate_path(&root, "escape_link/newfile.txt");
+            // Create a temp directory outside the area
+            let external = TempDir::new().expect("Failed to create external dir");
+            let external_path = external.path().canonicalize().unwrap();
+
+            // Create symlink pointing outside
+            let link_path = root.join("external_link");
+            symlink(&external_path, &link_path).expect("Failed to create symlink");
+
+            // Creating a new file through the symlink should succeed
+            let candidate = build_candidate_path(&root, "external_link/newfile.txt");
             let result = resolve_new_path(&root, &candidate);
-            assert_eq!(result, Err(PathError::AccessDenied));
+            assert!(result.is_ok());
+            assert!(result.unwrap().ends_with("newfile.txt"));
         }
     }
 
