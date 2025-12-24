@@ -463,7 +463,8 @@ mod tests {
     #[test]
     fn test_reject_parent_directory() {
         let (_temp, root) = setup_test_area();
-        let candidate = root.join("../etc/passwd");
+        // Simulate client sending "../etc/passwd" - use build_candidate_path like real code
+        let candidate = build_candidate_path(&root, "../etc/passwd");
 
         let result = resolve_path(&root, &candidate);
         assert_eq!(result, Err(PathError::InvalidPath));
@@ -472,7 +473,8 @@ mod tests {
     #[test]
     fn test_reject_parent_in_middle() {
         let (_temp, root) = setup_test_area();
-        let candidate = root.join("documents/../../../etc/passwd");
+        // Simulate client sending path with .. in the middle
+        let candidate = build_candidate_path(&root, "documents/../../../etc/passwd");
 
         let result = resolve_path(&root, &candidate);
         assert_eq!(result, Err(PathError::InvalidPath));
@@ -604,7 +606,8 @@ mod tests {
     #[test]
     fn test_resolve_new_path_reject_traversal() {
         let (_temp, root) = setup_test_area();
-        let candidate = root.join("../newfile.txt");
+        // Simulate client sending "../newfile.txt" - use build_candidate_path like real code
+        let candidate = build_candidate_path(&root, "../newfile.txt");
 
         let result = resolve_new_path(&root, &candidate);
         assert_eq!(result, Err(PathError::InvalidPath));
