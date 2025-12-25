@@ -3,6 +3,38 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use crate::PERMISSIONS_COUNT;
+
+// =============================================================================
+// Permission-dependent limit calculations
+// =============================================================================
+
+/// Overhead per permission in a JSON array: `"permission_name",` = max 35 bytes
+/// (32 char max + 2 quotes + comma + potential space)
+const PERMISSION_ARRAY_ENTRY_SIZE: usize = 35;
+
+/// Calculate the size contribution of a max-sized permissions array
+const fn permissions_array_size() -> usize {
+    PERMISSIONS_COUNT * PERMISSION_ARRAY_ENTRY_SIZE
+}
+
+/// Base overhead for UserCreate message (without permissions array)
+/// {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":true,"permissions":[]}
+const USER_CREATE_BASE: usize = 403;
+
+/// Base overhead for UserUpdate message (without permissions array)  
+/// {"type":"UserUpdate","username":"...32...","new_username":"...32...","password":"...256...","is_admin":false,"enabled":true,"current_password":"...256...","permissions":[]}
+const USER_UPDATE_BASE: usize = 758;
+
+/// Base overhead for UserEditResponse message (without permissions array)
+const USER_EDIT_RESPONSE_BASE: usize = 154;
+
+/// Base overhead for LoginResponse message (without permissions array)
+const LOGIN_RESPONSE_BASE: usize = 700909;
+
+/// Base overhead for PermissionsUpdated message (without permissions array)
+const PERMISSIONS_UPDATED_BASE: usize = 700847;
+
 /// Maximum payload sizes for each message type
 ///
 /// These limits are enforced after parsing the frame header but before reading
@@ -17,19 +49,22 @@ use std::sync::LazyLock;
 static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new(|| {
     let mut m = HashMap::new();
 
+    // Permission array size calculated from PERMISSIONS_COUNT
+    let perm_size = permissions_array_size() as u64;
+
     // Client messages (limits match actual max size from validators)
     m.insert("ChatSend", 1056);
     m.insert("ChatTopicUpdate", 293);
     m.insert("Handshake", 65);
     m.insert("Login", 176991);
     m.insert("UserBroadcast", 1061);
-    m.insert("UserCreate", 998);
+    m.insert("UserCreate", USER_CREATE_BASE as u64 + perm_size);
     m.insert("UserDelete", 67);
     m.insert("UserEdit", 65);
     m.insert("UserInfo", 65);
     m.insert("UserKick", 65);
     m.insert("UserList", 31);
-    m.insert("UserUpdate", 1353);
+    m.insert("UserUpdate", USER_UPDATE_BASE as u64 + perm_size);
     m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
 
     // News client messages
@@ -41,7 +76,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("NewsDelete", 32);
 
     // File client messages
-    m.insert("FileList", 4130); // path (4096) + overhead
+    m.insert("FileList", 4138); // path (4096) + root bool + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -50,8 +85,11 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatTopicUpdateResponse", 573);
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", 701504); // includes ServerInfo with image
-    m.insert("PermissionsUpdated", 701442); // includes ServerInfo with image
+    m.insert("LoginResponse", LOGIN_RESPONSE_BASE as u64 + perm_size);
+    m.insert(
+        "PermissionsUpdated",
+        PERMISSIONS_UPDATED_BASE as u64 + perm_size,
+    );
     m.insert("ServerBroadcast", 1133);
     m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
     m.insert("ServerInfoUpdateResponse", 574);
@@ -59,7 +97,10 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserCreateResponse", 614);
     m.insert("UserDeleteResponse", 614);
     m.insert("UserDisconnected", 97);
-    m.insert("UserEditResponse", 749);
+    m.insert(
+        "UserEditResponse",
+        USER_EDIT_RESPONSE_BASE as u64 + perm_size,
+    );
     m.insert("UserBroadcastResponse", 571);
     m.insert("UserInfoResponse", 177477);
     m.insert("UserKickResponse", 612);
@@ -118,8 +159,8 @@ mod tests {
     };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
-        MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
-        MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT, MAX_SERVER_DESCRIPTION_LENGTH,
+        MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH,
+        MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
         MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH,
         MAX_VERSION_LENGTH,
     };
@@ -245,7 +286,7 @@ mod tests {
             is_admin: false,
             is_shared: false,
             enabled: true,
-            permissions: (0..MAX_PERMISSIONS_COUNT)
+            permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
         };
@@ -311,7 +352,7 @@ mod tests {
             requested_is_admin: Some(true),
             requested_enabled: Some(true),
             requested_permissions: Some(
-                (0..MAX_PERMISSIONS_COUNT)
+                (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
@@ -331,6 +372,15 @@ mod tests {
             json_size(&msg),
             max_payload_for_type("ServerInfoUpdate") as usize
         );
+    }
+
+    #[test]
+    fn test_limit_file_list() {
+        let msg = ClientMessage::FileList {
+            path: str_of_len(MAX_FILE_PATH_LENGTH),
+            root: false,
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("FileList") as usize);
     }
 
     // =========================================================================
@@ -406,7 +456,7 @@ mod tests {
             session_id: Some(u32::MAX),
             is_admin: Some(true),
             permissions: Some(
-                (0..MAX_PERMISSIONS_COUNT)
+                (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
@@ -433,7 +483,7 @@ mod tests {
     fn test_limit_permissions_updated() {
         let msg = ServerMessage::PermissionsUpdated {
             is_admin: true,
-            permissions: (0..MAX_PERMISSIONS_COUNT)
+            permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
             server_info: Some(ServerInfo {
@@ -564,7 +614,7 @@ mod tests {
             is_shared: Some(false),
             enabled: Some(true),
             permissions: Some(
-                (0..MAX_PERMISSIONS_COUNT)
+                (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),

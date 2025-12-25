@@ -23,6 +23,7 @@ use crate::files::{
 /// Handle a file list request
 pub async fn handle_file_list<W>(
     path: String,
+    root: bool,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -83,6 +84,21 @@ where
         return ctx.send_message(&response).await;
     }
 
+    // Check FileRoot permission if root browsing requested
+    if root && !requesting_user.has_permission(Permission::FileRoot) {
+        eprintln!(
+            "FileList (root) from {} (user: {}) without file_root permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        let response = ServerMessage::FileListResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            path: None,
+            entries: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
     // Validate path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
@@ -102,8 +118,12 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve user's area root
-    let area_root_path = resolve_user_area(file_root, &requesting_user.username);
+    // Resolve area root - either file root (if root browsing) or user's area
+    let area_root_path = if root {
+        file_root.to_path_buf()
+    } else {
+        resolve_user_area(file_root, &requesting_user.username)
+    };
 
     // Canonicalize area_root (it might not exist yet for new users)
     let area_root = match area_root_path.canonicalize() {
@@ -343,7 +363,13 @@ mod tests {
     async fn test_file_list_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_file_list("/".to_string(), None, &mut test_ctx.handler_context()).await;
+        let result = handle_file_list(
+            "/".to_string(),
+            false,
+            None,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         assert!(result.is_err());
     }
@@ -359,6 +385,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -386,6 +413,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -424,6 +452,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -458,6 +487,7 @@ mod tests {
         // Test path with null byte
         let result = handle_file_list(
             "/path\0with/null".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -484,6 +514,7 @@ mod tests {
 
         let result = handle_file_list(
             "/nonexistent".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -511,6 +542,7 @@ mod tests {
         // Try to list a file instead of a directory
         let result = handle_file_list(
             "/readme.txt".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -543,6 +575,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -608,6 +641,7 @@ mod tests {
         // List the dropbox contents - should be empty for non-admin
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -649,6 +683,7 @@ mod tests {
         // List the dropbox contents - admin should see the file
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -695,6 +730,7 @@ mod tests {
         // List the user dropbox contents - alice should see her files
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -741,6 +777,7 @@ mod tests {
         // List alice's dropbox contents - bob should see empty
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -788,6 +825,7 @@ mod tests {
         // List root - the dropbox folder entry should be visible
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -831,6 +869,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -895,6 +934,7 @@ mod tests {
         // Navigate into the symlinked directory
         let result = handle_file_list(
             "/Linked".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -952,6 +992,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -981,6 +1022,161 @@ mod tests {
                     !docs.can_upload,
                     "Documents folder should not allow uploads"
                 );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_root_requires_permission() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
+
+        // Login as user with only FileList permission (not FileRoot)
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::FileList],
+            false,
+        )
+        .await;
+
+        // Try to browse from root - should fail without FileRoot permission
+        let result = handle_file_list(
+            "/".to_string(),
+            true, // root = true
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileListResponse with error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_root_with_permission() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
+
+        // Login as user with both FileList and FileRoot permissions
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::FileList, db::Permission::FileRoot],
+            false,
+        )
+        .await;
+
+        // Browse from root - should see shared/ and users/ directories
+        let result = handle_file_list(
+            "/".to_string(),
+            true, // root = true
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see shared and users directories
+                let shared = entries.iter().find(|e| e.name == "shared");
+                let users = entries.iter().find(|e| e.name == "users");
+                assert!(shared.is_some(), "Should see shared directory");
+                assert!(users.is_some(), "Should see users directory");
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_root_admin_has_permission() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
+
+        // Login as admin (has all permissions implicitly)
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin should be able to browse from root
+        let result = handle_file_list(
+            "/".to_string(),
+            true, // root = true
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see shared and users directories
+                let shared = entries.iter().find(|e| e.name == "shared");
+                let users = entries.iter().find(|e| e.name == "users");
+                assert!(shared.is_some(), "Should see shared directory");
+                assert!(users.is_some(), "Should see users directory");
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_root_can_browse_user_areas() {
+        let file_area = setup_file_area();
+
+        // Create a user area with content
+        let alice_area = file_area.path().join("users/alice");
+        fs::create_dir_all(&alice_area).expect("Failed to create user area");
+        fs::write(alice_area.join("private.txt"), "alice's file").expect("Failed to create file");
+
+        let mut test_ctx = create_test_context().await;
+        test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Browse into alice's user area from root
+        let result = handle_file_list(
+            "/users/alice".to_string(),
+            true, // root = true
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see alice's private file
+                let private = entries.iter().find(|e| e.name == "private.txt");
+                assert!(private.is_some(), "Should see alice's private file");
             }
             _ => panic!("Expected FileListResponse"),
         }

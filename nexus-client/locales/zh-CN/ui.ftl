@@ -141,6 +141,7 @@ permission-news_create = 创建新闻
 permission-news_edit = 编辑新闻
 permission-news_delete = 删除新闻
 permission-file_list = 文件列表
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips

@@ -35,9 +35,7 @@ pub use nickname::{MAX_NICKNAME_LENGTH, NicknameError, validate_nickname};
 pub use password::{
     MAX_PASSWORD_LENGTH, PasswordError, validate_password, validate_password_input,
 };
-pub use permissions::{
-    MAX_PERMISSION_LENGTH, MAX_PERMISSIONS_COUNT, PermissionsError, validate_permissions,
-};
+pub use permissions::{MAX_PERMISSION_LENGTH, PermissionsError, validate_permissions};
 pub use server_description::{
     MAX_SERVER_DESCRIPTION_LENGTH, ServerDescriptionError, validate_server_description,
 };

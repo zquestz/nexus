@@ -121,7 +121,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        match conn.send(ClientMessage::FileList { path }) {
+        match conn.send(ClientMessage::FileList { path, root: false }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::PopulateFileList);

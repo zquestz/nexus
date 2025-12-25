@@ -141,6 +141,7 @@ permission-news_create = Criar Notícia
 permission-news_edit = Editar Notícia
 permission-news_delete = Excluir Notícia
 permission-file_list = Lista de Arquivos
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips

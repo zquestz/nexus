@@ -2,11 +2,7 @@
 //!
 //! Validates permission string lists sent in protocol messages.
 
-use crate::ALL_PERMISSIONS;
-
-/// Maximum number of permissions allowed in a single request.
-/// This is the length of ALL_PERMISSIONS - users can have at most all permissions.
-pub const MAX_PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
+use crate::PERMISSIONS_COUNT;
 
 /// Maximum length for each permission string in characters
 pub const MAX_PERMISSION_LENGTH: usize = 32;
@@ -43,7 +39,7 @@ pub enum PermissionsError {
 ///
 /// Returns a `PermissionsError` variant describing the validation failure.
 pub fn validate_permissions(permissions: &[String]) -> Result<(), PermissionsError> {
-    if permissions.len() > MAX_PERMISSIONS_COUNT {
+    if permissions.len() > PERMISSIONS_COUNT {
         return Err(PermissionsError::TooMany);
     }
     for permission in permissions {
@@ -76,7 +72,7 @@ mod tests {
         assert!(validate_permissions(&["user_list".to_string(), "chat_send".to_string()]).is_ok());
         assert!(validate_permissions(&["a".repeat(MAX_PERMISSION_LENGTH)]).is_ok());
         // At the limit
-        let max_permissions: Vec<String> = (0..MAX_PERMISSIONS_COUNT)
+        let max_permissions: Vec<String> = (0..PERMISSIONS_COUNT)
             .map(|i| format!("perm{}", i))
             .collect();
         assert!(validate_permissions(&max_permissions).is_ok());
@@ -84,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_too_many() {
-        let too_many: Vec<String> = (0..MAX_PERMISSIONS_COUNT + 1)
+        let too_many: Vec<String> = (0..PERMISSIONS_COUNT + 1)
             .map(|i| format!("perm{}", i))
             .collect();
         assert_eq!(

@@ -13,6 +13,7 @@ use crate::style::{
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{FilesManagementState, Message, ScrollableId};
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, row, scrollable, table, tooltip};
 use iced::{Center, Element, Fill, Right};
 use nexus_common::protocol::FileEntry;
@@ -20,6 +21,9 @@ use nexus_common::protocol::FileEntry;
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Maximum length for breadcrumb segment display names
+const BREADCRUMB_MAX_SEGMENT_LENGTH: usize = 32;
 
 /// Get the appropriate icon for a file based on its extension
 fn file_icon_for_extension(filename: &str) -> iced::widget::Text<'static> {
@@ -103,6 +107,17 @@ fn format_size(size: u64) -> String {
     }
 }
 
+/// Truncate a segment name to a maximum length, adding ellipsis if needed
+fn truncate_segment(name: &str, max_len: usize) -> String {
+    if name.chars().count() <= max_len {
+        name.to_string()
+    } else {
+        // Leave room for "..." (3 characters)
+        let truncated: String = name.chars().take(max_len - 3).collect();
+        format!("{truncated}...")
+    }
+}
+
 /// Build the path for navigating into a directory
 fn build_navigate_path(current_path: &str, folder_name: &str) -> String {
     if current_path.is_empty() || current_path == "/" {
@@ -157,26 +172,53 @@ fn breadcrumb_bar<'a>(current_path: &str) -> Element<'a, Message> {
     let segments = parse_breadcrumbs(current_path);
 
     for (display_name, path) in segments {
-        // Add separator
-        breadcrumbs = breadcrumbs.push(shaped_text("/").size(TEXT_SIZE).style(muted_text_style));
-
         // Strip any folder type suffix for display
-        let display_name = FilesManagementState::display_name(display_name);
+        let full_name = FilesManagementState::display_name(display_name);
+        let truncated_name = truncate_segment(&full_name, BREADCRUMB_MAX_SEGMENT_LENGTH);
+        let is_truncated = truncated_name.len() < full_name.len();
 
         // All segments are clickable (last one acts as refresh)
+        // Use Wrapping::None to prevent mid-word breaks
         let segment_btn = button(
-            shaped_text(&display_name)
+            shaped_text(&truncated_name)
                 .size(TEXT_SIZE)
-                .style(muted_text_style),
+                .style(muted_text_style)
+                .wrapping(Wrapping::None),
         )
         .padding(NO_SPACING)
         .style(transparent_icon_button_style)
         .on_press(Message::FileNavigate(path));
 
-        breadcrumbs = breadcrumbs.push(segment_btn);
+        // Wrap in tooltip if truncated to show full name
+        let segment_element: Element<'_, Message> = if is_truncated {
+            tooltip(
+                segment_btn,
+                container(shaped_text(full_name).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        } else {
+            segment_btn.into()
+        };
+
+        // Group separator + segment name together so they don't break apart when wrapping
+        let segment_group: Element<'_, Message> = row![
+            shaped_text("/").size(TEXT_SIZE).style(muted_text_style),
+            Space::new().width(SPACER_SIZE_SMALL),
+            segment_element,
+        ]
+        .into();
+
+        breadcrumbs = breadcrumbs.push(segment_group);
     }
 
-    container(breadcrumbs)
+    // Use wrap() so breadcrumbs flow to multiple lines if needed,
+    // but each segment group stays together
+    container(breadcrumbs.wrap())
         .padding([SPACER_SIZE_SMALL, NO_SPACING])
         .into()
 }
@@ -590,6 +632,58 @@ mod tests {
             build_navigate_path("Files", "Uploads [NEXUS-UL]"),
             "Files/Uploads [NEXUS-UL]"
         );
+    }
+
+    // =========================================================================
+    // truncate_segment Tests
+    // =========================================================================
+
+    #[test]
+    fn test_truncate_segment_short_name() {
+        // Names shorter than max should be unchanged
+        assert_eq!(truncate_segment("Documents", 32), "Documents");
+        assert_eq!(truncate_segment("A", 32), "A");
+        assert_eq!(truncate_segment("", 32), "");
+    }
+
+    #[test]
+    fn test_truncate_segment_exact_length() {
+        // Name exactly at max length should be unchanged
+        let name = "a".repeat(32);
+        assert_eq!(truncate_segment(&name, 32), name);
+    }
+
+    #[test]
+    fn test_truncate_segment_too_long() {
+        // Name longer than max should be truncated with ellipsis
+        let name = "a".repeat(40);
+        let result = truncate_segment(&name, 32);
+        assert_eq!(result.chars().count(), 32);
+        assert!(result.ends_with("..."));
+        assert_eq!(result, format!("{}...", "a".repeat(29)));
+    }
+
+    #[test]
+    fn test_truncate_segment_unicode() {
+        // Unicode characters should be handled correctly (count chars, not bytes)
+        let name = "日本語フォルダ名テスト長い名前";
+        assert_eq!(name.chars().count(), 15);
+        assert_eq!(truncate_segment(name, 32), name);
+
+        // Truncate unicode
+        let long_name = "日".repeat(40);
+        let result = truncate_segment(&long_name, 32);
+        assert_eq!(result.chars().count(), 32);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_segment_one_over() {
+        // Name one character over should truncate
+        let name = "a".repeat(33);
+        let result = truncate_segment(&name, 32);
+        assert_eq!(result.chars().count(), 32);
+        assert_eq!(result, format!("{}...", "a".repeat(29)));
     }
 
     // =========================================================================

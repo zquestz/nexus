@@ -30,6 +30,8 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
+/// - `file_list`: Browse files and directories in user's area
+/// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `news_create`: Create news posts
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
@@ -48,6 +50,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_topic",
     "chat_topic_edit",
     "file_list",
+    "file_root",
     "news_create",
     "news_delete",
     "news_edit",
@@ -61,6 +64,12 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "user_list",
     "user_message",
 ];
+
+/// Number of permissions in the system.
+///
+/// This is derived from `ALL_PERMISSIONS.len()` and provided as a const
+/// for use in places that need the count without calling `.len()` repeatedly.
+pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 
 /// Permissions that can be granted to shared accounts.
 ///
@@ -129,8 +138,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (17)
-        assert_eq!(ALL_PERMISSIONS.len(), 17);
+        // Verify we have the expected number of permissions (18)
+        assert_eq!(ALL_PERMISSIONS.len(), 18);
     }
 
     #[test]

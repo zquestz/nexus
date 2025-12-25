@@ -146,6 +146,7 @@ permission-news_create = News Create
 permission-news_edit = News Edit
 permission-news_delete = News Delete
 permission-file_list = File List
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips

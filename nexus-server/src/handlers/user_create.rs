@@ -94,7 +94,7 @@ where
     if let Err(e) = validators::validate_permissions(&permissions) {
         let error_msg = match e {
             PermissionsError::TooMany => {
-                err_permissions_too_many(ctx.locale, validators::MAX_PERMISSIONS_COUNT)
+                err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
             }
             PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
             PermissionsError::PermissionTooLong => {

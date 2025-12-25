@@ -142,6 +142,7 @@ permission-news_create = Nieuws Maken
 permission-news_edit = Nieuws Bewerken
 permission-news_delete = Nieuws Verwijderen
 permission-file_list = Bestandslijst
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips

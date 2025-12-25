@@ -120,6 +120,9 @@ pub enum ClientMessage {
     },
     FileList {
         path: String,
+        /// If true, browse from file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
     },
 }
 
@@ -594,9 +597,11 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::NewsDelete { id } => {
                 f.debug_struct("NewsDelete").field("id", id).finish()
             }
-            ClientMessage::FileList { path } => {
-                f.debug_struct("FileList").field("path", path).finish()
-            }
+            ClientMessage::FileList { path, root } => f
+                .debug_struct("FileList")
+                .field("path", path)
+                .field("root", root)
+                .finish(),
         }
     }
 }

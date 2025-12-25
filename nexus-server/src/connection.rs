@@ -324,8 +324,8 @@ where
         ClientMessage::NewsDelete { id } => {
             handlers::handle_news_delete(id, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::FileList { path } => {
-            handlers::handle_file_list(path, conn_state.session_id, ctx).await?;
+        ClientMessage::FileList { path, root } => {
+            handlers::handle_file_list(path, root, conn_state.session_id, ctx).await?;
         }
     }
 

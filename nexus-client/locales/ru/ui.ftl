@@ -141,6 +141,7 @@ permission-news_create = Создать Новость
 permission-news_edit = Редактировать Новость
 permission-news_delete = Удалить Новость
 permission-file_list = Список Файлов
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips

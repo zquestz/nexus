@@ -143,6 +143,7 @@ permission-news_create = Créer Actualité
 permission-news_edit = Modifier Actualité
 permission-news_delete = Supprimer Actualité
 permission-file_list = Liste des Fichiers
+permission-file_root = File Root
 
 # =============================================================================
 # Tooltips
