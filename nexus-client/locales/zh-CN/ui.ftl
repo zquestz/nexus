@@ -154,10 +154,11 @@ tooltip-news = 新闻
 tooltip-files = 文件
 tooltip-files-up = 返回上级
 tooltip-files-home = 返回主目录
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = 转到根目录
 tooltip-files-refresh = 刷新
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = 查看根目录
+tooltip-files-view-home = 查看主目录
+tooltip-files-new-directory = 新建文件夹
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -193,11 +194,23 @@ news-updated = 已更新
 files-loading = 正在加载文件...
 files-empty = 此目录为空
 files-home = 主目录
-files-root = Root
+files-root = 根目录
 files-panel-title = 文件
 files-column-name = 名称
 files-column-size = 大小
 files-column-modified = 修改日期
+files-create-directory-title = 新建文件夹
+files-directory-name-placeholder = 文件夹名称
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = 文件夹名称不能为空
+err-dir-name-too-long = 文件夹名称过长（最多 { $max_length } 个字符）
+err-dir-name-path-separator = 文件夹名称不能包含 / 或 \
+err-dir-name-parent-ref = 文件夹名称不能为 ".."
+err-dir-name-invalid = 文件夹名称包含无效字符
 
 # =============================================================================
 # Settings Tab Labels

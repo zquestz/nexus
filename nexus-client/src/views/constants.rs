@@ -69,3 +69,6 @@ pub(crate) const PERMISSION_FILE_LIST: &str = "file_list";
 
 /// Permission to browse from file area root (see all areas)
 pub(crate) const PERMISSION_FILE_ROOT: &str = "file_root";
+
+/// Permission to create directories anywhere in file area
+pub(crate) const PERMISSION_FILE_CREATE_DIR: &str = "file_create_dir";

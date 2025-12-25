@@ -2,19 +2,23 @@
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
-    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_PADDING, NEWS_LIST_MAX_WIDTH,
-    NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_SMALL, TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style,
-    disabled_icon_button_style, error_text_style, muted_text_style, panel_title, shaped_text,
-    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    BUTTON_PADDING, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE,
+    FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING,
+    FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH,
+    NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    content_background_style, disabled_icon_button_style, error_text_style, muted_text_style,
+    panel_title, shaped_text, shaped_text_wrapped, tooltip_container_style,
+    transparent_icon_button_style,
 };
-use crate::types::{FilesManagementState, Message, ScrollableId};
+use crate::types::{FilesManagementState, InputId, Message, ScrollableId};
+use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, row, scrollable, table, tooltip};
+use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
 use iced::{Center, Element, Fill, Right};
 use nexus_common::protocol::FileEntry;
 
@@ -229,8 +233,14 @@ fn breadcrumb_bar<'a>(current_path: &str, viewing_root: bool) -> Element<'a, Mes
         .into()
 }
 
-/// Build the toolbar with Home, Refresh, Up, and optional Root toggle buttons
-fn toolbar<'a>(can_go_up: bool, has_file_root: bool, viewing_root: bool) -> Element<'a, Message> {
+/// Build the toolbar with Home, View Root/Home, Refresh, New Directory, Up buttons
+fn toolbar<'a>(
+    can_go_up: bool,
+    has_file_root: bool,
+    viewing_root: bool,
+    can_create_dir: bool,
+    is_loading: bool,
+) -> Element<'a, Message> {
     // Home button - tooltip changes based on viewing mode
     let home_tooltip = if viewing_root {
         t("tooltip-files-go-root")
@@ -287,9 +297,10 @@ fn toolbar<'a>(can_go_up: bool, has_file_root: bool, viewing_root: bool) -> Elem
             .into()
     };
 
-    // Root toggle button - only shown if user has file_root permission
-    let mut toolbar_row = row![home_button, refresh_button, up_button].spacing(SPACER_SIZE_SMALL);
+    // Start building toolbar row with Home button
+    let mut toolbar_row = row![home_button].spacing(SPACER_SIZE_SMALL);
 
+    // Root toggle button - only shown if user has file_root permission
     if has_file_root {
         let root_toggle_tooltip = if viewing_root {
             t("tooltip-files-view-home")
@@ -313,7 +324,99 @@ fn toolbar<'a>(can_go_up: bool, has_file_root: bool, viewing_root: bool) -> Elem
         toolbar_row = toolbar_row.push(root_toggle_button);
     }
 
+    // Refresh button
+    toolbar_row = toolbar_row.push(refresh_button);
+
+    // New Directory button - enabled if user has file_create_dir permission OR current dir allows upload
+    // Disabled while loading
+    let new_dir_button: Element<'a, Message> = if can_create_dir && !is_loading {
+        tooltip(
+            button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FileNewDirectoryClicked),
+            container(shaped_text(t("tooltip-files-new-directory")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+        .into()
+    } else {
+        // Disabled new directory button
+        button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
+            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            .style(disabled_icon_button_style)
+            .into()
+    };
+
+    toolbar_row = toolbar_row.push(new_dir_button);
+
+    // Up button - last
+    toolbar_row = toolbar_row.push(up_button);
+
     toolbar_row.into()
+}
+
+/// Build the new directory dialog (matches broadcast view layout)
+fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, Message> {
+    let title = panel_title(t("files-create-directory-title"));
+
+    let name_valid = !name.is_empty() && error.is_none();
+
+    let name_input = text_input(&t("files-directory-name-placeholder"), name)
+        .id(InputId::NewDirectoryName)
+        .on_input(Message::FileNewDirectoryNameChanged)
+        .on_submit(Message::FileNewDirectorySubmit)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::FileNewDirectoryCancel)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+        if name_valid {
+            button(shaped_text(t("button-create")).size(TEXT_SIZE))
+                .on_press(Message::FileNewDirectorySubmit)
+                .padding(BUTTON_PADDING)
+        } else {
+            button(shaped_text(t("button-create")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        },
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        name_input.into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        buttons.into(),
+    ]);
+
+    let form = iced::widget::Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
 }
 
 /// Build the file table
@@ -414,14 +517,24 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
 /// Displays the files panel
 ///
 /// Shows a file browser with directory listing and navigation.
+/// If the new directory dialog is open, shows that instead.
 ///
 /// # Arguments
 /// * `files_management` - Current files panel state
 /// * `has_file_root` - Whether user has file_root permission (enables root toggle)
+/// * `has_file_create_dir` - Whether user has file_create_dir permission (enables new directory anywhere)
 pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
     has_file_root: bool,
+    has_file_create_dir: bool,
 ) -> Element<'a, Message> {
+    // If creating directory, show the dialog instead
+    if files_management.creating_directory {
+        return new_directory_dialog(
+            &files_management.new_directory_name,
+            files_management.new_directory_error.as_ref(),
+        );
+    }
     let is_at_home =
         files_management.current_path.is_empty() || files_management.current_path == "/";
     let viewing_root = files_management.viewing_root;
@@ -432,8 +545,21 @@ pub fn files_view<'a>(
     // Breadcrumb navigation
     let breadcrumbs = breadcrumb_bar(&files_management.current_path, viewing_root);
 
+    // Determine if user can create directories here
+    // User can create if they have file_create_dir permission OR current directory allows upload
+    let can_create_dir = has_file_create_dir || files_management.current_dir_can_upload;
+
+    // Check if we're in a loading state
+    let is_loading = files_management.entries.is_none() && files_management.error.is_none();
+
     // Toolbar with buttons
-    let toolbar = toolbar(!is_at_home, has_file_root, viewing_root);
+    let toolbar = toolbar(
+        !is_at_home,
+        has_file_root,
+        viewing_root,
+        can_create_dir,
+        is_loading,
+    );
 
     // Content area (table or status message)
     // Priority: error > entries > loading

@@ -1,8 +1,9 @@
 //! Main application layout and toolbar
 
 use super::constants::{
-    PERMISSION_FILE_LIST, PERMISSION_FILE_ROOT, PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST,
-    PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_LIST, PERMISSION_FILE_ROOT, PERMISSION_NEWS_LIST,
+    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE,
+    PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::files::files_view;
 use super::news::news_view;
@@ -653,10 +654,18 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
         .into(),
         ActivePanel::Files => {
             let has_file_root = ctx.conn.has_permission(PERMISSION_FILE_ROOT);
-            stack![chat, files_view(&ctx.conn.files_management, has_file_root)]
-                .width(Fill)
-                .height(Fill)
-                .into()
+            let has_file_create_dir = ctx.conn.has_permission(PERMISSION_FILE_CREATE_DIR);
+            stack![
+                chat,
+                files_view(
+                    &ctx.conn.files_management,
+                    has_file_root,
+                    has_file_create_dir
+                )
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into()
         }
         ActivePanel::None => chat,
     }

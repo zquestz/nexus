@@ -1,6 +1,8 @@
-//! Server message handlers
+//! Network message handlers
 //!
 //! This module contains handlers for all server messages, organized by category.
+
+use files::FileListResponseData;
 
 mod broadcast;
 mod chat;
@@ -250,13 +252,29 @@ impl NexusApp {
                 error,
                 path,
                 entries,
+                can_upload,
             } => self.handle_file_list_response(
+                connection_id,
+                message_id,
+                FileListResponseData {
+                    success,
+                    error,
+                    path,
+                    entries,
+                    can_upload,
+                },
+            ),
+
+            ServerMessage::FileCreateDirResponse {
+                success,
+                error,
+                path,
+            } => self.handle_file_create_dir_response(
                 connection_id,
                 message_id,
                 success,
                 error,
                 path,
-                entries,
             ),
 
             // Catch-all for any unhandled message types

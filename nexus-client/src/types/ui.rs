@@ -156,6 +156,8 @@ pub enum InputId {
     ProxyUsername,
     /// Settings panel: Proxy password input
     ProxyPassword,
+    /// Files panel: New directory name input
+    NewDirectoryName,
 }
 
 impl From<InputId> for Id {
@@ -191,6 +193,7 @@ impl From<InputId> for Id {
             InputId::ProxyPort => "InputId::ProxyPort",
             InputId::ProxyUsername => "InputId::ProxyUsername",
             InputId::ProxyPassword => "InputId::ProxyPassword",
+            InputId::NewDirectoryName => "InputId::NewDirectoryName",
         })
     }
 }

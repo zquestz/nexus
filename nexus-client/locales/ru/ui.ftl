@@ -154,10 +154,11 @@ tooltip-news = Новости
 tooltip-files = Файлы
 tooltip-files-up = Наверх
 tooltip-files-home = На главную
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = Перейти в корень
 tooltip-files-refresh = Обновить
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = Показать корень
+tooltip-files-view-home = Показать главную
+tooltip-files-new-directory = Новая папка
 tooltip-manage-users = Управление пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
@@ -193,11 +194,23 @@ news-updated = Обновлено
 files-loading = Загрузка файлов...
 files-empty = Эта папка пуста
 files-home = Главная
-files-root = Root
+files-root = Корень
 files-panel-title = Файлы
 files-column-name = Имя
 files-column-size = Размер
 files-column-modified = Изменён
+files-create-directory-title = Создать новую папку
+files-directory-name-placeholder = Имя папки
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Имя папки не может быть пустым
+err-dir-name-too-long = Имя папки слишком длинное (макс. { $max_length } символов)
+err-dir-name-path-separator = Имя папки не может содержать / или \
+err-dir-name-parent-ref = Имя папки не может быть ".."
+err-dir-name-invalid = Имя папки содержит недопустимые символы
 
 # =============================================================================
 # Settings Tab Labels

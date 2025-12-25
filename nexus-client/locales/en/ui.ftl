@@ -163,6 +163,7 @@ tooltip-files-go-root = Go Root
 tooltip-files-refresh = Refresh
 tooltip-files-view-root = View Root
 tooltip-files-view-home = View Home
+tooltip-files-new-directory = New Directory
 tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
@@ -203,6 +204,18 @@ files-panel-title = Files
 files-column-name = Name
 files-column-size = Size
 files-column-modified = Modified
+files-create-directory-title = Create New Directory
+files-directory-name-placeholder = Directory name
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Directory name cannot be empty
+err-dir-name-too-long = Directory name is too long (max { $max_length } characters)
+err-dir-name-path-separator = Directory name cannot contain / or \
+err-dir-name-parent-ref = Directory name cannot be ".."
+err-dir-name-invalid = Directory name contains invalid characters
 
 # =============================================================================
 # Settings Tab Labels

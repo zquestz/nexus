@@ -204,6 +204,13 @@ impl NexusApp {
                         return self.update(Message::CancelNews);
                     }
                     ActivePanel::Files => {
+                        // If creating directory, close dialog; otherwise close panel
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get(&conn_id)
+                            && conn.files_management.creating_directory
+                        {
+                            return self.update(Message::FileNewDirectoryCancel);
+                        }
                         return self.update(Message::CancelFiles);
                     }
                     ActivePanel::None => {}
@@ -321,6 +328,14 @@ impl NexusApp {
                 && conn.server_info_edit.is_some()
             {
                 return self.update(Message::ServerInfoEditTabPressed);
+            }
+        } else if self.active_panel() == ActivePanel::Files {
+            // Files panel: focus directory name input if dialog is open
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+                && conn.files_management.creating_directory
+            {
+                return operation::focus(Id::from(InputId::NewDirectoryName));
             }
         } else if self.active_panel() == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays

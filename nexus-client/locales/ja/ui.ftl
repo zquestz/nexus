@@ -154,10 +154,11 @@ tooltip-news = ニュース
 tooltip-files = ファイル
 tooltip-files-up = 上へ
 tooltip-files-home = ホームへ移動
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = ルートへ移動
 tooltip-files-refresh = 更新
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = ルートを表示
+tooltip-files-view-home = ホームを表示
+tooltip-files-new-directory = 新規フォルダ
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -193,11 +194,23 @@ news-updated = 更新日時
 files-loading = ファイルを読み込み中...
 files-empty = このディレクトリは空です
 files-home = ホーム
-files-root = Root
+files-root = ルート
 files-panel-title = ファイル
 files-column-name = 名前
 files-column-size = サイズ
 files-column-modified = 更新日時
+files-create-directory-title = 新規フォルダを作成
+files-directory-name-placeholder = フォルダ名
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = フォルダ名を入力してください
+err-dir-name-too-long = フォルダ名が長すぎます（最大 { $max_length } 文字）
+err-dir-name-path-separator = フォルダ名に / や \ を含めることはできません
+err-dir-name-parent-ref = フォルダ名を ".." にすることはできません
+err-dir-name-invalid = フォルダ名に無効な文字が含まれています
 
 # =============================================================================
 # Settings Tab Labels

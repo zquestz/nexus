@@ -174,6 +174,14 @@ pub struct FilesManagementState {
     pub error: Option<String>,
     /// Whether viewing from the file root (requires file_root permission)
     pub viewing_root: bool,
+    /// Whether the current directory allows uploads (from FileListResponse)
+    pub current_dir_can_upload: bool,
+    /// Whether the "New Directory" dialog is open
+    pub creating_directory: bool,
+    /// New directory name input
+    pub new_directory_name: String,
+    /// New directory validation/creation error
+    pub new_directory_error: Option<String>,
 }
 
 impl FilesManagementState {
@@ -199,6 +207,21 @@ impl FilesManagementState {
         self.current_path = String::new();
         self.entries = None;
         self.error = None;
+        self.current_dir_can_upload = false;
+    }
+
+    /// Open the new directory dialog
+    pub fn open_new_directory_dialog(&mut self) {
+        self.creating_directory = true;
+        self.new_directory_name = String::new();
+        self.new_directory_error = None;
+    }
+
+    /// Close the new directory dialog
+    pub fn close_new_directory_dialog(&mut self) {
+        self.creating_directory = false;
+        self.new_directory_name = String::new();
+        self.new_directory_error = None;
     }
 
     /// Navigate up one directory level (preserves viewing_root state)
@@ -669,6 +692,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: true,
+            ..Default::default()
         };
 
         state.navigate_to("shared/Documents".to_string());
@@ -684,6 +708,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_home();
@@ -701,6 +726,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: true,
+            ..Default::default()
         };
 
         state.navigate_home();
@@ -716,6 +742,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.toggle_root();
@@ -732,6 +759,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: true,
+            ..Default::default()
         };
 
         state.toggle_root();
@@ -748,6 +776,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: true,
+            ..Default::default()
         };
 
         state.navigate_up();
@@ -763,6 +792,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_up();
@@ -778,6 +808,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_up();
@@ -792,6 +823,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_up();
@@ -808,6 +840,7 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_up();
@@ -823,11 +856,86 @@ mod tests {
             entries: Some(vec![]),
             error: None,
             viewing_root: false,
+            ..Default::default()
         };
 
         state.navigate_up();
 
         assert_eq!(state.current_path, "Documents");
+    }
+
+    // =========================================================================
+    // New Directory Dialog Tests
+    // =========================================================================
+
+    #[test]
+    fn test_files_management_open_new_directory_dialog() {
+        let mut state = FilesManagementState::default();
+
+        state.open_new_directory_dialog();
+
+        assert!(state.creating_directory);
+        assert!(state.new_directory_name.is_empty());
+        assert!(state.new_directory_error.is_none());
+    }
+
+    #[test]
+    fn test_files_management_open_new_directory_dialog_resets_previous_state() {
+        let mut state = FilesManagementState {
+            creating_directory: false,
+            new_directory_name: "old name".to_string(),
+            new_directory_error: Some("old error".to_string()),
+            ..Default::default()
+        };
+
+        state.open_new_directory_dialog();
+
+        assert!(state.creating_directory);
+        assert!(state.new_directory_name.is_empty());
+        assert!(state.new_directory_error.is_none());
+    }
+
+    #[test]
+    fn test_files_management_close_new_directory_dialog() {
+        let mut state = FilesManagementState {
+            creating_directory: true,
+            new_directory_name: "test folder".to_string(),
+            new_directory_error: Some("some error".to_string()),
+            ..Default::default()
+        };
+
+        state.close_new_directory_dialog();
+
+        assert!(!state.creating_directory);
+        assert!(state.new_directory_name.is_empty());
+        assert!(state.new_directory_error.is_none());
+    }
+
+    #[test]
+    fn test_files_management_close_new_directory_dialog_preserves_other_state() {
+        let mut state = FilesManagementState {
+            current_path: "Documents/Photos".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: true,
+            current_dir_can_upload: true,
+            creating_directory: true,
+            new_directory_name: "test".to_string(),
+            new_directory_error: Some("error".to_string()),
+        };
+
+        state.close_new_directory_dialog();
+
+        // Dialog state should be reset
+        assert!(!state.creating_directory);
+        assert!(state.new_directory_name.is_empty());
+        assert!(state.new_directory_error.is_none());
+
+        // Other state should be preserved
+        assert_eq!(state.current_path, "Documents/Photos");
+        assert!(state.entries.is_some());
+        assert!(state.viewing_root);
+        assert!(state.current_dir_can_upload);
     }
 
     // =========================================================================

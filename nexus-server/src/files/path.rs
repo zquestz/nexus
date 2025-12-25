@@ -306,6 +306,41 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
     Ok(canonical_parent.join(filename))
 }
 
+/// Normalize a client-provided path for use in responses
+///
+/// This function cleans up a path for consistent display back to the client:
+/// - Replaces backslashes with forward slashes
+/// - Removes empty segments (from multiple slashes)
+/// - Removes "." (current directory) segments
+///
+/// This is purely cosmetic normalization for response paths, not security validation.
+/// Security validation should be done via `build_and_validate_candidate_path()` and `resolve_path()`.
+///
+/// # Arguments
+///
+/// * `path` - The client-provided path string
+///
+/// # Returns
+///
+/// A normalized path string with consistent forward slashes and no redundant segments.
+///
+/// # Example
+///
+/// ```ignore
+/// assert_eq!(normalize_client_path("foo//bar"), "foo/bar");
+/// assert_eq!(normalize_client_path("foo\\bar"), "foo/bar");
+/// assert_eq!(normalize_client_path("./foo/./bar"), "foo/bar");
+/// assert_eq!(normalize_client_path(""), "");
+/// ```
+#[must_use]
+pub fn normalize_client_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Check if a path allows file uploads
 ///
 /// Uploads are allowed if the path is within a folder that has:
@@ -798,5 +833,64 @@ mod tests {
 
         // The area root itself should not allow uploads
         assert!(!allows_upload(&root, &root));
+    }
+
+    // =========================================================================
+    // normalize_client_path tests
+    // =========================================================================
+
+    #[test]
+    fn test_normalize_client_path_simple() {
+        assert_eq!(normalize_client_path("foo/bar"), "foo/bar");
+    }
+
+    #[test]
+    fn test_normalize_client_path_backslashes() {
+        assert_eq!(normalize_client_path("foo\\bar\\baz"), "foo/bar/baz");
+    }
+
+    #[test]
+    fn test_normalize_client_path_mixed_separators() {
+        assert_eq!(normalize_client_path("foo/bar\\baz"), "foo/bar/baz");
+    }
+
+    #[test]
+    fn test_normalize_client_path_multiple_slashes() {
+        assert_eq!(normalize_client_path("foo//bar///baz"), "foo/bar/baz");
+    }
+
+    #[test]
+    fn test_normalize_client_path_dot_segments() {
+        assert_eq!(normalize_client_path("./foo/./bar/."), "foo/bar");
+    }
+
+    #[test]
+    fn test_normalize_client_path_leading_slash() {
+        assert_eq!(normalize_client_path("/foo/bar"), "foo/bar");
+    }
+
+    #[test]
+    fn test_normalize_client_path_trailing_slash() {
+        assert_eq!(normalize_client_path("foo/bar/"), "foo/bar");
+    }
+
+    #[test]
+    fn test_normalize_client_path_empty() {
+        assert_eq!(normalize_client_path(""), "");
+    }
+
+    #[test]
+    fn test_normalize_client_path_just_slash() {
+        assert_eq!(normalize_client_path("/"), "");
+    }
+
+    #[test]
+    fn test_normalize_client_path_just_dot() {
+        assert_eq!(normalize_client_path("."), "");
+    }
+
+    #[test]
+    fn test_normalize_client_path_complex() {
+        assert_eq!(normalize_client_path("./foo//bar\\.\\baz/"), "foo/bar/baz");
     }
 }

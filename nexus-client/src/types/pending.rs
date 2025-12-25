@@ -50,6 +50,8 @@ pub enum ResponseRouting {
     NewsShowForRefresh(i64),
     /// Populate file list (from panel open or navigation)
     PopulateFileList,
+    /// File create directory result (close dialog on success, show error on failure)
+    FileCreateDirResult,
 }
 
 /// Extension trait for tracking pending requests
@@ -314,6 +316,17 @@ mod tests {
         assert!(matches!(
             pending.get(&id),
             Some(ResponseRouting::PopulateFileList)
+        ));
+    }
+
+    #[test]
+    fn test_track_file_create_dir_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::FileCreateDirResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::FileCreateDirResult)
         ));
     }
 }

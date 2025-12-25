@@ -154,10 +154,11 @@ tooltip-news = 新聞
 tooltip-files = 檔案
 tooltip-files-up = 上一層
 tooltip-files-home = 返回主目錄
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = 前往根目錄
 tooltip-files-refresh = 重新整理
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = 檢視根目錄
+tooltip-files-view-home = 檢視主目錄
+tooltip-files-new-directory = 新建資料夾
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -193,11 +194,23 @@ news-updated = 已更新
 files-loading = 正在載入檔案...
 files-empty = 此目錄為空
 files-home = 主目錄
-files-root = Root
+files-root = 根目錄
 files-panel-title = 檔案
 files-column-name = 名稱
 files-column-size = 大小
 files-column-modified = 修改日期
+files-create-directory-title = 新建資料夾
+files-directory-name-placeholder = 資料夾名稱
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = 資料夾名稱不能為空
+err-dir-name-too-long = 資料夾名稱過長（最多 { $max_length } 個字元）
+err-dir-name-path-separator = 資料夾名稱不能包含 / 或 \
+err-dir-name-parent-ref = 資料夾名稱不能為 ".."
+err-dir-name-invalid = 資料夾名稱包含無效字元
 
 # =============================================================================
 # Settings Tab Labels

@@ -154,10 +154,11 @@ tooltip-news = 뉴스
 tooltip-files = 파일
 tooltip-files-up = 위로
 tooltip-files-home = 홈으로 이동
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = 루트로 이동
 tooltip-files-refresh = 새로고침
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = 루트 보기
+tooltip-files-view-home = 홈 보기
+tooltip-files-new-directory = 새 폴더
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -193,11 +194,23 @@ news-updated = 수정됨
 files-loading = 파일 로딩 중...
 files-empty = 이 디렉토리가 비어 있습니다
 files-home = 홈
-files-root = Root
+files-root = 루트
 files-panel-title = 파일
 files-column-name = 이름
 files-column-size = 크기
 files-column-modified = 수정일
+files-create-directory-title = 새 폴더 만들기
+files-directory-name-placeholder = 폴더 이름
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = 폴더 이름을 입력하세요
+err-dir-name-too-long = 폴더 이름이 너무 깁니다 (최대 { $max_length } 자)
+err-dir-name-path-separator = 폴더 이름에 / 또는 \를 포함할 수 없습니다
+err-dir-name-parent-ref = 폴더 이름을 ".."로 할 수 없습니다
+err-dir-name-invalid = 폴더 이름에 잘못된 문자가 포함되어 있습니다
 
 # =============================================================================
 # Settings Tab Labels

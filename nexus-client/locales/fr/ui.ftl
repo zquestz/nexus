@@ -156,10 +156,11 @@ tooltip-news = Actualités
 tooltip-files = Fichiers
 tooltip-files-up = Remonter
 tooltip-files-home = Aller à l'accueil
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = Aller à la Racine
 tooltip-files-refresh = Actualiser
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = Voir la Racine
+tooltip-files-view-home = Voir l'Accueil
+tooltip-files-new-directory = Nouveau Dossier
 tooltip-manage-users = Gérer les Utilisateurs
 tooltip-server-info = Infos Serveur
 tooltip-about = À propos
@@ -195,11 +196,23 @@ news-updated = Modifié
 files-loading = Chargement des fichiers...
 files-empty = Ce répertoire est vide
 files-home = Accueil
-files-root = Root
+files-root = Racine
 files-panel-title = Fichiers
 files-column-name = Nom
 files-column-size = Taille
 files-column-modified = Modifié
+files-create-directory-title = Créer un Nouveau Dossier
+files-directory-name-placeholder = Nom du dossier
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Le nom du dossier ne peut pas être vide
+err-dir-name-too-long = Le nom du dossier est trop long (max { $max_length } caractères)
+err-dir-name-path-separator = Le nom du dossier ne peut pas contenir / ou \
+err-dir-name-parent-ref = Le nom du dossier ne peut pas être ".."
+err-dir-name-invalid = Le nom du dossier contient des caractères invalides
 
 # =============================================================================
 # Settings Tab Labels

@@ -1,11 +1,27 @@
 //! Files panel handlers
 
 use iced::Task;
+use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, DirNameError};
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{ActivePanel, Message, PendingRequests, ResponseRouting};
+use crate::types::{ActivePanel, InputId, Message, PendingRequests, ResponseRouting};
+
+/// Convert a directory name validation error to a localized error message
+fn dir_name_error_message(error: DirNameError) -> String {
+    match error {
+        DirNameError::Empty => t("err-dir-name-empty"),
+        DirNameError::TooLong => crate::i18n::t_args(
+            "err-dir-name-too-long",
+            &[("max_length", &validators::MAX_DIR_NAME_LENGTH.to_string())],
+        ),
+        DirNameError::ContainsPathSeparator => t("err-dir-name-path-separator"),
+        DirNameError::ContainsParentRef => t("err-dir-name-parent-ref"),
+        DirNameError::ContainsNull | DirNameError::InvalidCharacters => t("err-dir-name-invalid"),
+    }
+}
 
 impl NexusApp {
     // ==================== Panel Toggle ====================
@@ -139,10 +155,106 @@ impl NexusApp {
         self.send_file_list_request(conn_id, String::new(), viewing_root)
     }
 
+    // ==================== New Directory ====================
+
+    /// Handle new directory button click (open dialog)
+    pub fn handle_file_new_directory_clicked(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.open_new_directory_dialog();
+
+        // Focus the name input field
+        operation::focus(Id::from(InputId::NewDirectoryName))
+    }
+
+    /// Handle new directory name input change
+    pub fn handle_file_new_directory_name_changed(&mut self, name: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Validate the name in real-time (before storing to avoid clone)
+        let validation_error = if name.is_empty() {
+            None
+        } else {
+            validators::validate_dir_name(&name)
+                .err()
+                .map(dir_name_error_message)
+        };
+
+        conn.files_management.new_directory_name = name;
+        conn.files_management.new_directory_error = validation_error;
+
+        Task::none()
+    }
+
+    /// Handle new directory submit button
+    pub fn handle_file_new_directory_submit(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let name = &conn.files_management.new_directory_name;
+
+        // Validate before sending
+        if name.is_empty() {
+            conn.files_management.new_directory_error = Some(t("err-dir-name-empty"));
+            return Task::none();
+        }
+
+        if let Err(e) = validators::validate_dir_name(name) {
+            conn.files_management.new_directory_error = Some(dir_name_error_message(e));
+            return Task::none();
+        }
+
+        // Clone values needed for the request after validation passes
+        let name = conn.files_management.new_directory_name.clone();
+        let path = conn.files_management.current_path.clone();
+        let root = conn.files_management.viewing_root;
+
+        match conn.send(ClientMessage::FileCreateDir { path, name, root }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileCreateDirResult);
+            }
+            Err(e) => {
+                conn.files_management.new_directory_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle new directory cancel button (close dialog)
+    pub fn handle_file_new_directory_cancel(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.close_new_directory_dialog();
+
+        Task::none()
+    }
+
     // ==================== Helper Functions ====================
 
     /// Send a FileList request to the server
-    fn send_file_list_request(
+    pub fn send_file_list_request(
         &mut self,
         conn_id: usize,
         path: String,

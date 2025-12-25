@@ -15,8 +15,8 @@ use super::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    allows_upload, build_and_validate_candidate_path, resolve_new_path, resolve_path,
-    resolve_user_area,
+    allows_upload, build_and_validate_candidate_path, normalize_client_path, resolve_new_path,
+    resolve_path, resolve_user_area,
 };
 
 /// Handle a file create directory request
@@ -242,13 +242,7 @@ where
     }
 
     // Build the response path (relative to user's view)
-    // Normalize backslashes to forward slashes, collapse multiple slashes, and remove "." components
-    let normalized_path = path
-        .replace('\\', "/")
-        .split('/')
-        .filter(|s| !s.is_empty() && *s != ".")
-        .collect::<Vec<_>>()
-        .join("/");
+    let normalized_path = normalize_client_path(&path);
     let response_path = if normalized_path.is_empty() {
         name.clone()
     } else {

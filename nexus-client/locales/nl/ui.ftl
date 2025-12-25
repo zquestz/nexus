@@ -155,10 +155,11 @@ tooltip-news = Nieuws
 tooltip-files = Bestanden
 tooltip-files-up = Omhoog
 tooltip-files-home = Naar Start
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = Naar Hoofdmap
 tooltip-files-refresh = Vernieuwen
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = Hoofdmap Weergeven
+tooltip-files-view-home = Startmap Weergeven
+tooltip-files-new-directory = Nieuwe Map
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -194,11 +195,23 @@ news-updated = Bijgewerkt
 files-loading = Bestanden laden...
 files-empty = Deze map is leeg
 files-home = Start
-files-root = Root
+files-root = Hoofdmap
 files-panel-title = Bestanden
 files-column-name = Naam
 files-column-size = Grootte
 files-column-modified = Gewijzigd
+files-create-directory-title = Nieuwe Map Aanmaken
+files-directory-name-placeholder = Mapnaam
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Mapnaam mag niet leeg zijn
+err-dir-name-too-long = Mapnaam is te lang (max { $max_length } tekens)
+err-dir-name-path-separator = Mapnaam mag geen / of \ bevatten
+err-dir-name-parent-ref = Mapnaam mag niet ".." zijn
+err-dir-name-invalid = Mapnaam bevat ongeldige tekens
 
 # =============================================================================
 # Settings Tab Labels

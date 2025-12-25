@@ -154,10 +154,11 @@ tooltip-news = Notizie
 tooltip-files = File
 tooltip-files-up = Vai Su
 tooltip-files-home = Vai a Home
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = Vai alla Radice
 tooltip-files-refresh = Aggiorna
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = Visualizza Radice
+tooltip-files-view-home = Visualizza Home
+tooltip-files-new-directory = Nuova Cartella
 tooltip-manage-users = Gestisci Utenti
 tooltip-server-info = Info Server
 tooltip-about = Informazioni
@@ -193,11 +194,23 @@ news-updated = Aggiornato
 files-loading = Caricamento file...
 files-empty = Questa cartella è vuota
 files-home = Home
-files-root = Root
+files-root = Radice
 files-panel-title = File
 files-column-name = Nome
 files-column-size = Dimensione
 files-column-modified = Modificato
+files-create-directory-title = Crea Nuova Cartella
+files-directory-name-placeholder = Nome della cartella
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Il nome della cartella non può essere vuoto
+err-dir-name-too-long = Il nome della cartella è troppo lungo (max { $max_length } caratteri)
+err-dir-name-path-separator = Il nome della cartella non può contenere / o \
+err-dir-name-parent-ref = Il nome della cartella non può essere ".."
+err-dir-name-invalid = Il nome della cartella contiene caratteri non validi
 
 # =============================================================================
 # Settings Tab Labels

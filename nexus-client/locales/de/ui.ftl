@@ -154,10 +154,11 @@ tooltip-news = Neuigkeiten
 tooltip-files = Dateien
 tooltip-files-up = Nach oben
 tooltip-files-home = Zum Start
-tooltip-files-go-root = Go Root
+tooltip-files-go-root = Zum Stammverzeichnis
 tooltip-files-refresh = Aktualisieren
-tooltip-files-view-root = View Root
-tooltip-files-view-home = View Home
+tooltip-files-view-root = Stammverzeichnis anzeigen
+tooltip-files-view-home = Benutzerverzeichnis anzeigen
+tooltip-files-new-directory = Neues Verzeichnis
 tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
@@ -193,11 +194,23 @@ news-updated = Aktualisiert
 files-loading = Dateien werden geladen...
 files-empty = Dieses Verzeichnis ist leer
 files-home = Start
-files-root = Root
+files-root = Stammverzeichnis
 files-panel-title = Dateien
 files-column-name = Name
 files-column-size = Größe
 files-column-modified = Geändert
+files-create-directory-title = Neues Verzeichnis erstellen
+files-directory-name-placeholder = Verzeichnisname
+
+# =============================================================================
+# Directory Name Validation Errors
+# =============================================================================
+
+err-dir-name-empty = Verzeichnisname darf nicht leer sein
+err-dir-name-too-long = Verzeichnisname ist zu lang (max. { $max_length } Zeichen)
+err-dir-name-path-separator = Verzeichnisname darf kein / oder \ enthalten
+err-dir-name-parent-ref = Verzeichnisname darf nicht ".." sein
+err-dir-name-invalid = Verzeichnisname enthält ungültige Zeichen
 
 # =============================================================================
 # Settings Tab Labels

@@ -52,6 +52,7 @@ where
                 error: Some(err_not_logged_in(ctx.locale)),
                 path: None,
                 entries: None,
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -65,6 +66,7 @@ where
             error: Some(err_file_not_found(ctx.locale)),
             path: None,
             entries: None,
+            can_upload: false,
         };
         return ctx.send_message(&response).await;
     };
@@ -80,6 +82,7 @@ where
             error: Some(err_permission_denied(ctx.locale)),
             path: None,
             entries: None,
+            can_upload: false,
         };
         return ctx.send_message(&response).await;
     }
@@ -95,6 +98,7 @@ where
             error: Some(err_permission_denied(ctx.locale)),
             path: None,
             entries: None,
+            can_upload: false,
         };
         return ctx.send_message(&response).await;
     }
@@ -114,6 +118,7 @@ where
             error: Some(error_msg),
             path: None,
             entries: None,
+            can_upload: false,
         };
         return ctx.send_message(&response).await;
     }
@@ -135,6 +140,7 @@ where
                 error: None,
                 path: Some(path),
                 entries: Some(Vec::new()),
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -149,6 +155,7 @@ where
                 error: Some(err_file_path_invalid(ctx.locale)),
                 path: None,
                 entries: None,
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -161,6 +168,7 @@ where
                 error: Some(err_file_not_found(ctx.locale)),
                 path: None,
                 entries: None,
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -170,6 +178,7 @@ where
                 error: Some(err_file_path_invalid(ctx.locale)),
                 path: None,
                 entries: None,
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -182,9 +191,13 @@ where
             error: Some(err_file_not_directory(ctx.locale)),
             path: None,
             entries: None,
+            can_upload: false,
         };
         return ctx.send_message(&response).await;
     }
+
+    // Check if the current directory allows uploads (for the New Directory button)
+    let current_dir_can_upload = allows_upload(&area_root, &resolved);
 
     // Check if we're inside a dropbox - if unauthorized, return empty listing
     // This check is done once before the loop for efficiency
@@ -197,6 +210,7 @@ where
             error: None,
             path: Some(path),
             entries: Some(Vec::new()),
+            can_upload: current_dir_can_upload,
         };
         return ctx.send_message(&response).await;
     }
@@ -210,6 +224,7 @@ where
                 error: Some(err_file_not_found(ctx.locale)),
                 path: None,
                 entries: None,
+                can_upload: false,
             };
             return ctx.send_message(&response).await;
         }
@@ -293,6 +308,7 @@ where
         error: None,
         path: Some(path),
         entries: Some(entries),
+        can_upload: current_dir_can_upload,
     };
 
     ctx.send_message(&response).await
@@ -948,6 +964,7 @@ mod tests {
                 error,
                 path,
                 entries,
+                ..
             } => {
                 assert!(success);
 

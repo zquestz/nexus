@@ -314,6 +314,14 @@ pub enum Message {
     FileRefresh,
     /// Files: Toggle between home and root view
     FileToggleRoot,
+    /// Files: New directory button clicked (open dialog)
+    FileNewDirectoryClicked,
+    /// Files: New directory name input changed
+    FileNewDirectoryNameChanged(String),
+    /// Files: New directory submit button pressed
+    FileNewDirectorySubmit,
+    /// Files: New directory cancel button pressed (close dialog)
+    FileNewDirectoryCancel,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

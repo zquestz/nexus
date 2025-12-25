@@ -345,6 +345,9 @@ pub enum ServerMessage {
         path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         entries: Option<Vec<FileEntry>>,
+        /// Whether the current directory allows uploads (for UI to enable "New Directory" button)
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        can_upload: bool,
     },
     FileCreateDirResponse {
         success: bool,
