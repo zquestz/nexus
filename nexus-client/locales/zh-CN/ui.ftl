@@ -140,8 +140,9 @@ permission-news_list = 新闻列表
 permission-news_create = 创建新闻
 permission-news_edit = 编辑新闻
 permission-news_delete = 删除新闻
+permission-file_create_dir = 目录创建
 permission-file_list = 文件列表
-permission-file_root = File Root
+permission-file_root = 文件根目录
 
 # =============================================================================
 # Tooltips
@@ -153,7 +154,10 @@ tooltip-news = 新闻
 tooltip-files = 文件
 tooltip-files-up = 返回上级
 tooltip-files-home = 返回主目录
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = 刷新
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -189,6 +193,7 @@ news-updated = 已更新
 files-loading = 正在加载文件...
 files-empty = 此目录为空
 files-home = 主目录
+files-root = Root
 files-panel-title = 文件
 files-column-name = 名称
 files-column-size = 大小

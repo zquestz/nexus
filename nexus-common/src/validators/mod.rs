@@ -7,6 +7,7 @@
 mod avatar;
 mod chat_topic;
 mod data_uri;
+mod dir_name;
 mod features;
 mod file_path;
 mod locale;
@@ -25,6 +26,7 @@ mod version;
 pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
 pub use chat_topic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
 pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
+pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};

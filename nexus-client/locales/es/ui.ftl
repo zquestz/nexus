@@ -141,8 +141,9 @@ permission-news_list = Lista de Noticias
 permission-news_create = Crear Noticias
 permission-news_edit = Editar Noticias
 permission-news_delete = Eliminar Noticias
+permission-file_create_dir = Directorio Crear
 permission-file_list = Lista de Archivos
-permission-file_root = File Root
+permission-file_root = Raíz de Archivos
 
 # =============================================================================
 # Tooltips
@@ -154,7 +155,10 @@ tooltip-news = Noticias
 tooltip-files = Archivos
 tooltip-files-up = Subir
 tooltip-files-home = Ir a Inicio
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = Actualizar
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = Gestionar Usuarios
 tooltip-server-info = Info del Servidor
 tooltip-about = Acerca de
@@ -190,6 +194,7 @@ news-updated = Actualizado
 files-loading = Cargando archivos...
 files-empty = Este directorio está vacío
 files-home = Inicio
+files-root = Root
 files-panel-title = Archivos
 files-column-name = Nombre
 files-column-size = Tamaño

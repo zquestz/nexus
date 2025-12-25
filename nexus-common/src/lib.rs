@@ -30,6 +30,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
+/// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_list`: Browse files and directories in user's area
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `news_create`: Create news posts
@@ -49,6 +50,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
+    "file_create_dir",
     "file_list",
     "file_root",
     "news_create",
@@ -138,8 +140,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (18)
-        assert_eq!(ALL_PERMISSIONS.len(), 18);
+        // Verify we have the expected number of permissions (19)
+        assert_eq!(ALL_PERMISSIONS.len(), 19);
     }
 
     #[test]

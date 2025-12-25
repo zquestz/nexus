@@ -312,6 +312,8 @@ pub enum Message {
     FileNavigateHome,
     /// Files: Refresh current directory listing
     FileRefresh,
+    /// Files: Toggle between home and root view
+    FileToggleRoot,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

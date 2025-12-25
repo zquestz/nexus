@@ -327,6 +327,9 @@ where
         ClientMessage::FileList { path, root } => {
             handlers::handle_file_list(path, root, conn_state.session_id, ctx).await?;
         }
+        ClientMessage::FileCreateDir { path, name, root } => {
+            handlers::handle_file_create_dir(path, name, root, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

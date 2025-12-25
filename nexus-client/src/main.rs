@@ -467,6 +467,7 @@ impl NexusApp {
             Message::FileNavigateUp => self.handle_file_navigate_up(),
             Message::FileNavigateHome => self.handle_file_navigate_home(),
             Message::FileRefresh => self.handle_file_refresh(),
+            Message::FileToggleRoot => self.handle_file_toggle_root(),
         }
     }
 

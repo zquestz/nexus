@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 0f24ba3ace1efc3a8a3795dca6ecbf5e877c563381a6f94adb13675ba63dd5a6
+// 1161983291d5512d01c07673bdc0c9f829d369586f3b1d78056eb0eaf59b961d
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -80,6 +80,10 @@ pub fn file_word<'a>() -> Text<'a> {
 
 pub fn folder<'a>() -> Text<'a> {
     icon("\u{1F4C1}")
+}
+
+pub fn folder_root<'a>() -> Text<'a> {
+    icon("\u{F0E8}")
 }
 
 pub fn home<'a>() -> Text<'a> {

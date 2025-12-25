@@ -124,6 +124,15 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    FileCreateDir {
+        /// Parent directory path where the new directory should be created
+        path: String,
+        /// Name of the new directory to create
+        name: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
 }
 
 /// Server response messages
@@ -336,6 +345,14 @@ pub enum ServerMessage {
         path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         entries: Option<Vec<FileEntry>>,
+    },
+    FileCreateDirResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Full path of the created directory (for client to navigate to)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
 }
 
@@ -600,6 +617,12 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::FileList { path, root } => f
                 .debug_struct("FileList")
                 .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileCreateDir { path, name, root } => f
+                .debug_struct("FileCreateDir")
+                .field("path", path)
+                .field("name", name)
                 .field("root", root)
                 .finish(),
         }

@@ -2,7 +2,7 @@
 //!
 //! Validates file paths for file area operations.
 
-/// Maximum length for file paths in characters
+/// Maximum length for file paths in bytes
 pub const MAX_FILE_PATH_LENGTH: usize = 4096;
 
 /// Validation error for file paths
@@ -14,14 +14,17 @@ pub enum FilePathError {
     ContainsNull,
     /// Path contains invalid characters (control characters)
     InvalidCharacters,
+    /// Path contains Windows drive letter (potential path traversal)
+    ContainsWindowsDrive,
 }
 
 /// Validate a file path from the client
 ///
 /// Checks:
-/// - Does not exceed maximum length (4096 characters)
+/// - Does not exceed maximum length (4096 bytes)
 /// - No null bytes
 /// - No control characters (except path separators are allowed)
+/// - No Windows drive letters (prevents path traversal on Windows servers)
 ///
 /// Note: This validator does NOT check for path traversal (../) as that
 /// is handled by the server's `resolve_path()` function which canonicalizes
@@ -33,6 +36,22 @@ pub enum FilePathError {
 pub fn validate_file_path(path: &str) -> Result<(), FilePathError> {
     if path.len() > MAX_FILE_PATH_LENGTH {
         return Err(FilePathError::TooLong);
+    }
+
+    // Check for Windows drive letters (e.g., "C:", "D:\", "C:/")
+    // This prevents path traversal on Windows servers where Path::join
+    // treats paths with drive letters as absolute, replacing the base path.
+    // Pattern: single letter followed by colon, optionally followed by separator
+    //
+    // IMPORTANT: We must check AFTER stripping leading path separators, because
+    // paths like "/C:/Windows" or "\C:\Windows" would bypass a check at position 0,
+    // but become "C:/Windows" after the server's trim_start_matches(['/', '\\']).
+    let normalized = path.trim_start_matches(['/', '\\']);
+    if normalized.len() >= 2 {
+        let bytes = normalized.as_bytes();
+        if bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            return Err(FilePathError::ContainsWindowsDrive);
+        }
     }
 
     for ch in path.chars() {
@@ -76,6 +95,65 @@ mod tests {
         // Backslashes are allowed (server handles translation)
         assert!(validate_file_path("\\Documents\\file.txt").is_ok());
         assert!(validate_file_path("/Mixed\\Separators/file.txt").is_ok());
+    }
+
+    #[test]
+    fn test_windows_drive_letters_rejected() {
+        // Windows drive letters are rejected to prevent path traversal
+        assert_eq!(
+            validate_file_path("C:\\Windows"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("C:/Windows"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("D:\\"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("c:\\lowercase"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("Z:"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        // But these should be allowed (colon not in drive letter position)
+        assert!(validate_file_path("/path/file:with:colons").is_ok());
+        assert!(validate_file_path("1:23").is_ok()); // Not a letter
+        assert!(validate_file_path(":colon/first").is_ok()); // No letter before
+    }
+
+    #[test]
+    fn test_windows_drive_letters_with_leading_separators() {
+        // These bypass attempts must also be caught - the drive letter appears
+        // after leading separators that get stripped by the server
+        assert_eq!(
+            validate_file_path("/C:/Windows"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("\\C:\\Windows"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("//C:/Windows"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("/C:"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("\\C:"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
+        assert_eq!(
+            validate_file_path("///c:/foo"),
+            Err(FilePathError::ContainsWindowsDrive)
+        );
     }
 
     #[test]

@@ -642,3 +642,32 @@ pub fn err_file_not_found(locale: &str) -> String {
 pub fn err_file_not_directory(locale: &str) -> String {
     t(locale, "err-file-not-directory")
 }
+
+/// Get translated "directory name empty" error
+pub fn err_dir_name_empty(locale: &str) -> String {
+    t(locale, "err-dir-name-empty")
+}
+
+/// Get translated "directory name too long" error
+pub fn err_dir_name_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-dir-name-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "directory name invalid" error
+pub fn err_dir_name_invalid(locale: &str) -> String {
+    t(locale, "err-dir-name-invalid")
+}
+
+/// Get translated "directory already exists" error
+pub fn err_dir_already_exists(locale: &str) -> String {
+    t(locale, "err-dir-already-exists")
+}
+
+/// Get translated "directory creation failed" error
+pub fn err_dir_create_failed(locale: &str) -> String {
+    t(locale, "err-dir-create-failed")
+}

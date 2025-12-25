@@ -172,17 +172,36 @@ pub struct FilesManagementState {
     pub entries: Option<Vec<nexus_common::protocol::FileEntry>>,
     /// Error message for the panel
     pub error: Option<String>,
+    /// Whether viewing from the file root (requires file_root permission)
+    pub viewing_root: bool,
 }
 
 impl FilesManagementState {
-    /// Navigate to a new path
+    /// Navigate to a new path (preserves viewing_root state)
     pub fn navigate_to(&mut self, path: String) {
         self.current_path = path;
         self.entries = None;
         self.error = None;
+        // Note: viewing_root is preserved across navigation
     }
 
-    /// Navigate up one directory level
+    /// Navigate to home directory (preserves viewing_root state)
+    pub fn navigate_home(&mut self) {
+        self.current_path = String::new();
+        self.entries = None;
+        self.error = None;
+        // Note: viewing_root is preserved - home means root of current view
+    }
+
+    /// Toggle between root view and user area view
+    pub fn toggle_root(&mut self) {
+        self.viewing_root = !self.viewing_root;
+        self.current_path = String::new();
+        self.entries = None;
+        self.error = None;
+    }
+
+    /// Navigate up one directory level (preserves viewing_root state)
     pub fn navigate_up(&mut self) {
         if self.current_path.is_empty() || self.current_path == "/" {
             return;
@@ -201,6 +220,7 @@ impl FilesManagementState {
 
         self.entries = None;
         self.error = None;
+        // Note: viewing_root is preserved across navigation
     }
 
     /// Get the display name for a file entry (strips folder type suffixes)
@@ -643,11 +663,106 @@ mod tests {
     }
 
     #[test]
+    fn test_files_management_navigate_to_preserves_viewing_root() {
+        let mut state = FilesManagementState {
+            current_path: String::new(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: true,
+        };
+
+        state.navigate_to("shared/Documents".to_string());
+
+        assert_eq!(state.current_path, "shared/Documents");
+        assert!(state.viewing_root); // Should be preserved
+    }
+
+    #[test]
+    fn test_files_management_navigate_home() {
+        let mut state = FilesManagementState {
+            current_path: "Documents/Photos".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: false,
+        };
+
+        state.navigate_home();
+
+        assert!(state.current_path.is_empty());
+        assert!(state.entries.is_none());
+        assert!(state.error.is_none());
+        assert!(!state.viewing_root);
+    }
+
+    #[test]
+    fn test_files_management_navigate_home_preserves_viewing_root() {
+        let mut state = FilesManagementState {
+            current_path: "shared/Documents".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: true,
+        };
+
+        state.navigate_home();
+
+        assert!(state.current_path.is_empty());
+        assert!(state.viewing_root); // Should be preserved
+    }
+
+    #[test]
+    fn test_files_management_toggle_root_from_user_area() {
+        let mut state = FilesManagementState {
+            current_path: "Documents/Photos".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: false,
+        };
+
+        state.toggle_root();
+
+        assert!(state.current_path.is_empty()); // Path reset
+        assert!(state.entries.is_none());
+        assert!(state.viewing_root); // Now viewing root
+    }
+
+    #[test]
+    fn test_files_management_toggle_root_from_root() {
+        let mut state = FilesManagementState {
+            current_path: "shared/Documents".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: true,
+        };
+
+        state.toggle_root();
+
+        assert!(state.current_path.is_empty()); // Path reset
+        assert!(state.entries.is_none());
+        assert!(!state.viewing_root); // Now viewing user area
+    }
+
+    #[test]
+    fn test_files_management_navigate_up_preserves_viewing_root() {
+        let mut state = FilesManagementState {
+            current_path: "shared/Documents".to_string(),
+            entries: Some(vec![]),
+            error: None,
+            viewing_root: true,
+        };
+
+        state.navigate_up();
+
+        assert_eq!(state.current_path, "shared");
+        assert!(state.viewing_root); // Should be preserved
+    }
+
+    #[test]
     fn test_files_management_navigate_up_from_nested() {
         let mut state = FilesManagementState {
             current_path: "Documents/Photos/2024".to_string(),
             entries: Some(vec![]),
             error: None,
+            viewing_root: false,
         };
 
         state.navigate_up();
@@ -662,6 +777,7 @@ mod tests {
             current_path: "Documents".to_string(),
             entries: Some(vec![]),
             error: None,
+            viewing_root: false,
         };
 
         state.navigate_up();
@@ -675,6 +791,7 @@ mod tests {
             current_path: String::new(),
             entries: Some(vec![]),
             error: None,
+            viewing_root: false,
         };
 
         state.navigate_up();
@@ -690,6 +807,7 @@ mod tests {
             current_path: "/".to_string(),
             entries: Some(vec![]),
             error: None,
+            viewing_root: false,
         };
 
         state.navigate_up();
@@ -704,6 +822,7 @@ mod tests {
             current_path: "Documents/Photos/".to_string(),
             entries: Some(vec![]),
             error: None,
+            viewing_root: false,
         };
 
         state.navigate_up();

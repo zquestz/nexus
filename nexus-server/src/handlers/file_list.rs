@@ -105,9 +105,9 @@ where
             FilePathError::TooLong => {
                 err_file_path_too_long(ctx.locale, validators::MAX_FILE_PATH_LENGTH)
             }
-            FilePathError::ContainsNull | FilePathError::InvalidCharacters => {
-                err_file_path_invalid(ctx.locale)
-            }
+            FilePathError::ContainsNull
+            | FilePathError::InvalidCharacters
+            | FilePathError::ContainsWindowsDrive => err_file_path_invalid(ctx.locale),
         };
         let response = ServerMessage::FileListResponse {
             success: false,

@@ -140,8 +140,9 @@ permission-news_list = Список Новостей
 permission-news_create = Создать Новость
 permission-news_edit = Редактировать Новость
 permission-news_delete = Удалить Новость
+permission-file_create_dir = Каталог Создать
 permission-file_list = Список Файлов
-permission-file_root = File Root
+permission-file_root = Корень Файлов
 
 # =============================================================================
 # Tooltips
@@ -153,7 +154,10 @@ tooltip-news = Новости
 tooltip-files = Файлы
 tooltip-files-up = Наверх
 tooltip-files-home = На главную
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = Обновить
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = Управление пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
@@ -189,6 +193,7 @@ news-updated = Обновлено
 files-loading = Загрузка файлов...
 files-empty = Эта папка пуста
 files-home = Главная
+files-root = Root
 files-panel-title = Файлы
 files-column-name = Имя
 files-column-size = Размер

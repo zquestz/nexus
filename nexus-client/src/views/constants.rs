@@ -66,3 +66,6 @@ pub(crate) const PERMISSION_NEWS_DELETE: &str = "news_delete";
 
 /// Permission to browse files and directories
 pub(crate) const PERMISSION_FILE_LIST: &str = "file_list";
+
+/// Permission to browse from file area root (see all areas)
+pub(crate) const PERMISSION_FILE_ROOT: &str = "file_root";

@@ -153,12 +153,18 @@ fn parse_breadcrumbs(path: &str) -> Vec<(&str, String)> {
 // ============================================================================
 
 /// Build the breadcrumb navigation bar
-fn breadcrumb_bar<'a>(current_path: &str) -> Element<'a, Message> {
+fn breadcrumb_bar<'a>(current_path: &str, viewing_root: bool) -> Element<'a, Message> {
     let mut breadcrumbs = iced::widget::Row::new().spacing(SPACER_SIZE_SMALL);
 
-    // Home link - always clickable (acts as refresh when at home)
+    // Root/Home link - shows "Root" when viewing root, "Home" otherwise
+    // Always clickable (acts as refresh when at root/home)
+    let root_label = if viewing_root {
+        t("files-root")
+    } else {
+        t("files-home")
+    };
     let home_btn = button(
-        shaped_text(t("files-home"))
+        shaped_text(root_label)
             .size(TEXT_SIZE)
             .style(muted_text_style),
     )
@@ -223,15 +229,20 @@ fn breadcrumb_bar<'a>(current_path: &str) -> Element<'a, Message> {
         .into()
 }
 
-/// Build the toolbar with Home, Refresh, and Up buttons
-fn toolbar<'a>(can_go_up: bool) -> Element<'a, Message> {
-    // Home button - always enabled
+/// Build the toolbar with Home, Refresh, Up, and optional Root toggle buttons
+fn toolbar<'a>(can_go_up: bool, has_file_root: bool, viewing_root: bool) -> Element<'a, Message> {
+    // Home button - tooltip changes based on viewing mode
+    let home_tooltip = if viewing_root {
+        t("tooltip-files-go-root")
+    } else {
+        t("tooltip-files-home")
+    };
     let home_button = tooltip(
         button(icon::home().size(FILE_TOOLBAR_ICON_SIZE))
             .padding(FILE_TOOLBAR_BUTTON_PADDING)
             .style(transparent_icon_button_style)
             .on_press(Message::FileNavigateHome),
-        container(shaped_text(t("tooltip-files-home")).size(TOOLTIP_TEXT_SIZE))
+        container(shaped_text(home_tooltip).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)
             .style(tooltip_container_style),
         tooltip::Position::Bottom,
@@ -276,9 +287,33 @@ fn toolbar<'a>(can_go_up: bool) -> Element<'a, Message> {
             .into()
     };
 
-    row![home_button, refresh_button, up_button]
-        .spacing(SPACER_SIZE_SMALL)
-        .into()
+    // Root toggle button - only shown if user has file_root permission
+    let mut toolbar_row = row![home_button, refresh_button, up_button].spacing(SPACER_SIZE_SMALL);
+
+    if has_file_root {
+        let root_toggle_tooltip = if viewing_root {
+            t("tooltip-files-view-home")
+        } else {
+            t("tooltip-files-view-root")
+        };
+
+        let root_toggle_button = tooltip(
+            button(icon::folder_root().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FileToggleRoot),
+            container(shaped_text(root_toggle_tooltip).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING);
+
+        toolbar_row = toolbar_row.push(root_toggle_button);
+    }
+
+    toolbar_row.into()
 }
 
 /// Build the file table
@@ -305,7 +340,9 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
             let name_content: Element<'_, Message> = row![
                 icon_element,
                 Space::new().width(FILE_LIST_ICON_SPACING),
-                shaped_text(display_name).size(TEXT_SIZE),
+                shaped_text(display_name)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::WordOrGlyph),
             ]
             .align_y(Center)
             .into();
@@ -377,18 +414,26 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
 /// Displays the files panel
 ///
 /// Shows a file browser with directory listing and navigation.
-pub fn files_view<'a>(files_management: &'a FilesManagementState) -> Element<'a, Message> {
+///
+/// # Arguments
+/// * `files_management` - Current files panel state
+/// * `has_file_root` - Whether user has file_root permission (enables root toggle)
+pub fn files_view<'a>(
+    files_management: &'a FilesManagementState,
+    has_file_root: bool,
+) -> Element<'a, Message> {
     let is_at_home =
         files_management.current_path.is_empty() || files_management.current_path == "/";
+    let viewing_root = files_management.viewing_root;
 
     // Title row (centered, matching other panels)
     let title_row = panel_title(t("files-panel-title"));
 
     // Breadcrumb navigation
-    let breadcrumbs = breadcrumb_bar(&files_management.current_path);
+    let breadcrumbs = breadcrumb_bar(&files_management.current_path, viewing_root);
 
     // Toolbar with buttons
-    let toolbar = toolbar(!is_at_home);
+    let toolbar = toolbar(!is_at_home, has_file_root, viewing_root);
 
     // Content area (table or status message)
     // Priority: error > entries > loading

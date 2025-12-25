@@ -141,8 +141,9 @@ permission-news_list = Nieuwslijst
 permission-news_create = Nieuws Maken
 permission-news_edit = Nieuws Bewerken
 permission-news_delete = Nieuws Verwijderen
+permission-file_create_dir = Directory Aanmaken
 permission-file_list = Bestandslijst
-permission-file_root = File Root
+permission-file_root = Bestandsroot
 
 # =============================================================================
 # Tooltips
@@ -154,7 +155,10 @@ tooltip-news = Nieuws
 tooltip-files = Bestanden
 tooltip-files-up = Omhoog
 tooltip-files-home = Naar Start
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = Vernieuwen
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -190,6 +194,7 @@ news-updated = Bijgewerkt
 files-loading = Bestanden laden...
 files-empty = Deze map is leeg
 files-home = Start
+files-root = Root
 files-panel-title = Bestanden
 files-column-name = Naam
 files-column-size = Grootte

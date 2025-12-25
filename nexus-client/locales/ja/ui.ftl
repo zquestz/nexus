@@ -140,8 +140,9 @@ permission-news_list = ニュース一覧
 permission-news_create = ニュース作成
 permission-news_edit = ニュース編集
 permission-news_delete = ニュース削除
+permission-file_create_dir = ディレクトリ作成
 permission-file_list = ファイル一覧
-permission-file_root = File Root
+permission-file_root = ファイルルート
 
 # =============================================================================
 # Tooltips
@@ -153,7 +154,10 @@ tooltip-news = ニュース
 tooltip-files = ファイル
 tooltip-files-up = 上へ
 tooltip-files-home = ホームへ移動
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = 更新
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -189,6 +193,7 @@ news-updated = 更新日時
 files-loading = ファイルを読み込み中...
 files-empty = このディレクトリは空です
 files-home = ホーム
+files-root = Root
 files-panel-title = ファイル
 files-column-name = 名前
 files-column-size = サイズ

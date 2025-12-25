@@ -140,8 +140,9 @@ permission-news_list = 新聞列表
 permission-news_create = 建立新聞
 permission-news_edit = 編輯新聞
 permission-news_delete = 刪除新聞
+permission-file_create_dir = 目錄建立
 permission-file_list = 檔案列表
-permission-file_root = File Root
+permission-file_root = 檔案根目錄
 
 # =============================================================================
 # Tooltips
@@ -153,7 +154,10 @@ tooltip-news = 新聞
 tooltip-files = 檔案
 tooltip-files-up = 上一層
 tooltip-files-home = 返回主目錄
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = 重新整理
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -189,6 +193,7 @@ news-updated = 已更新
 files-loading = 正在載入檔案...
 files-empty = 此目錄為空
 files-home = 主目錄
+files-root = Root
 files-panel-title = 檔案
 files-column-name = 名稱
 files-column-size = 大小

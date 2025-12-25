@@ -140,8 +140,9 @@ permission-news_list = 뉴스 목록
 permission-news_create = 뉴스 작성
 permission-news_edit = 뉴스 편집
 permission-news_delete = 뉴스 삭제
+permission-file_create_dir = 디렉토리 생성
 permission-file_list = 파일 목록
-permission-file_root = File Root
+permission-file_root = 파일 루트
 
 # =============================================================================
 # Tooltips
@@ -153,7 +154,10 @@ tooltip-news = 뉴스
 tooltip-files = 파일
 tooltip-files-up = 위로
 tooltip-files-home = 홈으로 이동
+tooltip-files-go-root = Go Root
 tooltip-files-refresh = 새로고침
+tooltip-files-view-root = View Root
+tooltip-files-view-home = View Home
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -189,6 +193,7 @@ news-updated = 수정됨
 files-loading = 파일 로딩 중...
 files-empty = 이 디렉토리가 비어 있습니다
 files-home = 홈
+files-root = Root
 files-panel-title = 파일
 files-column-name = 이름
 files-column-size = 크기
