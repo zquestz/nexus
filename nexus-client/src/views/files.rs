@@ -238,6 +238,7 @@ fn toolbar<'a>(
     can_go_up: bool,
     has_file_root: bool,
     viewing_root: bool,
+    show_hidden: bool,
     can_create_dir: bool,
     is_loading: bool,
 ) -> Element<'a, Message> {
@@ -326,6 +327,32 @@ fn toolbar<'a>(
 
     // Refresh button
     toolbar_row = toolbar_row.push(refresh_button);
+
+    // Hidden files toggle button
+    let hidden_tooltip = if show_hidden {
+        t("tooltip-files-hide-hidden")
+    } else {
+        t("tooltip-files-show-hidden")
+    };
+    let hidden_icon = if show_hidden {
+        icon::eye()
+    } else {
+        icon::eye_off()
+    };
+    let hidden_toggle_button = tooltip(
+        button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
+            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            .style(transparent_icon_button_style)
+            .on_press(Message::FileToggleHidden),
+        container(shaped_text(hidden_tooltip).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Bottom,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING);
+
+    toolbar_row = toolbar_row.push(hidden_toggle_button);
 
     // New Directory button - enabled if user has file_create_dir permission OR current dir allows upload
     // Disabled while loading
@@ -557,6 +584,7 @@ pub fn files_view<'a>(
         !is_at_home,
         has_file_root,
         viewing_root,
+        files_management.show_hidden,
         can_create_dir,
         is_loading,
     );

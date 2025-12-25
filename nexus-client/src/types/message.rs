@@ -314,6 +314,8 @@ pub enum Message {
     FileRefresh,
     /// Files: Toggle between home and root view
     FileToggleRoot,
+    /// Files: Toggle showing hidden files (dotfiles)
+    FileToggleHidden,
     /// Files: New directory button clicked (open dialog)
     FileNewDirectoryClicked,
     /// Files: New directory name input changed

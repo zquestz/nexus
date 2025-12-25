@@ -24,6 +24,7 @@ use crate::files::{
 pub async fn handle_file_list<W>(
     path: String,
     root: bool,
+    show_hidden: bool,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -247,6 +248,11 @@ where
             continue; // Skip non-UTF8 filenames
         };
 
+        // Skip hidden files (dotfiles) unless show_hidden is true
+        if !show_hidden && name_str.starts_with('.') {
+            continue;
+        }
+
         let is_dir = metadata.is_dir();
 
         // Parse folder type for directories
@@ -382,6 +388,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             false,
+            false,
             None,
             &mut test_ctx.handler_context(),
         )
@@ -401,6 +408,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -429,6 +437,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -469,6 +478,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -504,6 +514,7 @@ mod tests {
         let result = handle_file_list(
             "/path\0with/null".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -530,6 +541,7 @@ mod tests {
 
         let result = handle_file_list(
             "/nonexistent".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -558,6 +570,7 @@ mod tests {
         // Try to list a file instead of a directory
         let result = handle_file_list(
             "/readme.txt".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -591,6 +604,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -658,6 +672,7 @@ mod tests {
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -699,6 +714,7 @@ mod tests {
         // List the dropbox contents - admin should see the file
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -747,6 +763,7 @@ mod tests {
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -793,6 +810,7 @@ mod tests {
         // List alice's dropbox contents - bob should see empty
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -842,6 +860,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -885,6 +904,7 @@ mod tests {
 
         let result = handle_file_list(
             "/".to_string(),
+            false,
             false,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -951,6 +971,7 @@ mod tests {
         let result = handle_file_list(
             "/Linked".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1010,6 +1031,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             false,
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1064,6 +1086,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1100,6 +1123,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1136,6 +1160,7 @@ mod tests {
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1178,6 +1203,7 @@ mod tests {
         let result = handle_file_list(
             "/users/alice".to_string(),
             true, // root = true
+            false,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1194,6 +1220,162 @@ mod tests {
                 // Should see alice's private file
                 let private = entries.iter().find(|e| e.name == "private.txt");
                 assert!(private.is_some(), "Should see alice's private file");
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_hides_dotfiles_by_default() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        let file_root = Box::leak(file_area.path().to_path_buf().into_boxed_path());
+        test_ctx.file_root = Some(file_root);
+
+        // Create a dotfile in shared/
+        fs::write(file_root.join("shared/.hidden"), "secret").expect("Failed to create dotfile");
+        fs::write(file_root.join("shared/visible.txt"), "hello").expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        // List without show_hidden (default)
+        let result = handle_file_list(
+            "/".to_string(),
+            false,
+            false, // show_hidden = false
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see visible.txt but not .hidden
+                assert!(
+                    entries.iter().any(|e| e.name == "visible.txt"),
+                    "Should see visible.txt"
+                );
+                assert!(
+                    !entries.iter().any(|e| e.name == ".hidden"),
+                    "Should not see .hidden"
+                );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_shows_dotfiles_when_requested() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        let file_root = Box::leak(file_area.path().to_path_buf().into_boxed_path());
+        test_ctx.file_root = Some(file_root);
+
+        // Create a dotfile in shared/
+        fs::write(file_root.join("shared/.hidden"), "secret").expect("Failed to create dotfile");
+        fs::write(file_root.join("shared/visible.txt"), "hello").expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        // List with show_hidden = true
+        let result = handle_file_list(
+            "/".to_string(),
+            false,
+            true, // show_hidden = true
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see both visible.txt and .hidden
+                assert!(
+                    entries.iter().any(|e| e.name == "visible.txt"),
+                    "Should see visible.txt"
+                );
+                assert!(
+                    entries.iter().any(|e| e.name == ".hidden"),
+                    "Should see .hidden when show_hidden is true"
+                );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_list_hides_dotdirectories_by_default() {
+        let file_area = setup_file_area();
+        let mut test_ctx = create_test_context().await;
+        let file_root = Box::leak(file_area.path().to_path_buf().into_boxed_path());
+        test_ctx.file_root = Some(file_root);
+
+        // Create a hidden directory in shared/
+        fs::create_dir(file_root.join("shared/.hidden_dir")).expect("Failed to create dotdir");
+        fs::create_dir(file_root.join("shared/visible_dir")).expect("Failed to create dir");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        // List without show_hidden (default)
+        let result = handle_file_list(
+            "/".to_string(),
+            false,
+            false, // show_hidden = false
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::FileListResponse {
+                success, entries, ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                // Should see visible_dir but not .hidden_dir
+                assert!(
+                    entries.iter().any(|e| e.name == "visible_dir"),
+                    "Should see visible_dir"
+                );
+                assert!(
+                    !entries.iter().any(|e| e.name == ".hidden_dir"),
+                    "Should not see .hidden_dir"
+                );
             }
             _ => panic!("Expected FileListResponse"),
         }

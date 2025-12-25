@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 15c47f670c394e90d0323ffa54c723bd043dc8ce5807a230c2802ba9c8e93f0a
+// ea6955799df5f9f0b8e12db46c2138ad7eb0772e7072b4e30f78347b1cfb1ed6
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -32,6 +32,14 @@ pub fn edit<'a>() -> Text<'a> {
 
 pub fn expand_right<'a>() -> Text<'a> {
     icon("\u{F152}")
+}
+
+pub fn eye<'a>() -> Text<'a> {
+    icon("\u{E70A}")
+}
+
+pub fn eye_off<'a>() -> Text<'a> {
+    icon("\u{E70B}")
 }
 
 pub fn file<'a>() -> Text<'a> {

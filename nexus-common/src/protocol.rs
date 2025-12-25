@@ -123,6 +123,9 @@ pub enum ClientMessage {
         /// If true, browse from file root instead of user's area (requires file_root permission)
         #[serde(default)]
         root: bool,
+        /// If true, include hidden files (dotfiles) in the listing
+        #[serde(default)]
+        show_hidden: bool,
     },
     FileCreateDir {
         /// Parent directory path where the new directory should be created
@@ -617,10 +620,15 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::NewsDelete { id } => {
                 f.debug_struct("NewsDelete").field("id", id).finish()
             }
-            ClientMessage::FileList { path, root } => f
+            ClientMessage::FileList {
+                path,
+                root,
+                show_hidden,
+            } => f
                 .debug_struct("FileList")
                 .field("path", path)
                 .field("root", root)
+                .field("show_hidden", show_hidden)
                 .finish(),
             ClientMessage::FileCreateDir { path, name, root } => f
                 .debug_struct("FileCreateDir")

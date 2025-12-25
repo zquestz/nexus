@@ -93,13 +93,14 @@ impl NexusApp {
             // Refresh the current directory listing
             let current_path = conn.files_management.current_path.clone();
             let viewing_root = conn.files_management.viewing_root;
+            let show_hidden = conn.files_management.show_hidden;
 
             // Clear entries to show loading state
             conn.files_management.entries = None;
             conn.files_management.error = None;
 
             // Send refresh request
-            self.send_file_list_request(connection_id, current_path, viewing_root)
+            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
         } else {
             // Show error in dialog
             conn.files_management.new_directory_error = error;

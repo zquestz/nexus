@@ -109,6 +109,10 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub show_seconds: bool,
 
+    /// Show hidden files (dotfiles) in file browser
+    #[serde(default)]
+    pub show_hidden_files: bool,
+
     /// User avatar as data URI (e.g., "data:image/png;base64,...")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
@@ -151,6 +155,7 @@ impl Default for Settings {
             show_timestamps: default_true(),
             use_24_hour_time: false,
             show_seconds: default_true(),
+            show_hidden_files: false,
             avatar: None,
             nickname: None,
             window_width: default_window_width(),
@@ -180,6 +185,7 @@ impl std::fmt::Debug for Settings {
             .field("show_timestamps", &self.show_timestamps)
             .field("use_24_hour_time", &self.use_24_hour_time)
             .field("show_seconds", &self.show_seconds)
+            .field("show_hidden_files", &self.show_hidden_files)
             .field(
                 "avatar",
                 &self.avatar.as_ref().map(|a| format!("<{} bytes>", a.len())),

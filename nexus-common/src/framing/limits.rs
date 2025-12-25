@@ -76,7 +76,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("NewsDelete", 32);
 
     // File client messages
-    m.insert("FileList", 4138); // path (4096) + root bool + overhead
+    m.insert("FileList", 4158); // path (4096) + root bool + show_hidden bool + overhead
     m.insert("FileCreateDir", 4433); // path (4096) + name (255) + root bool + overhead
 
     // Server messages (limits match actual max size from validators)
@@ -383,6 +383,7 @@ mod tests {
         let msg = ClientMessage::FileList {
             path: str_of_len(MAX_FILE_PATH_LENGTH),
             root: false,
+            show_hidden: false,
         };
         assert_eq!(json_size(&msg), max_payload_for_type("FileList") as usize);
     }

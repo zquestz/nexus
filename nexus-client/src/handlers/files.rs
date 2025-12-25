@@ -44,16 +44,20 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Initialize show_hidden from config on first open
+        conn.files_management.show_hidden = self.config.settings.show_hidden_files;
+
         // Remember the current path - don't reset it
         let current_path = conn.files_management.current_path.clone();
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
 
         // Clear entries and error to show loading state, but keep the path
         conn.files_management.entries = None;
         conn.files_management.error = None;
 
         // Fetch the file list for the current path (or home if first time)
-        self.send_file_list_request(conn_id, current_path, viewing_root)
+        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
     }
 
     /// Handle cancel in files panel (close the panel)
@@ -75,9 +79,10 @@ impl NexusApp {
         // Update the current path and clear entries to show loading state
         conn.files_management.navigate_to(path.clone());
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
 
         // Fetch the file list for the path
-        self.send_file_list_request(conn_id, path, viewing_root)
+        self.send_file_list_request(conn_id, path, viewing_root, show_hidden)
     }
 
     /// Navigate up one directory level
@@ -93,9 +98,10 @@ impl NexusApp {
         conn.files_management.navigate_up();
         let new_path = conn.files_management.current_path.clone();
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
 
         // Fetch the file list for the new path
-        self.send_file_list_request(conn_id, new_path, viewing_root)
+        self.send_file_list_request(conn_id, new_path, viewing_root, show_hidden)
     }
 
     /// Navigate to the home directory (or refresh if already there)
@@ -112,9 +118,10 @@ impl NexusApp {
         // Navigate to home (preserves viewing_root state)
         conn.files_management.navigate_home();
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
 
         // Fetch the file list for home (respects current view mode)
-        self.send_file_list_request(conn_id, String::new(), viewing_root)
+        self.send_file_list_request(conn_id, String::new(), viewing_root, show_hidden)
     }
 
     /// Refresh the current directory listing
@@ -129,11 +136,12 @@ impl NexusApp {
         // Clear entries and error to show loading state
         let current_path = conn.files_management.current_path.clone();
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
         conn.files_management.entries = None;
         conn.files_management.error = None;
 
         // Re-fetch the file list for the current path
-        self.send_file_list_request(conn_id, current_path, viewing_root)
+        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
     }
 
     /// Toggle between root view and user area view
@@ -150,9 +158,42 @@ impl NexusApp {
         // Toggle the root view state (also resets path to root)
         conn.files_management.toggle_root();
         let viewing_root = conn.files_management.viewing_root;
+        let show_hidden = conn.files_management.show_hidden;
 
         // Fetch the file list for the new view
-        self.send_file_list_request(conn_id, String::new(), viewing_root)
+        self.send_file_list_request(conn_id, String::new(), viewing_root, show_hidden)
+    }
+
+    /// Toggle showing hidden files (dotfiles)
+    ///
+    /// Toggles the show_hidden flag and refreshes the current directory.
+    /// Also saves the preference to config.
+    pub fn handle_file_toggle_hidden(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Toggle the show_hidden state
+        conn.files_management.show_hidden = !conn.files_management.show_hidden;
+        let show_hidden = conn.files_management.show_hidden;
+
+        // Save preference to config
+        self.config.settings.show_hidden_files = show_hidden;
+        let _ = self.config.save();
+
+        // Get current path and root state
+        let current_path = conn.files_management.current_path.clone();
+        let viewing_root = conn.files_management.viewing_root;
+
+        // Clear entries to show loading state
+        conn.files_management.entries = None;
+        conn.files_management.error = None;
+
+        // Refresh the file list with new show_hidden setting
+        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
     }
 
     // ==================== New Directory ====================
@@ -259,12 +300,17 @@ impl NexusApp {
         conn_id: usize,
         path: String,
         root: bool,
+        show_hidden: bool,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
 
-        match conn.send(ClientMessage::FileList { path, root }) {
+        match conn.send(ClientMessage::FileList {
+            path,
+            root,
+            show_hidden,
+        }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::PopulateFileList);

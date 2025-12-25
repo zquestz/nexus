@@ -468,6 +468,7 @@ impl NexusApp {
             Message::FileNavigateHome => self.handle_file_navigate_home(),
             Message::FileRefresh => self.handle_file_refresh(),
             Message::FileToggleRoot => self.handle_file_toggle_root(),
+            Message::FileToggleHidden => self.handle_file_toggle_hidden(),
             Message::FileNewDirectoryClicked => self.handle_file_new_directory_clicked(),
             Message::FileNewDirectoryNameChanged(name) => {
                 self.handle_file_new_directory_name_changed(name)

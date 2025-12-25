@@ -176,6 +176,8 @@ pub struct FilesManagementState {
     pub viewing_root: bool,
     /// Whether the current directory allows uploads (from FileListResponse)
     pub current_dir_can_upload: bool,
+    /// Whether to show hidden files (dotfiles)
+    pub show_hidden: bool,
     /// Whether the "New Directory" dialog is open
     pub creating_directory: bool,
     /// New directory name input
@@ -919,6 +921,7 @@ mod tests {
             error: None,
             viewing_root: true,
             current_dir_can_upload: true,
+            show_hidden: true,
             creating_directory: true,
             new_directory_name: "test".to_string(),
             new_directory_error: Some("error".to_string()),
