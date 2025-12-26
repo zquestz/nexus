@@ -156,3 +156,6 @@ err-dir-name-too-long = 디렉토리 이름이 너무 깁니다 (최대 { $max_l
 err-dir-name-invalid = 디렉토리 이름에 잘못된 문자가 포함되어 있습니다
 err-dir-already-exists = 해당 이름의 파일 또는 디렉토리가 이미 존재합니다
 err-dir-create-failed = 디렉토리 생성에 실패했습니다
+
+err-dir-not-empty = 폴더가 비어 있지 않습니다
+err-delete-failed = 파일 또는 폴더를 삭제할 수 없습니다

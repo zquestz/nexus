@@ -671,3 +671,13 @@ pub fn err_dir_already_exists(locale: &str) -> String {
 pub fn err_dir_create_failed(locale: &str) -> String {
     t(locale, "err-dir-create-failed")
 }
+
+/// Get translated "directory not empty" error
+pub fn err_dir_not_empty(locale: &str) -> String {
+    t(locale, "err-dir-not-empty")
+}
+
+/// Get translated "delete failed" error
+pub fn err_delete_failed(locale: &str) -> String {
+    t(locale, "err-delete-failed")
+}

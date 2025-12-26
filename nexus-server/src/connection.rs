@@ -334,6 +334,9 @@ where
         ClientMessage::FileCreateDir { path, name, root } => {
             handlers::handle_file_create_dir(path, name, root, conn_state.session_id, ctx).await?;
         }
+        ClientMessage::FileDelete { path, root } => {
+            handlers::handle_file_delete(path, root, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

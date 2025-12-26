@@ -156,3 +156,6 @@ err-dir-name-too-long = Verzeichnisname ist zu lang (maximal { $max_length } Zei
 err-dir-name-invalid = Verzeichnisname enthält ungültige Zeichen
 err-dir-already-exists = Eine Datei oder ein Verzeichnis mit diesem Namen existiert bereits
 err-dir-create-failed = Verzeichnis konnte nicht erstellt werden
+
+err-dir-not-empty = Verzeichnis ist nicht leer
+err-delete-failed = Datei oder Verzeichnis konnte nicht gelöscht werden

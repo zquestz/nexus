@@ -156,3 +156,6 @@ err-dir-name-too-long = 目錄名稱過長（最多{ $max_length }個字元）
 err-dir-name-invalid = 目錄名稱包含無效字元
 err-dir-already-exists = 已存在同名的檔案或目錄
 err-dir-create-failed = 建立目錄失敗
+
+err-dir-not-empty = 目錄不為空
+err-delete-failed = 無法刪除檔案或目錄

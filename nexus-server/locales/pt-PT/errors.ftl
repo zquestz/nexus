@@ -156,3 +156,6 @@ err-dir-name-too-long = O nome do directório é demasiado longo (máximo { $max
 err-dir-name-invalid = O nome do directório contém caracteres inválidos
 err-dir-already-exists = Já existe um ficheiro ou directório com esse nome
 err-dir-create-failed = Falha ao criar o directório
+
+err-dir-not-empty = O diretório não está vazio
+err-delete-failed = Falha ao eliminar ficheiro ou diretório

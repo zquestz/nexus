@@ -78,6 +78,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     // File client messages
     m.insert("FileList", 4158); // path (4096) + root bool + show_hidden bool + overhead
     m.insert("FileCreateDir", 4433); // path (4096) + name (255) + root bool + overhead
+    m.insert("FileDelete", 4138); // path (4096) + root bool + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -125,6 +126,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     // FileCreateDirResponse: path can be up to 4352 bytes (4096 path + 1 separator + 255 name)
     // JSON escaping doubles size for quote characters (worst case): 8704 bytes + ~60 overhead
     m.insert("FileCreateDirResponse", 9000);
+    m.insert("FileDeleteResponse", 300); // success bool + error message + overhead
 
     m
 });
@@ -205,8 +207,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 22; // Added 6 News + 2 File client messages
-        const SERVER_MESSAGE_COUNT: usize = 32; // Added 7 News + 2 File server messages
+        const CLIENT_MESSAGE_COUNT: usize = 23; // Added 6 News + 3 File client messages
+        const SERVER_MESSAGE_COUNT: usize = 33; // Added 7 News + 3 File server messages
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;

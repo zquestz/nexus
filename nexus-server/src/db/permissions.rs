@@ -45,6 +45,8 @@ pub enum Permission {
     FileRoot,
     /// Permission to create directories anywhere in file area
     FileCreateDir,
+    /// Permission to delete files and empty directories
+    FileDelete,
 }
 
 impl Permission {
@@ -84,6 +86,7 @@ impl Permission {
             "file_list" => Some(Permission::FileList),
             "file_root" => Some(Permission::FileRoot),
             "file_create_dir" => Some(Permission::FileCreateDir),
+            "file_delete" => Some(Permission::FileDelete),
             _ => None,
         }
     }
@@ -178,6 +181,7 @@ mod tests {
         assert_eq!(Permission::FileList.as_str(), "file_list");
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
         assert_eq!(Permission::FileCreateDir.as_str(), "file_create_dir");
+        assert_eq!(Permission::FileDelete.as_str(), "file_delete");
     }
 
     #[test]
@@ -228,6 +232,10 @@ mod tests {
         assert_eq!(
             Permission::parse("file_create_dir"),
             Some(Permission::FileCreateDir)
+        );
+        assert_eq!(
+            Permission::parse("file_delete"),
+            Some(Permission::FileDelete)
         );
     }
 
@@ -302,6 +310,7 @@ mod tests {
             Permission::ChatTopic,
             Permission::ChatTopicEdit,
             Permission::FileCreateDir,
+            Permission::FileDelete,
             Permission::FileList,
             Permission::FileRoot,
             Permission::NewsCreate,

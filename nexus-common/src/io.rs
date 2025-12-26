@@ -261,6 +261,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::NewsDelete { .. } => "NewsDelete",
         ClientMessage::FileList { .. } => "FileList",
         ClientMessage::FileCreateDir { .. } => "FileCreateDir",
+        ClientMessage::FileDelete { .. } => "FileDelete",
     }
 }
 
@@ -300,6 +301,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::NewsUpdated { .. } => "NewsUpdated",
         ServerMessage::FileListResponse { .. } => "FileListResponse",
         ServerMessage::FileCreateDirResponse { .. } => "FileCreateDirResponse",
+        ServerMessage::FileDeleteResponse { .. } => "FileDeleteResponse",
     }
 }
 

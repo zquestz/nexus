@@ -157,3 +157,6 @@ err-dir-name-too-long = El nombre del directorio es demasiado largo (máximo { $
 err-dir-name-invalid = El nombre del directorio contiene caracteres inválidos
 err-dir-already-exists = Ya existe un archivo o directorio con ese nombre
 err-dir-create-failed = Error al crear el directorio
+
+err-dir-not-empty = El directorio no está vacío
+err-delete-failed = No se pudo eliminar el archivo o directorio

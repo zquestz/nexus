@@ -156,3 +156,6 @@ err-dir-name-too-long = Mapnaam is te lang (maximaal { $max_length } tekens)
 err-dir-name-invalid = Mapnaam bevat ongeldige tekens
 err-dir-already-exists = Een bestand of map met deze naam bestaat al
 err-dir-create-failed = Map kon niet worden aangemaakt
+
+err-dir-not-empty = Map is niet leeg
+err-delete-failed = Kan bestand of map niet verwijderen

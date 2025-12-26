@@ -136,6 +136,13 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    FileDelete {
+        /// Path to the file or empty directory to delete
+        path: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
 }
 
 /// Server response messages
@@ -359,6 +366,11 @@ pub enum ServerMessage {
         /// Full path of the created directory (for client to navigate to)
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    FileDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
 }
 
@@ -634,6 +646,11 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("FileCreateDir")
                 .field("path", path)
                 .field("name", name)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileDelete { path, root } => f
+                .debug_struct("FileDelete")
+                .field("path", path)
                 .field("root", root)
                 .finish(),
         }
