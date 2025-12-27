@@ -681,3 +681,13 @@ pub fn err_dir_not_empty(locale: &str) -> String {
 pub fn err_delete_failed(locale: &str) -> String {
     t(locale, "err-delete-failed")
 }
+
+/// Get translated "rename failed" error
+pub fn err_rename_failed(locale: &str) -> String {
+    t(locale, "err-rename-failed")
+}
+
+/// Get translated "rename target exists" error
+pub fn err_rename_target_exists(locale: &str) -> String {
+    t(locale, "err-rename-target-exists")
+}

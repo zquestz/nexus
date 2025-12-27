@@ -6,7 +6,7 @@ mod broadcast;
 mod chat;
 mod connection;
 pub(crate) mod constants;
-mod files;
+pub(crate) mod files;
 mod fingerprint;
 mod layout;
 mod news;

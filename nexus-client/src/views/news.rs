@@ -550,7 +550,7 @@ fn form_view<'a>(
 // ============================================================================
 
 /// Build the delete confirmation modal
-fn confirm_delete_modal<'a>() -> Element<'a, Message> {
+fn confirm_delete_modal<'a>(error: Option<&'a String>) -> Element<'a, Message> {
     let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t("confirm-delete-news"))
@@ -568,16 +568,35 @@ fn confirm_delete_modal<'a>() -> Element<'a, Message> {
         .padding(BUTTON_PADDING)
         .style(btn::secondary);
 
-    let form = column![
-        title,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        message,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        row![Space::new().width(Fill), cancel_button, confirm_button].spacing(ELEMENT_SPACING),
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        message.into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        row![Space::new().width(Fill), cancel_button, confirm_button]
+            .spacing(ELEMENT_SPACING)
+            .into(),
+    ]);
+
+    let form = Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -603,6 +622,8 @@ pub fn news_view<'a>(
         NewsManagementMode::List => list_view(conn, news_management, theme, &conn.news_image_cache),
         NewsManagementMode::Create => form_view(news_management, body_content, false),
         NewsManagementMode::Edit { .. } => form_view(news_management, body_content, true),
-        NewsManagementMode::ConfirmDelete { .. } => confirm_delete_modal(),
+        NewsManagementMode::ConfirmDelete { .. } => {
+            confirm_delete_modal(news_management.delete_error.as_ref())
+        }
     }
 }

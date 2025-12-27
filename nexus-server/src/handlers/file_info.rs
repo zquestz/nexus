@@ -130,8 +130,8 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Check FileList permission (same permission as browsing - if you can see it, you can get info)
-    if !requesting_user.has_permission(Permission::FileList) {
+    // Check FileInfo permission
+    if !requesting_user.has_permission(Permission::FileInfo) {
         eprintln!(
             "FileInfo from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
@@ -382,7 +382,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -436,7 +436,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -481,7 +481,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -515,7 +515,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -583,7 +583,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -614,12 +614,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         test_ctx.file_root = Some(Box::leak(file_area.path().to_path_buf().into_boxed_path()));
 
-        // User with both file_list and file_root
+        // User with both file_info and file_root
         let session_id = login_user(
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList, Permission::FileRoot],
+            &[Permission::FileInfo, Permission::FileRoot],
             false,
         )
         .await;
@@ -668,7 +668,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -714,7 +714,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;
@@ -757,7 +757,7 @@ mod tests {
             &mut test_ctx,
             "testuser",
             "pass",
-            &[Permission::FileList],
+            &[Permission::FileInfo],
             false,
         )
         .await;

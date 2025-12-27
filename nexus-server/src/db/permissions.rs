@@ -47,6 +47,10 @@ pub enum Permission {
     FileCreateDir,
     /// Permission to delete files and empty directories
     FileDelete,
+    /// Permission to view detailed file/directory information
+    FileInfo,
+    /// Permission to rename files and directories
+    FileRename,
 }
 
 impl Permission {
@@ -87,6 +91,8 @@ impl Permission {
             "file_root" => Some(Permission::FileRoot),
             "file_create_dir" => Some(Permission::FileCreateDir),
             "file_delete" => Some(Permission::FileDelete),
+            "file_info" => Some(Permission::FileInfo),
+            "file_rename" => Some(Permission::FileRename),
             _ => None,
         }
     }
@@ -182,6 +188,8 @@ mod tests {
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
         assert_eq!(Permission::FileCreateDir.as_str(), "file_create_dir");
         assert_eq!(Permission::FileDelete.as_str(), "file_delete");
+        assert_eq!(Permission::FileInfo.as_str(), "file_info");
+        assert_eq!(Permission::FileRename.as_str(), "file_rename");
     }
 
     #[test]
@@ -236,6 +244,11 @@ mod tests {
         assert_eq!(
             Permission::parse("file_delete"),
             Some(Permission::FileDelete)
+        );
+        assert_eq!(Permission::parse("file_info"), Some(Permission::FileInfo));
+        assert_eq!(
+            Permission::parse("file_rename"),
+            Some(Permission::FileRename)
         );
     }
 
@@ -311,7 +324,9 @@ mod tests {
             Permission::ChatTopicEdit,
             Permission::FileCreateDir,
             Permission::FileDelete,
+            Permission::FileInfo,
             Permission::FileList,
+            Permission::FileRename,
             Permission::FileRoot,
             Permission::NewsCreate,
             Permission::NewsDelete,

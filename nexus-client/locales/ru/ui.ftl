@@ -141,7 +141,10 @@ permission-news_create = Создать Новость
 permission-news_edit = Редактировать Новость
 permission-news_delete = Удалить Новость
 permission-file_create_dir = Каталог Создать
+permission-file_delete = Удалить Файл
+permission-file_info = Информация о Файле
 permission-file_list = Список Файлов
+permission-file_rename = Переименовать Файл
 permission-file_root = Корень Файлов
 
 # =============================================================================
@@ -201,12 +204,28 @@ files-panel-title = Файлы
 files-column-name = Имя
 files-column-size = Размер
 files-column-modified = Изменён
-files-create-directory-title = Создать новую папку
+files-create-directory-title = Создать Новую Папку
 files-directory-name-placeholder = Имя папки
 files-info = Информация
+files-rename = Переименовать
+files-rename-title = Переименовать "{ $name }"
+files-rename-placeholder = Новое имя
 files-delete = Удалить
 files-delete-confirm-title = Подтверждение удаления
 files-delete-confirm-message = Вы уверены, что хотите удалить "{ $name }"?
+
+# File Info Dialog
+files-info-type = Тип:
+files-info-size = Размер:
+files-info-items = Элементов:
+files-info-mime-type = MIME-тип:
+files-info-created = Создан:
+files-info-modified = Изменён:
+files-info-file = Файл
+files-info-directory = Каталог
+files-info-symlink = Симв. ссылка:
+files-info-yes = Да
+files-info-na = Н/Д
 
 # =============================================================================
 # Directory Name Validation Errors

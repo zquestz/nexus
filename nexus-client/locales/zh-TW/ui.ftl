@@ -141,7 +141,10 @@ permission-news_create = 建立新聞
 permission-news_edit = 編輯新聞
 permission-news_delete = 刪除新聞
 permission-file_create_dir = 目錄建立
+permission-file_delete = 刪除檔案
+permission-file_info = 檔案資訊
 permission-file_list = 檔案列表
+permission-file_rename = 重新命名檔案
 permission-file_root = 檔案根目錄
 
 # =============================================================================
@@ -201,12 +204,28 @@ files-panel-title = 檔案
 files-column-name = 名稱
 files-column-size = 大小
 files-column-modified = 修改日期
-files-create-directory-title = 新建資料夾
+files-create-directory-title = 建立新資料夾
 files-directory-name-placeholder = 資料夾名稱
 files-info = 資訊
+files-rename = 重新命名
+files-rename-title = 重新命名「{ $name }」
+files-rename-placeholder = 新名稱
 files-delete = 刪除
 files-delete-confirm-title = 確認刪除
 files-delete-confirm-message = 您確定要刪除「{ $name }」嗎？
+
+# File Info Dialog
+files-info-type = 類型：
+files-info-size = 大小：
+files-info-items = 項目：
+files-info-mime-type = MIME 類型：
+files-info-created = 建立時間：
+files-info-modified = 修改時間：
+files-info-file = 檔案
+files-info-directory = 目錄
+files-info-symlink = 符號連結：
+files-info-yes = 是
+files-info-na = 不適用
 
 # =============================================================================
 # Directory Name Validation Errors

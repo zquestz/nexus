@@ -159,3 +159,5 @@ err-dir-create-failed = Verzeichnis konnte nicht erstellt werden
 
 err-dir-not-empty = Verzeichnis ist nicht leer
 err-delete-failed = Datei oder Verzeichnis konnte nicht gelöscht werden
+err-rename-failed = Datei oder Verzeichnis konnte nicht umbenannt werden
+err-rename-target-exists = Eine Datei oder ein Verzeichnis mit diesem Namen existiert bereits

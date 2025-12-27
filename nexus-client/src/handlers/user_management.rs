@@ -166,6 +166,8 @@ impl NexusApp {
     }
 
     /// Handle confirm delete button in modal
+    ///
+    /// Keeps the dialog open until we get a response (success closes it, error shows in dialog).
     pub fn handle_user_management_confirm_delete(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -179,7 +181,10 @@ impl NexusApp {
             _ => return Task::none(),
         };
 
-        // Send delete request
+        // Clear any previous error before sending
+        conn.user_management.delete_error = None;
+
+        // Send delete request (keep dialog open until response)
         match conn.send(ClientMessage::UserDelete {
             username: username.clone(),
         }) {
@@ -188,13 +193,12 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::UserManagementDeleteResult);
             }
             Err(e) => {
-                conn.user_management.mode = UserManagementMode::List;
-                conn.user_management.list_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                // Show send error in the delete dialog
+                conn.user_management.delete_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
-        // Return to list mode (will show result when response arrives)
-        conn.user_management.mode = UserManagementMode::List;
         Task::none()
     }
 
@@ -207,6 +211,8 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Clear error and return to list
+        conn.user_management.delete_error = None;
         conn.user_management.mode = UserManagementMode::List;
         Task::none()
     }

@@ -141,7 +141,10 @@ permission-news_create = Crea Notizia
 permission-news_edit = Modifica Notizia
 permission-news_delete = Elimina Notizia
 permission-file_create_dir = Directory Crea
+permission-file_delete = Elimina File
+permission-file_info = Info File
 permission-file_list = Elenco File
+permission-file_rename = Rinomina File
 permission-file_root = Root File
 
 # =============================================================================
@@ -204,9 +207,25 @@ files-column-modified = Modificato
 files-create-directory-title = Crea Nuova Cartella
 files-directory-name-placeholder = Nome della cartella
 files-info = Info
+files-rename = Rinomina
+files-rename-title = Rinomina "{ $name }"
+files-rename-placeholder = Nuovo nome
 files-delete = Elimina
 files-delete-confirm-title = Conferma eliminazione
 files-delete-confirm-message = Sei sicuro di voler eliminare "{ $name }"?
+
+# File Info Dialog
+files-info-type = Tipo:
+files-info-size = Dimensione:
+files-info-items = Elementi:
+files-info-mime-type = Tipo MIME:
+files-info-created = Creato:
+files-info-modified = Modificato:
+files-info-file = File
+files-info-directory = Cartella
+files-info-symlink = Symlink:
+files-info-yes = Sì
+files-info-na = N/D
 
 # =============================================================================
 # Directory Name Validation Errors

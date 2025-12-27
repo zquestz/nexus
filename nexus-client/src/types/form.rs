@@ -85,6 +85,8 @@ pub struct NewsManagementState {
     pub form_error: Option<String>,
     /// Error message for list view
     pub list_error: Option<String>,
+    /// Error message for delete confirmation dialog
+    pub delete_error: Option<String>,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -113,6 +115,7 @@ impl Default for NewsManagementState {
             cached_form_image: None,
             form_error: None,
             list_error: None,
+            delete_error: None,
         }
     }
 }
@@ -154,6 +157,7 @@ impl NewsManagementState {
     /// Enter confirm delete mode for a news item
     pub fn enter_confirm_delete_mode(&mut self, id: i64) {
         self.mode = NewsManagementMode::ConfirmDelete { id };
+        self.delete_error = None;
     }
 }
 
@@ -186,6 +190,16 @@ pub struct FilesManagementState {
     pub new_directory_error: Option<String>,
     /// Path pending deletion (for confirmation dialog)
     pub pending_delete: Option<String>,
+    /// Error from delete operation (shown in delete dialog)
+    pub delete_error: Option<String>,
+    /// File/directory info to display (for info dialog)
+    pub pending_info: Option<nexus_common::protocol::FileInfoDetails>,
+    /// Path of file/directory being renamed (for rename dialog)
+    pub pending_rename: Option<String>,
+    /// New name input for rename dialog
+    pub rename_name: String,
+    /// Error message for rename dialog
+    pub rename_error: Option<String>,
 }
 
 impl FilesManagementState {
@@ -418,6 +432,8 @@ pub struct UserManagementState {
     pub edit_error: Option<String>,
     /// Error message for list view (e.g., delete failed)
     pub list_error: Option<String>,
+    /// Error message for delete confirmation dialog
+    pub delete_error: Option<String>,
 }
 
 impl Default for UserManagementState {
@@ -438,6 +454,7 @@ impl Default for UserManagementState {
             create_error: None,
             edit_error: None,
             list_error: None,
+            delete_error: None,
         }
     }
 }
@@ -506,6 +523,7 @@ impl UserManagementState {
     /// Enter confirm delete mode for a user
     pub fn enter_confirm_delete_mode(&mut self, username: String) {
         self.mode = UserManagementMode::ConfirmDelete { username };
+        self.delete_error = None;
     }
 }
 
@@ -928,6 +946,11 @@ mod tests {
             new_directory_name: "test".to_string(),
             new_directory_error: Some("error".to_string()),
             pending_delete: None,
+            delete_error: None,
+            pending_info: None,
+            pending_rename: None,
+            rename_name: String::new(),
+            rename_error: None,
         };
 
         state.close_new_directory_dialog();

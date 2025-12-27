@@ -153,6 +153,8 @@ impl NexusApp {
     }
 
     /// Handle confirm delete button pressed
+    ///
+    /// Keeps the dialog open until we get a response (success closes it, error shows in dialog).
     pub fn handle_news_confirm_delete(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -166,20 +168,22 @@ impl NexusApp {
             _ => return Task::none(),
         };
 
-        // Send delete request
+        // Clear any previous error before sending
+        conn.news_management.delete_error = None;
+
+        // Send delete request (keep dialog open until response)
         match conn.send(ClientMessage::NewsDelete { id }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::NewsDeleteResult);
             }
             Err(e) => {
-                conn.news_management.mode = NewsManagementMode::List;
-                conn.news_management.list_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                // Show send error in the delete dialog
+                conn.news_management.delete_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
-        // Return to list view immediately (will refresh on success)
-        conn.news_management.mode = NewsManagementMode::List;
         Task::none()
     }
 
@@ -192,6 +196,8 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Clear error and return to list
+        conn.news_management.delete_error = None;
         conn.news_management.mode = NewsManagementMode::List;
         Task::none()
     }

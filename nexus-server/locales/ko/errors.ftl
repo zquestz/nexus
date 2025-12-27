@@ -159,3 +159,5 @@ err-dir-create-failed = 디렉토리 생성에 실패했습니다
 
 err-dir-not-empty = 폴더가 비어 있지 않습니다
 err-delete-failed = 파일 또는 폴더를 삭제할 수 없습니다
+err-rename-failed = 파일 또는 폴더의 이름을 변경할 수 없습니다
+err-rename-target-exists = 해당 이름의 파일 또는 디렉토리가 이미 존재합니다

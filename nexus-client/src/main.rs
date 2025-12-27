@@ -478,6 +478,12 @@ impl NexusApp {
             Message::FileDeleteClicked(path) => self.handle_file_delete_clicked(path),
             Message::FileConfirmDelete => self.handle_file_confirm_delete(),
             Message::FileCancelDelete => self.handle_file_cancel_delete(),
+            Message::FileInfoClicked(name) => self.handle_file_info_clicked(name),
+            Message::CloseFileInfo => self.handle_close_file_info(),
+            Message::FileRenameClicked(name) => self.handle_file_rename_clicked(name),
+            Message::FileRenameNameChanged(name) => self.handle_file_rename_name_changed(name),
+            Message::FileRenameSubmit => self.handle_file_rename_submit(),
+            Message::FileRenameCancel => self.handle_file_rename_cancel(),
         }
     }
 

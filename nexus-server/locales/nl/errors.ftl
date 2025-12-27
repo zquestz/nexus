@@ -159,3 +159,5 @@ err-dir-create-failed = Map kon niet worden aangemaakt
 
 err-dir-not-empty = Map is niet leeg
 err-delete-failed = Kan bestand of map niet verwijderen
+err-rename-failed = Kan bestand of map niet hernoemen
+err-rename-target-exists = Een bestand of map met deze naam bestaat al

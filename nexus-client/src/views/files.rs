@@ -11,8 +11,8 @@ use crate::style::{
     FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
     FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING,
     INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_MEDIUM,
-    SPACER_SIZE_SMALL, TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, content_background_style, context_menu_button_style,
+    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style, context_menu_button_style,
     context_menu_container_style, context_menu_item_danger_style, disabled_icon_button_style,
     error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
@@ -23,7 +23,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
 use iced::{Center, Element, Fill, Right};
 use iced_aw::ContextMenu;
-use nexus_common::protocol::FileEntry;
+use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
 // ============================================================================
 // Helper Functions
@@ -126,11 +126,14 @@ fn truncate_segment(name: &str, max_len: usize) -> String {
 }
 
 /// Build the path for navigating into a directory
-fn build_navigate_path(current_path: &str, folder_name: &str) -> String {
+/// Build a navigation path by appending a segment to the current path
+///
+/// This is public so the file info handler can use it to build full paths.
+pub fn build_navigate_path(current_path: &str, segment: &str) -> String {
     if current_path.is_empty() || current_path == "/" {
-        folder_name.to_string()
+        segment.to_string()
     } else {
-        format!("{current_path}/{folder_name}")
+        format!("{current_path}/{segment}")
     }
 }
 
@@ -390,7 +393,7 @@ fn toolbar<'a>(
 }
 
 /// Build the delete confirmation dialog
-fn delete_confirm_dialog(path: &str) -> Element<'_, Message> {
+fn delete_confirm_dialog<'a>(path: &str, error: Option<&'a String>) -> Element<'a, Message> {
     let title = panel_title(t("files-delete-confirm-title"));
 
     // Extract just the filename from the path for display
@@ -412,21 +415,150 @@ fn delete_confirm_dialog(path: &str) -> Element<'_, Message> {
     ]
     .spacing(ELEMENT_SPACING);
 
-    let form = column![
-        title,
-        Space::new().height(SPACER_SIZE_MEDIUM),
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
         shaped_text_wrapped(&message)
             .size(TEXT_SIZE)
             .width(Fill)
-            .align_x(Center),
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        buttons,
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+            .align_x(Center)
+            .into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        buttons.into(),
+    ]);
+
+    let form = iced::widget::Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
 
     scrollable_panel(form)
+}
+
+/// Icon size for file info dialog
+const FILE_INFO_ICON_SIZE: f32 = 64.0;
+
+/// Spacing between icon and name in file info header
+const FILE_INFO_ICON_SPACING: f32 = 12.0;
+
+/// Build the file info dialog
+fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
+    let mut content = column![].spacing(ELEMENT_SPACING);
+
+    // Header: Icon + Name side by side (like user info)
+    let icon_element: Element<'_, Message> = if info.is_directory {
+        icon::folder().size(FILE_INFO_ICON_SIZE).into()
+    } else {
+        file_icon_for_extension(&info.name)
+            .size(FILE_INFO_ICON_SIZE)
+            .into()
+    };
+
+    // Name (use display_name to strip folder type suffixes)
+    let display_name = FilesManagementState::display_name(&info.name);
+    let name_text = shaped_text(display_name)
+        .size(TITLE_SIZE)
+        .wrapping(Wrapping::WordOrGlyph);
+
+    let header_row = row![icon_element, name_text]
+        .spacing(FILE_INFO_ICON_SPACING)
+        .align_y(Center);
+
+    content = content.push(header_row);
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+
+    // Type (File/Directory)
+    let type_value = if info.is_directory {
+        t("files-info-directory")
+    } else {
+        t("files-info-file")
+    };
+    content = content.push(info_row(t("files-info-type"), type_value));
+
+    // Symlink (only shown if true)
+    if info.is_symlink {
+        content = content.push(info_row(t("files-info-symlink"), t("files-info-yes")));
+    }
+
+    // Size
+    content = content.push(info_row(t("files-info-size"), format_size(info.size)));
+
+    // Item count (directories only)
+    if info.is_directory {
+        let items_value = match info.item_count {
+            Some(count) => count.to_string(),
+            None => t("files-info-na"),
+        };
+        content = content.push(info_row(t("files-info-items"), items_value));
+    }
+
+    // MIME type (show N/A for directories)
+    let mime_value = match &info.mime_type {
+        Some(mime) => mime.clone(),
+        None => t("files-info-na"),
+    };
+    content = content.push(info_row(t("files-info-mime-type"), mime_value));
+
+    // Created (show N/A if not available)
+    let created_value = match info.created {
+        Some(ts) => {
+            let s = format_timestamp(ts);
+            if s.is_empty() { t("files-info-na") } else { s }
+        }
+        None => t("files-info-na"),
+    };
+    content = content.push(info_row(t("files-info-created"), created_value));
+
+    // Modified (always available)
+    let modified_value = format_timestamp(info.modified);
+    let modified_value = if modified_value.is_empty() {
+        t("files-info-na")
+    } else {
+        modified_value
+    };
+    content = content.push(info_row(t("files-info-modified"), modified_value));
+
+    content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
+
+    // Close button
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-close")).size(TEXT_SIZE))
+            .on_press(Message::CloseFileInfo)
+            .padding(BUTTON_PADDING),
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    content = content.push(buttons);
+
+    let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
+}
+
+/// Build a single info row with label and value (matches user info style)
+fn info_row<'a>(label: String, value: String) -> iced::widget::Row<'a, Message> {
+    row![
+        shaped_text(label).size(TEXT_SIZE),
+        Space::new().width(ELEMENT_SPACING),
+        shaped_text_wrapped(value).size(TEXT_SIZE),
+    ]
+    .align_y(Center)
 }
 
 /// Build the new directory dialog (matches broadcast view layout)
@@ -490,10 +622,77 @@ fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, M
 }
 
 /// Build the file table
+/// Rename dialog for files and directories
+fn rename_dialog<'a>(path: &str, name: &str, error: Option<&String>) -> Element<'a, Message> {
+    // Extract filename from path for display
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    let display_filename = FilesManagementState::display_name(filename);
+    let title_text = crate::i18n::t_args("files-rename-title", &[("name", &display_filename)]);
+    let title = panel_title(title_text);
+
+    let name_valid = !name.is_empty() && error.is_none();
+
+    let name_input = text_input(&t("files-rename-placeholder"), name)
+        .id(InputId::RenameName)
+        .on_input(Message::FileRenameNameChanged)
+        .on_submit(Message::FileRenameSubmit)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::FileRenameCancel)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+        if name_valid {
+            button(shaped_text(t("files-rename")).size(TEXT_SIZE))
+                .on_press(Message::FileRenameSubmit)
+                .padding(BUTTON_PADDING)
+        } else {
+            button(shaped_text(t("files-rename")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        },
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        name_input.into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        buttons.into(),
+    ]);
+
+    let form = iced::widget::Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
+}
+
+/// Build the file table
 fn file_table<'a>(
     entries: &'a [FileEntry],
     current_path: &'a str,
+    has_file_info: bool,
     has_file_delete: bool,
+    has_file_rename: bool,
 ) -> Element<'a, Message> {
     // Name column with icon
     let name_column = table::column(
@@ -536,33 +735,66 @@ fn file_table<'a>(
                 name_content
             };
 
-            // Wrap in context menu if user has delete permission
-            if has_file_delete {
+            // Wrap in context menu if user has any file action permission
+            if has_file_info || has_file_delete || has_file_rename {
                 // Build the full path for this entry
                 let delete_path = build_navigate_path(current_path, &entry.name);
                 let delete_path_clone = delete_path.clone();
+                let info_name = entry.name.clone();
+                let rename_name = entry.name.clone();
 
                 ContextMenu::new(row_element, move || {
-                    container(
-                        column![
-                            // Info (placeholder - not yet implemented)
+                    let mut menu_items: Vec<Element<'_, Message>> = vec![];
+
+                    // Info (if permission)
+                    if has_file_info {
+                        menu_items.push(
                             button(shaped_text(t("files-info")).size(TEXT_SIZE))
                                 .padding(CONTEXT_MENU_ITEM_PADDING)
                                 .width(Fill)
-                                .style(context_menu_button_style),
-                            // Separator before destructive actions
-                            container(Space::new())
+                                .style(context_menu_button_style)
+                                .on_press(Message::FileInfoClicked(info_name.clone()))
+                                .into(),
+                        );
+                    }
+
+                    // Rename (if permission)
+                    if has_file_rename {
+                        menu_items.push(
+                            button(shaped_text(t("files-rename")).size(TEXT_SIZE))
+                                .padding(CONTEXT_MENU_ITEM_PADDING)
                                 .width(Fill)
-                                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
-                                .style(separator_style),
-                            // Delete
+                                .style(context_menu_button_style)
+                                .on_press(Message::FileRenameClicked(rename_name.clone()))
+                                .into(),
+                        );
+                    }
+
+                    // Delete (if permission) - with separator before destructive action
+                    if has_file_delete {
+                        // Only add separator if there are items above it
+                        if has_file_info || has_file_rename {
+                            menu_items.push(
+                                container(Space::new())
+                                    .width(Fill)
+                                    .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                                    .style(separator_style)
+                                    .into(),
+                            );
+                        }
+                        menu_items.push(
                             button(shaped_text(t("files-delete")).size(TEXT_SIZE))
                                 .padding(CONTEXT_MENU_ITEM_PADDING)
                                 .width(Fill)
                                 .style(context_menu_item_danger_style)
-                                .on_press(Message::FileDeleteClicked(delete_path_clone.clone())),
-                        ]
-                        .spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
+                                .on_press(Message::FileDeleteClicked(delete_path_clone.clone()))
+                                .into(),
+                        );
+                    }
+
+                    container(
+                        iced::widget::Column::with_children(menu_items)
+                            .spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
                     )
                     .width(CONTEXT_MENU_MIN_WIDTH)
                     .padding(CONTEXT_MENU_PADDING)
@@ -639,11 +871,27 @@ pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
     has_file_root: bool,
     has_file_create_dir: bool,
+    has_file_info: bool,
     has_file_delete: bool,
+    has_file_rename: bool,
 ) -> Element<'a, Message> {
+    // If rename dialog is pending, show that
+    if let Some(path) = &files_management.pending_rename {
+        return rename_dialog(
+            path,
+            &files_management.rename_name,
+            files_management.rename_error.as_ref(),
+        );
+    }
+
+    // If file info is pending, show that dialog
+    if let Some(info) = &files_management.pending_info {
+        return file_info_dialog(info);
+    }
+
     // If delete confirmation is pending, show that dialog
     if let Some(path) = &files_management.pending_delete {
-        return delete_confirm_dialog(path);
+        return delete_confirm_dialog(path, files_management.delete_error.as_ref());
     }
 
     // If creating directory, show the dialog instead
@@ -707,7 +955,13 @@ pub fn files_view<'a>(
             .into()
         } else {
             // File table
-            file_table(entries, &files_management.current_path, has_file_delete)
+            file_table(
+                entries,
+                &files_management.current_path,
+                has_file_info,
+                has_file_delete,
+                has_file_rename,
+            )
         }
     } else {
         // Loading state

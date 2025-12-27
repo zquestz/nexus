@@ -74,8 +74,8 @@ impl NexusApp {
 
     /// Handle user delete response
     ///
-    /// If tracked via ResponseRouting::UserManagementDeleteResult, stays on list view
-    /// and refreshes the user list on success.
+    /// If tracked via ResponseRouting::UserManagementDeleteResult, closes the delete
+    /// dialog on success and refreshes the user list, or shows error in dialog on failure.
     pub fn handle_user_delete_response(
         &mut self,
         connection_id: usize,
@@ -100,19 +100,22 @@ impl NexusApp {
             };
             let task = self.add_chat_message(connection_id, ChatMessage::system(message));
 
-            // If from user management panel, refresh the list
+            // If from user management panel, close dialog and refresh the list
             if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
+                if let Some(conn) = self.connections.get_mut(&connection_id) {
+                    conn.user_management.mode = UserManagementMode::List;
+                    conn.user_management.delete_error = None;
+                }
                 return Task::batch([task, self.refresh_user_management_list_for(connection_id)]);
             }
 
             return task;
         }
 
-        // On error, show in the appropriate place
+        // On error, show in the delete dialog (keep it open for retry)
         if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
-            // Show error on list view
             if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.user_management.list_error = Some(error.unwrap_or_default());
+                conn.user_management.delete_error = Some(error.unwrap_or_default());
             }
         } else {
             // Show error in chat

@@ -142,7 +142,10 @@ permission-news_create = Nieuws Maken
 permission-news_edit = Nieuws Bewerken
 permission-news_delete = Nieuws Verwijderen
 permission-file_create_dir = Directory Aanmaken
+permission-file_delete = Bestand Verwijderen
+permission-file_info = Bestand Info
 permission-file_list = Bestandslijst
+permission-file_rename = Bestand Hernoemen
 permission-file_root = Bestandsroot
 
 # =============================================================================
@@ -205,9 +208,25 @@ files-column-modified = Gewijzigd
 files-create-directory-title = Nieuwe Map Aanmaken
 files-directory-name-placeholder = Mapnaam
 files-info = Info
+files-rename = Hernoemen
+files-rename-title = "{ $name }" hernoemen
+files-rename-placeholder = Nieuwe naam
 files-delete = Verwijderen
 files-delete-confirm-title = Verwijderen bevestigen
 files-delete-confirm-message = Weet u zeker dat u "{ $name }" wilt verwijderen?
+
+# File Info Dialog
+files-info-type = Type:
+files-info-size = Grootte:
+files-info-items = Items:
+files-info-mime-type = MIME-type:
+files-info-created = Aangemaakt:
+files-info-modified = Gewijzigd:
+files-info-file = Bestand
+files-info-directory = Map
+files-info-symlink = Symlink:
+files-info-yes = Ja
+files-info-na = N.v.t.
 
 # =============================================================================
 # Directory Name Validation Errors

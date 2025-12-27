@@ -159,3 +159,5 @@ err-dir-create-failed = Не удалось создать каталог
 
 err-dir-not-empty = Каталог не пуст
 err-delete-failed = Не удалось удалить файл или каталог
+err-rename-failed = Не удалось переименовать файл или каталог
+err-rename-target-exists = Файл или каталог с таким именем уже существует

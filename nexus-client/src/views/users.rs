@@ -676,7 +676,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
 // ============================================================================
 
 /// Build the delete confirmation modal
-fn confirm_delete_modal<'a>(username: &'a str) -> Element<'a, Message> {
+fn confirm_delete_modal<'a>(username: &'a str, error: Option<&'a String>) -> Element<'a, Message> {
     let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t_args("confirm-delete-user", &[("username", username)]))
@@ -694,16 +694,35 @@ fn confirm_delete_modal<'a>(username: &'a str) -> Element<'a, Message> {
         .padding(BUTTON_PADDING)
         .style(btn::secondary);
 
-    let form = column![
-        title,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        message,
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        row![Space::new().width(Fill), cancel_button, confirm_button].spacing(ELEMENT_SPACING),
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    // Show error if present
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
+        message.into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        row![Space::new().width(Fill), cancel_button, confirm_button]
+            .spacing(ELEMENT_SPACING)
+            .into(),
+    ]);
+
+    let form = Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(FORM_PADDING)
+        .max_width(FORM_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -755,6 +774,8 @@ pub fn users_view<'a>(
             enabled: *enabled,
             permissions,
         }),
-        UserManagementMode::ConfirmDelete { username } => confirm_delete_modal(username),
+        UserManagementMode::ConfirmDelete { username } => {
+            confirm_delete_modal(username, user_management.delete_error.as_ref())
+        }
     }
 }

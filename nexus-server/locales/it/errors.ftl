@@ -159,3 +159,5 @@ err-dir-create-failed = Impossibile creare la directory
 
 err-dir-not-empty = La cartella non è vuota
 err-delete-failed = Impossibile eliminare il file o la cartella
+err-rename-failed = Impossibile rinominare il file o la cartella
+err-rename-target-exists = Un file o una directory con questo nome esiste già

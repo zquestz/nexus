@@ -7,7 +7,10 @@ use nexus_common::validators::{self, DirNameError};
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{ActivePanel, InputId, Message, PendingRequests, ResponseRouting};
+use crate::types::{
+    ActivePanel, FilesManagementState, InputId, Message, PendingRequests, ResponseRouting,
+};
+use crate::views::files::build_navigate_path;
 
 /// Convert a directory name validation error to a localized error message
 fn dir_name_error_message(error: DirNameError) -> String {
@@ -336,8 +339,9 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Set pending delete to show confirmation dialog
+        // Set pending delete to show confirmation dialog, clear any previous error
         conn.files_management.pending_delete = Some(path);
+        conn.files_management.delete_error = None;
 
         Task::none()
     }
@@ -345,6 +349,7 @@ impl NexusApp {
     /// Handle confirm delete button in modal
     ///
     /// Sends the FileDelete request to the server.
+    /// Keeps the dialog open until we get a response (success closes it, error shows in dialog).
     pub fn handle_file_confirm_delete(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -353,12 +358,15 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get the path to delete
-        let Some(path) = conn.files_management.pending_delete.take() else {
+        // Get the path to delete (don't take - keep dialog open until response)
+        let Some(path) = conn.files_management.pending_delete.clone() else {
             return Task::none();
         };
 
         let root = conn.files_management.viewing_root;
+
+        // Clear any previous error before sending
+        conn.files_management.delete_error = None;
 
         match conn.send(ClientMessage::FileDelete { path, root }) {
             Ok(message_id) => {
@@ -366,7 +374,9 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::FileDeleteResult);
             }
             Err(e) => {
-                conn.files_management.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                // Show send error in the delete dialog
+                conn.files_management.delete_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
@@ -382,8 +392,177 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear pending delete to close the dialog
+        // Clear pending delete and any error to close the dialog
         conn.files_management.pending_delete = None;
+        conn.files_management.delete_error = None;
+
+        Task::none()
+    }
+
+    // ==================== File Info ====================
+
+    /// Handle info clicked from context menu
+    ///
+    /// Sends a FileInfo request to the server to get detailed information.
+    pub fn handle_file_info_clicked(&mut self, name: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Build the full path for this entry
+        let current_path = &conn.files_management.current_path;
+        let path = build_navigate_path(current_path, &name);
+        let root = conn.files_management.viewing_root;
+
+        match conn.send(ClientMessage::FileInfo { path, root }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileInfoResult);
+            }
+            Err(e) => {
+                conn.files_management.error = Some(format!("{}: {}", t("err-send-failed"), e));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle close file info dialog
+    pub fn handle_close_file_info(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Clear pending info to close the dialog
+        conn.files_management.pending_info = None;
+
+        Task::none()
+    }
+
+    // ==================== File Rename ====================
+
+    /// Handle rename clicked from context menu
+    ///
+    /// Opens a rename dialog with the current name pre-populated.
+    pub fn handle_file_rename_clicked(&mut self, name: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Build the full path for this entry
+        let current_path = &conn.files_management.current_path;
+        let path = build_navigate_path(current_path, &name);
+
+        // Extract just the filename (strip any folder type suffixes for display)
+        let display_name = FilesManagementState::display_name(&name);
+
+        // Set pending rename to show dialog, pre-populate with current name
+        conn.files_management.pending_rename = Some(path);
+        conn.files_management.rename_name = display_name;
+        conn.files_management.rename_error = None;
+
+        // Focus the name input field
+        operation::focus(Id::from(InputId::RenameName))
+    }
+
+    /// Handle rename name input change
+    pub fn handle_file_rename_name_changed(&mut self, name: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Validate the name in real-time (before storing to avoid clone)
+        let validation_error = if name.is_empty() {
+            None
+        } else {
+            validators::validate_dir_name(&name)
+                .err()
+                .map(dir_name_error_message)
+        };
+
+        conn.files_management.rename_name = name;
+        conn.files_management.rename_error = validation_error;
+
+        Task::none()
+    }
+
+    /// Handle rename submit button
+    pub fn handle_file_rename_submit(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let new_name = &conn.files_management.rename_name;
+
+        // Validate before sending
+        if new_name.is_empty() {
+            conn.files_management.rename_error = Some(t("err-dir-name-empty"));
+            return Task::none();
+        }
+
+        if let Err(e) = validators::validate_dir_name(new_name) {
+            conn.files_management.rename_error = Some(dir_name_error_message(e));
+            return Task::none();
+        }
+
+        // Get the path to rename (don't take - keep dialog open until response)
+        let Some(path) = conn.files_management.pending_rename.clone() else {
+            return Task::none();
+        };
+
+        let new_name = conn.files_management.rename_name.clone();
+        let root = conn.files_management.viewing_root;
+
+        // Clear any previous error before sending
+        conn.files_management.rename_error = None;
+
+        match conn.send(ClientMessage::FileRename {
+            path,
+            new_name,
+            root,
+        }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileRenameResult);
+            }
+            Err(e) => {
+                // Show send error in the rename dialog
+                conn.files_management.rename_error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle rename cancel button (close dialog)
+    pub fn handle_file_rename_cancel(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Clear pending rename and any error to close the dialog
+        conn.files_management.pending_rename = None;
+        conn.files_management.rename_name = String::new();
+        conn.files_management.rename_error = None;
 
         Task::none()
     }

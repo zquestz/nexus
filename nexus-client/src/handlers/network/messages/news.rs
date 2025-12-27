@@ -9,7 +9,9 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
-use crate::types::{ActivePanel, ChatMessage, Message, PendingRequests, ResponseRouting};
+use crate::types::{
+    ActivePanel, ChatMessage, Message, NewsManagementMode, PendingRequests, ResponseRouting,
+};
 
 impl NexusApp {
     /// Handle news list response
@@ -367,11 +369,15 @@ impl NexusApp {
             let task =
                 self.add_chat_message(connection_id, ChatMessage::system(t("msg-news-deleted")));
 
-            // If from news panel, remove from list
+            // If from news panel, close dialog and remove from list
             if matches!(routing, Some(ResponseRouting::NewsDeleteResult))
                 && let Some(deleted_id) = id
                 && let Some(conn) = self.connections.get_mut(&connection_id)
             {
+                // Close the delete dialog
+                conn.news_management.mode = NewsManagementMode::List;
+                conn.news_management.delete_error = None;
+
                 // Remove from list
                 if let Some(Ok(items)) = &mut conn.news_management.news_items {
                     items.retain(|item| item.id != deleted_id);
@@ -387,10 +393,10 @@ impl NexusApp {
             return task;
         }
 
-        // On error, show in the appropriate place
+        // On error, show in the delete dialog (keep it open for retry)
         if matches!(routing, Some(ResponseRouting::NewsDeleteResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.news_management.list_error = Some(error.unwrap_or_default());
+                conn.news_management.delete_error = Some(error.unwrap_or_default());
             }
         } else {
             return self

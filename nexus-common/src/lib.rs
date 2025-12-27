@@ -32,7 +32,9 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_topic_edit`: Edit the server topic
 /// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_delete`: Delete files and empty directories
+/// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories in user's area
+/// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `news_create`: Create news posts
 /// - `news_delete`: Delete any news post (without: only own posts)
@@ -53,7 +55,9 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_topic_edit",
     "file_create_dir",
     "file_delete",
+    "file_info",
     "file_list",
+    "file_rename",
     "file_root",
     "news_create",
     "news_delete",
@@ -84,6 +88,7 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 /// - `chat_receive`: Receive chat messages from #server
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic (but not edit)
+/// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories (read-only)
 /// - `news_list`: View news posts (but not create/edit/delete)
 /// - `user_info`: View detailed user information
@@ -93,6 +98,7 @@ pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "file_info",
     "file_list",
     "news_list",
     "user_info",
@@ -142,14 +148,14 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (20)
-        assert_eq!(ALL_PERMISSIONS.len(), 20);
+        // Verify we have the expected number of permissions (22)
+        assert_eq!(ALL_PERMISSIONS.len(), 22);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (8)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 8);
+        // Verify we have the expected number of shared account permissions (9)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 9);
     }
 
     #[test]
@@ -158,6 +164,7 @@ mod tests {
         assert!(is_shared_account_permission("chat_receive"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));
+        assert!(is_shared_account_permission("file_info"));
         assert!(is_shared_account_permission("file_list"));
         assert!(is_shared_account_permission("news_list"));
         assert!(is_shared_account_permission("user_info"));

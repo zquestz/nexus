@@ -141,7 +141,10 @@ permission-news_create = 뉴스 작성
 permission-news_edit = 뉴스 편집
 permission-news_delete = 뉴스 삭제
 permission-file_create_dir = 디렉토리 생성
+permission-file_delete = 파일 삭제
+permission-file_info = 파일 정보
 permission-file_list = 파일 목록
+permission-file_rename = 파일 이름 변경
 permission-file_root = 파일 루트
 
 # =============================================================================
@@ -204,9 +207,25 @@ files-column-modified = 수정일
 files-create-directory-title = 새 폴더 만들기
 files-directory-name-placeholder = 폴더 이름
 files-info = 정보
+files-rename = 이름 변경
+files-rename-title = "{ $name }" 이름 변경
+files-rename-placeholder = 새 이름
 files-delete = 삭제
 files-delete-confirm-title = 삭제 확인
 files-delete-confirm-message = "{ $name }"을(를) 삭제하시겠습니까?
+
+# File Info Dialog
+files-info-type = 유형:
+files-info-size = 크기:
+files-info-items = 항목:
+files-info-mime-type = MIME 유형:
+files-info-created = 생성일:
+files-info-modified = 수정일:
+files-info-file = 파일
+files-info-directory = 디렉토리
+files-info-symlink = 심볼릭 링크:
+files-info-yes = 예
+files-info-na = N/A
 
 # =============================================================================
 # Directory Name Validation Errors

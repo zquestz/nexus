@@ -141,7 +141,10 @@ permission-news_create = 创建新闻
 permission-news_edit = 编辑新闻
 permission-news_delete = 删除新闻
 permission-file_create_dir = 目录创建
+permission-file_delete = 删除文件
+permission-file_info = 文件信息
 permission-file_list = 文件列表
+permission-file_rename = 重命名文件
 permission-file_root = 文件根目录
 
 # =============================================================================
@@ -201,12 +204,28 @@ files-panel-title = 文件
 files-column-name = 名称
 files-column-size = 大小
 files-column-modified = 更新日期
-files-create-directory-title = 新建文件夹
+files-create-directory-title = 创建新文件夹
 files-directory-name-placeholder = 文件夹名称
 files-info = 信息
+files-rename = 重命名
+files-rename-title = 重命名"{ $name }"
+files-rename-placeholder = 新名称
 files-delete = 删除
 files-delete-confirm-title = 确认删除
 files-delete-confirm-message = 您确定要删除"{ $name }"吗？
+
+# File Info Dialog
+files-info-type = 类型：
+files-info-size = 大小：
+files-info-items = 项目：
+files-info-mime-type = MIME 类型：
+files-info-created = 创建时间：
+files-info-modified = 修改时间：
+files-info-file = 文件
+files-info-directory = 目录
+files-info-symlink = 符号链接：
+files-info-yes = 是
+files-info-na = 不适用
 
 # =============================================================================
 # Directory Name Validation Errors

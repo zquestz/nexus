@@ -75,3 +75,9 @@ pub(crate) const PERMISSION_FILE_CREATE_DIR: &str = "file_create_dir";
 
 /// Permission to delete files and empty directories
 pub(crate) const PERMISSION_FILE_DELETE: &str = "file_delete";
+
+/// Permission to view detailed file/directory information
+pub(crate) const PERMISSION_FILE_INFO: &str = "file_info";
+
+/// Permission to rename files and directories
+pub(crate) const PERMISSION_FILE_RENAME: &str = "file_rename";

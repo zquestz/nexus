@@ -141,7 +141,10 @@ permission-news_create = ニュース作成
 permission-news_edit = ニュース編集
 permission-news_delete = ニュース削除
 permission-file_create_dir = ディレクトリ作成
+permission-file_delete = ファイル削除
+permission-file_info = ファイル情報
 permission-file_list = ファイル一覧
+permission-file_rename = ファイル名変更
 permission-file_root = ファイルルート
 
 # =============================================================================
@@ -201,12 +204,28 @@ files-panel-title = ファイル
 files-column-name = 名前
 files-column-size = サイズ
 files-column-modified = 更新日時
-files-create-directory-title = 新規フォルダを作成
+files-create-directory-title = 新しいフォルダを作成
 files-directory-name-placeholder = フォルダ名
 files-info = 情報
+files-rename = 名前を変更
+files-rename-title = 「{ $name }」の名前を変更
+files-rename-placeholder = 新しい名前
 files-delete = 削除
 files-delete-confirm-title = 削除の確認
 files-delete-confirm-message = "{ $name }" を削除してもよろしいですか？
+
+# File Info Dialog
+files-info-type = 種類：
+files-info-size = サイズ：
+files-info-items = 項目数：
+files-info-mime-type = MIMEタイプ：
+files-info-created = 作成日時：
+files-info-modified = 更新日時：
+files-info-file = ファイル
+files-info-directory = ディレクトリ
+files-info-symlink = シンボリックリンク：
+files-info-yes = はい
+files-info-na = N/A
 
 # =============================================================================
 # Directory Name Validation Errors

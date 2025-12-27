@@ -330,6 +330,18 @@ pub enum Message {
     FileConfirmDelete,
     /// Files: Cancel delete (close modal)
     FileCancelDelete,
+    /// Files: Info clicked from context menu (path to get info for)
+    FileInfoClicked(String),
+    /// Files: Close file info dialog
+    CloseFileInfo,
+    /// Files: Rename clicked from context menu (path to rename)
+    FileRenameClicked(String),
+    /// Files: Rename name input changed
+    FileRenameNameChanged(String),
+    /// Files: Rename submit button pressed
+    FileRenameSubmit,
+    /// Files: Rename cancel button pressed (close dialog)
+    FileRenameCancel,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

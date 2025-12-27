@@ -159,3 +159,5 @@ err-dir-create-failed = ディレクトリの作成に失敗しました
 
 err-dir-not-empty = フォルダが空ではありません
 err-delete-failed = ファイルまたはフォルダを削除できませんでした
+err-rename-failed = ファイルまたはフォルダの名前を変更できませんでした
+err-rename-target-exists = その名前のファイルまたはディレクトリは既に存在します

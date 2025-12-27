@@ -340,6 +340,13 @@ where
         ClientMessage::FileInfo { path, root } => {
             handlers::handle_file_info(path, root, conn_state.session_id, ctx).await?;
         }
+        ClientMessage::FileRename {
+            path,
+            new_name,
+            root,
+        } => {
+            handlers::handle_file_rename(path, new_name, root, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

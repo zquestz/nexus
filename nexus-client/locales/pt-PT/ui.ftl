@@ -141,7 +141,10 @@ permission-news_create = Criar Notícia
 permission-news_edit = Editar Notícia
 permission-news_delete = Eliminar Notícia
 permission-file_create_dir = Directório Criar
+permission-file_delete = Eliminar Ficheiro
+permission-file_info = Info de Ficheiro
 permission-file_list = Lista de Ficheiros
+permission-file_rename = Renomear Ficheiro
 permission-file_root = Raiz de Ficheiros
 
 # =============================================================================
@@ -201,12 +204,28 @@ files-panel-title = Ficheiros
 files-column-name = Nome
 files-column-size = Tamanho
 files-column-modified = Modificado
-files-create-directory-title = Criar Novo Diretório
+files-create-directory-title = Criar Novo Directório
 files-directory-name-placeholder = Nome do diretório
 files-info = Info
+files-rename = Renomear
+files-rename-title = Renomear "{ $name }"
+files-rename-placeholder = Novo nome
 files-delete = Eliminar
 files-delete-confirm-title = Confirmar eliminação
 files-delete-confirm-message = Tem a certeza de que pretende eliminar "{ $name }"?
+
+# File Info Dialog
+files-info-type = Tipo:
+files-info-size = Tamanho:
+files-info-items = Itens:
+files-info-mime-type = Tipo MIME:
+files-info-created = Criado:
+files-info-modified = Modificado:
+files-info-file = Ficheiro
+files-info-directory = Pasta
+files-info-symlink = Symlink:
+files-info-yes = Sim
+files-info-na = N/D
 
 # =============================================================================
 # Directory Name Validation Errors

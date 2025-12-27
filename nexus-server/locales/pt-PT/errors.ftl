@@ -159,3 +159,5 @@ err-dir-create-failed = Falha ao criar o directório
 
 err-dir-not-empty = O diretório não está vazio
 err-delete-failed = Falha ao eliminar ficheiro ou diretório
+err-rename-failed = Falha ao renomear ficheiro ou directório
+err-rename-target-exists = Já existe um ficheiro ou directório com esse nome

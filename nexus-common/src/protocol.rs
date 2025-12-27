@@ -150,6 +150,15 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    FileRename {
+        /// Current path of the file or directory to rename
+        path: String,
+        /// New name (just the filename, not full path)
+        new_name: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
 }
 
 /// Server response messages
@@ -385,6 +394,11 @@ pub enum ServerMessage {
         error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         info: Option<FileInfoDetails>,
+    },
+    FileRenameResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
 }
 
@@ -694,6 +708,16 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::FileInfo { path, root } => f
                 .debug_struct("FileInfo")
                 .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileRename {
+                path,
+                new_name,
+                root,
+            } => f
+                .debug_struct("FileRename")
+                .field("path", path)
+                .field("new_name", new_name)
                 .field("root", root)
                 .finish(),
         }

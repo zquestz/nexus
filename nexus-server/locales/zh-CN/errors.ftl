@@ -159,3 +159,5 @@ err-dir-create-failed = 创建目录失败
 
 err-dir-not-empty = 目录不为空
 err-delete-failed = 无法删除文件或目录
+err-rename-failed = 无法重命名文件或目录
+err-rename-target-exists = 同名文件或目录已存在
