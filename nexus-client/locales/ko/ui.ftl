@@ -221,6 +221,7 @@ files-info-items = 항목:
 files-info-mime-type = MIME 유형:
 files-info-created = 생성일:
 files-info-modified = 수정일:
+files-info-sha256 = SHA-256:
 files-info-file = 파일
 files-info-directory = 디렉토리
 files-info-symlink = 심볼릭 링크:

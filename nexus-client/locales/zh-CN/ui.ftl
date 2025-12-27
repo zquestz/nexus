@@ -221,6 +221,7 @@ files-info-items = 项目：
 files-info-mime-type = MIME 类型：
 files-info-created = 创建时间：
 files-info-modified = 修改时间：
+files-info-sha256 = SHA-256:
 files-info-file = 文件
 files-info-directory = 目录
 files-info-symlink = 符号链接：

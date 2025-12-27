@@ -222,6 +222,7 @@ files-info-items = Items:
 files-info-mime-type = MIME-type:
 files-info-created = Aangemaakt:
 files-info-modified = Gewijzigd:
+files-info-sha256 = SHA-256:
 files-info-file = Bestand
 files-info-directory = Map
 files-info-symlink = Symlink:

@@ -221,6 +221,7 @@ files-info-items = 項目：
 files-info-mime-type = MIME 類型：
 files-info-created = 建立時間：
 files-info-modified = 修改時間：
+files-info-sha256 = SHA-256:
 files-info-file = 檔案
 files-info-directory = 目錄
 files-info-symlink = 符號連結：

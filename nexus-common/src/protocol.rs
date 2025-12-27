@@ -496,6 +496,9 @@ pub struct FileInfoDetails {
     /// Number of items inside (directories only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub item_count: Option<u64>,
+    /// SHA-256 hash of file contents (files only, None for directories)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 /// Detailed user info. `nickname` is the display name (== username for regular accounts).

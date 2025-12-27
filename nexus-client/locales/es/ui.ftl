@@ -222,6 +222,7 @@ files-info-items = Elementos:
 files-info-mime-type = Tipo MIME:
 files-info-created = Creado:
 files-info-modified = Modificado:
+files-info-sha256 = SHA-256:
 files-info-file = Archivo
 files-info-directory = Directorio
 files-info-symlink = Enlace simbólico:

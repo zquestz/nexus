@@ -1,8 +1,10 @@
 //! FileInfo message handler - Returns detailed information about a file or directory
 
 use std::io;
+use std::io::Read;
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::{FileInfoDetails, ServerMessage};
@@ -81,6 +83,24 @@ fn detect_mime_type(path: &Path) -> Option<String> {
 fn count_directory_items(path: &Path) -> Option<u64> {
     let entries = std::fs::read_dir(path).ok()?;
     Some(entries.count() as u64)
+}
+
+/// Compute SHA-256 hash of a file
+fn compute_sha256(path: &Path) -> Option<String> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = file.read(&mut buffer).ok()?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    let result = hasher.finalize();
+    Some(format!("{:x}", result))
 }
 
 /// Handle a file info request
@@ -281,6 +301,13 @@ where
         None
     };
 
+    // SHA-256 hash (only for files)
+    let sha256 = if is_directory {
+        None
+    } else {
+        compute_sha256(&resolved)
+    };
+
     let info = FileInfoDetails {
         name,
         size,
@@ -290,6 +317,7 @@ where
         is_symlink,
         mime_type,
         item_count,
+        sha256,
     };
 
     let response = ServerMessage::FileInfoResponse {
@@ -412,6 +440,11 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert_eq!(info.mime_type.as_deref(), Some("text/plain"));
                 assert!(info.item_count.is_none());
+                // SHA-256 of "Hello, world!"
+                assert_eq!(
+                    info.sha256.as_deref(),
+                    Some("315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3")
+                );
             }
             _ => panic!("Expected FileInfoResponse"),
         }
@@ -466,6 +499,7 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert!(info.mime_type.is_none());
                 assert_eq!(info.item_count, Some(3)); // 2 files + 1 subdir
+                assert!(info.sha256.is_none()); // Directories don't have SHA256
             }
             _ => panic!("Expected FileInfoResponse"),
         }

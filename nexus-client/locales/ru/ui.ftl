@@ -221,6 +221,7 @@ files-info-items = Элементов:
 files-info-mime-type = MIME-тип:
 files-info-created = Создан:
 files-info-modified = Изменён:
+files-info-sha256 = SHA-256:
 files-info-file = Файл
 files-info-directory = Каталог
 files-info-symlink = Симв. ссылка:
