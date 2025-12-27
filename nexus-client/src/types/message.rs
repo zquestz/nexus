@@ -324,6 +324,12 @@ pub enum Message {
     FileNewDirectorySubmit,
     /// Files: New directory cancel button pressed (close dialog)
     FileNewDirectoryCancel,
+    /// Files: Delete clicked from context menu (path to delete)
+    FileDeleteClicked(String),
+    /// Files: Confirm delete button pressed in modal
+    FileConfirmDelete,
+    /// Files: Cancel delete (close modal)
+    FileCancelDelete,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

@@ -204,6 +204,10 @@ files-column-size = Grootte
 files-column-modified = Gewijzigd
 files-create-directory-title = Nieuwe Map Aanmaken
 files-directory-name-placeholder = Mapnaam
+files-info = Info
+files-delete = Verwijderen
+files-delete-confirm-title = Verwijderen bevestigen
+files-delete-confirm-message = Weet u zeker dat u "{ $name }" wilt verwijderen?
 
 # =============================================================================
 # Directory Name Validation Errors

@@ -322,4 +322,69 @@ impl NexusApp {
 
         Task::none()
     }
+
+    // ==================== File Delete ====================
+
+    /// Handle delete clicked from context menu
+    ///
+    /// Opens a confirmation dialog with the path to delete.
+    pub fn handle_file_delete_clicked(&mut self, path: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Set pending delete to show confirmation dialog
+        conn.files_management.pending_delete = Some(path);
+
+        Task::none()
+    }
+
+    /// Handle confirm delete button in modal
+    ///
+    /// Sends the FileDelete request to the server.
+    pub fn handle_file_confirm_delete(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get the path to delete
+        let Some(path) = conn.files_management.pending_delete.take() else {
+            return Task::none();
+        };
+
+        let root = conn.files_management.viewing_root;
+
+        match conn.send(ClientMessage::FileDelete { path, root }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileDeleteResult);
+            }
+            Err(e) => {
+                conn.files_management.error = Some(format!("{}: {}", t("err-send-failed"), e));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle cancel delete (close modal)
+    pub fn handle_file_cancel_delete(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Clear pending delete to close the dialog
+        conn.files_management.pending_delete = None;
+
+        Task::none()
+    }
 }

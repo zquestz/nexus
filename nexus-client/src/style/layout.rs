@@ -84,6 +84,41 @@ pub const TOOLTIP_PADDING: f32 = 4.0;
 /// Tooltip background padding (inside the tooltip box)
 pub const TOOLTIP_BACKGROUND_PADDING: f32 = 6.0;
 
+/// Context menu container padding (around all menu items)
+pub const CONTEXT_MENU_PADDING: f32 = 4.0;
+
+/// Context menu item padding (inside each menu item)
+pub const CONTEXT_MENU_ITEM_PADDING: iced::Padding = iced::Padding {
+    top: 6.0,
+    right: 12.0,
+    bottom: 6.0,
+    left: 12.0,
+};
+
+/// Context menu separator height (thin line between menu sections)
+pub const CONTEXT_MENU_SEPARATOR_HEIGHT: f32 = 1.0;
+
+/// Context menu separator vertical margin (space above and below separator)
+pub const CONTEXT_MENU_SEPARATOR_MARGIN: f32 = 4.0;
+
+/// Context menu minimum width (accommodates longest translations)
+pub const CONTEXT_MENU_MIN_WIDTH: f32 = 140.0;
+
+/// Context menu border radius
+pub const CONTEXT_MENU_BORDER_RADIUS: f32 = 4.0;
+
+/// Context menu border width
+pub const CONTEXT_MENU_BORDER_WIDTH: f32 = 1.0;
+
+/// Context menu shadow opacity
+pub const CONTEXT_MENU_SHADOW_OPACITY: f32 = 0.3;
+
+/// Context menu shadow offset
+pub const CONTEXT_MENU_SHADOW_OFFSET: f32 = 2.0;
+
+/// Context menu shadow blur radius
+pub const CONTEXT_MENU_SHADOW_BLUR: f32 = 8.0;
+
 /// Small padding (general use)
 pub const SMALL_PADDING: f32 = 5.0;
 

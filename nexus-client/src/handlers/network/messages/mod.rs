@@ -277,6 +277,10 @@ impl NexusApp {
                 path,
             ),
 
+            ServerMessage::FileDeleteResponse { success, error } => {
+                self.handle_file_delete_response(connection_id, message_id, success, error)
+            }
+
             // Catch-all for any unhandled message types
             _ => Task::none(),
         }

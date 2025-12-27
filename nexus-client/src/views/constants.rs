@@ -72,3 +72,6 @@ pub(crate) const PERMISSION_FILE_ROOT: &str = "file_root";
 
 /// Permission to create directories anywhere in file area
 pub(crate) const PERMISSION_FILE_CREATE_DIR: &str = "file_create_dir";
+
+/// Permission to delete files and empty directories
+pub(crate) const PERMISSION_FILE_DELETE: &str = "file_delete";

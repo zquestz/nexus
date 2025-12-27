@@ -6,7 +6,11 @@
 
 use super::shaping::shaped_text;
 use super::ui;
-use super::{TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE};
+use super::{
+    CONTEXT_MENU_BORDER_RADIUS, CONTEXT_MENU_BORDER_WIDTH, CONTEXT_MENU_SHADOW_BLUR,
+    CONTEXT_MENU_SHADOW_OFFSET, CONTEXT_MENU_SHADOW_OPACITY, TITLE_ROW_HEIGHT_WITH_ACTION,
+    TITLE_SIZE,
+};
 use crate::types::Message;
 use iced::widget::{Container, button, container, text};
 use iced::{Background, Border, Center, Color, Fill, Theme};
@@ -234,6 +238,78 @@ pub fn toolbar_background_style(theme: &Theme) -> container::Style {
 /// Tooltip container style - uses Iced's built-in bordered box style
 pub fn tooltip_container_style(theme: &Theme) -> container::Style {
     container::bordered_box(theme)
+}
+
+/// Context menu button style - has visible hover background
+///
+/// Note: iced_aw's ContextMenu currently doesn't forward hover events to overlay content,
+/// so hover states won't display. When this is fixed upstream, hover will work automatically.
+pub fn context_menu_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    button::Style {
+        background: match status {
+            button::Status::Hovered | button::Status::Pressed => {
+                Some(Background::Color(palette.primary.weak.color))
+            }
+            _ => None,
+        },
+        text_color: match status {
+            button::Status::Hovered | button::Status::Pressed => palette.primary.weak.text,
+            _ => ui::text_color(theme),
+        },
+        border: Border {
+            radius: CONTEXT_MENU_BORDER_RADIUS.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+/// Context menu item style for danger/destructive actions (e.g., delete)
+///
+/// Uses danger-colored text to indicate a destructive action.
+/// No background in normal state for a clean menu appearance.
+///
+/// Note: iced_aw's ContextMenu currently doesn't forward hover events to overlay content,
+/// so hover states won't display. When this is fixed upstream, hover will work automatically.
+pub fn context_menu_item_danger_style(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    button::Style {
+        background: match status {
+            button::Status::Hovered | button::Status::Pressed => {
+                Some(Background::Color(palette.danger.weak.color))
+            }
+            _ => None,
+        },
+        text_color: match status {
+            button::Status::Hovered | button::Status::Pressed => palette.danger.weak.text,
+            _ => theme.palette().danger,
+        },
+        border: Border {
+            radius: CONTEXT_MENU_BORDER_RADIUS.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+/// Context menu container style - popup menu with border and shadow
+pub fn context_menu_container_style(theme: &Theme) -> container::Style {
+    let palette = theme.extended_palette();
+    container::Style {
+        background: Some(Background::Color(palette.background.base.color)),
+        border: Border {
+            color: palette.background.strong.color,
+            width: CONTEXT_MENU_BORDER_WIDTH,
+            radius: CONTEXT_MENU_BORDER_RADIUS.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, CONTEXT_MENU_SHADOW_OPACITY),
+            offset: iced::Vector::new(CONTEXT_MENU_SHADOW_OFFSET, CONTEXT_MENU_SHADOW_OFFSET),
+            blur_radius: CONTEXT_MENU_SHADOW_BLUR,
+        },
+        ..Default::default()
+    }
 }
 
 // ============================================================================

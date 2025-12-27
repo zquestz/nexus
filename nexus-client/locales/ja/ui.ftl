@@ -203,6 +203,10 @@ files-column-size = サイズ
 files-column-modified = 更新日時
 files-create-directory-title = 新規フォルダを作成
 files-directory-name-placeholder = フォルダ名
+files-info = 情報
+files-delete = 削除
+files-delete-confirm-title = 削除の確認
+files-delete-confirm-message = "{ $name }" を削除してもよろしいですか？
 
 # =============================================================================
 # Directory Name Validation Errors

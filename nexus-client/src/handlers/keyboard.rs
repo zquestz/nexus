@@ -204,13 +204,21 @@ impl NexusApp {
                         return self.update(Message::CancelNews);
                     }
                     ActivePanel::Files => {
-                        // If creating directory, close dialog; otherwise close panel
+                        // If delete confirmation is showing, cancel it
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get(&conn_id)
+                            && conn.files_management.pending_delete.is_some()
+                        {
+                            return self.update(Message::FileCancelDelete);
+                        }
+                        // If creating directory, close dialog
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
                             && conn.files_management.creating_directory
                         {
                             return self.update(Message::FileNewDirectoryCancel);
                         }
+                        // Otherwise close panel
                         return self.update(Message::CancelFiles);
                     }
                     ActivePanel::None => {}

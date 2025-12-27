@@ -52,6 +52,8 @@ pub enum ResponseRouting {
     PopulateFileList,
     /// File create directory result (close dialog on success, show error on failure)
     FileCreateDirResult,
+    /// File delete result (refresh listing on success, show error on failure)
+    FileDeleteResult,
 }
 
 /// Extension trait for tracking pending requests
@@ -327,6 +329,17 @@ mod tests {
         assert!(matches!(
             pending.get(&id),
             Some(ResponseRouting::FileCreateDirResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_file_delete_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::FileDeleteResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::FileDeleteResult)
         ));
     }
 }

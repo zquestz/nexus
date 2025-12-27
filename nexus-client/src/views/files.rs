@@ -6,20 +6,23 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE,
-    FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING,
-    FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH,
-    NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    content_background_style, disabled_icon_button_style, error_text_style, muted_text_style,
-    panel_title, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style,
+    BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING,
+    CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING,
+    FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
+    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING,
+    INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
+    TOOLTIP_TEXT_SIZE, content_background_style, context_menu_button_style,
+    context_menu_container_style, context_menu_item_danger_style, disabled_icon_button_style,
+    error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
+    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{FilesManagementState, InputId, Message, ScrollableId};
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
 use iced::{Center, Element, Fill, Right};
+use iced_aw::ContextMenu;
 use nexus_common::protocol::FileEntry;
 
 // ============================================================================
@@ -386,6 +389,46 @@ fn toolbar<'a>(
     toolbar_row.into()
 }
 
+/// Build the delete confirmation dialog
+fn delete_confirm_dialog(path: &str) -> Element<'_, Message> {
+    let title = panel_title(t("files-delete-confirm-title"));
+
+    // Extract just the filename from the path for display
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let display_name = FilesManagementState::display_name(name);
+
+    let message = crate::i18n::t_args("files-delete-confirm-message", &[("name", &display_name)]);
+
+    let buttons = row![
+        Space::new().width(Fill),
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::FileCancelDelete)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .on_press(Message::FileConfirmDelete)
+            .padding(BUTTON_PADDING)
+            .style(btn::danger),
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    let form = column![
+        title,
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        shaped_text_wrapped(&message)
+            .size(TEXT_SIZE)
+            .width(Fill)
+            .align_x(Center),
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        buttons,
+    ]
+    .spacing(ELEMENT_SPACING)
+    .padding(FORM_PADDING)
+    .max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
+}
+
 /// Build the new directory dialog (matches broadcast view layout)
 fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, Message> {
     let title = panel_title(t("files-create-directory-title"));
@@ -447,7 +490,11 @@ fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, M
 }
 
 /// Build the file table
-fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a, Message> {
+fn file_table<'a>(
+    entries: &'a [FileEntry],
+    current_path: &'a str,
+    has_file_delete: bool,
+) -> Element<'a, Message> {
     // Name column with icon
     let name_column = table::column(
         shaped_text(t("files-column-name"))
@@ -478,7 +525,7 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
             .into();
 
             // For directories, make the row clickable
-            if is_directory {
+            let row_element: Element<'_, Message> = if is_directory {
                 let navigate_path = build_navigate_path(current_path, &entry.name);
                 button(name_content)
                     .padding(NO_SPACING)
@@ -487,6 +534,44 @@ fn file_table<'a>(entries: &'a [FileEntry], current_path: &'a str) -> Element<'a
                     .into()
             } else {
                 name_content
+            };
+
+            // Wrap in context menu if user has delete permission
+            if has_file_delete {
+                // Build the full path for this entry
+                let delete_path = build_navigate_path(current_path, &entry.name);
+                let delete_path_clone = delete_path.clone();
+
+                ContextMenu::new(row_element, move || {
+                    container(
+                        column![
+                            // Info (placeholder - not yet implemented)
+                            button(shaped_text(t("files-info")).size(TEXT_SIZE))
+                                .padding(CONTEXT_MENU_ITEM_PADDING)
+                                .width(Fill)
+                                .style(context_menu_button_style),
+                            // Separator before destructive actions
+                            container(Space::new())
+                                .width(Fill)
+                                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                                .style(separator_style),
+                            // Delete
+                            button(shaped_text(t("files-delete")).size(TEXT_SIZE))
+                                .padding(CONTEXT_MENU_ITEM_PADDING)
+                                .width(Fill)
+                                .style(context_menu_item_danger_style)
+                                .on_press(Message::FileDeleteClicked(delete_path_clone.clone())),
+                        ]
+                        .spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
+                    )
+                    .width(CONTEXT_MENU_MIN_WIDTH)
+                    .padding(CONTEXT_MENU_PADDING)
+                    .style(context_menu_container_style)
+                    .into()
+                })
+                .into()
+            } else {
+                row_element
             }
         },
     )
@@ -554,7 +639,13 @@ pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
     has_file_root: bool,
     has_file_create_dir: bool,
+    has_file_delete: bool,
 ) -> Element<'a, Message> {
+    // If delete confirmation is pending, show that dialog
+    if let Some(path) = &files_management.pending_delete {
+        return delete_confirm_dialog(path);
+    }
+
     // If creating directory, show the dialog instead
     if files_management.creating_directory {
         return new_directory_dialog(
@@ -616,7 +707,7 @@ pub fn files_view<'a>(
             .into()
         } else {
             // File table
-            file_table(entries, &files_management.current_path)
+            file_table(entries, &files_management.current_path, has_file_delete)
         }
     } else {
         // Loading state

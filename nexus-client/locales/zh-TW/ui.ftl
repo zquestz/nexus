@@ -203,6 +203,10 @@ files-column-size = 大小
 files-column-modified = 修改日期
 files-create-directory-title = 新建資料夾
 files-directory-name-placeholder = 資料夾名稱
+files-info = 資訊
+files-delete = 刪除
+files-delete-confirm-title = 確認刪除
+files-delete-confirm-message = 您確定要刪除「{ $name }」嗎？
 
 # =============================================================================
 # Directory Name Validation Errors

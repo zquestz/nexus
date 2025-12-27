@@ -200,9 +200,13 @@ files-root = 根目录
 files-panel-title = 文件
 files-column-name = 名称
 files-column-size = 大小
-files-column-modified = 修改日期
+files-column-modified = 更新日期
 files-create-directory-title = 新建文件夹
 files-directory-name-placeholder = 文件夹名称
+files-info = 信息
+files-delete = 删除
+files-delete-confirm-title = 确认删除
+files-delete-confirm-message = 您确定要删除"{ $name }"吗？
 
 # =============================================================================
 # Directory Name Validation Errors

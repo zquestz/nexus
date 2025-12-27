@@ -184,6 +184,8 @@ pub struct FilesManagementState {
     pub new_directory_name: String,
     /// New directory validation/creation error
     pub new_directory_error: Option<String>,
+    /// Path pending deletion (for confirmation dialog)
+    pub pending_delete: Option<String>,
 }
 
 impl FilesManagementState {
@@ -925,6 +927,7 @@ mod tests {
             creating_directory: true,
             new_directory_name: "test".to_string(),
             new_directory_error: Some("error".to_string()),
+            pending_delete: None,
         };
 
         state.close_new_directory_dialog();

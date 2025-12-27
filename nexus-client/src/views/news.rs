@@ -3,7 +3,7 @@
 use chrono::{DateTime, Local, Utc};
 
 use super::constants::{PERMISSION_NEWS_CREATE, PERMISSION_NEWS_DELETE, PERMISSION_NEWS_EDIT};
-use super::layout::{scrollable_modal, scrollable_panel};
+use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::image::CachedImage;
@@ -579,7 +579,7 @@ fn confirm_delete_modal<'a>() -> Element<'a, Message> {
     .padding(FORM_PADDING)
     .max_width(FORM_MAX_WIDTH);
 
-    scrollable_modal(form)
+    scrollable_panel(form)
 }
 
 // ============================================================================

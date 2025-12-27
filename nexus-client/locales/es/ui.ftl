@@ -204,6 +204,10 @@ files-column-size = Tamaño
 files-column-modified = Modificado
 files-create-directory-title = Crear Nuevo Directorio
 files-directory-name-placeholder = Nombre del directorio
+files-info = Info
+files-delete = Eliminar
+files-delete-confirm-title = Confirmar eliminación
+files-delete-confirm-message = ¿Está seguro de que desea eliminar "{ $name }"?
 
 # =============================================================================
 # Directory Name Validation Errors

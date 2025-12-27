@@ -203,6 +203,10 @@ files-column-size = 크기
 files-column-modified = 수정일
 files-create-directory-title = 새 폴더 만들기
 files-directory-name-placeholder = 폴더 이름
+files-info = 정보
+files-delete = 삭제
+files-delete-confirm-title = 삭제 확인
+files-delete-confirm-message = "{ $name }"을(를) 삭제하시겠습니까?
 
 # =============================================================================
 # Directory Name Validation Errors

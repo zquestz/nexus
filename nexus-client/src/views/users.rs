@@ -1,7 +1,7 @@
 //! User management panel view (list, create, edit, delete users)
 
 use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
-use super::layout::{scrollable_modal, scrollable_panel};
+use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
@@ -705,7 +705,7 @@ fn confirm_delete_modal<'a>(username: &'a str) -> Element<'a, Message> {
     .padding(FORM_PADDING)
     .max_width(FORM_MAX_WIDTH);
 
-    scrollable_modal(form)
+    scrollable_panel(form)
 }
 
 // ============================================================================

@@ -475,6 +475,9 @@ impl NexusApp {
             }
             Message::FileNewDirectorySubmit => self.handle_file_new_directory_submit(),
             Message::FileNewDirectoryCancel => self.handle_file_new_directory_cancel(),
+            Message::FileDeleteClicked(path) => self.handle_file_delete_clicked(path),
+            Message::FileConfirmDelete => self.handle_file_confirm_delete(),
+            Message::FileCancelDelete => self.handle_file_cancel_delete(),
         }
     }
 

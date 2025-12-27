@@ -203,6 +203,10 @@ files-column-size = Размер
 files-column-modified = Изменён
 files-create-directory-title = Создать новую папку
 files-directory-name-placeholder = Имя папки
+files-info = Информация
+files-delete = Удалить
+files-delete-confirm-title = Подтверждение удаления
+files-delete-confirm-message = Вы уверены, что хотите удалить "{ $name }"?
 
 # =============================================================================
 # Directory Name Validation Errors

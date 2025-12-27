@@ -109,4 +109,46 @@ impl NexusApp {
             operation::focus(Id::from(InputId::NewDirectoryName))
         }
     }
+
+    /// Handle file delete response
+    ///
+    /// On success, refreshes the file list.
+    /// On error, displays the error in the files panel.
+    pub fn handle_file_delete_response(
+        &mut self,
+        connection_id: usize,
+        message_id: MessageId,
+        success: bool,
+        error: Option<String>,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if this was a tracked request
+        let routing = conn.pending_requests.remove(&message_id);
+
+        // Only handle if this was a tracked file delete request
+        if !matches!(routing, Some(ResponseRouting::FileDeleteResult)) {
+            return Task::none();
+        }
+
+        if success {
+            // Refresh the current directory listing
+            let current_path = conn.files_management.current_path.clone();
+            let viewing_root = conn.files_management.viewing_root;
+            let show_hidden = conn.files_management.show_hidden;
+
+            // Clear entries to show loading state
+            conn.files_management.entries = None;
+            conn.files_management.error = None;
+
+            // Send refresh request
+            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+        } else {
+            // Show error in the files panel
+            conn.files_management.error = error;
+            Task::none()
+        }
+    }
 }
