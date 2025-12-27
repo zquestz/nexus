@@ -337,6 +337,9 @@ where
         ClientMessage::FileDelete { path, root } => {
             handlers::handle_file_delete(path, root, conn_state.session_id, ctx).await?;
         }
+        ClientMessage::FileInfo { path, root } => {
+            handlers::handle_file_info(path, root, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

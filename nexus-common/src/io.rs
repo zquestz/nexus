@@ -262,6 +262,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileList { .. } => "FileList",
         ClientMessage::FileCreateDir { .. } => "FileCreateDir",
         ClientMessage::FileDelete { .. } => "FileDelete",
+        ClientMessage::FileInfo { .. } => "FileInfo",
     }
 }
 
@@ -302,6 +303,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileListResponse { .. } => "FileListResponse",
         ServerMessage::FileCreateDirResponse { .. } => "FileCreateDirResponse",
         ServerMessage::FileDeleteResponse { .. } => "FileDeleteResponse",
+        ServerMessage::FileInfoResponse { .. } => "FileInfoResponse",
     }
 }
 

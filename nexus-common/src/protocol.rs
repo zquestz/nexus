@@ -143,6 +143,13 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    FileInfo {
+        /// Path to the file or directory to get info for
+        path: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
 }
 
 /// Server response messages
@@ -372,6 +379,13 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+    FileInfoResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        info: Option<FileInfoDetails>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -444,6 +458,30 @@ pub struct FileEntry {
     pub dir_type: Option<String>,
     /// True if uploads are allowed at this location
     pub can_upload: bool,
+}
+
+/// Detailed file/directory information returned by FileInfo
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileInfoDetails {
+    /// File or directory name
+    pub name: String,
+    /// File size in bytes (0 for directories)
+    pub size: u64,
+    /// Creation time as Unix timestamp (None if filesystem doesn't support it)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<i64>,
+    /// Last modified time as Unix timestamp
+    pub modified: i64,
+    /// True if this is a directory
+    pub is_directory: bool,
+    /// True if this is a symbolic link
+    pub is_symlink: bool,
+    /// MIME type (None for directories)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// Number of items inside (directories only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_count: Option<u64>,
 }
 
 /// Detailed user info. `nickname` is the display name (== username for regular accounts).
@@ -650,6 +688,11 @@ impl std::fmt::Debug for ClientMessage {
                 .finish(),
             ClientMessage::FileDelete { path, root } => f
                 .debug_struct("FileDelete")
+                .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileInfo { path, root } => f
+                .debug_struct("FileInfo")
                 .field("path", path)
                 .field("root", root)
                 .finish(),
