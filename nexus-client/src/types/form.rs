@@ -315,6 +315,7 @@ const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "file_info",
     "file_list",
     "news_list",
     "user_info",
