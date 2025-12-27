@@ -691,3 +691,33 @@ pub fn err_rename_failed(locale: &str) -> String {
 pub fn err_rename_target_exists(locale: &str) -> String {
     t(locale, "err-rename-target-exists")
 }
+
+/// Get translated "move failed" error
+pub fn err_move_failed(locale: &str) -> String {
+    t(locale, "err-move-failed")
+}
+
+/// Get translated "copy failed" error
+pub fn err_copy_failed(locale: &str) -> String {
+    t(locale, "err-copy-failed")
+}
+
+/// Get translated "destination exists" error
+pub fn err_destination_exists(locale: &str) -> String {
+    t(locale, "err-destination-exists")
+}
+
+/// Get translated "cannot move into itself" error
+pub fn err_cannot_move_into_itself(locale: &str) -> String {
+    t(locale, "err-cannot-move-into-itself")
+}
+
+/// Get translated "cannot copy into itself" error
+pub fn err_cannot_copy_into_itself(locale: &str) -> String {
+    t(locale, "err-cannot-copy-into-itself")
+}
+
+/// Get translated "destination not a directory" error
+pub fn err_destination_not_directory(locale: &str) -> String {
+    t(locale, "err-destination-not-directory")
+}

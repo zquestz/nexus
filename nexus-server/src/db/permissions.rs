@@ -51,6 +51,10 @@ pub enum Permission {
     FileInfo,
     /// Permission to rename files and directories
     FileRename,
+    /// Permission to move files and directories
+    FileMove,
+    /// Permission to copy files and directories
+    FileCopy,
 }
 
 impl Permission {
@@ -93,6 +97,8 @@ impl Permission {
             "file_delete" => Some(Permission::FileDelete),
             "file_info" => Some(Permission::FileInfo),
             "file_rename" => Some(Permission::FileRename),
+            "file_move" => Some(Permission::FileMove),
+            "file_copy" => Some(Permission::FileCopy),
             _ => None,
         }
     }
@@ -190,6 +196,8 @@ mod tests {
         assert_eq!(Permission::FileDelete.as_str(), "file_delete");
         assert_eq!(Permission::FileInfo.as_str(), "file_info");
         assert_eq!(Permission::FileRename.as_str(), "file_rename");
+        assert_eq!(Permission::FileMove.as_str(), "file_move");
+        assert_eq!(Permission::FileCopy.as_str(), "file_copy");
     }
 
     #[test]
@@ -250,6 +258,8 @@ mod tests {
             Permission::parse("file_rename"),
             Some(Permission::FileRename)
         );
+        assert_eq!(Permission::parse("file_move"), Some(Permission::FileMove));
+        assert_eq!(Permission::parse("file_copy"), Some(Permission::FileCopy));
     }
 
     #[test]
@@ -324,8 +334,10 @@ mod tests {
             Permission::ChatTopicEdit,
             Permission::FileCreateDir,
             Permission::FileDelete,
+            Permission::FileCopy,
             Permission::FileInfo,
             Permission::FileList,
+            Permission::FileMove,
             Permission::FileRename,
             Permission::FileRoot,
             Permission::NewsCreate,

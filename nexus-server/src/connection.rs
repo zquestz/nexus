@@ -347,6 +347,42 @@ where
         } => {
             handlers::handle_file_rename(path, new_name, root, conn_state.session_id, ctx).await?;
         }
+        ClientMessage::FileMove {
+            source_path,
+            destination_dir,
+            overwrite,
+            source_root,
+            destination_root,
+        } => {
+            handlers::handle_file_move(
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
+        }
+        ClientMessage::FileCopy {
+            source_path,
+            destination_dir,
+            overwrite,
+            source_root,
+            destination_root,
+        } => {
+            handlers::handle_file_copy(
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
+        }
     }
 
     Ok(())

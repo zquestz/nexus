@@ -81,6 +81,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileDelete", 4138); // path (4096) + root bool + overhead
     m.insert("FileInfo", 4138); // path (4096) + root bool + overhead
     m.insert("FileRename", 4433); // path (4096) + new_name (255) + root bool + overhead
+    m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
+    m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -133,6 +135,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     // + mime_type (~128) + item_count + error (~2048) + overhead
     m.insert("FileInfoResponse", 6500);
     m.insert("FileRenameResponse", 300); // success bool + error message + overhead
+    m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
+    m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
 
     m
 });
@@ -213,8 +217,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 25; // Added 6 News + 5 File client messages
-        const SERVER_MESSAGE_COUNT: usize = 35; // Added 7 News + 5 File server messages
+        const CLIENT_MESSAGE_COUNT: usize = 27; // Added 6 News + 7 File client messages (including FileMove, FileCopy)
+        const SERVER_MESSAGE_COUNT: usize = 37; // Added 7 News + 7 File server messages (including FileMoveResponse, FileCopyResponse)
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;

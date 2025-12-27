@@ -159,6 +159,36 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    FileMove {
+        /// Source path of the file or directory to move
+        source_path: String,
+        /// Destination directory to move into
+        destination_dir: String,
+        /// If true, overwrite existing file at destination
+        #[serde(default)]
+        overwrite: bool,
+        /// If true, source_path is relative to file root instead of user's area
+        #[serde(default)]
+        source_root: bool,
+        /// If true, destination_dir is relative to file root instead of user's area
+        #[serde(default)]
+        destination_root: bool,
+    },
+    FileCopy {
+        /// Source path of the file or directory to copy
+        source_path: String,
+        /// Destination directory to copy into
+        destination_dir: String,
+        /// If true, overwrite existing file at destination
+        #[serde(default)]
+        overwrite: bool,
+        /// If true, source_path is relative to file root instead of user's area
+        #[serde(default)]
+        source_root: bool,
+        /// If true, destination_dir is relative to file root instead of user's area
+        #[serde(default)]
+        destination_root: bool,
+    },
 }
 
 /// Server response messages
@@ -399,6 +429,22 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    },
+    FileMoveResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind for client decision making
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+    },
+    FileCopyResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind for client decision making
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
     },
 }
 
@@ -722,6 +768,34 @@ impl std::fmt::Debug for ClientMessage {
                 .field("path", path)
                 .field("new_name", new_name)
                 .field("root", root)
+                .finish(),
+            ClientMessage::FileMove {
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+            } => f
+                .debug_struct("FileMove")
+                .field("source_path", source_path)
+                .field("destination_dir", destination_dir)
+                .field("overwrite", overwrite)
+                .field("source_root", source_root)
+                .field("destination_root", destination_root)
+                .finish(),
+            ClientMessage::FileCopy {
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+            } => f
+                .debug_struct("FileCopy")
+                .field("source_path", source_path)
+                .field("destination_dir", destination_dir)
+                .field("overwrite", overwrite)
+                .field("source_root", source_root)
+                .field("destination_root", destination_root)
                 .finish(),
         }
     }
@@ -1215,5 +1289,141 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserMessage\""));
         assert!(json.contains("\"to_nickname\":\"Nick1\""));
+    }
+
+    #[test]
+    fn test_serialize_file_move() {
+        let msg = ClientMessage::FileMove {
+            source_path: "/docs/file.txt".to_string(),
+            destination_dir: "/archive".to_string(),
+            overwrite: false,
+            source_root: false,
+            destination_root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileMove\""));
+        assert!(json.contains("\"source_path\":\"/docs/file.txt\""));
+        assert!(json.contains("\"destination_dir\":\"/archive\""));
+        // Default false values should not be serialized (serde default)
+    }
+
+    #[test]
+    fn test_serialize_file_move_with_flags() {
+        let msg = ClientMessage::FileMove {
+            source_path: "file.txt".to_string(),
+            destination_dir: "dest".to_string(),
+            overwrite: true,
+            source_root: true,
+            destination_root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"overwrite\":true"));
+        assert!(json.contains("\"source_root\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_file_move_defaults() {
+        let json = r#"{"type":"FileMove","source_path":"a.txt","destination_dir":"b"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileMove {
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+            } => {
+                assert_eq!(source_path, "a.txt");
+                assert_eq!(destination_dir, "b");
+                assert!(!overwrite);
+                assert!(!source_root);
+                assert!(!destination_root);
+            }
+            _ => panic!("Expected FileMove"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_copy() {
+        let msg = ClientMessage::FileCopy {
+            source_path: "/docs/file.txt".to_string(),
+            destination_dir: "/backup".to_string(),
+            overwrite: false,
+            source_root: false,
+            destination_root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileCopy\""));
+        assert!(json.contains("\"source_path\":\"/docs/file.txt\""));
+        assert!(json.contains("\"destination_dir\":\"/backup\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_copy_with_flags() {
+        let json = r#"{"type":"FileCopy","source_path":"a.txt","destination_dir":"b","overwrite":true,"source_root":false,"destination_root":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileCopy {
+                overwrite,
+                source_root,
+                destination_root,
+                ..
+            } => {
+                assert!(overwrite);
+                assert!(!source_root);
+                assert!(destination_root);
+            }
+            _ => panic!("Expected FileCopy"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_move_response_success() {
+        let msg = ServerMessage::FileMoveResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileMoveResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(!json.contains("\"error\""));
+        assert!(!json.contains("\"error_kind\""));
+    }
+
+    #[test]
+    fn test_serialize_file_move_response_error() {
+        let msg = ServerMessage::FileMoveResponse {
+            success: false,
+            error: Some("File not found".to_string()),
+            error_kind: Some("not_found".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"File not found\""));
+        assert!(json.contains("\"error_kind\":\"not_found\""));
+    }
+
+    #[test]
+    fn test_serialize_file_copy_response_success() {
+        let msg = ServerMessage::FileCopyResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileCopyResponse\""));
+        assert!(json.contains("\"success\":true"));
+    }
+
+    #[test]
+    fn test_serialize_file_copy_response_exists_error() {
+        let msg = ServerMessage::FileCopyResponse {
+            success: false,
+            error: Some("File already exists".to_string()),
+            error_kind: Some("exists".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"error_kind\":\"exists\""));
     }
 }

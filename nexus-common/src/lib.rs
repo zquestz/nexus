@@ -30,10 +30,12 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
+/// - `file_copy`: Copy files and directories
 /// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_delete`: Delete files and empty directories
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories in user's area
+/// - `file_move`: Move files and directories
 /// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `news_create`: Create news posts
@@ -53,10 +55,12 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
+    "file_copy",
     "file_create_dir",
     "file_delete",
     "file_info",
     "file_list",
+    "file_move",
     "file_rename",
     "file_root",
     "news_create",
@@ -148,8 +152,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (22)
-        assert_eq!(ALL_PERMISSIONS.len(), 22);
+        // Verify we have the expected number of permissions (24)
+        assert_eq!(ALL_PERMISSIONS.len(), 24);
     }
 
     #[test]
