@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::avatar::generate_identicon;
 use crate::config::Config;
+use crate::i18n::t;
 use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_square};
 use crate::style::{
     AVATAR_MAX_CACHE_SIZE, NEWS_IMAGE_MAX_CACHE_WIDTH, SERVER_IMAGE_MAX_CACHE_WIDTH,
@@ -334,19 +335,13 @@ impl FileTab {
         }
     }
 
-    /// Get the tab display name (last path segment, or home/root label for empty path)
-    ///
-    /// # Arguments
-    /// * `home_label` - Label to use when at home (empty path, not viewing root)
-    /// * `root_label` - Label to use when at root (empty path, viewing root)
-    ///
-    /// The caller should pass translated strings for these labels.
-    pub fn tab_name(&self, home_label: &str, root_label: &str) -> String {
+    /// Get the tab display name (last path segment, or translated "Home"/"Root" for empty path)
+    pub fn tab_name(&self) -> String {
         if self.current_path.is_empty() {
             if self.viewing_root {
-                root_label.to_string()
+                t("files-root")
             } else {
-                home_label.to_string()
+                t("files-home")
             }
         } else {
             // Get last path segment
@@ -1456,13 +1451,13 @@ mod tests {
     #[test]
     fn test_file_tab_tab_name_empty_path() {
         let tab = FileTab::default();
-        assert_eq!(tab.tab_name("Home", "Root"), "Home");
+        assert_eq!(tab.tab_name(), "Home");
 
         let tab_root = FileTab {
             viewing_root: true,
             ..Default::default()
         };
-        assert_eq!(tab_root.tab_name("Home", "Root"), "Root");
+        assert_eq!(tab_root.tab_name(), "Root");
     }
 
     #[test]
@@ -1471,14 +1466,14 @@ mod tests {
             current_path: "Documents".to_string(),
             ..Default::default()
         };
-        assert_eq!(tab.tab_name("Home", "Root"), "Documents");
+        assert_eq!(tab.tab_name(), "Documents");
 
         tab.current_path = "Documents/Photos".to_string();
-        assert_eq!(tab.tab_name("Home", "Root"), "Photos");
+        assert_eq!(tab.tab_name(), "Photos");
 
         // Trailing slash is trimmed
         tab.current_path = "Music/Albums/Jazz/".to_string();
-        assert_eq!(tab.tab_name("Home", "Root"), "Jazz");
+        assert_eq!(tab.tab_name(), "Jazz");
     }
 
     #[test]
@@ -1487,10 +1482,10 @@ mod tests {
             current_path: "Uploads [NEXUS-UL]".to_string(),
             ..Default::default()
         };
-        assert_eq!(tab.tab_name("Home", "Root"), "Uploads");
+        assert_eq!(tab.tab_name(), "Uploads");
 
         tab.current_path = "Shared/Dropbox [NEXUS-DB]".to_string();
-        assert_eq!(tab.tab_name("Home", "Root"), "Dropbox");
+        assert_eq!(tab.tab_name(), "Dropbox");
     }
 
     // =========================================================================

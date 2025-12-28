@@ -1155,7 +1155,7 @@ fn create_file_tab_button(
     is_active: bool,
     can_close: bool,
 ) -> Element<'static, Message> {
-    let label = tab.tab_name(&t("files-home"), &t("files-root"));
+    let label = tab.tab_name();
 
     if is_active {
         create_active_file_tab_button(tab_id, label, can_close)

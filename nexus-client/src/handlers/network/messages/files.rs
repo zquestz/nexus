@@ -41,6 +41,9 @@ impl NexusApp {
             _ => return Task::none(),
         };
 
+        // Check if this response is for the currently active tab (for scroll behavior)
+        let is_active_tab = conn.files_management.active_tab_id() == tab_id;
+
         // Find the tab by ID (it may have been closed)
         let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
@@ -69,11 +72,15 @@ impl NexusApp {
             }
         }
 
-        // Snap scroll to beginning when directory content changes
-        operation::snap_to(
-            ScrollableId::FilesContent,
-            scrollable::RelativeOffset::START,
-        )
+        // Snap scroll to beginning when directory content changes (only for active tab)
+        if is_active_tab {
+            operation::snap_to(
+                ScrollableId::FilesContent,
+                scrollable::RelativeOffset::START,
+            )
+        } else {
+            Task::none()
+        }
     }
 
     /// Handle file create directory response
@@ -132,10 +139,11 @@ impl NexusApp {
             // Show error in dialog (re-lookup tab)
             if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.new_directory_error = error;
+                // Focus the input field so user can retry
+                operation::focus(Id::from(InputId::NewDirectoryName))
+            } else {
+                Task::none()
             }
-
-            // Focus the input field so user can retry
-            operation::focus(Id::from(InputId::NewDirectoryName))
         }
     }
 
@@ -298,10 +306,11 @@ impl NexusApp {
             // Show error in the rename dialog (re-lookup tab)
             if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.rename_error = error;
+                // Focus the input field so user can retry
+                operation::focus(Id::from(InputId::RenameName))
+            } else {
+                Task::none()
             }
-
-            // Focus the input field so user can retry
-            operation::focus(Id::from(InputId::RenameName))
         }
     }
 
