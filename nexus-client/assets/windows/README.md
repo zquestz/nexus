@@ -19,14 +19,14 @@ The executable will be at `target/release/nexus.exe` with the icon embedded.
 
 ### MSI Installer (Optional)
 
-You can generate an MSI installer, though the installer may fail to launch:
+You can generate an MSI installer using cargo-bundle with the WiX toolset:
 
 ```bash
-cargo install cargo-bundle
-cargo bundle --target x86_64-pc-windows-msvc --format msi --release
+cargo install --git https://github.com/zquestz/cargo-bundle --force
+cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
 ```
 
-**Note:** The MSI installer generation works, but the resulting installer often fails to launch the application. For distribution, use the standalone executable or create a custom installer with WiX/InnoSetup.
+The installer will be at `target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/`.
 
 ## Generating Assets
 

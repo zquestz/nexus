@@ -5,204 +5,147 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
-A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by classic community servers like Hotline, KDX, Carracho, and Wired. Originally designed for the [Yggdrasil](https://yggdrasil-network.github.io/) mesh network, now supports any network.
-
-## Status
+A modern BBS (Bulletin Board System) inspired by classic community servers like Hotline, KDX, Carracho, and Wired. Originally designed for the [Yggdrasil](https://yggdrasil-network.github.io/) mesh network, now supports any network.
 
 ⚠️ **Under Heavy Development** - Expect breaking changes
 
-**Server**: Functional with comprehensive test coverage  
-**Client**: Fully functional GUI with multi-server support
-
 ## Features
 
-- **Mandatory TLS encryption** with auto-generated self-signed certificates and TOFU verification
-- **SemVer protocol versioning** - backward-compatible version negotiation during handshake
-- **UPnP port forwarding** for automatic NAT traversal (optional)
-- **Internationalization (i18n)** - 13 languages supported (auto-detects system locale)
-- **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
-- Real-time chat, broadcast messaging, and chat topics
-- Tabbed user messaging (1-on-1 conversations)
-- IRC-style commands (`/msg`, `/kick`, `/topic`, `/list`, etc.)
-- **News posts** - Markdown-formatted announcements with optional images
-- Granular permission system (24 permissions)
-- **File browsing** - Multi-tab browser with create, rename, move, copy, and delete operations
-- **SOCKS5 proxy support** - Route connections through Tor or SSH tunnels for privacy
-- **Shared accounts** - Multiple users can share one account with unique nicknames
-- **Guest access** - Passwordless guest account for casual users (disabled by default)
-- Multi-server bookmarks with auto-connect
-- Admin panel for user management (create/edit/delete) and server configuration (name, description, image)
-- SQLite database with Argon2id password hashing
-- Cross-platform GUI with 30 themes (22 built-in Iced + 8 custom Celestial themes)
+### Communication
+- **Real-time chat** with topics and broadcast messaging
+- **Private messaging** with tabbed conversations
+- **News posts** with Markdown formatting and images
+- **IRC-style commands** (`/msg`, `/kick`, `/topic`, `/list`, etc.)
+
+### File Management
+- **Multi-tab file browser** with drag-free navigation
+- Create, rename, move, copy, and delete files and directories
+- Upload and drop box folders with admin-configurable permissions
+
+### User Management
+- **24 granular permissions** with admin override
+- **Shared accounts** - multiple users with unique nicknames
+- **Guest access** - passwordless login for casual users
 - User avatars (custom images or auto-generated identicons)
-- Server images (logo/banner displayed in Server Info panel, 512KB max)
-- Settings panel with theme picker, chat font size, avatar, and notification preferences
-- Universal IP binding (IPv4 and IPv6)
 
-## Architecture
+### Privacy & Security
+- **Mandatory TLS encryption** with auto-generated certificates
+- **TOFU certificate verification** (Trust On First Use)
+- **Tor/SOCKS5 proxy support** for anonymous connections
+- Argon2id password hashing
 
-Rust workspace with three crates:
+### Customization
+- **30 themes** (22 built-in + 8 custom Celestial themes)
+- **13 languages** with automatic locale detection
+- Configurable chat font size, timestamps, and notifications
+- Server branding with custom name, description, and logo
 
-- **nexus-common**: Shared protocol definitions and utilities
-- **nexus-server**: BBS server daemon (binary: `nexusd`)
-- **nexus-client**: GUI client application (binary: `nexus`)
+### Connectivity
+- Multi-server bookmarks with auto-connect
+- **UPnP port forwarding** for home servers behind NAT
+- IPv4 and IPv6 support (including Yggdrasil mesh network)
 
-## Requirements
+## Quick Start
 
-- Rust 2024 edition (1.91+)
-- SQLite (embedded, no separate installation needed)
-- Optional: Yggdrasil network connection for mesh networking
-
-## Building
+### Running the Server
 
 ```bash
+# Build
 cargo build --release
-```
 
-## Running the Server
-
-```bash
-# Simplest - binds to all IPv4 interfaces (0.0.0.0) on port 7500
+# Run with defaults (binds to 0.0.0.0:7500)
 ./target/release/nexusd
 
-# Enable automatic port forwarding (UPnP) for home servers behind NAT
+# With UPnP for automatic port forwarding
 ./target/release/nexusd --upnp
 
-# For Yggdrasil - MUST use IPv6 binding (don't use --upnp)
-./target/release/nexusd --bind ::                    # All IPv6 interfaces
-./target/release/nexusd --bind 0200:1234::5678       # Specific Yggdrasil address
-
-# For specific IPv4 address
-./target/release/nexusd --bind 192.168.1.100
-
-# Custom port with UPnP
-./target/release/nexusd --port 8080 --upnp
-
-# Other options: --database <path>, --debug
+# For Yggdrasil (IPv6 required)
+./target/release/nexusd --bind ::
 ```
 
-**Important Notes:**
-- TLS encryption is always enabled (auto-generated self-signed certificate on first run)
-- Default bind is `0.0.0.0` (IPv4) for maximum compatibility
-- **UPnP support**: Use `--upnp` flag for automatic port forwarding on home routers
-  - Only works with IPv4 (not needed for Yggdrasil)
-  - Server gracefully continues if UPnP setup fails
-  - Port mapping automatically removed on clean shutdown
-- **Yggdrasil users MUST specify `--bind ::` or `--bind <yggdrasil-address>`** for IPv6
-- First user to connect becomes admin automatically
-- Certificates stored alongside database in platform-specific data directory
+The first user to connect becomes admin automatically.
 
-## Running the Client
+### Running the Client
 
 ```bash
-# Launch GUI client
 ./target/release/nexus
 ```
 
-Use the GUI to manage server bookmarks, chat, view users, and manage permissions.
+## Tor / SOCKS5 Proxy
 
-### SOCKS5 Proxy Support
+Route connections through Tor or SSH tunnels for privacy:
 
-The client supports SOCKS5 proxy connections for privacy or to access servers through SSH tunnels:
+1. Open **Settings** → **Network** tab
+2. Enable proxy (default: `127.0.0.1:9050` for Tor)
+3. Add username/password if required
 
-1. Open Settings panel
-2. Enable proxy and configure address/port (default: 127.0.0.1:9050 for Tor)
-3. Optionally add username/password for authenticated proxies
-
-**Automatic bypass:** The proxy is automatically bypassed for:
-- Loopback addresses (`localhost`, `127.x.x.x`, `::1`)
-- Yggdrasil mesh network addresses (`0200::/7` range)
+Localhost and Yggdrasil addresses automatically bypass the proxy.
 
 ## Guest Access
 
-The server includes a built-in guest account that allows passwordless login. It is **disabled by default** for security.
+The server includes a disabled guest account for passwordless login:
 
-**To enable guest access:**
-1. Connect to the server as an admin
-2. Open User Management panel
-3. Find the "guest" account and enable it
+1. Connect as admin → Open **User Management**
+2. Enable the "guest" account
+3. Guests connect with empty username/password and a nickname
 
-**Guest login from client:**
-- Leave username and password empty
-- Provide a nickname (required)
-- Connect
+## Screenshots
 
-Guest users appear with a muted color in the user list and have limited permissions (chat, view users, send private messages). The guest account cannot be deleted, renamed, or given a password.
+*Coming soon*
 
-## Platform Integration
+## Technical Details
 
-### Linux Desktop Integration
+### Architecture
 
-For Linux systems, desktop integration files (icon and .desktop file) are available in `nexus-client/assets/linux/`.
+Rust workspace with three crates:
 
-See `nexus-client/assets/linux/README.md` for installation instructions.
+| Crate | Description |
+|-------|-------------|
+| `nexus-common` | Shared protocol definitions and utilities |
+| `nexus-server` | BBS server daemon (`nexusd`) |
+| `nexus-client` | Cross-platform GUI client (`nexus`) |
 
-### macOS App Bundle
+### Requirements
 
-For macOS, you can create a proper `.app` bundle with icon:
+- Rust 2024 edition (1.91+)
+- SQLite (embedded)
+
+### Platform Support
+
+| Platform | Server | Client |
+|----------|--------|--------|
+| Linux | ✅ | ✅ |
+| macOS | ✅ | ✅ |
+| Windows | ✅ | ✅ |
+
+Platform-specific assets and installation instructions:
+- Linux: `nexus-client/assets/linux/README.md`
+- macOS: `nexus-client/assets/macos/README.md`
+- Windows: `nexus-client/assets/windows/README.md`
+
+### Data Storage
+
+| Data | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| Server DB | `~/.local/share/nexusd/` | `~/Library/Application Support/nexusd/` | `%APPDATA%\nexusd\` |
+| Client Config | `~/.config/nexus/` | `~/Library/Application Support/nexus/` | `%APPDATA%\nexus\` |
+
+### Supported Languages
+
+English, Spanish, French, German, Italian, Dutch, Portuguese (BR/PT), Russian, Japanese, Chinese (Simplified/Traditional), Korean
+
+### Building & Testing
 
 ```bash
-# Install cargo-bundle
-cargo install cargo-bundle
-
-# Build the app bundle
-cargo bundle --release
-
-# The app will be at: target/release/bundle/osx/Nexus BBS.app
-```
-
-See `nexus-client/assets/macos/README.md` for detailed instructions and manual bundling.
-
-### Windows
-
-For Windows, build the executable directly:
-
-```bash
+# Build release binaries
 cargo build --release
-```
 
-The `.ico` icon is automatically embedded in the executable. The binary will be at `target/release/nexus.exe`.
-
-**MSI Installer (Optional):**
-
-```bash
-cargo install cargo-bundle
-cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
-```
-
-See `nexus-client/assets/windows/README.md` for icon generation instructions.
-
-## Testing
-
-```bash
 # Run all tests
 cargo test --workspace
 
-# Lint with strict warnings
+# Lint
 cargo clippy --workspace --all-targets -- -D warnings
 ```
-
-## Database & Configuration
-
-**Server Database:** SQLite in platform-specific data directory  
-**Client Config:** JSON in platform-specific config directory
-
-Platform paths:
-
-- Linux: `~/.local/share/nexusd/` and `~/.config/nexus/`
-- macOS: `~/Library/Application Support/`
-- Windows: `%APPDATA%\`
-
-## Internationalization
-
-Both server and client support 13 languages with automatic locale detection:
-
-- English (en) - Default fallback
-- Spanish (es), French (fr), German (de), Italian (it), Dutch (nl)
-- Portuguese (pt-BR, pt-PT), Russian (ru)
-- Japanese (ja), Chinese (zh-CN, zh-TW), Korean (ko)
-
-The client auto-detects your system locale at startup. Server error messages are localized based on the client's locale sent during login.
 
 ## License
 

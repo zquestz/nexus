@@ -38,12 +38,26 @@ brew install imagemagick libicns
 
 ## Building App Bundle
 
+Before building, modify `nexus-client/Cargo.toml` to add the ICNS icon and capitalize the binary name:
+
+```toml
+# In [package] section, change:
+name = "Nexus"  # Capitalized for macOS app name
+
+# In [package.metadata.bundle] section, add icns to icons:
+icon = ["assets/macos/nexus.png", "assets/macos/nexus.icns", "assets/windows/nexus.ico"]
+```
+
+Then build:
+
 ```bash
 # Install cargo-bundle (one-time)
 cargo install cargo-bundle
 
-# Build from project root
+# Build from nexus-client directory
 cargo bundle --release
 
 # Result: target/release/bundle/osx/Nexus BBS.app
 ```
+
+**Note:** Remember to revert the `name` change after bundling if you need the lowercase binary name for other platforms.
