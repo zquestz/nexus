@@ -330,6 +330,13 @@ pub fn muted_text_style(theme: &Theme) -> text::Style {
     }
 }
 
+/// Text/icon style for uploadable folder icons (uses primary color like connected servers)
+pub fn upload_folder_style(theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(theme.extended_palette().primary.base.color),
+    }
+}
+
 /// Subheading text style - for section headers within panels
 ///
 /// Uses muted color to create visual hierarchy below the main title.

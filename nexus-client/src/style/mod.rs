@@ -54,6 +54,7 @@ pub use widgets::{
     error_text_style, icon_button_with_hover_style, list_item_button_style, modal_overlay_style,
     muted_text_style, panel_title, separator_style, sidebar_panel_style, subheading_text_style,
     toolbar_background_style, toolbar_button_style, tooltip_container_style,
-    transparent_icon_button_style, user_list_item_button_style, user_toolbar_separator_style,
+    transparent_icon_button_style, upload_folder_style, user_list_item_button_style,
+    user_toolbar_separator_style,
 };
 pub use window::*;

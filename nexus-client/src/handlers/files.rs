@@ -8,8 +8,8 @@ use nexus_common::validators::{self, DirNameError};
 use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{
-    ActivePanel, ClipboardItem, ClipboardOperation, FilesManagementState, InputId, Message,
-    PendingRequests, ResponseRouting,
+    ActivePanel, ClipboardItem, ClipboardOperation, InputId, Message, PendingRequests,
+    ResponseRouting,
 };
 use crate::views::files::build_navigate_path;
 
@@ -463,12 +463,10 @@ impl NexusApp {
         let current_path = &conn.files_management.current_path;
         let path = build_navigate_path(current_path, &name);
 
-        // Extract just the filename (strip any folder type suffixes for display)
-        let display_name = FilesManagementState::display_name(&name);
-
-        // Set pending rename to show dialog, pre-populate with current name
+        // Set pending rename to show dialog, pre-populate with actual filesystem name
+        // (including any suffixes like [NEXUS-UL] so admin can edit them)
         conn.files_management.pending_rename = Some(path);
-        conn.files_management.rename_name = display_name;
+        conn.files_management.rename_name = name;
         conn.files_management.rename_error = None;
 
         // Focus the name input field

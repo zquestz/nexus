@@ -16,6 +16,7 @@ use crate::style::{
     context_menu_container_style, context_menu_item_danger_style, disabled_icon_button_style,
     error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    upload_folder_style,
 };
 use crate::types::{
     ClipboardOperation, FileSortColumn, FilesManagementState, InputId, Message, ScrollableId,
@@ -842,8 +843,16 @@ fn file_table<'a>(
             .is_some_and(|c| c.operation == ClipboardOperation::Cut && c.path == entry_path);
 
         // Icon based on type (folder or file extension)
+        // Uploadable folders get primary color
         let icon_element: Element<'_, Message> = if is_directory {
-            icon::folder().size(FILE_LIST_ICON_SIZE).into()
+            if entry.can_upload {
+                icon::folder()
+                    .size(FILE_LIST_ICON_SIZE)
+                    .style(upload_folder_style)
+                    .into()
+            } else {
+                icon::folder().size(FILE_LIST_ICON_SIZE).into()
+            }
         } else {
             file_icon_for_extension(&entry.name)
                 .size(FILE_LIST_ICON_SIZE)
