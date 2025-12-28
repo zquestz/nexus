@@ -540,6 +540,12 @@ const FILE_INFO_ICON_SIZE: f32 = 64.0;
 /// Spacing between icon and name in file info header
 const FILE_INFO_ICON_SPACING: f32 = 12.0;
 
+/// Size for sort indicator icons in column headers
+const SORT_ICON_SIZE: f32 = 12.0;
+
+/// Right margin for sort icons (prevents scrollbar overlap on rightmost column)
+const SORT_ICON_RIGHT_MARGIN: f32 = 12.0;
+
 /// Build the file info dialog
 fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
     let mut content = column![].spacing(ELEMENT_SPACING);
@@ -786,9 +792,6 @@ fn rename_dialog<'a>(path: &str, name: &str, error: Option<&String>) -> Element<
 /// Build the file table
 ///
 /// Note: entries should already be sorted before calling this function.
-/// Size for sort indicator icons in column headers
-const SORT_ICON_SIZE: f32 = 12.0;
-
 fn file_table<'a>(
     entries: &'a [FileEntry],
     current_path: &'a str,
@@ -810,6 +813,7 @@ fn file_table<'a>(
                 .style(muted_text_style),
             Space::new().width(Fill),
             sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
         ]
         .align_y(Center)
         .into()
@@ -1051,6 +1055,7 @@ fn file_table<'a>(
                 .style(muted_text_style),
             Space::new().width(Fill),
             sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
         ]
         .align_y(Center)
         .into()
@@ -1094,6 +1099,7 @@ fn file_table<'a>(
                 .style(muted_text_style),
             Space::new().width(Fill),
             sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
         ]
         .align_y(Center)
         .into()
