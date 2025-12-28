@@ -669,40 +669,41 @@ impl NexusApp {
         let destination_dir = tab.current_path.clone();
         let source_root = clipboard.root;
         let destination_root = tab.viewing_root;
+        let tab_id = conn.files_management.active_tab_id();
+        let is_move = matches!(clipboard.operation, ClipboardOperation::Cut);
 
-        let message = match clipboard.operation {
-            ClipboardOperation::Cut => ClientMessage::FileMove {
+        let message = if is_move {
+            ClientMessage::FileMove {
                 source_path: clipboard.path,
                 destination_dir: destination_dir.clone(),
                 overwrite: false,
                 source_root,
                 destination_root,
-            },
-            ClipboardOperation::Copy => ClientMessage::FileCopy {
+            }
+        } else {
+            ClientMessage::FileCopy {
                 source_path: clipboard.path,
                 destination_dir: destination_dir.clone(),
                 overwrite: false,
                 source_root,
                 destination_root,
-            },
+            }
         };
 
         let Ok(message_id) = conn.send(message) else {
             return Task::none();
         };
 
-        let destination_dir = tab.current_path.clone();
-        let tab_id = conn.files_management.active_tab_id();
-
-        let routing = match clipboard.operation {
-            ClipboardOperation::Cut => ResponseRouting::FileMoveResult {
+        let routing = if is_move {
+            ResponseRouting::FileMoveResult {
                 tab_id,
                 destination_dir,
-            },
-            ClipboardOperation::Copy => ResponseRouting::FileCopyResult {
+            }
+        } else {
+            ResponseRouting::FileCopyResult {
                 tab_id,
                 destination_dir,
-            },
+            }
         };
         conn.pending_requests.track(message_id, routing);
 
@@ -726,40 +727,41 @@ impl NexusApp {
 
         let source_root = clipboard.root;
         let destination_root = conn.files_management.active_tab().viewing_root;
+        let tab_id = conn.files_management.active_tab_id();
+        let is_move = matches!(clipboard.operation, ClipboardOperation::Cut);
 
-        let message = match clipboard.operation {
-            ClipboardOperation::Cut => ClientMessage::FileMove {
+        let message = if is_move {
+            ClientMessage::FileMove {
                 source_path: clipboard.path,
                 destination_dir: destination_dir.clone(),
                 overwrite: false,
                 source_root,
                 destination_root,
-            },
-            ClipboardOperation::Copy => ClientMessage::FileCopy {
+            }
+        } else {
+            ClientMessage::FileCopy {
                 source_path: clipboard.path,
                 destination_dir: destination_dir.clone(),
                 overwrite: false,
                 source_root,
                 destination_root,
-            },
+            }
         };
 
         let Ok(message_id) = conn.send(message) else {
             return Task::none();
         };
 
-        let destination_dir = destination_dir.clone();
-        let tab_id = conn.files_management.active_tab_id();
-
-        let routing = match clipboard.operation {
-            ClipboardOperation::Cut => ResponseRouting::FileMoveResult {
+        let routing = if is_move {
+            ResponseRouting::FileMoveResult {
                 tab_id,
                 destination_dir,
-            },
-            ClipboardOperation::Copy => ResponseRouting::FileCopyResult {
+            }
+        } else {
+            ResponseRouting::FileCopyResult {
                 tab_id,
                 destination_dir,
-            },
+            }
         };
         conn.pending_requests.track(message_id, routing);
 
