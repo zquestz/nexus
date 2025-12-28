@@ -957,19 +957,6 @@ fn file_table<'a>(
                     has_clipboard_section = true;
                 }
 
-                // Clear clipboard (when clipboard has content)
-                if has_clipboard {
-                    menu_items.push(
-                        button(shaped_text(t("files-clear-clipboard")).size(TEXT_SIZE))
-                            .padding(CONTEXT_MENU_ITEM_PADDING)
-                            .width(Fill)
-                            .style(context_menu_button_style)
-                            .on_press(Message::FileClearClipboard)
-                            .into(),
-                    );
-                    has_clipboard_section = true;
-                }
-
                 // === Section 2: Normal actions ===
 
                 // Separator before normal actions (if we had clipboard actions)
