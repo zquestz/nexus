@@ -16,15 +16,18 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 
 ## Features
 
-- **Mandatory TLS encryption** with auto-generated self-signed certificates
+- **Mandatory TLS encryption** with auto-generated self-signed certificates and TOFU verification
 - **SemVer protocol versioning** - backward-compatible version negotiation during handshake
 - **UPnP port forwarding** for automatic NAT traversal (optional)
 - **Internationalization (i18n)** - 13 languages supported (auto-detects system locale)
 - **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
+- IRC-style commands (`/msg`, `/kick`, `/topic`, `/list`, etc.)
+- **News posts** - Markdown-formatted announcements with optional images
 - Granular permission system (24 permissions)
 - **File browsing** - Multi-tab browser with create, rename, move, copy, and delete operations
+- **SOCKS5 proxy support** - Route connections through Tor or SSH tunnels for privacy
 - **Shared accounts** - Multiple users can share one account with unique nicknames
 - **Guest access** - Passwordless guest account for casual users (disabled by default)
 - Multi-server bookmarks with auto-connect
