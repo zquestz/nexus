@@ -9,6 +9,7 @@
 //! This module provides types to track these requests by message ID so the
 //! response handler knows how to route them.
 
+use crate::types::TabId;
 use nexus_common::framing::MessageId;
 
 /// How to route a response when it arrives
@@ -49,21 +50,32 @@ pub enum ResponseRouting {
     /// News show result for refresh (after NewsUpdated broadcast)
     NewsShowForRefresh(i64),
     /// Populate file list (from panel open or navigation)
-    PopulateFileList,
+    /// Contains the target tab ID to update when response arrives
+    PopulateFileList { tab_id: TabId },
     /// File create directory result (close dialog on success, show error on failure)
-    FileCreateDirResult,
+    /// Contains the target tab ID to update when response arrives
+    FileCreateDirResult { tab_id: TabId },
     /// File delete result (refresh listing on success, show error on failure)
-    FileDeleteResult,
+    /// Contains the target tab ID to update when response arrives
+    FileDeleteResult { tab_id: TabId },
     /// File info result (display info dialog on success, show error on failure)
-    FileInfoResult,
+    /// Contains the target tab ID to update when response arrives
+    FileInfoResult { tab_id: TabId },
     /// File rename result (close dialog on success, show error on failure)
-    FileRenameResult,
+    /// Contains the target tab ID to update when response arrives
+    FileRenameResult { tab_id: TabId },
     /// File move result (refresh on success, show overwrite dialog on exists, show error on failure)
-    /// Contains the destination directory for correct overwrite retry when pasting into a subfolder
-    FileMoveResult { destination_dir: String },
+    /// Contains the target tab ID and destination directory for correct overwrite retry
+    FileMoveResult {
+        tab_id: TabId,
+        destination_dir: String,
+    },
     /// File copy result (refresh on success, show overwrite dialog on exists, show error on failure)
-    /// Contains the destination directory for correct overwrite retry when pasting into a subfolder
-    FileCopyResult { destination_dir: String },
+    /// Contains the target tab ID and destination directory for correct overwrite retry
+    FileCopyResult {
+        tab_id: TabId,
+        destination_dir: String,
+    },
 }
 
 /// Extension trait for tracking pending requests
@@ -324,10 +336,10 @@ mod tests {
     fn test_track_populate_file_list() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::PopulateFileList);
+        pending.track(id, ResponseRouting::PopulateFileList { tab_id: 1 });
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::PopulateFileList)
+            Some(ResponseRouting::PopulateFileList { tab_id: 1 })
         ));
     }
 
@@ -335,10 +347,10 @@ mod tests {
     fn test_track_file_create_dir_result() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::FileCreateDirResult);
+        pending.track(id, ResponseRouting::FileCreateDirResult { tab_id: 2 });
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::FileCreateDirResult)
+            Some(ResponseRouting::FileCreateDirResult { tab_id: 2 })
         ));
     }
 
@@ -346,10 +358,10 @@ mod tests {
     fn test_track_file_delete_result() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::FileDeleteResult);
+        pending.track(id, ResponseRouting::FileDeleteResult { tab_id: 3 });
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::FileDeleteResult)
+            Some(ResponseRouting::FileDeleteResult { tab_id: 3 })
         ));
     }
 
@@ -357,10 +369,10 @@ mod tests {
     fn test_track_file_info_result() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::FileInfoResult);
+        pending.track(id, ResponseRouting::FileInfoResult { tab_id: 4 });
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::FileInfoResult)
+            Some(ResponseRouting::FileInfoResult { tab_id: 4 })
         ));
     }
 
@@ -368,10 +380,10 @@ mod tests {
     fn test_track_file_rename_result() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::FileRenameResult);
+        pending.track(id, ResponseRouting::FileRenameResult { tab_id: 5 });
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::FileRenameResult)
+            Some(ResponseRouting::FileRenameResult { tab_id: 5 })
         ));
     }
 }

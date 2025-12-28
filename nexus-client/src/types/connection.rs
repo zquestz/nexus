@@ -89,8 +89,7 @@ pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
 pub struct ServerConnection {
     /// Bookmark index or None for ad-hoc connections
     pub bookmark_index: Option<usize>,
-    /// Session ID assigned by server
-    #[allow(dead_code)]
+    /// Session ID assigned by server (used to identify our user in online_users list)
     pub session_id: u32,
     /// Authenticated username (used for PM routing)
     pub username: String,

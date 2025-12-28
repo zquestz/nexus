@@ -484,9 +484,9 @@ impl NexusApp {
             Message::FileRenameNameChanged(name) => self.handle_file_rename_name_changed(name),
             Message::FileRenameSubmit => self.handle_file_rename_submit(),
             Message::FileRenameCancel => self.handle_file_rename_cancel(),
-            Message::FileCut(path, name, is_dir) => self.handle_file_cut(path, name, is_dir),
-            Message::FileCopyToClipboard(path, name, is_dir) => {
-                self.handle_file_copy_to_clipboard(path, name, is_dir)
+            Message::FileCut(path, name) => self.handle_file_cut(path, name),
+            Message::FileCopyToClipboard(path, name) => {
+                self.handle_file_copy_to_clipboard(path, name)
             }
             Message::FilePaste => self.handle_file_paste(),
             Message::FilePasteInto(dir) => self.handle_file_paste_into(dir),
@@ -494,6 +494,9 @@ impl NexusApp {
             Message::FileSortBy(column) => self.handle_file_sort_by(column),
             Message::FileOverwriteConfirm => self.handle_file_overwrite_confirm(),
             Message::FileOverwriteCancel => self.handle_file_overwrite_cancel(),
+            Message::FileTabNew => self.handle_file_tab_new(),
+            Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
+            Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
         }
     }
 
@@ -559,6 +562,7 @@ impl NexusApp {
             news_body_content,
             proxy: &self.config.settings.proxy,
             download_path: self.config.settings.download_path.as_deref(),
+            show_hidden: self.config.settings.show_hidden_files,
         };
 
         let main_view = views::main_layout(config);

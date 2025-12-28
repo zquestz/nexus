@@ -6,25 +6,28 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING,
-    CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING,
-    FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
-    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING,
-    INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SEPARATOR_HEIGHT, SPACER_SIZE_MEDIUM,
-    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style, context_menu_button_style,
-    context_menu_container_style, context_menu_item_danger_style, disabled_icon_button_style,
-    error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
-    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH,
+    CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN,
+    ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING,
+    FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH,
+    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING,
+    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    chat_tab_active_style, close_button_on_primary_style, content_background_style,
+    context_menu_button_style, context_menu_container_style, context_menu_item_danger_style,
+    disabled_icon_button_style, error_text_style, muted_text_style, panel_title, separator_style,
+    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
     upload_folder_style,
 };
 use crate::types::{
-    ClipboardOperation, FileSortColumn, FilesManagementState, InputId, Message, ScrollableId,
+    ClipboardOperation, FileSortColumn, FileTab, FilesManagementState, InputId, Message,
+    ScrollableId, TabId,
 };
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
-use iced::{Center, Element, Fill, Right};
+use iced::{Center, Element, Fill, Right, alignment};
 use iced_aw::ContextMenu;
 use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
@@ -919,11 +922,7 @@ fn file_table<'a>(
                             .padding(CONTEXT_MENU_ITEM_PADDING)
                             .width(Fill)
                             .style(context_menu_button_style)
-                            .on_press(Message::FileCut(
-                                entry_path.clone(),
-                                entry_name.clone(),
-                                entry_is_dir,
-                            ))
+                            .on_press(Message::FileCut(entry_path.clone(), entry_name.clone()))
                             .into(),
                     );
                     has_clipboard_section = true;
@@ -939,7 +938,6 @@ fn file_table<'a>(
                             .on_press(Message::FileCopyToClipboard(
                                 entry_path.clone(),
                                 entry_name.clone(),
-                                entry_is_dir,
                             ))
                             .into(),
                     );
@@ -1147,6 +1145,94 @@ fn file_table<'a>(
 }
 
 // ============================================================================
+// Tab Bar Functions
+// ============================================================================
+
+/// Create a tab button for the file browser
+fn create_file_tab_button(
+    tab_id: TabId,
+    tab: &FileTab,
+    is_active: bool,
+    can_close: bool,
+) -> Element<'static, Message> {
+    let label = tab.tab_name(&t("files-home"), &t("files-root"));
+
+    if is_active {
+        create_active_file_tab_button(tab_id, label, can_close)
+    } else {
+        create_inactive_file_tab_button(tab_id, label)
+    }
+}
+
+/// Create an active file tab button (with close button if closeable)
+fn create_active_file_tab_button(
+    tab_id: TabId,
+    label: String,
+    can_close: bool,
+) -> Element<'static, Message> {
+    if can_close {
+        let close_button = tooltip(
+            button(icon::close().size(TEXT_SIZE))
+                .on_press(Message::FileTabClose(tab_id))
+                .padding(CLOSE_BUTTON_PADDING)
+                .style(close_button_on_primary_style()),
+            container(shaped_text(t("tooltip-close-tab")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING);
+
+        let tab_content = row![shaped_text(label).size(TEXT_SIZE), close_button]
+            .spacing(SMALL_SPACING)
+            .align_y(iced::Alignment::Center);
+
+        button(tab_content)
+            .on_press(Message::FileTabSwitch(tab_id))
+            .padding(TAB_CONTENT_PADDING)
+            .style(chat_tab_active_style())
+            .into()
+    } else {
+        // Single tab (no close button)
+        button(shaped_text(label).size(TEXT_SIZE))
+            .on_press(Message::FileTabSwitch(tab_id))
+            .padding(INPUT_PADDING)
+            .style(chat_tab_active_style())
+            .into()
+    }
+}
+
+/// Create an inactive file tab button
+fn create_inactive_file_tab_button(tab_id: TabId, label: String) -> Element<'static, Message> {
+    button(shaped_text(label).size(TEXT_SIZE))
+        .on_press(Message::FileTabSwitch(tab_id))
+        .style(iced::widget::button::secondary)
+        .padding(INPUT_PADDING)
+        .into()
+}
+
+/// Build the file tab bar
+///
+/// Returns a tuple of (tab row, has_multiple_tabs)
+fn build_file_tab_bar(
+    files_management: &FilesManagementState,
+) -> (iced::widget::Row<'static, Message>, bool) {
+    let mut tab_row = row![].spacing(SMALL_SPACING);
+
+    let num_tabs = files_management.tabs.len();
+    let has_multiple_tabs = num_tabs > 1;
+
+    for (index, tab) in files_management.tabs.iter().enumerate() {
+        let is_active = index == files_management.active_tab;
+        let tab_button = create_file_tab_button(tab.id, tab, is_active, has_multiple_tabs);
+        tab_row = tab_row.push(tab_button);
+    }
+
+    (tab_row, has_multiple_tabs)
+}
+
+// ============================================================================
 // Public View Function
 // ============================================================================
 
@@ -1158,57 +1244,94 @@ fn file_table<'a>(
 /// # Arguments
 /// * `files_management` - Current files panel state
 /// * `perms` - File permission flags for the current user
+/// * `show_hidden` - Whether to show hidden files (from config)
 pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
     perms: FilePermissions,
+    show_hidden: bool,
 ) -> Element<'a, Message> {
+    let tab = files_management.active_tab();
+
     // If overwrite confirmation is pending, show that dialog
-    if let Some(pending) = &files_management.pending_overwrite {
+    if let Some(pending) = &tab.pending_overwrite {
         return overwrite_confirm_dialog(&pending.name, perms.file_delete);
     }
 
     // If rename dialog is pending, show that
-    if let Some(path) = &files_management.pending_rename {
-        return rename_dialog(
-            path,
-            &files_management.rename_name,
-            files_management.rename_error.as_ref(),
-        );
+    if let Some(path) = &tab.pending_rename {
+        return rename_dialog(path, &tab.rename_name, tab.rename_error.as_ref());
     }
 
     // If file info is pending, show that dialog
-    if let Some(info) = &files_management.pending_info {
+    if let Some(info) = &tab.pending_info {
         return file_info_dialog(info);
     }
 
     // If delete confirmation is pending, show that dialog
-    if let Some(path) = &files_management.pending_delete {
-        return delete_confirm_dialog(path, files_management.delete_error.as_ref());
+    if let Some(path) = &tab.pending_delete {
+        return delete_confirm_dialog(path, tab.delete_error.as_ref());
     }
 
     // If creating directory, show the dialog instead
-    if files_management.creating_directory {
-        return new_directory_dialog(
-            &files_management.new_directory_name,
-            files_management.new_directory_error.as_ref(),
-        );
+    if tab.creating_directory {
+        return new_directory_dialog(&tab.new_directory_name, tab.new_directory_error.as_ref());
     }
-    let is_at_home =
-        files_management.current_path.is_empty() || files_management.current_path == "/";
-    let viewing_root = files_management.viewing_root;
+    let is_at_home = tab.current_path.is_empty() || tab.current_path == "/";
+    let viewing_root = tab.viewing_root;
 
-    // Title row (centered, matching other panels)
-    let title_row = panel_title(t("files-panel-title"));
+    // New tab button (icon style like news create button)
+    let new_tab_btn: Element<'_, Message> = {
+        let add_icon = container(icon::plus().size(SIDEBAR_ACTION_ICON_SIZE))
+            .width(SIDEBAR_ACTION_ICON_SIZE)
+            .height(SIDEBAR_ACTION_ICON_SIZE)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center);
+
+        tooltip(
+            button(add_icon)
+                .on_press(Message::FileTabNew)
+                .padding(ICON_BUTTON_PADDING)
+                .style(transparent_icon_button_style),
+            container(shaped_text(t("tooltip-new-tab")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Top,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+        .into()
+    };
+
+    // Title row with new tab button on the right
+    // We add an invisible spacer on the left to balance the button width for proper centering
+    let button_width =
+        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let title_row: Element<'_, Message> = row![
+        Space::new().width(SCROLLBAR_PADDING),
+        Space::new().width(button_width), // Balance the new tab button on the right
+        shaped_text(t("files-panel-title"))
+            .size(TITLE_SIZE)
+            .width(Fill)
+            .align_x(Center),
+        new_tab_btn,
+        Space::new().width(SCROLLBAR_PADDING),
+    ]
+    .align_y(Center)
+    .into();
+
+    // Build tab bar (only shown when 2+ tabs)
+    let (tab_row, has_multiple_tabs) = build_file_tab_bar(files_management);
+    let tab_bar = tab_row.wrap();
 
     // Breadcrumb navigation
-    let breadcrumbs = breadcrumb_bar(&files_management.current_path, viewing_root);
+    let breadcrumbs = breadcrumb_bar(&tab.current_path, viewing_root);
 
     // Determine if user can create directories here
     // User can create if they have file_create_dir permission OR current directory allows upload
-    let can_create_dir = perms.file_create_dir || files_management.current_dir_can_upload;
+    let can_create_dir = perms.file_create_dir || tab.current_dir_can_upload;
 
     // Check if we're in a loading state
-    let is_loading = files_management.entries.is_none() && files_management.error.is_none();
+    let is_loading = tab.entries.is_none() && tab.error.is_none();
 
     // Check if clipboard has content
     let has_clipboard = files_management.clipboard.is_some();
@@ -1218,7 +1341,7 @@ pub fn files_view<'a>(
         !is_at_home,
         perms.file_root,
         viewing_root,
-        files_management.show_hidden,
+        show_hidden,
         can_create_dir,
         has_clipboard,
         is_loading,
@@ -1226,7 +1349,7 @@ pub fn files_view<'a>(
 
     // Content area (table or status message)
     // Priority: error > entries > loading
-    let content: Element<'a, Message> = if let Some(error) = &files_management.error {
+    let content: Element<'a, Message> = if let Some(error) = &tab.error {
         // Error state
         container(
             shaped_text_wrapped(error)
@@ -1237,7 +1360,7 @@ pub fn files_view<'a>(
         .center_x(Fill)
         .padding(SPACER_SIZE_SMALL)
         .into()
-    } else if let Some(entries) = &files_management.sorted_entries {
+    } else if let Some(entries) = &tab.sorted_entries {
         if entries.is_empty() {
             // Empty directory
             container(
@@ -1253,11 +1376,11 @@ pub fn files_view<'a>(
             // File table
             file_table(
                 entries,
-                &files_management.current_path,
+                &tab.current_path,
                 perms,
                 &files_management.clipboard,
-                files_management.sort_column,
-                files_management.sort_ascending,
+                tab.sort_column,
+                tab.sort_ascending,
             )
         }
     } else {
@@ -1290,8 +1413,21 @@ pub fn files_view<'a>(
     // Center the form horizontally
     let centered_form = container(form).width(Fill).center_x(Fill);
 
-    // Use container with background style
-    container(centered_form)
+    // Build full content with optional tab bar at top
+    let full_content: Element<'a, Message> = if has_multiple_tabs {
+        column![
+            container(tab_bar).padding(SMALL_PADDING).width(Fill),
+            centered_form,
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into()
+    } else {
+        centered_form.into()
+    };
+
+    // Wrap everything in content background
+    container(full_content)
         .width(Fill)
         .height(Fill)
         .style(content_background_style)

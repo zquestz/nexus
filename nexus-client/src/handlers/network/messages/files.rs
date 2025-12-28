@@ -36,28 +36,37 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file list request
-        if !matches!(routing, Some(ResponseRouting::PopulateFileList)) {
+        let tab_id = match routing {
+            Some(ResponseRouting::PopulateFileList { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
-        }
+        };
 
         if data.success {
             // Update the current path if provided
             if let Some(path) = data.path {
-                conn.files_management.current_path = path;
+                tab.current_path = path;
             }
 
             // Use server-provided can_upload flag for the current directory
-            conn.files_management.current_dir_can_upload = data.can_upload;
+            tab.current_dir_can_upload = data.can_upload;
 
-            conn.files_management.entries = data.entries;
-            conn.files_management.error = None;
+            tab.entries = data.entries;
+            tab.error = None;
 
             // Build sorted entries cache
-            conn.files_management.update_sorted_entries();
+            tab.update_sorted_entries();
         } else {
-            conn.files_management.entries = None;
-            conn.files_management.sorted_entries = None;
-            conn.files_management.error = data.error;
+            // Re-lookup tab for the else branch (borrow checker)
+            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.entries = None;
+                tab.sorted_entries = None;
+                tab.error = data.error;
+            }
         }
 
         // Snap scroll to beginning when directory content changes
@@ -87,28 +96,43 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file create dir request
-        if !matches!(routing, Some(ResponseRouting::FileCreateDirResult)) {
+        let tab_id = match routing {
+            Some(ResponseRouting::FileCreateDirResult { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
-        }
+        };
 
         if success {
             // Close the dialog
-            conn.files_management.close_new_directory_dialog();
+            tab.close_new_directory_dialog();
 
             // Refresh the current directory listing
-            let current_path = conn.files_management.current_path.clone();
-            let viewing_root = conn.files_management.viewing_root;
-            let show_hidden = conn.files_management.show_hidden;
+            let current_path = tab.current_path.clone();
+            let viewing_root = tab.viewing_root;
 
             // Clear entries to show loading state
-            conn.files_management.entries = None;
-            conn.files_management.error = None;
+            tab.entries = None;
+            tab.error = None;
 
-            // Send refresh request
-            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+            let show_hidden = self.config.settings.show_hidden_files;
+
+            // Send refresh request for the specific tab
+            self.send_file_list_request_for_tab(
+                connection_id,
+                tab_id,
+                current_path,
+                viewing_root,
+                show_hidden,
+            )
         } else {
-            // Show error in dialog
-            conn.files_management.new_directory_error = error;
+            // Show error in dialog (re-lookup tab)
+            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.new_directory_error = error;
+            }
 
             // Focus the input field so user can retry
             operation::focus(Id::from(InputId::NewDirectoryName))
@@ -134,29 +158,44 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file delete request
-        if !matches!(routing, Some(ResponseRouting::FileDeleteResult)) {
+        let tab_id = match routing {
+            Some(ResponseRouting::FileDeleteResult { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
-        }
+        };
 
         if success {
             // Close the delete dialog
-            conn.files_management.pending_delete = None;
-            conn.files_management.delete_error = None;
+            tab.pending_delete = None;
+            tab.delete_error = None;
 
             // Refresh the current directory listing
-            let current_path = conn.files_management.current_path.clone();
-            let viewing_root = conn.files_management.viewing_root;
-            let show_hidden = conn.files_management.show_hidden;
+            let current_path = tab.current_path.clone();
+            let viewing_root = tab.viewing_root;
 
             // Clear entries to show loading state
-            conn.files_management.entries = None;
-            conn.files_management.error = None;
+            tab.entries = None;
+            tab.error = None;
 
-            // Send refresh request
-            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+            let show_hidden = self.config.settings.show_hidden_files;
+
+            // Send refresh request for the specific tab
+            self.send_file_list_request_for_tab(
+                connection_id,
+                tab_id,
+                current_path,
+                viewing_root,
+                show_hidden,
+            )
         } else {
-            // Show error in the delete dialog (keep dialog open for retry)
-            conn.files_management.delete_error = error;
+            // Show error in the delete dialog (re-lookup tab)
+            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.delete_error = error;
+            }
             Task::none()
         }
     }
@@ -181,16 +220,22 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file info request
-        if !matches!(routing, Some(ResponseRouting::FileInfoResult)) {
+        let tab_id = match routing {
+            Some(ResponseRouting::FileInfoResult { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
-        }
+        };
 
         if success {
             // Show the info dialog
-            conn.files_management.pending_info = info;
+            tab.pending_info = info;
         } else {
             // Show error in the files panel
-            conn.files_management.error = error;
+            tab.error = error;
         }
 
         Task::none()
@@ -215,30 +260,45 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file rename request
-        if !matches!(routing, Some(ResponseRouting::FileRenameResult)) {
+        let tab_id = match routing {
+            Some(ResponseRouting::FileRenameResult { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
-        }
+        };
 
         if success {
             // Close the rename dialog
-            conn.files_management.pending_rename = None;
-            conn.files_management.rename_name = String::new();
-            conn.files_management.rename_error = None;
+            tab.pending_rename = None;
+            tab.rename_name = String::new();
+            tab.rename_error = None;
 
             // Refresh the current directory listing
-            let current_path = conn.files_management.current_path.clone();
-            let viewing_root = conn.files_management.viewing_root;
-            let show_hidden = conn.files_management.show_hidden;
+            let current_path = tab.current_path.clone();
+            let viewing_root = tab.viewing_root;
 
             // Clear entries to show loading state
-            conn.files_management.entries = None;
-            conn.files_management.error = None;
+            tab.entries = None;
+            tab.error = None;
 
-            // Send refresh request
-            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+            let show_hidden = self.config.settings.show_hidden_files;
+
+            // Send refresh request for the specific tab
+            self.send_file_list_request_for_tab(
+                connection_id,
+                tab_id,
+                current_path,
+                viewing_root,
+                show_hidden,
+            )
         } else {
-            // Show error in the rename dialog (keep dialog open for retry)
-            conn.files_management.rename_error = error;
+            // Show error in the rename dialog (re-lookup tab)
+            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.rename_error = error;
+            }
 
             // Focus the input field so user can retry
             operation::focus(Id::from(InputId::RenameName))
@@ -266,53 +326,85 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file move request
-        let destination_dir = match routing {
-            Some(ResponseRouting::FileMoveResult { destination_dir }) => destination_dir,
+        let (tab_id, destination_dir) = match routing {
+            Some(ResponseRouting::FileMoveResult {
+                tab_id,
+                destination_dir,
+            }) => (tab_id, destination_dir),
             _ => return Task::none(),
         };
 
         if success {
             // Clear clipboard on successful move
             conn.files_management.clipboard = None;
-            conn.files_management.pending_overwrite = None;
+
+            // Get mutable access to the tab (it may have been closed)
+            let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
+                return Task::none();
+            };
+            tab.pending_overwrite = None;
 
             // Refresh the current directory listing
-            let current_path = conn.files_management.current_path.clone();
-            let viewing_root = conn.files_management.viewing_root;
-            let show_hidden = conn.files_management.show_hidden;
+            let current_path = tab.current_path.clone();
+            let viewing_root = tab.viewing_root;
 
-            conn.files_management.entries = None;
-            conn.files_management.error = None;
+            tab.entries = None;
+            tab.error = None;
 
-            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+            let show_hidden = self.config.settings.show_hidden_files;
+
+            // Send refresh request for the specific tab
+            self.send_file_list_request_for_tab(
+                connection_id,
+                tab_id,
+                current_path,
+                viewing_root,
+                show_hidden,
+            )
         } else {
             // Parse error_kind for type-safe matching
             let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
 
             match kind {
                 Some(FileErrorKind::Exists) => {
-                    // Show overwrite confirmation dialog
-                    if let Some(ref clipboard) = conn.files_management.clipboard {
-                        conn.files_management.pending_overwrite = Some(PendingOverwrite {
+                    // Clone clipboard data first to avoid borrow conflicts
+                    let pending = conn.files_management.clipboard.as_ref().map(|clipboard| {
+                        let viewing_root = conn
+                            .files_management
+                            .tab_by_id(tab_id)
+                            .map(|t| t.viewing_root)
+                            .unwrap_or(false);
+                        PendingOverwrite {
                             source_path: clipboard.path.clone(),
                             destination_dir,
                             name: clipboard.name.clone(),
                             is_move: true,
                             source_root: clipboard.root,
-                            destination_root: conn.files_management.viewing_root,
-                        });
+                            destination_root: viewing_root,
+                        }
+                    });
+
+                    // Now set the pending overwrite
+                    if let (Some(pending), Some(tab)) =
+                        (pending, conn.files_management.tab_by_id_mut(tab_id))
+                    {
+                        tab.pending_overwrite = Some(pending);
                     }
                     Task::none()
                 }
                 Some(FileErrorKind::NotFound) => {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
-                    conn.files_management.error = error;
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.error = error;
+                    }
                     Task::none()
                 }
                 _ => {
                     // Show error in panel (permission, invalid_path, or unknown)
-                    conn.files_management.error = error;
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.error = error;
+                    }
                     Task::none()
                 }
             }
@@ -340,52 +432,82 @@ impl NexusApp {
         let routing = conn.pending_requests.remove(&message_id);
 
         // Only handle if this was a tracked file copy request
-        let destination_dir = match routing {
-            Some(ResponseRouting::FileCopyResult { destination_dir }) => destination_dir,
+        let (tab_id, destination_dir) = match routing {
+            Some(ResponseRouting::FileCopyResult {
+                tab_id,
+                destination_dir,
+            }) => (tab_id, destination_dir),
             _ => return Task::none(),
         };
 
         if success {
-            // Keep clipboard for copy (user might want to paste again)
-            conn.files_management.pending_overwrite = None;
+            // Get mutable access to the tab (it may have been closed)
+            let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
+                return Task::none();
+            };
+            tab.pending_overwrite = None;
 
             // Refresh the current directory listing
-            let current_path = conn.files_management.current_path.clone();
-            let viewing_root = conn.files_management.viewing_root;
-            let show_hidden = conn.files_management.show_hidden;
+            let current_path = tab.current_path.clone();
+            let viewing_root = tab.viewing_root;
 
-            conn.files_management.entries = None;
-            conn.files_management.error = None;
+            tab.entries = None;
+            tab.error = None;
 
-            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+            let show_hidden = self.config.settings.show_hidden_files;
+
+            // Send refresh request for the specific tab
+            self.send_file_list_request_for_tab(
+                connection_id,
+                tab_id,
+                current_path,
+                viewing_root,
+                show_hidden,
+            )
         } else {
             // Parse error_kind for type-safe matching
             let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
 
             match kind {
                 Some(FileErrorKind::Exists) => {
-                    // Show overwrite confirmation dialog
-                    if let Some(ref clipboard) = conn.files_management.clipboard {
-                        conn.files_management.pending_overwrite = Some(PendingOverwrite {
+                    // Clone clipboard data first to avoid borrow conflicts
+                    let pending = conn.files_management.clipboard.as_ref().map(|clipboard| {
+                        let viewing_root = conn
+                            .files_management
+                            .tab_by_id(tab_id)
+                            .map(|t| t.viewing_root)
+                            .unwrap_or(false);
+                        PendingOverwrite {
                             source_path: clipboard.path.clone(),
                             destination_dir,
                             name: clipboard.name.clone(),
                             is_move: false,
                             source_root: clipboard.root,
-                            destination_root: conn.files_management.viewing_root,
-                        });
+                            destination_root: viewing_root,
+                        }
+                    });
+
+                    // Now set the pending overwrite
+                    if let (Some(pending), Some(tab)) =
+                        (pending, conn.files_management.tab_by_id_mut(tab_id))
+                    {
+                        tab.pending_overwrite = Some(pending);
                     }
                     Task::none()
                 }
                 Some(FileErrorKind::NotFound) => {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
-                    conn.files_management.error = error;
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.error = error;
+                    }
                     Task::none()
                 }
                 _ => {
                     // Show error in panel (permission, invalid_path, or unknown)
-                    conn.files_management.error = error;
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.error = error;
+                    }
                     Task::none()
                 }
             }

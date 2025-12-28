@@ -1,5 +1,7 @@
 //! Connection and user management form state
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::avatar::generate_identicon;
 use crate::config::Config;
 use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_square};
@@ -193,9 +195,6 @@ pub struct ClipboardItem {
     pub path: String,
     /// Display name of the file or directory
     pub name: String,
-    /// Whether it's a directory (used for visual feedback on cut items)
-    #[allow(dead_code)]
-    pub is_directory: bool,
     /// Cut or Copy operation
     pub operation: ClipboardOperation,
     /// Whether source was in root view mode when cut/copied
@@ -219,23 +218,45 @@ pub struct PendingOverwrite {
     pub destination_root: bool,
 }
 
-/// Files management panel state (per-connection)
+// =============================================================================
+// File Tab ID Generation
+// =============================================================================
+
+/// Global counter for generating unique tab IDs
+static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Generate a new unique tab ID
+fn next_tab_id() -> TabId {
+    NEXT_TAB_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Unique identifier for a file browser tab
 ///
-/// Tracks the current directory path and file listing for the file browser.
+/// This ID is stable across tab reordering and is used to route
+/// async responses back to the correct tab.
+pub type TabId = u64;
+
+/// A single file browser tab (per-tab state)
 #[derive(Debug, Clone)]
-pub struct FilesManagementState {
-    /// Current directory path (empty string or "/" means home)
+pub struct FileTab {
+    /// Unique identifier for this tab (stable across reordering)
+    pub id: TabId,
+    /// Current directory path (empty string means home/root)
     pub current_path: String,
     /// File entries in current directory (None = loading, Some = loaded)
     pub entries: Option<Vec<nexus_common::protocol::FileEntry>>,
-    /// Error message for the panel
+    /// Error message for this tab
     pub error: Option<String>,
     /// Whether viewing from the file root (requires file_root permission)
     pub viewing_root: bool,
     /// Whether the current directory allows uploads (from FileListResponse)
     pub current_dir_can_upload: bool,
-    /// Whether to show hidden files (dotfiles)
-    pub show_hidden: bool,
+    /// Current sort column
+    pub sort_column: FileSortColumn,
+    /// Sort ascending (true) or descending (false)
+    pub sort_ascending: bool,
+    /// Cached sorted entries (updated when entries or sort settings change)
+    pub sorted_entries: Option<Vec<nexus_common::protocol::FileEntry>>,
     /// Whether the "New Directory" dialog is open
     pub creating_directory: bool,
     /// New directory name input
@@ -254,27 +275,22 @@ pub struct FilesManagementState {
     pub rename_name: String,
     /// Error message for rename dialog
     pub rename_error: Option<String>,
-    /// Clipboard for cut/copy operations
-    pub clipboard: Option<ClipboardItem>,
     /// Pending overwrite confirmation (when destination exists)
     pub pending_overwrite: Option<PendingOverwrite>,
-    /// Current sort column
-    pub sort_column: FileSortColumn,
-    /// Sort ascending (true) or descending (false)
-    pub sort_ascending: bool,
-    /// Cached sorted entries (updated when entries or sort settings change)
-    pub sorted_entries: Option<Vec<nexus_common::protocol::FileEntry>>,
 }
 
-impl Default for FilesManagementState {
+impl Default for FileTab {
     fn default() -> Self {
         Self {
+            id: next_tab_id(),
             current_path: String::new(),
             entries: None,
             error: None,
             viewing_root: false,
             current_dir_can_upload: false,
-            show_hidden: false,
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+            sorted_entries: None,
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
@@ -284,23 +300,73 @@ impl Default for FilesManagementState {
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
-            clipboard: None,
             pending_overwrite: None,
-            sort_column: FileSortColumn::Name,
-            sort_ascending: true,
-            sorted_entries: None,
         }
     }
 }
 
-impl FilesManagementState {
+impl FileTab {
+    /// Create a new tab copying another tab's location and sort settings
+    ///
+    /// The new tab will have a new unique ID, the same path, viewing_root,
+    /// and sort settings, but entries will be loaded fresh (not copied).
+    pub fn new_from_location(other: &FileTab) -> Self {
+        Self {
+            id: next_tab_id(),
+            current_path: other.current_path.clone(),
+            entries: None, // Will be loaded fresh
+            error: None,
+            viewing_root: other.viewing_root,
+            current_dir_can_upload: false,
+            sort_column: other.sort_column,
+            sort_ascending: other.sort_ascending,
+            sorted_entries: None,
+            creating_directory: false,
+            new_directory_name: String::new(),
+            new_directory_error: None,
+            pending_delete: None,
+            delete_error: None,
+            pending_info: None,
+            pending_rename: None,
+            rename_name: String::new(),
+            rename_error: None,
+            pending_overwrite: None,
+        }
+    }
+
+    /// Get the tab display name (last path segment, or home/root label for empty path)
+    ///
+    /// # Arguments
+    /// * `home_label` - Label to use when at home (empty path, not viewing root)
+    /// * `root_label` - Label to use when at root (empty path, viewing root)
+    ///
+    /// The caller should pass translated strings for these labels.
+    pub fn tab_name(&self, home_label: &str, root_label: &str) -> String {
+        if self.current_path.is_empty() {
+            if self.viewing_root {
+                root_label.to_string()
+            } else {
+                home_label.to_string()
+            }
+        } else {
+            // Get last path segment
+            let path = self.current_path.trim_end_matches('/');
+            let segment = if let Some(pos) = path.rfind('/') {
+                &path[pos + 1..]
+            } else {
+                path
+            };
+            // Strip folder type suffixes for display
+            FilesManagementState::display_name(segment)
+        }
+    }
+
     /// Navigate to a new path (preserves viewing_root state)
     pub fn navigate_to(&mut self, path: String) {
         self.current_path = path;
         self.entries = None;
         self.sorted_entries = None;
         self.error = None;
-        // Note: viewing_root is preserved across navigation
     }
 
     /// Navigate to home directory (preserves viewing_root state)
@@ -309,7 +375,6 @@ impl FilesManagementState {
         self.entries = None;
         self.sorted_entries = None;
         self.error = None;
-        // Note: viewing_root is preserved - home means root of current view
     }
 
     /// Toggle between root view and user area view
@@ -356,12 +421,9 @@ impl FilesManagementState {
         self.entries = None;
         self.sorted_entries = None;
         self.error = None;
-        // Note: viewing_root is preserved across navigation
     }
 
     /// Update the sorted entries cache based on current entries and sort settings
-    ///
-    /// Call this whenever entries are set or sort settings change.
     pub fn update_sorted_entries(&mut self) {
         self.sorted_entries = self.entries.as_ref().map(|entries| {
             let mut sorted = entries.clone();
@@ -413,6 +475,123 @@ impl FilesManagementState {
             }
             sorted
         });
+    }
+}
+
+/// Files management panel state (per-connection)
+///
+/// Contains multiple file browser tabs and shared state like clipboard.
+#[derive(Debug, Clone)]
+pub struct FilesManagementState {
+    /// File browser tabs
+    pub tabs: Vec<FileTab>,
+    /// Index of the active tab
+    pub active_tab: usize,
+    /// Clipboard for cut/copy operations (shared across all tabs)
+    pub clipboard: Option<ClipboardItem>,
+}
+
+impl Default for FilesManagementState {
+    fn default() -> Self {
+        Self {
+            tabs: vec![FileTab::default()],
+            active_tab: 0,
+            clipboard: None,
+        }
+    }
+}
+
+impl FilesManagementState {
+    /// Get a reference to the active tab
+    pub fn active_tab(&self) -> &FileTab {
+        &self.tabs[self.active_tab]
+    }
+
+    /// Get a mutable reference to the active tab
+    pub fn active_tab_mut(&mut self) -> &mut FileTab {
+        &mut self.tabs[self.active_tab]
+    }
+
+    /// Get the ID of the active tab
+    pub fn active_tab_id(&self) -> TabId {
+        self.tabs[self.active_tab].id
+    }
+
+    /// Find a tab by its unique ID
+    ///
+    /// Returns None if the tab has been closed.
+    pub fn tab_by_id(&self, id: TabId) -> Option<&FileTab> {
+        self.tabs.iter().find(|t| t.id == id)
+    }
+
+    /// Find a tab by its unique ID (mutable)
+    ///
+    /// Returns None if the tab has been closed.
+    pub fn tab_by_id_mut(&mut self, id: TabId) -> Option<&mut FileTab> {
+        self.tabs.iter_mut().find(|t| t.id == id)
+    }
+
+    /// Create a new tab cloned from the current active tab
+    ///
+    /// Returns the index of the new tab.
+    pub fn new_tab(&mut self) -> usize {
+        let new_tab = FileTab::new_from_location(self.active_tab());
+        self.tabs.push(new_tab);
+        let new_index = self.tabs.len() - 1;
+        self.active_tab = new_index;
+        new_index
+    }
+
+    /// Switch to a tab by its unique ID
+    ///
+    /// Returns true if the tab was found and switched to, false otherwise.
+    pub fn switch_to_tab_by_id(&mut self, id: TabId) -> bool {
+        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+            self.active_tab = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Close a tab by its unique ID
+    ///
+    /// Returns true if the tab was closed, false if not found or it's the last tab.
+    pub fn close_tab_by_id(&mut self, id: TabId) -> bool {
+        if self.tabs.len() <= 1 {
+            return false;
+        }
+        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+            self.tabs.remove(index);
+
+            // Adjust active_tab if necessary
+            if self.active_tab >= self.tabs.len() {
+                self.active_tab = self.tabs.len() - 1;
+            } else if self.active_tab > index {
+                self.active_tab -= 1;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Switch to the next tab (wraps around)
+    pub fn next_tab(&mut self) {
+        if self.tabs.len() > 1 {
+            self.active_tab = (self.active_tab + 1) % self.tabs.len();
+        }
+    }
+
+    /// Switch to the previous tab (wraps around)
+    pub fn prev_tab(&mut self) {
+        if self.tabs.len() > 1 {
+            if self.active_tab == 0 {
+                self.active_tab = self.tabs.len() - 1;
+            } else {
+                self.active_tab -= 1;
+            }
+        }
     }
 
     /// Get the display name for a file entry (strips folder type suffixes)
@@ -845,23 +1024,23 @@ mod tests {
     use super::*;
 
     // =========================================================================
-    // FilesManagementState Tests
+    // FileTab Tests
     // =========================================================================
 
     #[test]
-    fn test_files_management_navigate_to() {
-        let mut state = FilesManagementState::default();
+    fn test_file_tab_navigate_to() {
+        let mut tab = FileTab::default();
 
-        state.navigate_to("Documents/Photos".to_string());
+        tab.navigate_to("Documents/Photos".to_string());
 
-        assert_eq!(state.current_path, "Documents/Photos");
-        assert!(state.entries.is_none());
-        assert!(state.error.is_none());
+        assert_eq!(tab.current_path, "Documents/Photos");
+        assert!(tab.entries.is_none());
+        assert!(tab.error.is_none());
     }
 
     #[test]
-    fn test_files_management_navigate_to_preserves_viewing_root() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_to_preserves_viewing_root() {
+        let mut tab = FileTab {
             current_path: String::new(),
             entries: Some(vec![]),
             error: None,
@@ -869,15 +1048,15 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_to("shared/Documents".to_string());
+        tab.navigate_to("shared/Documents".to_string());
 
-        assert_eq!(state.current_path, "shared/Documents");
-        assert!(state.viewing_root); // Should be preserved
+        assert_eq!(tab.current_path, "shared/Documents");
+        assert!(tab.viewing_root); // Should be preserved
     }
 
     #[test]
-    fn test_files_management_navigate_home() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_home() {
+        let mut tab = FileTab {
             current_path: "Documents/Photos".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -885,17 +1064,17 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_home();
+        tab.navigate_home();
 
-        assert!(state.current_path.is_empty());
-        assert!(state.entries.is_none());
-        assert!(state.error.is_none());
-        assert!(!state.viewing_root);
+        assert!(tab.current_path.is_empty());
+        assert!(tab.entries.is_none());
+        assert!(tab.error.is_none());
+        assert!(!tab.viewing_root);
     }
 
     #[test]
-    fn test_files_management_navigate_home_preserves_viewing_root() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_home_preserves_viewing_root() {
+        let mut tab = FileTab {
             current_path: "shared/Documents".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -903,15 +1082,15 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_home();
+        tab.navigate_home();
 
-        assert!(state.current_path.is_empty());
-        assert!(state.viewing_root); // Should be preserved
+        assert!(tab.current_path.is_empty());
+        assert!(tab.viewing_root); // Should be preserved
     }
 
     #[test]
-    fn test_files_management_toggle_root_from_user_area() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_toggle_root_from_user_area() {
+        let mut tab = FileTab {
             current_path: "Documents/Photos".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -919,16 +1098,16 @@ mod tests {
             ..Default::default()
         };
 
-        state.toggle_root();
+        tab.toggle_root();
 
-        assert!(state.current_path.is_empty()); // Path reset
-        assert!(state.entries.is_none());
-        assert!(state.viewing_root); // Now viewing root
+        assert!(tab.current_path.is_empty()); // Path reset
+        assert!(tab.entries.is_none());
+        assert!(tab.viewing_root); // Now viewing root
     }
 
     #[test]
-    fn test_files_management_toggle_root_from_root() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_toggle_root_from_root() {
+        let mut tab = FileTab {
             current_path: "shared/Documents".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -936,16 +1115,16 @@ mod tests {
             ..Default::default()
         };
 
-        state.toggle_root();
+        tab.toggle_root();
 
-        assert!(state.current_path.is_empty()); // Path reset
-        assert!(state.entries.is_none());
-        assert!(!state.viewing_root); // Now viewing user area
+        assert!(tab.current_path.is_empty()); // Path reset
+        assert!(tab.entries.is_none());
+        assert!(!tab.viewing_root); // Now viewing user area
     }
 
     #[test]
-    fn test_files_management_navigate_up_preserves_viewing_root() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_preserves_viewing_root() {
+        let mut tab = FileTab {
             current_path: "shared/Documents".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -953,15 +1132,15 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
-        assert_eq!(state.current_path, "shared");
-        assert!(state.viewing_root); // Should be preserved
+        assert_eq!(tab.current_path, "shared");
+        assert!(tab.viewing_root); // Should be preserved
     }
 
     #[test]
-    fn test_files_management_navigate_up_from_nested() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_from_nested() {
+        let mut tab = FileTab {
             current_path: "Documents/Photos/2024".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -969,15 +1148,15 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
-        assert_eq!(state.current_path, "Documents/Photos");
-        assert!(state.entries.is_none());
+        assert_eq!(tab.current_path, "Documents/Photos");
+        assert!(tab.entries.is_none());
     }
 
     #[test]
-    fn test_files_management_navigate_up_from_single_level() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_from_single_level() {
+        let mut tab = FileTab {
             current_path: "Documents".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -985,14 +1164,14 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
-        assert!(state.current_path.is_empty());
+        assert!(tab.current_path.is_empty());
     }
 
     #[test]
-    fn test_files_management_navigate_up_from_root() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_from_root() {
+        let mut tab = FileTab {
             current_path: String::new(),
             entries: Some(vec![]),
             error: None,
@@ -1000,16 +1179,16 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
-        assert!(state.current_path.is_empty());
+        assert!(tab.current_path.is_empty());
         // Entries should still be there since we didn't navigate
-        assert!(state.entries.is_some());
+        assert!(tab.entries.is_some());
     }
 
     #[test]
-    fn test_files_management_navigate_up_from_slash() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_from_slash() {
+        let mut tab = FileTab {
             current_path: "/".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -1017,15 +1196,15 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
         // Should not change when at root
-        assert_eq!(state.current_path, "/");
+        assert_eq!(tab.current_path, "/");
     }
 
     #[test]
-    fn test_files_management_navigate_up_with_trailing_slash() {
-        let mut state = FilesManagementState {
+    fn test_file_tab_navigate_up_with_trailing_slash() {
+        let mut tab = FileTab {
             current_path: "Documents/Photos/".to_string(),
             entries: Some(vec![]),
             error: None,
@@ -1033,95 +1212,285 @@ mod tests {
             ..Default::default()
         };
 
-        state.navigate_up();
+        tab.navigate_up();
 
-        assert_eq!(state.current_path, "Documents");
-    }
-
-    // =========================================================================
-    // New Directory Dialog Tests
-    // =========================================================================
-
-    #[test]
-    fn test_files_management_open_new_directory_dialog() {
-        let mut state = FilesManagementState::default();
-
-        state.open_new_directory_dialog();
-
-        assert!(state.creating_directory);
-        assert!(state.new_directory_name.is_empty());
-        assert!(state.new_directory_error.is_none());
+        assert_eq!(tab.current_path, "Documents");
     }
 
     #[test]
-    fn test_files_management_open_new_directory_dialog_resets_previous_state() {
-        let mut state = FilesManagementState {
-            creating_directory: false,
-            new_directory_name: "old name".to_string(),
-            new_directory_error: Some("old error".to_string()),
-            ..Default::default()
-        };
+    fn test_file_tab_open_close_new_directory_dialog() {
+        let mut tab = FileTab::default();
 
-        state.open_new_directory_dialog();
+        tab.open_new_directory_dialog();
+        assert!(tab.creating_directory);
+        assert!(tab.new_directory_name.is_empty());
+        assert!(tab.new_directory_error.is_none());
 
-        assert!(state.creating_directory);
-        assert!(state.new_directory_name.is_empty());
-        assert!(state.new_directory_error.is_none());
+        // Simulate user typing a name and getting an error
+        tab.new_directory_name = "test".to_string();
+        tab.new_directory_error = Some("test error".to_string());
+
+        // Close dialog should reset everything
+        tab.close_new_directory_dialog();
+        assert!(!tab.creating_directory);
+        assert!(tab.new_directory_name.is_empty());
+        assert!(tab.new_directory_error.is_none());
     }
 
     #[test]
-    fn test_files_management_close_new_directory_dialog() {
-        let mut state = FilesManagementState {
-            creating_directory: true,
-            new_directory_name: "test folder".to_string(),
-            new_directory_error: Some("some error".to_string()),
-            ..Default::default()
-        };
-
-        state.close_new_directory_dialog();
-
-        assert!(!state.creating_directory);
-        assert!(state.new_directory_name.is_empty());
-        assert!(state.new_directory_error.is_none());
-    }
-
-    #[test]
-    fn test_files_management_close_new_directory_dialog_preserves_other_state() {
-        let mut state = FilesManagementState {
-            current_path: "Documents/Photos".to_string(),
-            entries: Some(vec![]),
+    fn test_file_tab_close_new_directory_dialog_clears_state() {
+        let mut tab = FileTab {
+            id: next_tab_id(),
+            current_path: String::new(),
+            entries: None,
             error: None,
-            viewing_root: true,
-            current_dir_can_upload: true,
-            show_hidden: true,
+            viewing_root: false,
+            current_dir_can_upload: false,
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+            sorted_entries: None,
             creating_directory: true,
-            new_directory_name: "test".to_string(),
-            new_directory_error: Some("error".to_string()),
+            new_directory_name: "My Folder".to_string(),
+            new_directory_error: Some("Name already exists".to_string()),
             pending_delete: None,
             delete_error: None,
             pending_info: None,
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
-            clipboard: None,
             pending_overwrite: None,
-            sort_column: FileSortColumn::Name,
-            sort_ascending: true,
-            sorted_entries: None,
         };
 
-        state.close_new_directory_dialog();
+        tab.close_new_directory_dialog();
 
-        // Dialog state should be reset
-        assert!(!state.creating_directory);
-        assert!(state.new_directory_name.is_empty());
-        assert!(state.new_directory_error.is_none());
+        assert!(!tab.creating_directory);
+        assert!(tab.new_directory_name.is_empty());
+        assert!(tab.new_directory_error.is_none());
+    }
 
-        // Other state should be preserved
-        assert_eq!(state.current_path, "Documents/Photos");
-        assert!(state.entries.is_some());
-        assert!(state.viewing_root);
-        assert!(state.current_dir_can_upload);
+    // =========================================================================
+    // FilesManagementState Tab Tests
+    // =========================================================================
+
+    #[test]
+    fn test_files_management_default_has_one_tab() {
+        let state = FilesManagementState::default();
+        assert_eq!(state.tabs.len(), 1);
+        assert_eq!(state.active_tab, 0);
+    }
+
+    #[test]
+    fn test_files_management_new_tab() {
+        let mut state = FilesManagementState::default();
+        state.active_tab_mut().current_path = "Documents".to_string();
+        state.active_tab_mut().viewing_root = true;
+
+        let new_index = state.new_tab();
+
+        assert_eq!(new_index, 1);
+        assert_eq!(state.tabs.len(), 2);
+        assert_eq!(state.active_tab, 1); // Switches to new tab
+        assert_eq!(state.active_tab().current_path, "Documents"); // Cloned path
+        assert!(state.active_tab().viewing_root); // Cloned setting
+        assert!(state.active_tab().entries.is_none()); // Fresh entries
+    }
+
+    #[test]
+    fn test_files_management_close_tab_by_id() {
+        let mut state = FilesManagementState::default();
+        let tab0_id = state.active_tab().id;
+        state.new_tab(); // Now have 2 tabs, active is 1
+        let tab1_id = state.active_tab().id;
+        state.new_tab(); // Now have 3 tabs, active is 2
+        let tab2_id = state.active_tab().id;
+
+        // Close middle tab by ID
+        assert!(state.close_tab_by_id(tab1_id));
+        assert_eq!(state.tabs.len(), 2);
+        assert_eq!(state.active_tab, 1); // Adjusted down
+
+        // Close last tab by ID
+        assert!(state.close_tab_by_id(tab2_id));
+        assert_eq!(state.tabs.len(), 1);
+        assert_eq!(state.active_tab, 0);
+
+        // Can't close last tab
+        assert!(!state.close_tab_by_id(tab0_id));
+        assert_eq!(state.tabs.len(), 1);
+
+        // Can't close non-existent tab
+        assert!(!state.close_tab_by_id(99999));
+    }
+
+    #[test]
+    fn test_files_management_close_active_tab_by_id() {
+        let mut state = FilesManagementState::default();
+
+        // Set up 3 tabs with different paths
+        let tab0_id = state.active_tab().id;
+        state.active_tab_mut().current_path = "tab0".to_string();
+        state.new_tab();
+        let tab1_id = state.active_tab().id;
+        state.active_tab_mut().current_path = "tab1".to_string();
+        state.new_tab();
+        state.active_tab_mut().current_path = "tab2".to_string();
+
+        // Now: tabs = [tab0, tab1, tab2], active = 2
+
+        // Switch to tab1 and close it (the active tab)
+        assert!(state.switch_to_tab_by_id(tab1_id));
+        assert_eq!(state.active_tab, 1);
+        assert!(state.close_tab_by_id(tab1_id)); // Close tab1 (active)
+
+        // After closing: tabs = [tab0, tab2], active should point to what was tab2 (now at index 1)
+        assert_eq!(state.tabs.len(), 2);
+        assert_eq!(state.active_tab, 1);
+        assert_eq!(state.active_tab().current_path, "tab2");
+
+        // Close the last tab (active) - which is tab2, leaving only tab0
+        let tab2_id = state.active_tab().id;
+        assert!(state.close_tab_by_id(tab2_id));
+        assert_eq!(state.tabs.len(), 1);
+        assert_eq!(state.active_tab, 0);
+        assert_eq!(state.active_tab().current_path, "tab0");
+
+        // Verify tab0_id is still valid and matches the remaining tab
+        assert!(state.tab_by_id(tab0_id).is_some());
+        assert_eq!(state.active_tab().id, tab0_id);
+    }
+
+    #[test]
+    fn test_files_management_tab_by_id() {
+        let mut state = FilesManagementState::default();
+
+        // Get the first tab's ID
+        let first_tab_id = state.active_tab().id;
+
+        // Create a second tab
+        state.new_tab();
+        let second_tab_id = state.active_tab().id;
+
+        // IDs should be different
+        assert_ne!(first_tab_id, second_tab_id);
+
+        // Look up tabs by ID
+        assert!(state.tab_by_id(first_tab_id).is_some());
+        assert!(state.tab_by_id(second_tab_id).is_some());
+        assert!(state.tab_by_id(99999).is_none()); // Non-existent ID
+
+        // Mutable lookup works too
+        state.tab_by_id_mut(first_tab_id).unwrap().current_path = "modified".to_string();
+        assert_eq!(
+            state.tab_by_id(first_tab_id).unwrap().current_path,
+            "modified"
+        );
+
+        // Close the first tab by ID
+        assert!(state.close_tab_by_id(first_tab_id));
+
+        // First tab ID should no longer be found
+        assert!(state.tab_by_id(first_tab_id).is_none());
+        // Second tab ID should still work
+        assert!(state.tab_by_id(second_tab_id).is_some());
+    }
+
+    #[test]
+    fn test_files_management_tab_ids_are_unique() {
+        let mut state = FilesManagementState::default();
+
+        // Create several tabs and collect their IDs
+        let mut ids = vec![state.active_tab().id];
+        for _ in 0..5 {
+            state.new_tab();
+            ids.push(state.active_tab().id);
+        }
+
+        // All IDs should be unique
+        let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), unique_ids.len());
+    }
+
+    #[test]
+    fn test_files_management_switch_to_tab_by_id() {
+        let mut state = FilesManagementState::default();
+        let tab0_id = state.active_tab().id;
+        state.new_tab();
+        state.new_tab();
+        let tab2_id = state.active_tab().id;
+
+        assert!(state.switch_to_tab_by_id(tab0_id));
+        assert_eq!(state.active_tab, 0);
+
+        assert!(state.switch_to_tab_by_id(tab2_id));
+        assert_eq!(state.active_tab, 2);
+
+        // Invalid ID returns false and doesn't change active tab
+        assert!(!state.switch_to_tab_by_id(99999));
+        assert_eq!(state.active_tab, 2);
+    }
+
+    #[test]
+    fn test_files_management_next_prev_tab() {
+        let mut state = FilesManagementState::default();
+        let tab0_id = state.active_tab().id;
+        state.new_tab();
+        state.new_tab();
+        state.switch_to_tab_by_id(tab0_id);
+
+        state.next_tab();
+        assert_eq!(state.active_tab, 1);
+
+        state.next_tab();
+        assert_eq!(state.active_tab, 2);
+
+        state.next_tab(); // Wraps around
+        assert_eq!(state.active_tab, 0);
+
+        state.prev_tab(); // Wraps back
+        assert_eq!(state.active_tab, 2);
+
+        state.prev_tab();
+        assert_eq!(state.active_tab, 1);
+    }
+
+    #[test]
+    fn test_file_tab_tab_name_empty_path() {
+        let tab = FileTab::default();
+        assert_eq!(tab.tab_name("Home", "Root"), "Home");
+
+        let tab_root = FileTab {
+            viewing_root: true,
+            ..Default::default()
+        };
+        assert_eq!(tab_root.tab_name("Home", "Root"), "Root");
+    }
+
+    #[test]
+    fn test_file_tab_tab_name_with_path() {
+        let mut tab = FileTab {
+            current_path: "Documents".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(tab.tab_name("Home", "Root"), "Documents");
+
+        tab.current_path = "Documents/Photos".to_string();
+        assert_eq!(tab.tab_name("Home", "Root"), "Photos");
+
+        // Trailing slash is trimmed
+        tab.current_path = "Music/Albums/Jazz/".to_string();
+        assert_eq!(tab.tab_name("Home", "Root"), "Jazz");
+    }
+
+    #[test]
+    fn test_file_tab_tab_name_strips_suffix() {
+        let mut tab = FileTab {
+            current_path: "Uploads [NEXUS-UL]".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(tab.tab_name("Home", "Root"), "Uploads");
+
+        tab.current_path = "Shared/Dropbox [NEXUS-DB]".to_string();
+        assert_eq!(tab.tab_name("Home", "Root"), "Dropbox");
     }
 
     // =========================================================================

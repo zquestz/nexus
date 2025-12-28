@@ -49,16 +49,16 @@ impl NexusApp {
         };
 
         // Initialize show_hidden from config on first open
-        conn.files_management.show_hidden = self.config.settings.show_hidden_files;
+        let show_hidden = self.config.settings.show_hidden_files;
 
         // Remember the current path - don't reset it
-        let current_path = conn.files_management.current_path.clone();
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
+        let tab = conn.files_management.active_tab_mut();
+        let current_path = tab.current_path.clone();
+        let viewing_root = tab.viewing_root;
 
         // Clear entries and error to show loading state, but keep the path
-        conn.files_management.entries = None;
-        conn.files_management.error = None;
+        tab.entries = None;
+        tab.error = None;
 
         // Fetch the file list for the current path (or home if first time)
         self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
@@ -81,9 +81,10 @@ impl NexusApp {
         };
 
         // Update the current path and clear entries to show loading state
-        conn.files_management.navigate_to(path.clone());
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
+        let tab = conn.files_management.active_tab_mut();
+        tab.navigate_to(path.clone());
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
 
         // Fetch the file list for the path
         self.send_file_list_request(conn_id, path, viewing_root, show_hidden)
@@ -98,11 +99,11 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Navigate up and clear entries to show loading state
-        conn.files_management.navigate_up();
-        let new_path = conn.files_management.current_path.clone();
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
+        let tab = conn.files_management.active_tab_mut();
+        tab.navigate_up();
+        let new_path = tab.current_path.clone();
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
 
         // Fetch the file list for the new path
         self.send_file_list_request(conn_id, new_path, viewing_root, show_hidden)
@@ -119,10 +120,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Navigate to home (preserves viewing_root state)
-        conn.files_management.navigate_home();
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
+        let tab = conn.files_management.active_tab_mut();
+        tab.navigate_home();
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
 
         // Fetch the file list for home (respects current view mode)
         self.send_file_list_request(conn_id, String::new(), viewing_root, show_hidden)
@@ -137,12 +138,12 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear entries and error to show loading state
-        let current_path = conn.files_management.current_path.clone();
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
-        conn.files_management.entries = None;
-        conn.files_management.error = None;
+        let tab = conn.files_management.active_tab_mut();
+        let current_path = tab.current_path.clone();
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
+        tab.entries = None;
+        tab.error = None;
 
         // Re-fetch the file list for the current path
         self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
@@ -159,10 +160,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Toggle the root view state (also resets path to root)
-        conn.files_management.toggle_root();
-        let viewing_root = conn.files_management.viewing_root;
-        let show_hidden = conn.files_management.show_hidden;
+        let tab = conn.files_management.active_tab_mut();
+        tab.toggle_root();
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
 
         // Fetch the file list for the new view
         self.send_file_list_request(conn_id, String::new(), viewing_root, show_hidden)
@@ -180,21 +181,19 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Toggle the show_hidden state
-        conn.files_management.show_hidden = !conn.files_management.show_hidden;
-        let show_hidden = conn.files_management.show_hidden;
-
-        // Save preference to config
+        // Toggle the show_hidden state in config
+        let show_hidden = !self.config.settings.show_hidden_files;
         self.config.settings.show_hidden_files = show_hidden;
         let _ = self.config.save();
 
-        // Get current path and root state
-        let current_path = conn.files_management.current_path.clone();
-        let viewing_root = conn.files_management.viewing_root;
+        // Get current path and root state from active tab
+        let tab = conn.files_management.active_tab_mut();
+        let current_path = tab.current_path.clone();
+        let viewing_root = tab.viewing_root;
 
         // Clear entries to show loading state
-        conn.files_management.entries = None;
-        conn.files_management.error = None;
+        tab.entries = None;
+        tab.error = None;
 
         // Refresh the file list with new show_hidden setting
         self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
@@ -211,7 +210,9 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.files_management.open_new_directory_dialog();
+        conn.files_management
+            .active_tab_mut()
+            .open_new_directory_dialog();
 
         // Focus the name input field
         operation::focus(Id::from(InputId::NewDirectoryName))
@@ -235,8 +236,9 @@ impl NexusApp {
                 .map(dir_name_error_message)
         };
 
-        conn.files_management.new_directory_name = name;
-        conn.files_management.new_directory_error = validation_error;
+        let tab = conn.files_management.active_tab_mut();
+        tab.new_directory_name = name;
+        tab.new_directory_error = validation_error;
 
         Task::none()
     }
@@ -250,31 +252,32 @@ impl NexusApp {
             return Task::none();
         };
 
-        let name = &conn.files_management.new_directory_name;
+        let tab = conn.files_management.active_tab_mut();
+        let name = &tab.new_directory_name;
 
-        // Validate before sending
+        // Validate first
         if name.is_empty() {
-            conn.files_management.new_directory_error = Some(t("err-dir-name-empty"));
+            tab.new_directory_error = Some(t("err-dir-name-empty"));
             return Task::none();
         }
 
         if let Err(e) = validators::validate_dir_name(name) {
-            conn.files_management.new_directory_error = Some(dir_name_error_message(e));
+            tab.new_directory_error = Some(dir_name_error_message(e));
             return Task::none();
         }
 
-        // Clone values needed for the request after validation passes
-        let name = conn.files_management.new_directory_name.clone();
-        let path = conn.files_management.current_path.clone();
-        let root = conn.files_management.viewing_root;
+        let name = tab.new_directory_name.clone();
+        let path = tab.current_path.clone();
+        let root = tab.viewing_root;
 
+        let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileCreateDir { path, name, root }) {
             Ok(message_id) => {
                 conn.pending_requests
-                    .track(message_id, ResponseRouting::FileCreateDirResult);
+                    .track(message_id, ResponseRouting::FileCreateDirResult { tab_id });
             }
             Err(e) => {
-                conn.files_management.new_directory_error =
+                conn.files_management.active_tab_mut().new_directory_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
@@ -291,17 +294,42 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.files_management.close_new_directory_dialog();
+        conn.files_management
+            .active_tab_mut()
+            .close_new_directory_dialog();
 
         Task::none()
     }
 
     // ==================== Helper Functions ====================
 
-    /// Send a FileList request to the server
+    /// Send a FileList request to the server for the active tab
+    ///
+    /// This is used for user-initiated navigation (navigate, refresh, etc.)
+    /// where we always want to update the currently active tab.
     pub fn send_file_list_request(
         &mut self,
         conn_id: usize,
+        path: String,
+        root: bool,
+        show_hidden: bool,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let tab_id = conn.files_management.active_tab_id();
+        self.send_file_list_request_for_tab(conn_id, tab_id, path, root, show_hidden)
+    }
+
+    /// Send a FileList request to the server for a specific tab
+    ///
+    /// This is used by response handlers that need to refresh a specific tab
+    /// (identified by tab_id) rather than the currently active tab.
+    pub fn send_file_list_request_for_tab(
+        &mut self,
+        conn_id: usize,
+        tab_id: crate::types::TabId,
         path: String,
         root: bool,
         show_hidden: bool,
@@ -317,10 +345,16 @@ impl NexusApp {
         }) {
             Ok(message_id) => {
                 conn.pending_requests
-                    .track(message_id, ResponseRouting::PopulateFileList);
+                    .track(message_id, ResponseRouting::PopulateFileList { tab_id });
             }
             Err(e) => {
-                conn.files_management.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                // Show error on the specific tab if it still exists, otherwise active tab
+                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                    tab.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                } else {
+                    conn.files_management.active_tab_mut().error =
+                        Some(format!("{}: {}", t("err-send-failed"), e));
+                }
             }
         }
 
@@ -340,9 +374,9 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Set pending delete to show confirmation dialog, clear any previous error
-        conn.files_management.pending_delete = Some(path);
-        conn.files_management.delete_error = None;
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_delete = Some(path);
+        tab.delete_error = None;
 
         Task::none()
     }
@@ -359,24 +393,24 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get the path to delete (don't take - keep dialog open until response)
-        let Some(path) = conn.files_management.pending_delete.clone() else {
+        let tab = conn.files_management.active_tab_mut();
+        let Some(path) = tab.pending_delete.clone() else {
             return Task::none();
         };
 
-        let root = conn.files_management.viewing_root;
+        let root = tab.viewing_root;
 
-        // Clear any previous error before sending
-        conn.files_management.delete_error = None;
+        // Clear any previous error while the request is in flight
+        tab.delete_error = None;
 
+        let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileDelete { path, root }) {
             Ok(message_id) => {
                 conn.pending_requests
-                    .track(message_id, ResponseRouting::FileDeleteResult);
+                    .track(message_id, ResponseRouting::FileDeleteResult { tab_id });
             }
             Err(e) => {
-                // Show send error in the delete dialog
-                conn.files_management.delete_error =
+                conn.files_management.active_tab_mut().delete_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
@@ -393,9 +427,9 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear pending delete and any error to close the dialog
-        conn.files_management.pending_delete = None;
-        conn.files_management.delete_error = None;
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_delete = None;
+        tab.delete_error = None;
 
         Task::none()
     }
@@ -413,18 +447,20 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Build the full path for this entry
-        let current_path = &conn.files_management.current_path;
+        let tab = conn.files_management.active_tab();
+        let current_path = &tab.current_path;
         let path = build_navigate_path(current_path, &name);
-        let root = conn.files_management.viewing_root;
+        let root = tab.viewing_root;
 
+        let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileInfo { path, root }) {
             Ok(message_id) => {
                 conn.pending_requests
-                    .track(message_id, ResponseRouting::FileInfoResult);
+                    .track(message_id, ResponseRouting::FileInfoResult { tab_id });
             }
             Err(e) => {
-                conn.files_management.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                conn.files_management.active_tab_mut().error =
+                    Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
@@ -440,8 +476,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear pending info to close the dialog
-        conn.files_management.pending_info = None;
+        conn.files_management.active_tab_mut().pending_info = None;
 
         Task::none()
     }
@@ -460,14 +495,15 @@ impl NexusApp {
         };
 
         // Build the full path for this entry
-        let current_path = &conn.files_management.current_path;
+        let tab = conn.files_management.active_tab_mut();
+        let current_path = &tab.current_path;
         let path = build_navigate_path(current_path, &name);
 
         // Set pending rename to show dialog, pre-populate with actual filesystem name
         // (including any suffixes like [NEXUS-UL] so admin can edit them)
-        conn.files_management.pending_rename = Some(path);
-        conn.files_management.rename_name = name;
-        conn.files_management.rename_error = None;
+        tab.pending_rename = Some(path);
+        tab.rename_name = name;
+        tab.rename_error = None;
 
         // Focus the name input field
         operation::focus(Id::from(InputId::RenameName))
@@ -491,8 +527,9 @@ impl NexusApp {
                 .map(dir_name_error_message)
         };
 
-        conn.files_management.rename_name = name;
-        conn.files_management.rename_error = validation_error;
+        let tab = conn.files_management.active_tab_mut();
+        tab.rename_name = name;
+        tab.rename_error = validation_error;
 
         Task::none()
     }
@@ -506,30 +543,32 @@ impl NexusApp {
             return Task::none();
         };
 
-        let new_name = &conn.files_management.rename_name;
+        let tab = conn.files_management.active_tab_mut();
+        let new_name = &tab.rename_name;
 
         // Validate before sending
         if new_name.is_empty() {
-            conn.files_management.rename_error = Some(t("err-dir-name-empty"));
+            tab.rename_error = Some(t("err-dir-name-empty"));
             return Task::none();
         }
 
         if let Err(e) = validators::validate_dir_name(new_name) {
-            conn.files_management.rename_error = Some(dir_name_error_message(e));
+            tab.rename_error = Some(dir_name_error_message(e));
             return Task::none();
         }
 
         // Get the path to rename (don't take - keep dialog open until response)
-        let Some(path) = conn.files_management.pending_rename.clone() else {
+        let Some(path) = tab.pending_rename.clone() else {
             return Task::none();
         };
 
-        let new_name = conn.files_management.rename_name.clone();
-        let root = conn.files_management.viewing_root;
+        let new_name = tab.rename_name.clone();
+        let root = tab.viewing_root;
 
         // Clear any previous error before sending
-        conn.files_management.rename_error = None;
+        conn.files_management.active_tab_mut().rename_error = None;
 
+        let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileRename {
             path,
             new_name,
@@ -537,11 +576,10 @@ impl NexusApp {
         }) {
             Ok(message_id) => {
                 conn.pending_requests
-                    .track(message_id, ResponseRouting::FileRenameResult);
+                    .track(message_id, ResponseRouting::FileRenameResult { tab_id });
             }
             Err(e) => {
-                // Show send error in the rename dialog
-                conn.files_management.rename_error =
+                conn.files_management.active_tab_mut().rename_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
@@ -558,10 +596,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Clear pending rename and any error to close the dialog
-        conn.files_management.pending_rename = None;
-        conn.files_management.rename_name = String::new();
-        conn.files_management.rename_error = None;
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_rename = None;
+        tab.rename_name = String::new();
+        tab.rename_error = None;
 
         Task::none()
     }
@@ -571,12 +609,7 @@ impl NexusApp {
     /// Handle cut action from context menu
     ///
     /// Stores the file/directory in clipboard for later move operation.
-    pub fn handle_file_cut(
-        &mut self,
-        path: String,
-        name: String,
-        is_directory: bool,
-    ) -> Task<Message> {
+    pub fn handle_file_cut(&mut self, path: String, name: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -584,12 +617,12 @@ impl NexusApp {
             return Task::none();
         };
 
+        let root = conn.files_management.active_tab().viewing_root;
         conn.files_management.clipboard = Some(ClipboardItem {
             path,
             name,
-            is_directory,
             operation: ClipboardOperation::Cut,
-            root: conn.files_management.viewing_root,
+            root,
         });
 
         Task::none()
@@ -598,12 +631,7 @@ impl NexusApp {
     /// Handle copy action from context menu
     ///
     /// Stores the file/directory in clipboard for later copy operation.
-    pub fn handle_file_copy_to_clipboard(
-        &mut self,
-        path: String,
-        name: String,
-        is_directory: bool,
-    ) -> Task<Message> {
+    pub fn handle_file_copy_to_clipboard(&mut self, path: String, name: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -611,12 +639,12 @@ impl NexusApp {
             return Task::none();
         };
 
+        let root = conn.files_management.active_tab().viewing_root;
         conn.files_management.clipboard = Some(ClipboardItem {
             path,
             name,
-            is_directory,
             operation: ClipboardOperation::Copy,
-            root: conn.files_management.viewing_root,
+            root,
         });
 
         Task::none()
@@ -637,9 +665,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        let destination_dir = conn.files_management.current_path.clone();
+        let tab = conn.files_management.active_tab();
+        let destination_dir = tab.current_path.clone();
         let source_root = clipboard.root;
-        let destination_root = conn.files_management.viewing_root;
+        let destination_root = tab.viewing_root;
 
         let message = match clipboard.operation {
             ClipboardOperation::Cut => ClientMessage::FileMove {
@@ -662,9 +691,18 @@ impl NexusApp {
             return Task::none();
         };
 
+        let destination_dir = tab.current_path.clone();
+        let tab_id = conn.files_management.active_tab_id();
+
         let routing = match clipboard.operation {
-            ClipboardOperation::Cut => ResponseRouting::FileMoveResult { destination_dir },
-            ClipboardOperation::Copy => ResponseRouting::FileCopyResult { destination_dir },
+            ClipboardOperation::Cut => ResponseRouting::FileMoveResult {
+                tab_id,
+                destination_dir,
+            },
+            ClipboardOperation::Copy => ResponseRouting::FileCopyResult {
+                tab_id,
+                destination_dir,
+            },
         };
         conn.pending_requests.track(message_id, routing);
 
@@ -687,7 +725,7 @@ impl NexusApp {
         };
 
         let source_root = clipboard.root;
-        let destination_root = conn.files_management.viewing_root;
+        let destination_root = conn.files_management.active_tab().viewing_root;
 
         let message = match clipboard.operation {
             ClipboardOperation::Cut => ClientMessage::FileMove {
@@ -710,9 +748,18 @@ impl NexusApp {
             return Task::none();
         };
 
+        let destination_dir = destination_dir.clone();
+        let tab_id = conn.files_management.active_tab_id();
+
         let routing = match clipboard.operation {
-            ClipboardOperation::Cut => ResponseRouting::FileMoveResult { destination_dir },
-            ClipboardOperation::Copy => ResponseRouting::FileCopyResult { destination_dir },
+            ClipboardOperation::Cut => ResponseRouting::FileMoveResult {
+                tab_id,
+                destination_dir,
+            },
+            ClipboardOperation::Copy => ResponseRouting::FileCopyResult {
+                tab_id,
+                destination_dir,
+            },
         };
         conn.pending_requests.track(message_id, routing);
 
@@ -744,7 +791,12 @@ impl NexusApp {
             return Task::none();
         };
 
-        let Some(pending) = conn.files_management.pending_overwrite.take() else {
+        let Some(pending) = conn
+            .files_management
+            .active_tab_mut()
+            .pending_overwrite
+            .take()
+        else {
             return Task::none();
         };
 
@@ -773,12 +825,15 @@ impl NexusApp {
             return Task::none();
         };
 
+        let tab_id = conn.files_management.active_tab_id();
         let routing = if pending.is_move {
             ResponseRouting::FileMoveResult {
+                tab_id,
                 destination_dir: destination_dir_for_routing,
             }
         } else {
             ResponseRouting::FileCopyResult {
+                tab_id,
                 destination_dir: destination_dir_for_routing,
             }
         };
@@ -796,7 +851,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.files_management.pending_overwrite = None;
+        conn.files_management.active_tab_mut().pending_overwrite = None;
 
         Task::none()
     }
@@ -813,18 +868,68 @@ impl NexusApp {
             return Task::none();
         };
 
-        if conn.files_management.sort_column == column {
+        let tab = conn.files_management.active_tab_mut();
+        if tab.sort_column == column {
             // Toggle direction
-            conn.files_management.sort_ascending = !conn.files_management.sort_ascending;
+            tab.sort_ascending = !tab.sort_ascending;
         } else {
             // Switch to new column, ascending
-            conn.files_management.sort_column = column;
-            conn.files_management.sort_ascending = true;
+            tab.sort_column = column;
+            tab.sort_ascending = true;
         }
 
         // Rebuild sorted entries cache
-        conn.files_management.update_sorted_entries();
+        tab.update_sorted_entries();
 
+        Task::none()
+    }
+
+    // ==================== Tab Management ====================
+
+    /// Create a new file tab (clones current tab's location and settings)
+    pub fn handle_file_tab_new(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Create new tab cloned from current (new_tab sets it as active)
+        conn.files_management.new_tab();
+
+        // Fetch file list for the new tab (now the active tab)
+        let tab = conn.files_management.active_tab();
+        let current_path = tab.current_path.clone();
+        let viewing_root = tab.viewing_root;
+        let show_hidden = self.config.settings.show_hidden_files;
+
+        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
+    }
+
+    /// Switch to a file tab by ID
+    pub fn handle_file_tab_switch(&mut self, tab_id: crate::types::TabId) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.switch_to_tab_by_id(tab_id);
+        Task::none()
+    }
+
+    /// Close a file tab by ID
+    pub fn handle_file_tab_close(&mut self, tab_id: crate::types::TabId) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.close_tab_by_id(tab_id);
         Task::none()
     }
 }

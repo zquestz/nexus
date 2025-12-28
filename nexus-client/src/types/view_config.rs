@@ -76,6 +76,9 @@ pub struct ViewConfig<'a> {
 
     /// Download path for file transfers (from config)
     pub download_path: Option<&'a str>,
+
+    /// Whether to show hidden files in file browser (from config)
+    pub show_hidden: bool,
 }
 
 /// Toolbar state configuration

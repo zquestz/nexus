@@ -207,35 +207,39 @@ impl NexusApp {
                         // If overwrite confirmation is showing, cancel it
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.files_management.pending_overwrite.is_some()
+                            && conn
+                                .files_management
+                                .active_tab()
+                                .pending_overwrite
+                                .is_some()
                         {
                             return self.update(Message::FileOverwriteCancel);
                         }
                         // If file info dialog is showing, close it
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.files_management.pending_info.is_some()
+                            && conn.files_management.active_tab().pending_info.is_some()
                         {
                             return self.update(Message::CloseFileInfo);
                         }
                         // If rename dialog is showing, cancel it
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.files_management.pending_rename.is_some()
+                            && conn.files_management.active_tab().pending_rename.is_some()
                         {
                             return self.update(Message::FileRenameCancel);
                         }
                         // If delete confirmation is showing, cancel it
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.files_management.pending_delete.is_some()
+                            && conn.files_management.active_tab().pending_delete.is_some()
                         {
                             return self.update(Message::FileCancelDelete);
                         }
                         // If creating directory, close dialog
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.files_management.creating_directory
+                            && conn.files_management.active_tab().creating_directory
                         {
                             return self.update(Message::FileNewDirectoryCancel);
                         }
@@ -258,10 +262,25 @@ impl NexusApp {
 
     /// Navigate to the next chat tab (wraps around)
     ///
-    /// Only works when chat is visible (no panel active).
+    /// Works when chat is visible (no panel active) or when Files panel is active.
     pub fn handle_next_chat_tab(&mut self) -> Task<Message> {
+        let active_panel = self.active_panel();
+
+        // Handle file tabs when Files panel is active
+        if active_panel == ActivePanel::Files {
+            let Some(conn_id) = self.active_connection else {
+                return Task::none();
+            };
+            let Some(conn) = self.connections.get_mut(&conn_id) else {
+                return Task::none();
+            };
+
+            conn.files_management.next_tab();
+            return Task::none();
+        }
+
         // Only switch chat tabs when chat is visible (no panel active)
-        if self.active_panel() != ActivePanel::None {
+        if active_panel != ActivePanel::None {
             return Task::none();
         }
 
@@ -293,10 +312,25 @@ impl NexusApp {
 
     /// Navigate to the previous chat tab (wraps around)
     ///
-    /// Only works when chat is visible (no panel active).
+    /// Works when chat is visible (no panel active) or when Files panel is active.
     pub fn handle_prev_chat_tab(&mut self) -> Task<Message> {
+        let active_panel = self.active_panel();
+
+        // Handle file tabs when Files panel is active
+        if active_panel == ActivePanel::Files {
+            let Some(conn_id) = self.active_connection else {
+                return Task::none();
+            };
+            let Some(conn) = self.connections.get_mut(&conn_id) else {
+                return Task::none();
+            };
+
+            conn.files_management.prev_tab();
+            return Task::none();
+        }
+
         // Only switch chat tabs when chat is visible (no panel active)
-        if self.active_panel() != ActivePanel::None {
+        if active_panel != ActivePanel::None {
             return Task::none();
         }
 
@@ -370,10 +404,11 @@ impl NexusApp {
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
             {
-                if conn.files_management.pending_rename.is_some() {
+                let tab = conn.files_management.active_tab();
+                if tab.pending_rename.is_some() {
                     // Rename dialog: focus the name input
                     return operation::focus(Id::from(InputId::RenameName));
-                } else if conn.files_management.creating_directory {
+                } else if tab.creating_directory {
                     // New directory dialog: focus the name input
                     return operation::focus(Id::from(InputId::NewDirectoryName));
                 }

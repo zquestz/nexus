@@ -62,6 +62,8 @@ struct ServerContentContext<'a> {
     proxy: &'a ProxySettings,
     /// Download path for file transfers
     download_path: Option<&'a str>,
+    /// Whether to show hidden files
+    show_hidden: bool,
 }
 
 // ============================================================================
@@ -214,6 +216,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 nickname: config.nickname,
                 proxy: config.proxy,
                 download_path: config.download_path,
+                show_hidden: config.show_hidden,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -663,10 +666,13 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 file_move: ctx.conn.has_permission(PERMISSION_FILE_MOVE),
                 file_copy: ctx.conn.has_permission(PERMISSION_FILE_COPY),
             };
-            stack![chat, files_view(&ctx.conn.files_management, perms)]
-                .width(Fill)
-                .height(Fill)
-                .into()
+            stack![
+                chat,
+                files_view(&ctx.conn.files_management, perms, ctx.show_hidden)
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into()
         }
         ActivePanel::None => chat,
     }
