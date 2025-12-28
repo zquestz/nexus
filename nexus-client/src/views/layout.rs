@@ -1,11 +1,12 @@
 //! Main application layout and toolbar
 
 use super::constants::{
-    PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE, PERMISSION_FILE_INFO, PERMISSION_FILE_LIST,
-    PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT, PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST,
-    PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_FILE_COPY, PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE, PERMISSION_FILE_INFO,
+    PERMISSION_FILE_LIST, PERMISSION_FILE_MOVE, PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT,
+    PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE,
+    PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
-use super::files::files_view;
+use super::files::{FilePermissions, files_view};
 use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
 use super::user_info::{password_change_view, user_info_view};
@@ -653,25 +654,19 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
         .height(Fill)
         .into(),
         ActivePanel::Files => {
-            let has_file_root = ctx.conn.has_permission(PERMISSION_FILE_ROOT);
-            let has_file_create_dir = ctx.conn.has_permission(PERMISSION_FILE_CREATE_DIR);
-            let has_file_info = ctx.conn.has_permission(PERMISSION_FILE_INFO);
-            let has_file_delete = ctx.conn.has_permission(PERMISSION_FILE_DELETE);
-            let has_file_rename = ctx.conn.has_permission(PERMISSION_FILE_RENAME);
-            stack![
-                chat,
-                files_view(
-                    &ctx.conn.files_management,
-                    has_file_root,
-                    has_file_create_dir,
-                    has_file_info,
-                    has_file_delete,
-                    has_file_rename,
-                )
-            ]
-            .width(Fill)
-            .height(Fill)
-            .into()
+            let perms = FilePermissions {
+                file_root: ctx.conn.has_permission(PERMISSION_FILE_ROOT),
+                file_create_dir: ctx.conn.has_permission(PERMISSION_FILE_CREATE_DIR),
+                file_info: ctx.conn.has_permission(PERMISSION_FILE_INFO),
+                file_delete: ctx.conn.has_permission(PERMISSION_FILE_DELETE),
+                file_rename: ctx.conn.has_permission(PERMISSION_FILE_RENAME),
+                file_move: ctx.conn.has_permission(PERMISSION_FILE_MOVE),
+                file_copy: ctx.conn.has_permission(PERMISSION_FILE_COPY),
+            };
+            stack![chat, files_view(&ctx.conn.files_management, perms)]
+                .width(Fill)
+                .height(Fill)
+                .into()
         }
         ActivePanel::None => chat,
     }

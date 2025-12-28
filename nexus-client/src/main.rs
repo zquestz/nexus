@@ -484,6 +484,16 @@ impl NexusApp {
             Message::FileRenameNameChanged(name) => self.handle_file_rename_name_changed(name),
             Message::FileRenameSubmit => self.handle_file_rename_submit(),
             Message::FileRenameCancel => self.handle_file_rename_cancel(),
+            Message::FileCut(path, name, is_dir) => self.handle_file_cut(path, name, is_dir),
+            Message::FileCopyToClipboard(path, name, is_dir) => {
+                self.handle_file_copy_to_clipboard(path, name, is_dir)
+            }
+            Message::FilePaste => self.handle_file_paste(),
+            Message::FilePasteInto(dir) => self.handle_file_paste_into(dir),
+            Message::FileClearClipboard => self.handle_file_clear_clipboard(),
+            Message::FileSortBy(column) => self.handle_file_sort_by(column),
+            Message::FileOverwriteConfirm => self.handle_file_overwrite_confirm(),
+            Message::FileOverwriteCancel => self.handle_file_overwrite_cancel(),
         }
     }
 

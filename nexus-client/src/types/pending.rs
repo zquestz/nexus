@@ -58,6 +58,12 @@ pub enum ResponseRouting {
     FileInfoResult,
     /// File rename result (close dialog on success, show error on failure)
     FileRenameResult,
+    /// File move result (refresh on success, show overwrite dialog on exists, show error on failure)
+    /// Contains the destination directory for correct overwrite retry when pasting into a subfolder
+    FileMoveResult { destination_dir: String },
+    /// File copy result (refresh on success, show overwrite dialog on exists, show error on failure)
+    /// Contains the destination directory for correct overwrite retry when pasting into a subfolder
+    FileCopyResult { destination_dir: String },
 }
 
 /// Extension trait for tracking pending requests

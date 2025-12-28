@@ -18,6 +18,7 @@ button-choose-avatar = Scegli Icona
 button-clear-avatar = Cancella
 button-choose-image = Scegli Immagine
 button-clear-image = Cancella
+button-overwrite = Sovrascrivi
 button-change-password = Cambia Password
 button-browse = Sfoglia
 
@@ -142,8 +143,10 @@ permission-news_edit = Modifica Notizia
 permission-news_delete = Elimina Notizia
 permission-file_create_dir = Directory Crea
 permission-file_delete = Elimina File
+permission-file_copy = Copia File
 permission-file_info = Info File
 permission-file_list = Elenco File
+permission-file_move = Sposta File
 permission-file_rename = Rinomina File
 permission-file_root = Root File
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = Visualizza Home
 tooltip-files-show-hidden = Mostra File Nascosti
 tooltip-files-hide-hidden = Nascondi File Nascosti
 tooltip-files-new-directory = Nuova Cartella
+tooltip-files-paste = Incolla
 tooltip-manage-users = Gestisci Utenti
 tooltip-server-info = Info Server
 tooltip-about = Informazioni
@@ -210,9 +214,16 @@ files-info = Info
 files-rename = Rinomina
 files-rename-title = Rinomina "{ $name }"
 files-rename-placeholder = Nuovo nome
+files-cut = Taglia
+files-copy = Copia
+files-paste = Incolla
+files-clear-clipboard = Cancella
 files-delete = Elimina
 files-delete-confirm-title = Conferma eliminazione
 files-delete-confirm-message = Sei sicuro di voler eliminare "{ $name }"?
+# File Overwrite Dialog
+files-overwrite-title = Il file esiste già
+files-overwrite-message = Un file o una cartella con il nome "{ $name }" esiste già nella destinazione. Vuoi sostituirlo?
 
 # File Info Dialog
 files-info-type = Tipo:

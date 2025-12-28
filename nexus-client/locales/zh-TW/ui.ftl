@@ -18,6 +18,7 @@ button-choose-avatar = 選擇頭像
 button-clear-avatar = 清除
 button-choose-image = 選擇圖片
 button-clear-image = 清除
+button-overwrite = 覆蓋
 button-change-password = 修改密碼
 button-browse = 瀏覽
 
@@ -142,8 +143,10 @@ permission-news_edit = 編輯新聞
 permission-news_delete = 刪除新聞
 permission-file_create_dir = 目錄建立
 permission-file_delete = 刪除檔案
+permission-file_copy = 檔案複製
 permission-file_info = 檔案資訊
 permission-file_list = 檔案列表
+permission-file_move = 檔案移動
 permission-file_rename = 重新命名檔案
 permission-file_root = 檔案根目錄
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = 檢視主目錄
 tooltip-files-show-hidden = 顯示隱藏檔案
 tooltip-files-hide-hidden = 隱藏隱藏檔案
 tooltip-files-new-directory = 新建資料夾
+tooltip-files-paste = 貼上
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -210,9 +214,16 @@ files-info = 資訊
 files-rename = 重新命名
 files-rename-title = 重新命名「{ $name }」
 files-rename-placeholder = 新名稱
+files-cut = 剪下
+files-copy = 複製
+files-paste = 貼上
+files-clear-clipboard = 清除
 files-delete = 刪除
 files-delete-confirm-title = 確認刪除
 files-delete-confirm-message = 您確定要刪除「{ $name }」嗎？
+# File Overwrite Dialog
+files-overwrite-title = 檔案已存在
+files-overwrite-message = 目的地已存在名為「{ $name }」的檔案或資料夾。是否要取代？
 
 # File Info Dialog
 files-info-type = 類型：

@@ -18,6 +18,7 @@ button-choose-avatar = 아바타 선택
 button-clear-avatar = 지우기
 button-choose-image = 이미지 선택
 button-clear-image = 지우기
+button-overwrite = 덮어쓰기
 button-change-password = 비밀번호 변경
 button-browse = 찾아보기
 
@@ -142,8 +143,10 @@ permission-news_edit = 뉴스 편집
 permission-news_delete = 뉴스 삭제
 permission-file_create_dir = 디렉토리 생성
 permission-file_delete = 파일 삭제
+permission-file_copy = 파일 복사
 permission-file_info = 파일 정보
 permission-file_list = 파일 목록
+permission-file_move = 파일 이동
 permission-file_rename = 파일 이름 변경
 permission-file_root = 파일 루트
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = 홈 보기
 tooltip-files-show-hidden = 숨김 파일 표시
 tooltip-files-hide-hidden = 숨김 파일 숨기기
 tooltip-files-new-directory = 새 폴더
+tooltip-files-paste = 붙여넣기
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -210,9 +214,16 @@ files-info = 정보
 files-rename = 이름 변경
 files-rename-title = "{ $name }" 이름 변경
 files-rename-placeholder = 새 이름
+files-cut = 잘라내기
+files-copy = 복사
+files-paste = 붙여넣기
+files-clear-clipboard = 지우기
 files-delete = 삭제
 files-delete-confirm-title = 삭제 확인
 files-delete-confirm-message = "{ $name }"을(를) 삭제하시겠습니까?
+# File Overwrite Dialog
+files-overwrite-title = 파일이 이미 존재합니다
+files-overwrite-message = "{ $name }" 이름의 파일 또는 폴더가 대상 위치에 이미 존재합니다. 교체하시겠습니까?
 
 # File Info Dialog
 files-info-type = 유형:

@@ -18,6 +18,7 @@ button-choose-avatar = Avatar auswählen
 button-clear-avatar = Löschen
 button-choose-image = Bild auswählen
 button-clear-image = Löschen
+button-overwrite = Überschreiben
 button-change-password = Passwort ändern
 button-browse = Durchsuchen
 
@@ -142,8 +143,10 @@ permission-news_edit = Neuigkeiten Bearbeiten
 permission-news_delete = Neuigkeiten Löschen
 permission-file_create_dir = Verzeichniserstellung
 permission-file_delete = Datei Löschen
+permission-file_copy = Datei Kopieren
 permission-file_info = Datei Info
 permission-file_list = Dateiliste
+permission-file_move = Datei Verschieben
 permission-file_rename = Datei Umbenennen
 permission-file_root = Dateistamm
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = Benutzerverzeichnis anzeigen
 tooltip-files-show-hidden = Versteckte Dateien anzeigen
 tooltip-files-hide-hidden = Versteckte Dateien ausblenden
 tooltip-files-new-directory = Neues Verzeichnis
+tooltip-files-paste = Einfügen
 tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
@@ -210,9 +214,16 @@ files-info = Info
 files-rename = Umbenennen
 files-rename-title = "{ $name }" umbenennen
 files-rename-placeholder = Neuer Name
+files-cut = Ausschneiden
+files-copy = Kopieren
+files-paste = Einfügen
+files-clear-clipboard = Leeren
 files-delete = Löschen
 files-delete-confirm-title = Löschen bestätigen
 files-delete-confirm-message = Möchten Sie "{ $name }" wirklich löschen?
+# File Overwrite Dialog
+files-overwrite-title = Datei existiert bereits
+files-overwrite-message = Eine Datei oder ein Ordner mit dem Namen "{ $name }" existiert bereits am Zielort. Möchten Sie sie ersetzen?
 
 # File Info Dialog
 files-info-type = Typ:

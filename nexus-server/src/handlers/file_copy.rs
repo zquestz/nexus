@@ -4,6 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
+use nexus_common::FileErrorKind;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 
@@ -77,7 +78,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some("permission".to_string()),
+            error_kind: Some(FileErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -91,7 +92,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some("permission".to_string()),
+            error_kind: Some(FileErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -105,7 +106,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some("permission".to_string()),
+            error_kind: Some(FileErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -123,7 +124,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(error_msg),
-            error_kind: Some("invalid_path".to_string()),
+            error_kind: Some(FileErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -141,7 +142,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(error_msg),
-            error_kind: Some("invalid_path".to_string()),
+            error_kind: Some(FileErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -159,7 +160,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some("not_found".to_string()),
+                error_kind: Some(FileErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -178,7 +179,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some("not_found".to_string()),
+                error_kind: Some(FileErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -192,7 +193,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some("invalid_path".to_string()),
+                error_kind: Some(FileErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -206,7 +207,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some("invalid_path".to_string()),
+                error_kind: Some(FileErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -229,7 +230,7 @@ where
                     let response = ServerMessage::FileCopyResponse {
                         success: false,
                         error: Some(err_file_not_found(ctx.locale)),
-                        error_kind: Some("not_found".to_string()),
+                        error_kind: Some(FileErrorKind::NotFound.into()),
                     };
                     return ctx.send_message(&response).await;
                 }
@@ -239,7 +240,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some("not_found".to_string()),
+                error_kind: Some(FileErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -247,7 +248,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some("invalid_path".to_string()),
+                error_kind: Some(FileErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -258,7 +259,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some("permission".to_string()),
+            error_kind: Some(FileErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -270,7 +271,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some("not_found".to_string()),
+                error_kind: Some(FileErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -281,7 +282,7 @@ where
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_destination_not_directory(ctx.locale)),
-            error_kind: Some("invalid_path".to_string()),
+            error_kind: Some(FileErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -293,7 +294,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some("invalid_path".to_string()),
+                error_kind: Some(FileErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -302,12 +303,22 @@ where
     // Build target path (destination directory + source filename)
     let target_path = resolved_dest_dir.join(source_filename);
 
+    // Check if copying file to itself (no-op success)
+    if resolved_source == target_path {
+        let response = ServerMessage::FileCopyResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
     // Check if source is a directory and prevent copying into itself
     if resolved_source.is_dir() && is_subpath(&resolved_dest_dir, &resolved_source) {
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_cannot_copy_into_itself(ctx.locale)),
-            error_kind: Some("invalid_path".to_string()),
+            error_kind: Some(FileErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -318,7 +329,7 @@ where
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_destination_exists(ctx.locale)),
-                error_kind: Some("exists".to_string()),
+                error_kind: Some(FileErrorKind::Exists.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -1240,12 +1251,13 @@ mod tests {
         match response {
             ServerMessage::FileCopyResponse {
                 success,
+                error,
                 error_kind,
-                ..
             } => {
-                // Should fail because target already exists (same file)
-                assert!(!success);
-                assert_eq!(error_kind, Some("exists".to_string()));
+                // Copying file to itself is a no-op success
+                assert!(success);
+                assert!(error.is_none());
+                assert!(error_kind.is_none());
             }
             _ => panic!("Expected FileCopyResponse"),
         }

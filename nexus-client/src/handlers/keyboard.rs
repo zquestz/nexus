@@ -204,6 +204,13 @@ impl NexusApp {
                         return self.update(Message::CancelNews);
                     }
                     ActivePanel::Files => {
+                        // If overwrite confirmation is showing, cancel it
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get(&conn_id)
+                            && conn.files_management.pending_overwrite.is_some()
+                        {
+                            return self.update(Message::FileOverwriteCancel);
+                        }
                         // If file info dialog is showing, close it
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
@@ -231,6 +238,13 @@ impl NexusApp {
                             && conn.files_management.creating_directory
                         {
                             return self.update(Message::FileNewDirectoryCancel);
+                        }
+                        // If clipboard has content, clear it
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get(&conn_id)
+                            && conn.files_management.clipboard.is_some()
+                        {
+                            return self.update(Message::FileClearClipboard);
                         }
                         // Otherwise close panel
                         return self.update(Message::CancelFiles);

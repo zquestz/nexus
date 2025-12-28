@@ -19,6 +19,7 @@ button-choose-avatar = Avatar Kiezen
 button-clear-avatar = Wissen
 button-choose-image = Afbeelding Kiezen
 button-clear-image = Wissen
+button-overwrite = Overschrijven
 button-change-password = Wachtwoord Wijzigen
 button-browse = Bladeren
 
@@ -143,8 +144,10 @@ permission-news_edit = Nieuws Bewerken
 permission-news_delete = Nieuws Verwijderen
 permission-file_create_dir = Directory Aanmaken
 permission-file_delete = Bestand Verwijderen
+permission-file_copy = Bestand Kopiëren
 permission-file_info = Bestand Info
 permission-file_list = Bestandslijst
+permission-file_move = Bestand Verplaatsen
 permission-file_rename = Bestand Hernoemen
 permission-file_root = Bestandsroot
 
@@ -165,6 +168,7 @@ tooltip-files-view-home = Startmap Weergeven
 tooltip-files-show-hidden = Verborgen Bestanden Tonen
 tooltip-files-hide-hidden = Verborgen Bestanden Verbergen
 tooltip-files-new-directory = Nieuwe Map
+tooltip-files-paste = Plakken
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -211,9 +215,16 @@ files-info = Info
 files-rename = Hernoemen
 files-rename-title = "{ $name }" hernoemen
 files-rename-placeholder = Nieuwe naam
+files-cut = Knippen
+files-copy = Kopiëren
+files-paste = Plakken
+files-clear-clipboard = Wissen
 files-delete = Verwijderen
 files-delete-confirm-title = Verwijderen bevestigen
 files-delete-confirm-message = Weet u zeker dat u "{ $name }" wilt verwijderen?
+# File Overwrite Dialog
+files-overwrite-title = Bestand bestaat al
+files-overwrite-message = Een bestand of map met de naam "{ $name }" bestaat al op de bestemming. Wilt u het vervangen?
 
 # File Info Dialog
 files-info-type = Type:

@@ -18,6 +18,7 @@ button-choose-avatar = 选择头像
 button-clear-avatar = 清除
 button-choose-image = 选择图片
 button-clear-image = 清除
+button-overwrite = 覆盖
 button-change-password = 修改密码
 button-browse = 浏览
 
@@ -142,8 +143,10 @@ permission-news_edit = 编辑新闻
 permission-news_delete = 删除新闻
 permission-file_create_dir = 目录创建
 permission-file_delete = 删除文件
+permission-file_copy = 文件复制
 permission-file_info = 文件信息
 permission-file_list = 文件列表
+permission-file_move = 文件移动
 permission-file_rename = 重命名文件
 permission-file_root = 文件根目录
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = 查看主目录
 tooltip-files-show-hidden = 显示隐藏文件
 tooltip-files-hide-hidden = 隐藏隐藏文件
 tooltip-files-new-directory = 新建文件夹
+tooltip-files-paste = 粘贴
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -210,9 +214,16 @@ files-info = 信息
 files-rename = 重命名
 files-rename-title = 重命名"{ $name }"
 files-rename-placeholder = 新名称
+files-cut = 剪切
+files-copy = 复制
+files-paste = 粘贴
+files-clear-clipboard = 清除
 files-delete = 删除
 files-delete-confirm-title = 确认删除
 files-delete-confirm-message = 您确定要删除"{ $name }"吗？
+# File Overwrite Dialog
+files-overwrite-title = 文件已存在
+files-overwrite-message = 目标位置已存在名为"{ $name }"的文件或文件夹。是否要替换？
 
 # File Info Dialog
 files-info-type = 类型：

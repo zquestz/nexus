@@ -18,6 +18,7 @@ button-choose-avatar = Choose Avatar
 button-clear-avatar = Clear
 button-choose-image = Choose Image
 button-clear-image = Clear
+button-overwrite = Overwrite
 button-change-password = Change Password
 button-browse = Browse...
 
@@ -147,8 +148,10 @@ permission-news_edit = News Edit
 permission-news_delete = News Delete
 permission-file_create_dir = Directory Create
 permission-file_delete = File Delete
+permission-file_copy = File Copy
 permission-file_info = File Info
 permission-file_list = File List
+permission-file_move = File Move
 permission-file_rename = File Rename
 permission-file_root = File Root
 
@@ -169,6 +172,7 @@ tooltip-files-view-home = View Home
 tooltip-files-show-hidden = Show Hidden Files
 tooltip-files-hide-hidden = Hide Hidden Files
 tooltip-files-new-directory = New Directory
+tooltip-files-paste = Paste
 tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
@@ -215,9 +219,17 @@ files-info = Info
 files-rename = Rename
 files-rename-title = Rename "{ $name }"
 files-rename-placeholder = New name
+files-cut = Cut
+files-copy = Copy
+files-paste = Paste
+files-clear-clipboard = Clear
 files-delete = Delete
 files-delete-confirm-title = Confirm Delete
 files-delete-confirm-message = Are you sure you want to delete "{ $name }"?
+
+# File Overwrite Dialog
+files-overwrite-title = File Already Exists
+files-overwrite-message = A file or folder named "{ $name }" already exists at the destination. Do you want to replace it?
 
 # File Info Dialog
 files-info-type = Type:

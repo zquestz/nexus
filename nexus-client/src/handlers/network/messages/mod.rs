@@ -291,6 +291,30 @@ impl NexusApp {
                 self.handle_file_rename_response(connection_id, message_id, success, error)
             }
 
+            ServerMessage::FileMoveResponse {
+                success,
+                error,
+                error_kind,
+            } => self.handle_file_move_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                error_kind,
+            ),
+
+            ServerMessage::FileCopyResponse {
+                success,
+                error,
+                error_kind,
+            } => self.handle_file_copy_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                error_kind,
+            ),
+
             // Catch-all for any unhandled message types
             _ => Task::none(),
         }

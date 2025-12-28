@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// ea6955799df5f9f0b8e12db46c2138ad7eb0772e7072b4e30f78347b1cfb1ed6
+// 7e3ebb8d005391adcf3bd80b0d126fb325eb29d6ddc71b287e9d050a0f5b2195
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -24,6 +24,10 @@ pub fn cog<'a>() -> Text<'a> {
 
 pub fn collapse_left<'a>() -> Text<'a> {
     icon("\u{F191}")
+}
+
+pub fn down_dir<'a>() -> Text<'a> {
+    icon("\u{25BE}")
 }
 
 pub fn edit<'a>() -> Text<'a> {
@@ -128,6 +132,10 @@ pub fn message<'a>() -> Text<'a> {
 
 pub fn newspaper<'a>() -> Text<'a> {
     icon("\u{F1EA}")
+}
+
+pub fn paste<'a>() -> Text<'a> {
+    icon("\u{F0EA}")
 }
 
 pub fn plus<'a>() -> Text<'a> {

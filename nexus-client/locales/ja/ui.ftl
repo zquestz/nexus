@@ -18,6 +18,7 @@ button-choose-avatar = アバターを選択
 button-clear-avatar = クリア
 button-choose-image = 画像を選択
 button-clear-image = クリア
+button-overwrite = 上書き
 button-change-password = パスワードを変更
 button-browse = 参照
 
@@ -142,8 +143,10 @@ permission-news_edit = ニュース編集
 permission-news_delete = ニュース削除
 permission-file_create_dir = ディレクトリ作成
 permission-file_delete = ファイル削除
+permission-file_copy = ファイルコピー
 permission-file_info = ファイル情報
 permission-file_list = ファイル一覧
+permission-file_move = ファイル移動
 permission-file_rename = ファイル名変更
 permission-file_root = ファイルルート
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = ホームを表示
 tooltip-files-show-hidden = 隠しファイルを表示
 tooltip-files-hide-hidden = 隠しファイルを非表示
 tooltip-files-new-directory = 新規フォルダ
+tooltip-files-paste = 貼り付け
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -210,9 +214,16 @@ files-info = 情報
 files-rename = 名前を変更
 files-rename-title = 「{ $name }」の名前を変更
 files-rename-placeholder = 新しい名前
+files-cut = 切り取り
+files-copy = コピー
+files-paste = 貼り付け
+files-clear-clipboard = クリア
 files-delete = 削除
 files-delete-confirm-title = 削除の確認
 files-delete-confirm-message = "{ $name }" を削除してもよろしいですか？
+# File Overwrite Dialog
+files-overwrite-title = ファイルが既に存在します
+files-overwrite-message = "{ $name }" という名前のファイルまたはフォルダが宛先に既に存在します。置き換えますか？
 
 # File Info Dialog
 files-info-type = 種類：

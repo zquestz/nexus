@@ -8,7 +8,8 @@ use nexus_common::validators::{self, DirNameError};
 use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{
-    ActivePanel, FilesManagementState, InputId, Message, PendingRequests, ResponseRouting,
+    ActivePanel, ClipboardItem, ClipboardOperation, FilesManagementState, InputId, Message,
+    PendingRequests, ResponseRouting,
 };
 use crate::views::files::build_navigate_path;
 
@@ -563,6 +564,268 @@ impl NexusApp {
         conn.files_management.pending_rename = None;
         conn.files_management.rename_name = String::new();
         conn.files_management.rename_error = None;
+
+        Task::none()
+    }
+
+    // ==================== Clipboard Operations ====================
+
+    /// Handle cut action from context menu
+    ///
+    /// Stores the file/directory in clipboard for later move operation.
+    pub fn handle_file_cut(
+        &mut self,
+        path: String,
+        name: String,
+        is_directory: bool,
+    ) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.clipboard = Some(ClipboardItem {
+            path,
+            name,
+            is_directory,
+            operation: ClipboardOperation::Cut,
+            root: conn.files_management.viewing_root,
+        });
+
+        Task::none()
+    }
+
+    /// Handle copy action from context menu
+    ///
+    /// Stores the file/directory in clipboard for later copy operation.
+    pub fn handle_file_copy_to_clipboard(
+        &mut self,
+        path: String,
+        name: String,
+        is_directory: bool,
+    ) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.clipboard = Some(ClipboardItem {
+            path,
+            name,
+            is_directory,
+            operation: ClipboardOperation::Copy,
+            root: conn.files_management.viewing_root,
+        });
+
+        Task::none()
+    }
+
+    /// Handle paste action (to current directory)
+    ///
+    /// Sends FileMove or FileCopy request based on clipboard operation.
+    pub fn handle_file_paste(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let Some(clipboard) = conn.files_management.clipboard.clone() else {
+            return Task::none();
+        };
+
+        let destination_dir = conn.files_management.current_path.clone();
+        let source_root = clipboard.root;
+        let destination_root = conn.files_management.viewing_root;
+
+        let message = match clipboard.operation {
+            ClipboardOperation::Cut => ClientMessage::FileMove {
+                source_path: clipboard.path,
+                destination_dir: destination_dir.clone(),
+                overwrite: false,
+                source_root,
+                destination_root,
+            },
+            ClipboardOperation::Copy => ClientMessage::FileCopy {
+                source_path: clipboard.path,
+                destination_dir: destination_dir.clone(),
+                overwrite: false,
+                source_root,
+                destination_root,
+            },
+        };
+
+        let Ok(message_id) = conn.send(message) else {
+            return Task::none();
+        };
+
+        let routing = match clipboard.operation {
+            ClipboardOperation::Cut => ResponseRouting::FileMoveResult { destination_dir },
+            ClipboardOperation::Copy => ResponseRouting::FileCopyResult { destination_dir },
+        };
+        conn.pending_requests.track(message_id, routing);
+
+        Task::none()
+    }
+
+    /// Handle paste into specific directory (from context menu on folder)
+    ///
+    /// Sends FileMove or FileCopy request to the specified directory.
+    pub fn handle_file_paste_into(&mut self, destination_dir: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let Some(clipboard) = conn.files_management.clipboard.clone() else {
+            return Task::none();
+        };
+
+        let source_root = clipboard.root;
+        let destination_root = conn.files_management.viewing_root;
+
+        let message = match clipboard.operation {
+            ClipboardOperation::Cut => ClientMessage::FileMove {
+                source_path: clipboard.path,
+                destination_dir: destination_dir.clone(),
+                overwrite: false,
+                source_root,
+                destination_root,
+            },
+            ClipboardOperation::Copy => ClientMessage::FileCopy {
+                source_path: clipboard.path,
+                destination_dir: destination_dir.clone(),
+                overwrite: false,
+                source_root,
+                destination_root,
+            },
+        };
+
+        let Ok(message_id) = conn.send(message) else {
+            return Task::none();
+        };
+
+        let routing = match clipboard.operation {
+            ClipboardOperation::Cut => ResponseRouting::FileMoveResult { destination_dir },
+            ClipboardOperation::Copy => ResponseRouting::FileCopyResult { destination_dir },
+        };
+        conn.pending_requests.track(message_id, routing);
+
+        Task::none()
+    }
+
+    /// Handle clear clipboard action (Escape key)
+    pub fn handle_file_clear_clipboard(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.clipboard = None;
+
+        Task::none()
+    }
+
+    /// Handle overwrite confirm button in dialog
+    ///
+    /// Resends the move/copy request with overwrite: true.
+    pub fn handle_file_overwrite_confirm(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let Some(pending) = conn.files_management.pending_overwrite.take() else {
+            return Task::none();
+        };
+
+        // Clone destination_dir for routing before moving into message
+        let destination_dir_for_routing = pending.destination_dir.clone();
+
+        let message = if pending.is_move {
+            ClientMessage::FileMove {
+                source_path: pending.source_path,
+                destination_dir: pending.destination_dir,
+                overwrite: true,
+                source_root: pending.source_root,
+                destination_root: pending.destination_root,
+            }
+        } else {
+            ClientMessage::FileCopy {
+                source_path: pending.source_path,
+                destination_dir: pending.destination_dir,
+                overwrite: true,
+                source_root: pending.source_root,
+                destination_root: pending.destination_root,
+            }
+        };
+
+        let Ok(message_id) = conn.send(message) else {
+            return Task::none();
+        };
+
+        let routing = if pending.is_move {
+            ResponseRouting::FileMoveResult {
+                destination_dir: destination_dir_for_routing,
+            }
+        } else {
+            ResponseRouting::FileCopyResult {
+                destination_dir: destination_dir_for_routing,
+            }
+        };
+        conn.pending_requests.track(message_id, routing);
+
+        Task::none()
+    }
+
+    /// Handle overwrite cancel button in dialog
+    pub fn handle_file_overwrite_cancel(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.files_management.pending_overwrite = None;
+
+        Task::none()
+    }
+
+    /// Handle sort by column click
+    ///
+    /// Clicking the active column toggles ascending/descending.
+    /// Clicking a different column switches to that column (ascending).
+    pub fn handle_file_sort_by(&mut self, column: crate::types::FileSortColumn) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        if conn.files_management.sort_column == column {
+            // Toggle direction
+            conn.files_management.sort_ascending = !conn.files_management.sort_ascending;
+        } else {
+            // Switch to new column, ascending
+            conn.files_management.sort_column = column;
+            conn.files_management.sort_ascending = true;
+        }
+
+        // Rebuild sorted entries cache
+        conn.files_management.update_sorted_entries();
 
         Task::none()
     }

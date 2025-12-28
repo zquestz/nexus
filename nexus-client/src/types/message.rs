@@ -5,7 +5,7 @@ use iced::widget::{markdown, text_editor};
 
 use nexus_common::framing::MessageId;
 
-use super::form::SettingsTab;
+use super::form::{FileSortColumn, SettingsTab};
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::image::ImagePickerError;
 
@@ -342,6 +342,22 @@ pub enum Message {
     FileRenameSubmit,
     /// Files: Rename cancel button pressed (close dialog)
     FileRenameCancel,
+    /// Files: Cut clicked from context menu (path, name, is_directory)
+    FileCut(String, String, bool),
+    /// Files: Copy clicked from context menu (path, name, is_directory)
+    FileCopyToClipboard(String, String, bool),
+    /// Files: Paste to current directory
+    FilePaste,
+    /// Files: Paste into specific directory (from context menu on folder)
+    FilePasteInto(String),
+    /// Files: Clear clipboard (Escape key or context menu)
+    FileClearClipboard,
+    /// Files: Sort by column clicked
+    FileSortBy(FileSortColumn),
+    /// Files: Overwrite confirm button pressed in dialog
+    FileOverwriteConfirm,
+    /// Files: Overwrite cancel button pressed in dialog
+    FileOverwriteCancel,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

@@ -17,13 +17,27 @@ use crate::style::{
     error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
-use crate::types::{FilesManagementState, InputId, Message, ScrollableId};
+use crate::types::{
+    ClipboardOperation, FileSortColumn, FilesManagementState, InputId, Message, ScrollableId,
+};
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
 use iced::{Center, Element, Fill, Right};
 use iced_aw::ContextMenu;
 use nexus_common::protocol::{FileEntry, FileInfoDetails};
+
+/// File permission flags for view rendering
+#[derive(Debug, Clone, Copy)]
+pub struct FilePermissions {
+    pub file_root: bool,
+    pub file_create_dir: bool,
+    pub file_info: bool,
+    pub file_delete: bool,
+    pub file_rename: bool,
+    pub file_move: bool,
+    pub file_copy: bool,
+}
 
 // ============================================================================
 // Helper Functions
@@ -246,6 +260,7 @@ fn toolbar<'a>(
     viewing_root: bool,
     show_hidden: bool,
     can_create_dir: bool,
+    has_clipboard: bool,
     is_loading: bool,
 ) -> Element<'a, Message> {
     // Home button - tooltip changes based on viewing mode
@@ -386,6 +401,31 @@ fn toolbar<'a>(
 
     toolbar_row = toolbar_row.push(new_dir_button);
 
+    // Paste button - enabled if clipboard has content and not loading
+    let paste_button: Element<'a, Message> = if has_clipboard && !is_loading {
+        tooltip(
+            button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FilePaste),
+            container(shaped_text(t("tooltip-files-paste")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+        .into()
+    } else {
+        // Disabled paste button
+        button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
+            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            .style(disabled_icon_button_style)
+            .into()
+    };
+
+    toolbar_row = toolbar_row.push(paste_button);
+
     // Up button - last
     toolbar_row = toolbar_row.push(up_button);
 
@@ -446,6 +486,50 @@ fn delete_confirm_dialog<'a>(path: &str, error: Option<&'a String>) -> Element<'
         .spacing(ELEMENT_SPACING)
         .padding(FORM_PADDING)
         .max_width(FORM_MAX_WIDTH);
+
+    scrollable_panel(form)
+}
+
+/// Build the overwrite confirmation dialog
+fn overwrite_confirm_dialog<'a>(name: &str, has_file_delete: bool) -> Element<'a, Message> {
+    let title = panel_title(t("files-overwrite-title"));
+
+    let display_name = FilesManagementState::display_name(name);
+    let message = crate::i18n::t_args("files-overwrite-message", &[("name", &display_name)]);
+
+    // Build buttons based on permissions
+    let mut buttons_row = row![Space::new().width(Fill),].spacing(ELEMENT_SPACING);
+
+    buttons_row = buttons_row.push(
+        button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+            .on_press(Message::FileOverwriteCancel)
+            .padding(BUTTON_PADDING)
+            .style(btn::secondary),
+    );
+
+    // Only show overwrite button if user has file_delete permission
+    if has_file_delete {
+        buttons_row = buttons_row.push(
+            button(shaped_text(t("button-overwrite")).size(TEXT_SIZE))
+                .on_press(Message::FileOverwriteConfirm)
+                .padding(BUTTON_PADDING)
+                .style(btn::danger),
+        );
+    }
+
+    let form = column![
+        title,
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        shaped_text_wrapped(&message)
+            .size(TEXT_SIZE)
+            .width(Fill)
+            .align_x(Center),
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        buttons_row,
+    ]
+    .spacing(ELEMENT_SPACING)
+    .padding(FORM_PADDING)
+    .max_width(FORM_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -700,159 +784,339 @@ fn rename_dialog<'a>(path: &str, name: &str, error: Option<&String>) -> Element<
 }
 
 /// Build the file table
+///
+/// Note: entries should already be sorted before calling this function.
+/// Size for sort indicator icons in column headers
+const SORT_ICON_SIZE: f32 = 12.0;
+
 fn file_table<'a>(
     entries: &'a [FileEntry],
     current_path: &'a str,
-    has_file_info: bool,
-    has_file_delete: bool,
-    has_file_rename: bool,
+    perms: FilePermissions,
+    clipboard: &'a Option<crate::types::ClipboardItem>,
+    sort_column: FileSortColumn,
+    sort_ascending: bool,
 ) -> Element<'a, Message> {
-    // Name column with icon
-    let name_column = table::column(
+    // Name column header (clickable)
+    let name_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Name {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-name"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
         shaped_text(t("files-column-name"))
             .size(TEXT_SIZE)
-            .style(muted_text_style),
-        move |entry: &FileEntry| {
-            let is_directory = entry.dir_type.is_some();
-            let display_name = FilesManagementState::display_name(&entry.name);
+            .style(muted_text_style)
+            .into()
+    };
+    let name_header: Element<'_, Message> = button(name_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSortBy(FileSortColumn::Name))
+        .into();
 
-            // Icon based on type (folder or file extension)
-            let icon_element: Element<'_, Message> = if is_directory {
-                icon::folder().size(FILE_LIST_ICON_SIZE).into()
-            } else {
-                file_icon_for_extension(&entry.name)
-                    .size(FILE_LIST_ICON_SIZE)
-                    .into()
-            };
+    // Name column with icon
+    let name_column = table::column(name_header, |entry: &FileEntry| {
+        let is_directory = entry.dir_type.is_some();
+        let display_name = FilesManagementState::display_name(&entry.name);
 
-            // Name with icon
-            let name_content: Element<'_, Message> = row![
-                icon_element,
-                Space::new().width(FILE_LIST_ICON_SPACING),
-                shaped_text(display_name)
-                    .size(TEXT_SIZE)
-                    .wrapping(Wrapping::WordOrGlyph),
-            ]
-            .align_y(Center)
-            .into();
+        // Check if this entry is cut (pending move) - show muted
+        let entry_path = build_navigate_path(current_path, &entry.name);
+        let is_cut = clipboard
+            .as_ref()
+            .is_some_and(|c| c.operation == ClipboardOperation::Cut && c.path == entry_path);
 
-            // For directories, make the row clickable
-            let row_element: Element<'_, Message> = if is_directory {
-                let navigate_path = build_navigate_path(current_path, &entry.name);
-                button(name_content)
-                    .padding(NO_SPACING)
-                    .style(transparent_icon_button_style)
-                    .on_press(Message::FileNavigate(navigate_path))
-                    .into()
-            } else {
-                name_content
-            };
-
-            // Wrap in context menu if user has any file action permission
-            if has_file_info || has_file_delete || has_file_rename {
-                // Build the full path for this entry
-                let delete_path = build_navigate_path(current_path, &entry.name);
-                let delete_path_clone = delete_path.clone();
-                let info_name = entry.name.clone();
-                let rename_name = entry.name.clone();
-
-                ContextMenu::new(row_element, move || {
-                    let mut menu_items: Vec<Element<'_, Message>> = vec![];
-
-                    // Info (if permission)
-                    if has_file_info {
-                        menu_items.push(
-                            button(shaped_text(t("files-info")).size(TEXT_SIZE))
-                                .padding(CONTEXT_MENU_ITEM_PADDING)
-                                .width(Fill)
-                                .style(context_menu_button_style)
-                                .on_press(Message::FileInfoClicked(info_name.clone()))
-                                .into(),
-                        );
-                    }
-
-                    // Rename (if permission)
-                    if has_file_rename {
-                        menu_items.push(
-                            button(shaped_text(t("files-rename")).size(TEXT_SIZE))
-                                .padding(CONTEXT_MENU_ITEM_PADDING)
-                                .width(Fill)
-                                .style(context_menu_button_style)
-                                .on_press(Message::FileRenameClicked(rename_name.clone()))
-                                .into(),
-                        );
-                    }
-
-                    // Delete (if permission) - with separator before destructive action
-                    if has_file_delete {
-                        // Only add separator if there are items above it
-                        if has_file_info || has_file_rename {
-                            menu_items.push(
-                                container(Space::new())
-                                    .width(Fill)
-                                    .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
-                                    .style(separator_style)
-                                    .into(),
-                            );
-                        }
-                        menu_items.push(
-                            button(shaped_text(t("files-delete")).size(TEXT_SIZE))
-                                .padding(CONTEXT_MENU_ITEM_PADDING)
-                                .width(Fill)
-                                .style(context_menu_item_danger_style)
-                                .on_press(Message::FileDeleteClicked(delete_path_clone.clone()))
-                                .into(),
-                        );
-                    }
-
-                    container(
-                        iced::widget::Column::with_children(menu_items)
-                            .spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
-                    )
-                    .width(CONTEXT_MENU_MIN_WIDTH)
-                    .padding(CONTEXT_MENU_PADDING)
-                    .style(context_menu_container_style)
-                    .into()
-                })
+        // Icon based on type (folder or file extension)
+        let icon_element: Element<'_, Message> = if is_directory {
+            icon::folder().size(FILE_LIST_ICON_SIZE).into()
+        } else {
+            file_icon_for_extension(&entry.name)
+                .size(FILE_LIST_ICON_SIZE)
                 .into()
-            } else {
-                row_element
-            }
-        },
-    )
+        };
+
+        // Name with icon - use muted style if cut
+        let name_text = if is_cut {
+            shaped_text(display_name)
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::WordOrGlyph)
+                .style(muted_text_style)
+        } else {
+            shaped_text(display_name)
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::WordOrGlyph)
+        };
+
+        let name_content: Element<'_, Message> = row![
+            icon_element,
+            Space::new().width(FILE_LIST_ICON_SPACING),
+            name_text,
+        ]
+        .align_y(Center)
+        .into();
+
+        // For directories, make the row clickable
+        let row_element: Element<'_, Message> = if is_directory {
+            let navigate_path = build_navigate_path(current_path, &entry.name);
+            button(name_content)
+                .padding(NO_SPACING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FileNavigate(navigate_path))
+                .into()
+        } else {
+            name_content
+        };
+
+        // Wrap in context menu if user has any file action permission
+        let has_any_permission = perms.file_info
+            || perms.file_delete
+            || perms.file_rename
+            || perms.file_move
+            || perms.file_copy;
+        let has_clipboard = clipboard.is_some();
+
+        if has_any_permission {
+            // Build the full path for this entry
+            let entry_path = build_navigate_path(current_path, &entry.name);
+            let entry_name = entry.name.clone();
+            let entry_is_dir = is_directory;
+
+            ContextMenu::new(row_element, move || {
+                let mut menu_items: Vec<Element<'_, Message>> = vec![];
+                let mut has_clipboard_section = false;
+                let mut has_normal_section = false;
+
+                // === Section 1: Clipboard actions ===
+
+                // Cut (if permission)
+                if perms.file_move {
+                    menu_items.push(
+                        button(shaped_text(t("files-cut")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileCut(
+                                entry_path.clone(),
+                                entry_name.clone(),
+                                entry_is_dir,
+                            ))
+                            .into(),
+                    );
+                    has_clipboard_section = true;
+                }
+
+                // Copy (if permission)
+                if perms.file_copy {
+                    menu_items.push(
+                        button(shaped_text(t("files-copy")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileCopyToClipboard(
+                                entry_path.clone(),
+                                entry_name.clone(),
+                                entry_is_dir,
+                            ))
+                            .into(),
+                    );
+                    has_clipboard_section = true;
+                }
+
+                // Paste (only on directories, when clipboard has content)
+                if entry_is_dir && has_clipboard && (perms.file_move || perms.file_copy) {
+                    menu_items.push(
+                        button(shaped_text(t("files-paste")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FilePasteInto(entry_path.clone()))
+                            .into(),
+                    );
+                    has_clipboard_section = true;
+                }
+
+                // Clear clipboard (when clipboard has content)
+                if has_clipboard {
+                    menu_items.push(
+                        button(shaped_text(t("files-clear-clipboard")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileClearClipboard)
+                            .into(),
+                    );
+                    has_clipboard_section = true;
+                }
+
+                // === Section 2: Normal actions ===
+
+                // Separator before normal actions (if we had clipboard actions)
+                if has_clipboard_section && (perms.file_info || perms.file_rename) {
+                    menu_items.push(
+                        container(Space::new())
+                            .width(Fill)
+                            .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                            .style(separator_style)
+                            .into(),
+                    );
+                }
+
+                // Info (if permission)
+                if perms.file_info {
+                    menu_items.push(
+                        button(shaped_text(t("files-info")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileInfoClicked(entry_name.clone()))
+                            .into(),
+                    );
+                    has_normal_section = true;
+                }
+
+                // Rename (if permission)
+                if perms.file_rename {
+                    menu_items.push(
+                        button(shaped_text(t("files-rename")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileRenameClicked(entry_name.clone()))
+                            .into(),
+                    );
+                    has_normal_section = true;
+                }
+
+                // === Section 3: Destructive actions ===
+
+                // Delete (if permission) - with separator before destructive action
+                if perms.file_delete {
+                    // Only add separator if there are items above it
+                    if has_clipboard_section || has_normal_section {
+                        menu_items.push(
+                            container(Space::new())
+                                .width(Fill)
+                                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                                .style(separator_style)
+                                .into(),
+                        );
+                    }
+                    menu_items.push(
+                        button(shaped_text(t("files-delete")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_item_danger_style)
+                            .on_press(Message::FileDeleteClicked(entry_path.clone()))
+                            .into(),
+                    );
+                }
+
+                container(
+                    iced::widget::Column::with_children(menu_items)
+                        .spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
+                )
+                .width(CONTEXT_MENU_MIN_WIDTH)
+                .padding(CONTEXT_MENU_PADDING)
+                .style(context_menu_container_style)
+                .into()
+            })
+            .into()
+        } else {
+            row_element
+        }
+    })
     .width(Fill);
 
-    // Size column
-    let size_column = table::column(
+    // Size column header (clickable)
+    let size_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Size {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-size"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
         shaped_text(t("files-column-size"))
             .size(TEXT_SIZE)
-            .style(muted_text_style),
-        |entry: &FileEntry| {
-            let size_text = if entry.dir_type.is_some() {
-                String::new()
-            } else {
-                format_size(entry.size)
-            };
-            shaped_text(size_text)
-                .size(TEXT_SIZE)
-                .style(muted_text_style)
-        },
-    )
+            .style(muted_text_style)
+            .into()
+    };
+    let size_header: Element<'_, Message> = button(size_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSortBy(FileSortColumn::Size))
+        .into();
+
+    // Size column
+    let size_column = table::column(size_header, |entry: &FileEntry| {
+        let size_text = if entry.dir_type.is_some() {
+            String::new()
+        } else {
+            format_size(entry.size)
+        };
+        shaped_text(size_text)
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+    })
     .width(FILE_SIZE_COLUMN_WIDTH)
     .align_x(Right);
 
-    // Modified column
-    let modified_column = table::column(
+    // Modified column header (clickable)
+    let modified_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Modified {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-modified"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
         shaped_text(t("files-column-modified"))
             .size(TEXT_SIZE)
-            .style(muted_text_style),
-        |entry: &FileEntry| {
-            let date_text = format_timestamp(entry.modified);
-            shaped_text(date_text)
-                .size(TEXT_SIZE)
-                .style(muted_text_style)
-        },
-    )
+            .style(muted_text_style)
+            .into()
+    };
+    let modified_header: Element<'_, Message> = button(modified_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSortBy(FileSortColumn::Modified))
+        .into();
+
+    // Modified column
+    let modified_column = table::column(modified_header, |entry: &FileEntry| {
+        let date_text = format_timestamp(entry.modified);
+        shaped_text(date_text)
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+    })
     .width(FILE_DATE_COLUMN_WIDTH)
     .align_x(Right);
 
@@ -878,16 +1142,16 @@ fn file_table<'a>(
 ///
 /// # Arguments
 /// * `files_management` - Current files panel state
-/// * `has_file_root` - Whether user has file_root permission (enables root toggle)
-/// * `has_file_create_dir` - Whether user has file_create_dir permission (enables new directory anywhere)
+/// * `perms` - File permission flags for the current user
 pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
-    has_file_root: bool,
-    has_file_create_dir: bool,
-    has_file_info: bool,
-    has_file_delete: bool,
-    has_file_rename: bool,
+    perms: FilePermissions,
 ) -> Element<'a, Message> {
+    // If overwrite confirmation is pending, show that dialog
+    if let Some(pending) = &files_management.pending_overwrite {
+        return overwrite_confirm_dialog(&pending.name, perms.file_delete);
+    }
+
     // If rename dialog is pending, show that
     if let Some(path) = &files_management.pending_rename {
         return rename_dialog(
@@ -926,18 +1190,22 @@ pub fn files_view<'a>(
 
     // Determine if user can create directories here
     // User can create if they have file_create_dir permission OR current directory allows upload
-    let can_create_dir = has_file_create_dir || files_management.current_dir_can_upload;
+    let can_create_dir = perms.file_create_dir || files_management.current_dir_can_upload;
 
     // Check if we're in a loading state
     let is_loading = files_management.entries.is_none() && files_management.error.is_none();
 
+    // Check if clipboard has content
+    let has_clipboard = files_management.clipboard.is_some();
+
     // Toolbar with buttons
     let toolbar = toolbar(
         !is_at_home,
-        has_file_root,
+        perms.file_root,
         viewing_root,
         files_management.show_hidden,
         can_create_dir,
+        has_clipboard,
         is_loading,
     );
 
@@ -954,7 +1222,7 @@ pub fn files_view<'a>(
         .center_x(Fill)
         .padding(SPACER_SIZE_SMALL)
         .into()
-    } else if let Some(entries) = &files_management.entries {
+    } else if let Some(entries) = &files_management.sorted_entries {
         if entries.is_empty() {
             // Empty directory
             container(
@@ -971,9 +1239,10 @@ pub fn files_view<'a>(
             file_table(
                 entries,
                 &files_management.current_path,
-                has_file_info,
-                has_file_delete,
-                has_file_rename,
+                perms,
+                &files_management.clipboard,
+                files_management.sort_column,
+                files_management.sort_ascending,
             )
         }
     } else {

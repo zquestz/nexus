@@ -18,6 +18,7 @@ button-choose-avatar = Выбрать аватар
 button-clear-avatar = Очистить
 button-choose-image = Выбрать изображение
 button-clear-image = Очистить
+button-overwrite = Перезаписать
 button-change-password = Изменить пароль
 button-browse = Обзор
 
@@ -142,8 +143,10 @@ permission-news_edit = Редактировать Новость
 permission-news_delete = Удалить Новость
 permission-file_create_dir = Каталог Создать
 permission-file_delete = Удалить Файл
+permission-file_copy = Копирование Файла
 permission-file_info = Информация о Файле
 permission-file_list = Список Файлов
+permission-file_move = Перемещение Файла
 permission-file_rename = Переименовать Файл
 permission-file_root = Корень Файлов
 
@@ -164,6 +167,7 @@ tooltip-files-view-home = Показать главную
 tooltip-files-show-hidden = Показать скрытые файлы
 tooltip-files-hide-hidden = Скрыть скрытые файлы
 tooltip-files-new-directory = Новая папка
+tooltip-files-paste = Вставить
 tooltip-manage-users = Управление пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
@@ -210,9 +214,16 @@ files-info = Информация
 files-rename = Переименовать
 files-rename-title = Переименовать "{ $name }"
 files-rename-placeholder = Новое имя
+files-cut = Вырезать
+files-copy = Копировать
+files-paste = Вставить
+files-clear-clipboard = Очистить
 files-delete = Удалить
 files-delete-confirm-title = Подтверждение удаления
 files-delete-confirm-message = Вы уверены, что хотите удалить "{ $name }"?
+# File Overwrite Dialog
+files-overwrite-title = Файл уже существует
+files-overwrite-message = Файл или папка с именем "{ $name }" уже существует в месте назначения. Хотите заменить?
 
 # File Info Dialog
 files-info-type = Тип:

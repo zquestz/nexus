@@ -2,11 +2,12 @@
 
 use iced::widget::{Id, scrollable};
 use iced::{Task, widget::operation};
+use nexus_common::FileErrorKind;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
 use crate::NexusApp;
-use crate::types::{InputId, Message, ResponseRouting, ScrollableId};
+use crate::types::{InputId, Message, PendingOverwrite, ResponseRouting, ScrollableId};
 
 /// Data from a FileListResponse message
 pub struct FileListResponseData {
@@ -50,8 +51,12 @@ impl NexusApp {
 
             conn.files_management.entries = data.entries;
             conn.files_management.error = None;
+
+            // Build sorted entries cache
+            conn.files_management.update_sorted_entries();
         } else {
             conn.files_management.entries = None;
+            conn.files_management.sorted_entries = None;
             conn.files_management.error = data.error;
         }
 
@@ -237,6 +242,153 @@ impl NexusApp {
 
             // Focus the input field so user can retry
             operation::focus(Id::from(InputId::RenameName))
+        }
+    }
+
+    /// Handle file move response
+    ///
+    /// On success, clears clipboard (if cut) and refreshes file list.
+    /// On "exists" error, shows overwrite confirmation dialog.
+    /// On other errors, displays error in panel.
+    pub fn handle_file_move_response(
+        &mut self,
+        connection_id: usize,
+        message_id: MessageId,
+        success: bool,
+        error: Option<String>,
+        error_kind: Option<String>,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if this was a tracked request and extract destination_dir
+        let routing = conn.pending_requests.remove(&message_id);
+
+        // Only handle if this was a tracked file move request
+        let destination_dir = match routing {
+            Some(ResponseRouting::FileMoveResult { destination_dir }) => destination_dir,
+            _ => return Task::none(),
+        };
+
+        if success {
+            // Clear clipboard on successful move
+            conn.files_management.clipboard = None;
+            conn.files_management.pending_overwrite = None;
+
+            // Refresh the current directory listing
+            let current_path = conn.files_management.current_path.clone();
+            let viewing_root = conn.files_management.viewing_root;
+            let show_hidden = conn.files_management.show_hidden;
+
+            conn.files_management.entries = None;
+            conn.files_management.error = None;
+
+            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+        } else {
+            // Parse error_kind for type-safe matching
+            let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
+
+            match kind {
+                Some(FileErrorKind::Exists) => {
+                    // Show overwrite confirmation dialog
+                    if let Some(ref clipboard) = conn.files_management.clipboard {
+                        conn.files_management.pending_overwrite = Some(PendingOverwrite {
+                            source_path: clipboard.path.clone(),
+                            destination_dir,
+                            name: clipboard.name.clone(),
+                            is_move: true,
+                            source_root: clipboard.root,
+                            destination_root: conn.files_management.viewing_root,
+                        });
+                    }
+                    Task::none()
+                }
+                Some(FileErrorKind::NotFound) => {
+                    // Source no longer exists - clear clipboard
+                    conn.files_management.clipboard = None;
+                    conn.files_management.error = error;
+                    Task::none()
+                }
+                _ => {
+                    // Show error in panel (permission, invalid_path, or unknown)
+                    conn.files_management.error = error;
+                    Task::none()
+                }
+            }
+        }
+    }
+
+    /// Handle file copy response
+    ///
+    /// On success, refreshes file list (keeps clipboard for potential re-paste).
+    /// On "exists" error, shows overwrite confirmation dialog.
+    /// On other errors, displays error in panel.
+    pub fn handle_file_copy_response(
+        &mut self,
+        connection_id: usize,
+        message_id: MessageId,
+        success: bool,
+        error: Option<String>,
+        error_kind: Option<String>,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if this was a tracked request and extract destination_dir
+        let routing = conn.pending_requests.remove(&message_id);
+
+        // Only handle if this was a tracked file copy request
+        let destination_dir = match routing {
+            Some(ResponseRouting::FileCopyResult { destination_dir }) => destination_dir,
+            _ => return Task::none(),
+        };
+
+        if success {
+            // Keep clipboard for copy (user might want to paste again)
+            conn.files_management.pending_overwrite = None;
+
+            // Refresh the current directory listing
+            let current_path = conn.files_management.current_path.clone();
+            let viewing_root = conn.files_management.viewing_root;
+            let show_hidden = conn.files_management.show_hidden;
+
+            conn.files_management.entries = None;
+            conn.files_management.error = None;
+
+            self.send_file_list_request(connection_id, current_path, viewing_root, show_hidden)
+        } else {
+            // Parse error_kind for type-safe matching
+            let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
+
+            match kind {
+                Some(FileErrorKind::Exists) => {
+                    // Show overwrite confirmation dialog
+                    if let Some(ref clipboard) = conn.files_management.clipboard {
+                        conn.files_management.pending_overwrite = Some(PendingOverwrite {
+                            source_path: clipboard.path.clone(),
+                            destination_dir,
+                            name: clipboard.name.clone(),
+                            is_move: false,
+                            source_root: clipboard.root,
+                            destination_root: conn.files_management.viewing_root,
+                        });
+                    }
+                    Task::none()
+                }
+                Some(FileErrorKind::NotFound) => {
+                    // Source no longer exists - clear clipboard
+                    conn.files_management.clipboard = None;
+                    conn.files_management.error = error;
+                    Task::none()
+                }
+                _ => {
+                    // Show error in panel (permission, invalid_path, or unknown)
+                    conn.files_management.error = error;
+                    Task::none()
+                }
+            }
         }
     }
 }

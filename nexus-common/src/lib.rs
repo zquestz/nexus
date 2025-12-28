@@ -2,11 +2,14 @@
 //!
 //! Shared types, protocols, and utilities for the Nexus BBS system.
 
+mod error_kind;
 pub mod framing;
 pub mod io;
 pub mod protocol;
 pub mod validators;
 pub mod version;
+
+pub use error_kind::FileErrorKind;
 
 /// Version information for the Nexus protocol
 pub const PROTOCOL_VERSION: &str = "0.5.0";

@@ -23,7 +23,8 @@ A modern BBS (Bulletin Board System) with built-in TLS encryption, inspired by c
 - **DoS protection** - Frame timeout (60s) and connection limiting (5 per IP)
 - Real-time chat, broadcast messaging, and chat topics
 - Tabbed user messaging (1-on-1 conversations)
-- Granular permission system (16 permissions)
+- Granular permission system (24 permissions)
+- **File browsing** - Browse, create directories, rename, move, copy, and delete files
 - **Shared accounts** - Multiple users can share one account with unique nicknames
 - **Guest access** - Passwordless guest account for casual users (disabled by default)
 - Multi-server bookmarks with auto-connect

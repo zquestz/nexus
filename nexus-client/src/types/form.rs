@@ -165,10 +165,64 @@ impl NewsManagementState {
 // Files Management State
 // =============================================================================
 
+/// Column to sort files by
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FileSortColumn {
+    /// Sort by name (default) - keeps dirs first, sorts within groups
+    #[default]
+    Name,
+    /// Sort by size - full sort, mixes dirs and files
+    Size,
+    /// Sort by modified date - full sort, mixes dirs and files
+    Modified,
+}
+
+/// Clipboard operation type (cut or copy)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardOperation {
+    /// Cut - file will be moved on paste
+    Cut,
+    /// Copy - file will be copied on paste
+    Copy,
+}
+
+/// Item stored in clipboard for move/copy operations
+#[derive(Debug, Clone)]
+pub struct ClipboardItem {
+    /// Full path to the file or directory
+    pub path: String,
+    /// Display name of the file or directory
+    pub name: String,
+    /// Whether it's a directory (used for visual feedback on cut items)
+    #[allow(dead_code)]
+    pub is_directory: bool,
+    /// Cut or Copy operation
+    pub operation: ClipboardOperation,
+    /// Whether source was in root view mode when cut/copied
+    pub root: bool,
+}
+
+/// Pending overwrite confirmation for move/copy operations
+#[derive(Debug, Clone)]
+pub struct PendingOverwrite {
+    /// Source path of the file/directory
+    pub source_path: String,
+    /// Destination directory path
+    pub destination_dir: String,
+    /// Name of the file/directory (for display)
+    pub name: String,
+    /// True if this is a move operation, false if copy
+    pub is_move: bool,
+    /// Source root flag (from clipboard)
+    pub source_root: bool,
+    /// Destination root flag (from viewing_root at paste time)
+    pub destination_root: bool,
+}
+
 /// Files management panel state (per-connection)
 ///
 /// Tracks the current directory path and file listing for the file browser.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FilesManagementState {
     /// Current directory path (empty string or "/" means home)
     pub current_path: String,
@@ -200,6 +254,43 @@ pub struct FilesManagementState {
     pub rename_name: String,
     /// Error message for rename dialog
     pub rename_error: Option<String>,
+    /// Clipboard for cut/copy operations
+    pub clipboard: Option<ClipboardItem>,
+    /// Pending overwrite confirmation (when destination exists)
+    pub pending_overwrite: Option<PendingOverwrite>,
+    /// Current sort column
+    pub sort_column: FileSortColumn,
+    /// Sort ascending (true) or descending (false)
+    pub sort_ascending: bool,
+    /// Cached sorted entries (updated when entries or sort settings change)
+    pub sorted_entries: Option<Vec<nexus_common::protocol::FileEntry>>,
+}
+
+impl Default for FilesManagementState {
+    fn default() -> Self {
+        Self {
+            current_path: String::new(),
+            entries: None,
+            error: None,
+            viewing_root: false,
+            current_dir_can_upload: false,
+            show_hidden: false,
+            creating_directory: false,
+            new_directory_name: String::new(),
+            new_directory_error: None,
+            pending_delete: None,
+            delete_error: None,
+            pending_info: None,
+            pending_rename: None,
+            rename_name: String::new(),
+            rename_error: None,
+            clipboard: None,
+            pending_overwrite: None,
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+            sorted_entries: None,
+        }
+    }
 }
 
 impl FilesManagementState {
@@ -207,6 +298,7 @@ impl FilesManagementState {
     pub fn navigate_to(&mut self, path: String) {
         self.current_path = path;
         self.entries = None;
+        self.sorted_entries = None;
         self.error = None;
         // Note: viewing_root is preserved across navigation
     }
@@ -215,6 +307,7 @@ impl FilesManagementState {
     pub fn navigate_home(&mut self) {
         self.current_path = String::new();
         self.entries = None;
+        self.sorted_entries = None;
         self.error = None;
         // Note: viewing_root is preserved - home means root of current view
     }
@@ -224,6 +317,7 @@ impl FilesManagementState {
         self.viewing_root = !self.viewing_root;
         self.current_path = String::new();
         self.entries = None;
+        self.sorted_entries = None;
         self.error = None;
         self.current_dir_can_upload = false;
     }
@@ -260,8 +354,65 @@ impl FilesManagementState {
         }
 
         self.entries = None;
+        self.sorted_entries = None;
         self.error = None;
         // Note: viewing_root is preserved across navigation
+    }
+
+    /// Update the sorted entries cache based on current entries and sort settings
+    ///
+    /// Call this whenever entries are set or sort settings change.
+    pub fn update_sorted_entries(&mut self) {
+        self.sorted_entries = self.entries.as_ref().map(|entries| {
+            let mut sorted = entries.clone();
+            match self.sort_column {
+                FileSortColumn::Name => {
+                    // Sort by name, keeping directories first
+                    sorted.sort_by(|a, b| {
+                        let a_is_dir = a.dir_type.is_some();
+                        let b_is_dir = b.dir_type.is_some();
+
+                        // Directories always come first
+                        match (a_is_dir, b_is_dir) {
+                            (true, false) => std::cmp::Ordering::Less,
+                            (false, true) => std::cmp::Ordering::Greater,
+                            _ => {
+                                // Same type: sort by name (case-insensitive)
+                                let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+                                if self.sort_ascending {
+                                    cmp
+                                } else {
+                                    cmp.reverse()
+                                }
+                            }
+                        }
+                    });
+                }
+                FileSortColumn::Size => {
+                    // Full sort by size, mixes directories and files
+                    sorted.sort_by(|a, b| {
+                        let cmp = a.size.cmp(&b.size);
+                        if self.sort_ascending {
+                            cmp
+                        } else {
+                            cmp.reverse()
+                        }
+                    });
+                }
+                FileSortColumn::Modified => {
+                    // Full sort by modified date, mixes directories and files
+                    sorted.sort_by(|a, b| {
+                        let cmp = a.modified.cmp(&b.modified);
+                        if self.sort_ascending {
+                            cmp
+                        } else {
+                            cmp.reverse()
+                        }
+                    });
+                }
+            }
+            sorted
+        });
     }
 
     /// Get the display name for a file entry (strips folder type suffixes)
@@ -952,6 +1103,11 @@ mod tests {
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
+            clipboard: None,
+            pending_overwrite: None,
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+            sorted_entries: None,
         };
 
         state.close_new_directory_dialog();
