@@ -782,7 +782,6 @@ mod tests {
             token: None,
             transfer_id: None,
             port: None,
-            complete: None,
         };
         assert_eq!(
             json_size(&msg),

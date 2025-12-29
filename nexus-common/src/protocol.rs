@@ -468,21 +468,18 @@ pub enum ServerMessage {
         /// Number of files to transfer
         #[serde(skip_serializing_if = "Option::is_none")]
         file_count: Option<u64>,
-        /// Bytes that will actually be transferred (after resume calculation)
+        /// Bytes that will actually be transferred (initially equals total_size; actual may be less due to resume)
         #[serde(skip_serializing_if = "Option::is_none")]
         bytes_to_transfer: Option<u64>,
-        /// Transfer token (32 hex chars), null if complete
+        /// Transfer token (32 hex chars), null if file_count is 0
         #[serde(skip_serializing_if = "Option::is_none")]
         token: Option<String>,
-        /// Transfer ID for logging (8 hex chars), null if complete
+        /// Transfer ID for logging (8 hex chars), null if file_count is 0
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
-        /// Transfer port (typically 7501), null if complete
+        /// Transfer port (typically 7501), null if file_count is 0
         #[serde(skip_serializing_if = "Option::is_none")]
         port: Option<u16>,
-        /// True if nothing to transfer (all files already present)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        complete: Option<bool>,
     },
 }
 
@@ -1520,7 +1517,6 @@ mod tests {
             token: Some("ffeeddccbbaa99887766554433221100".to_string()),
             transfer_id: Some("ffeeddcc".to_string()),
             port: Some(7501),
-            complete: Some(false),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"FileDownloadResponse\""));
@@ -1531,27 +1527,25 @@ mod tests {
         assert!(json.contains("\"token\":\"ffeeddccbbaa99887766554433221100\""));
         assert!(json.contains("\"transfer_id\":\"ffeeddcc\""));
         assert!(json.contains("\"port\":7501"));
-        assert!(json.contains("\"complete\":false"));
     }
 
     #[test]
-    fn test_serialize_file_download_response_complete() {
+    fn test_serialize_file_download_response_empty_dir() {
         let msg = ServerMessage::FileDownloadResponse {
             success: true,
             error: None,
             error_kind: None,
-            total_size: Some(1048576),
-            file_count: Some(10),
+            total_size: Some(0),
+            file_count: Some(0),
             bytes_to_transfer: Some(0),
             token: None,
             transfer_id: None,
             port: None,
-            complete: Some(true),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"file_count\":0"));
         assert!(json.contains("\"bytes_to_transfer\":0"));
-        assert!(json.contains("\"complete\":true"));
         assert!(!json.contains("\"token\""));
         assert!(!json.contains("\"transfer_id\""));
         assert!(!json.contains("\"port\""));
@@ -1569,7 +1563,6 @@ mod tests {
             token: None,
             transfer_id: None,
             port: None,
-            complete: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":false"));
