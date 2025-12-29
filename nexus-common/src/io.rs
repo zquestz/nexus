@@ -266,7 +266,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileRename { .. } => "FileRename",
         ClientMessage::FileMove { .. } => "FileMove",
         ClientMessage::FileCopy { .. } => "FileCopy",
-        ClientMessage::TransferDownload { .. } => "TransferDownload",
+        ClientMessage::FileDownload { .. } => "FileDownload",
     }
 }
 
@@ -311,7 +311,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileRenameResponse { .. } => "FileRenameResponse",
         ServerMessage::FileMoveResponse { .. } => "FileMoveResponse",
         ServerMessage::FileCopyResponse { .. } => "FileCopyResponse",
-        ServerMessage::TransferDownloadResponse { .. } => "TransferDownloadResponse",
+        ServerMessage::FileDownloadResponse { .. } => "FileDownloadResponse",
     }
 }
 

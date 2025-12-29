@@ -83,9 +83,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileRename", 4433); // path (4096) + new_name (255) + root bool + overhead
     m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
-
-    // Transfer client messages
-    m.insert("TransferDownload", 4146); // path (4096) + root bool + overhead
+    m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -140,9 +138,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileRenameResponse", 300); // success bool + error message + overhead
     m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
-
-    // Transfer server messages
-    m.insert("TransferDownloadResponse", 2190); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileDownloadResponse", 2186); // success + error (2048) + error_kind (64) + overhead
 
     m
 });
@@ -774,9 +770,9 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_limit_transfer_download_response() {
+    fn test_limit_file_download_response() {
         // Error case is larger than success case
-        let msg = ServerMessage::TransferDownloadResponse {
+        let msg = ServerMessage::FileDownloadResponse {
             success: false,
             error: Some(str_of_len(2048)),
             error_kind: Some(str_of_len(64)),
@@ -790,19 +786,19 @@ mod tests {
         };
         assert_eq!(
             json_size(&msg),
-            max_payload_for_type("TransferDownloadResponse") as usize
+            max_payload_for_type("FileDownloadResponse") as usize
         );
     }
 
     #[test]
-    fn test_limit_transfer_download() {
-        let msg = ClientMessage::TransferDownload {
+    fn test_limit_file_download() {
+        let msg = ClientMessage::FileDownload {
             path: str_of_len(MAX_FILE_PATH_LENGTH),
             root: false,
         };
         assert_eq!(
             json_size(&msg),
-            max_payload_for_type("TransferDownload") as usize
+            max_payload_for_type("FileDownload") as usize
         );
     }
 }

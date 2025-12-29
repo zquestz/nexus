@@ -189,8 +189,8 @@ pub enum ClientMessage {
         #[serde(default)]
         destination_root: bool,
     },
-    /// Request a file transfer (download)
-    TransferDownload {
+    /// Request a file download
+    FileDownload {
         /// Path to download (file or directory)
         path: String,
         /// If true, path is relative to file root instead of user's area (requires file_root permission)
@@ -454,8 +454,8 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
     },
-    /// Response to a TransferDownload request
-    TransferDownloadResponse {
+    /// Response to a FileDownload request
+    FileDownloadResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
@@ -835,8 +835,8 @@ impl std::fmt::Debug for ClientMessage {
                 .field("source_root", source_root)
                 .field("destination_root", destination_root)
                 .finish(),
-            ClientMessage::TransferDownload { path, root } => f
-                .debug_struct("TransferDownload")
+            ClientMessage::FileDownload { path, root } => f
+                .debug_struct("FileDownload")
                 .field("path", path)
                 .field("root", root)
                 .finish(),
@@ -1471,46 +1471,46 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_transfer_download() {
-        let msg = ClientMessage::TransferDownload {
+    fn test_serialize_file_download() {
+        let msg = ClientMessage::FileDownload {
             path: "/Games".to_string(),
             root: false,
         };
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("\"type\":\"TransferDownload\""));
+        assert!(json.contains("\"type\":\"FileDownload\""));
         assert!(json.contains("\"path\":\"/Games\""));
         assert!(json.contains("\"root\":false"));
     }
 
     #[test]
-    fn test_deserialize_transfer_download() {
-        let json = r#"{"type":"TransferDownload","path":"/Games","root":true}"#;
+    fn test_deserialize_file_download() {
+        let json = r#"{"type":"FileDownload","path":"/Games","root":true}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ClientMessage::TransferDownload { path, root } => {
+            ClientMessage::FileDownload { path, root } => {
                 assert_eq!(path, "/Games");
                 assert!(root);
             }
-            _ => panic!("Expected TransferDownload"),
+            _ => panic!("Expected FileDownload"),
         }
     }
 
     #[test]
-    fn test_deserialize_transfer_download_defaults() {
-        let json = r#"{"type":"TransferDownload","path":"/Games"}"#;
+    fn test_deserialize_file_download_defaults() {
+        let json = r#"{"type":"FileDownload","path":"/Games"}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ClientMessage::TransferDownload { path, root } => {
+            ClientMessage::FileDownload { path, root } => {
                 assert_eq!(path, "/Games");
                 assert!(!root);
             }
-            _ => panic!("Expected TransferDownload"),
+            _ => panic!("Expected FileDownload"),
         }
     }
 
     #[test]
-    fn test_serialize_transfer_download_response_success() {
-        let msg = ServerMessage::TransferDownloadResponse {
+    fn test_serialize_file_download_response_success() {
+        let msg = ServerMessage::FileDownloadResponse {
             success: true,
             error: None,
             error_kind: None,
@@ -1523,7 +1523,7 @@ mod tests {
             complete: Some(false),
         };
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("\"type\":\"TransferDownloadResponse\""));
+        assert!(json.contains("\"type\":\"FileDownloadResponse\""));
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"total_size\":1048576"));
         assert!(json.contains("\"file_count\":10"));
@@ -1535,8 +1535,8 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_transfer_download_response_complete() {
-        let msg = ServerMessage::TransferDownloadResponse {
+    fn test_serialize_file_download_response_complete() {
+        let msg = ServerMessage::FileDownloadResponse {
             success: true,
             error: None,
             error_kind: None,
@@ -1558,8 +1558,8 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_transfer_download_response_error() {
-        let msg = ServerMessage::TransferDownloadResponse {
+    fn test_serialize_file_download_response_error() {
+        let msg = ServerMessage::FileDownloadResponse {
             success: false,
             error: Some("Path not found".to_string()),
             error_kind: Some("not_found".to_string()),

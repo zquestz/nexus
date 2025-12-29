@@ -383,9 +383,9 @@ where
             )
             .await?;
         }
-        ClientMessage::TransferDownload { .. } => {
-            // TODO: Implement file transfer download handler
-            eprintln!("TransferDownload not yet implemented");
+        ClientMessage::FileDownload { .. } => {
+            // TODO: Implement file download handler
+            eprintln!("FileDownload not yet implemented");
         }
     }
 
