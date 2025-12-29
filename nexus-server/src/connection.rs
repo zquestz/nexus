@@ -383,6 +383,10 @@ where
             )
             .await?;
         }
+        ClientMessage::TransferDownload { .. } => {
+            // TODO: Implement file transfer download handler
+            eprintln!("TransferDownload not yet implemented");
+        }
     }
 
     Ok(())

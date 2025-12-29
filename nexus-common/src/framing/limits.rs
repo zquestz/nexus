@@ -84,6 +84,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
 
+    // Transfer client messages
+    m.insert("TransferDownload", 4146); // path (4096) + root bool + overhead
+
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
     m.insert("ChatMessage", 1164);
@@ -137,6 +140,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileRenameResponse", 300); // success bool + error message + overhead
     m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
+
+    // Transfer server messages
+    m.insert("TransferDownloadResponse", 2190); // success + error (2048) + error_kind (64) + overhead
 
     m
 });
@@ -217,8 +223,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 27; // Added 6 News + 7 File client messages (including FileMove, FileCopy)
-        const SERVER_MESSAGE_COUNT: usize = 37; // Added 7 News + 7 File server messages (including FileMoveResponse, FileCopyResponse)
+        const CLIENT_MESSAGE_COUNT: usize = 28; // Added 6 News + 7 File + 1 Transfer client messages
+        const SERVER_MESSAGE_COUNT: usize = 38; // Added 7 News + 7 File + 1 Transfer server messages
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -760,6 +766,43 @@ mod tests {
         assert_eq!(
             json_size(&msg),
             max_payload_for_type("UserUpdateResponse") as usize
+        );
+    }
+
+    // =========================================================================
+    // Transfer message size tests
+    // =========================================================================
+
+    #[test]
+    fn test_limit_transfer_download_response() {
+        // Error case is larger than success case
+        let msg = ServerMessage::TransferDownloadResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+            error_kind: Some(str_of_len(64)),
+            total_size: None,
+            file_count: None,
+            bytes_to_transfer: None,
+            token: None,
+            transfer_id: None,
+            port: None,
+            complete: None,
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("TransferDownloadResponse") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_transfer_download() {
+        let msg = ClientMessage::TransferDownload {
+            path: str_of_len(MAX_FILE_PATH_LENGTH),
+            root: false,
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("TransferDownload") as usize
         );
     }
 }

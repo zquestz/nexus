@@ -189,6 +189,14 @@ pub enum ClientMessage {
         #[serde(default)]
         destination_root: bool,
     },
+    /// Request a file transfer (download)
+    TransferDownload {
+        /// Path to download (file or directory)
+        path: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
 }
 
 /// Server response messages
@@ -445,6 +453,36 @@ pub enum ServerMessage {
         /// Machine-readable error kind for client decision making
         #[serde(skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
+    },
+    /// Response to a TransferDownload request
+    TransferDownloadResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind: "not_found", "permission", "invalid"
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+        /// Total size of all files in bytes
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_size: Option<u64>,
+        /// Number of files to transfer
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_count: Option<u64>,
+        /// Bytes that will actually be transferred (after resume calculation)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bytes_to_transfer: Option<u64>,
+        /// Transfer token (32 hex chars), null if complete
+        #[serde(skip_serializing_if = "Option::is_none")]
+        token: Option<String>,
+        /// Transfer ID for logging (8 hex chars), null if complete
+        #[serde(skip_serializing_if = "Option::is_none")]
+        transfer_id: Option<String>,
+        /// Transfer port (typically 7501), null if complete
+        #[serde(skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// True if nothing to transfer (all files already present)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        complete: Option<bool>,
     },
 }
 
@@ -796,6 +834,11 @@ impl std::fmt::Debug for ClientMessage {
                 .field("overwrite", overwrite)
                 .field("source_root", source_root)
                 .field("destination_root", destination_root)
+                .finish(),
+            ClientMessage::TransferDownload { path, root } => f
+                .debug_struct("TransferDownload")
+                .field("path", path)
+                .field("root", root)
                 .finish(),
         }
     }
@@ -1425,5 +1468,112 @@ mod tests {
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"error_kind\":\"exists\""));
+    }
+
+    #[test]
+    fn test_serialize_transfer_download() {
+        let msg = ClientMessage::TransferDownload {
+            path: "/Games".to_string(),
+            root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"TransferDownload\""));
+        assert!(json.contains("\"path\":\"/Games\""));
+        assert!(json.contains("\"root\":false"));
+    }
+
+    #[test]
+    fn test_deserialize_transfer_download() {
+        let json = r#"{"type":"TransferDownload","path":"/Games","root":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::TransferDownload { path, root } => {
+                assert_eq!(path, "/Games");
+                assert!(root);
+            }
+            _ => panic!("Expected TransferDownload"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_transfer_download_defaults() {
+        let json = r#"{"type":"TransferDownload","path":"/Games"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::TransferDownload { path, root } => {
+                assert_eq!(path, "/Games");
+                assert!(!root);
+            }
+            _ => panic!("Expected TransferDownload"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_transfer_download_response_success() {
+        let msg = ServerMessage::TransferDownloadResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+            total_size: Some(1048576),
+            file_count: Some(10),
+            bytes_to_transfer: Some(524288),
+            token: Some("ffeeddccbbaa99887766554433221100".to_string()),
+            transfer_id: Some("ffeeddcc".to_string()),
+            port: Some(7501),
+            complete: Some(false),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"TransferDownloadResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"total_size\":1048576"));
+        assert!(json.contains("\"file_count\":10"));
+        assert!(json.contains("\"bytes_to_transfer\":524288"));
+        assert!(json.contains("\"token\":\"ffeeddccbbaa99887766554433221100\""));
+        assert!(json.contains("\"transfer_id\":\"ffeeddcc\""));
+        assert!(json.contains("\"port\":7501"));
+        assert!(json.contains("\"complete\":false"));
+    }
+
+    #[test]
+    fn test_serialize_transfer_download_response_complete() {
+        let msg = ServerMessage::TransferDownloadResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+            total_size: Some(1048576),
+            file_count: Some(10),
+            bytes_to_transfer: Some(0),
+            token: None,
+            transfer_id: None,
+            port: None,
+            complete: Some(true),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"bytes_to_transfer\":0"));
+        assert!(json.contains("\"complete\":true"));
+        assert!(!json.contains("\"token\""));
+        assert!(!json.contains("\"transfer_id\""));
+        assert!(!json.contains("\"port\""));
+    }
+
+    #[test]
+    fn test_serialize_transfer_download_response_error() {
+        let msg = ServerMessage::TransferDownloadResponse {
+            success: false,
+            error: Some("Path not found".to_string()),
+            error_kind: Some("not_found".to_string()),
+            total_size: None,
+            file_count: None,
+            bytes_to_transfer: None,
+            token: None,
+            transfer_id: None,
+            port: None,
+            complete: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Path not found\""));
+        assert!(json.contains("\"error_kind\":\"not_found\""));
     }
 }
