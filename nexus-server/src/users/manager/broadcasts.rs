@@ -221,6 +221,7 @@ impl UserManager {
                     None
                 },
                 image: Some(image.clone()),
+                transfer_port: None, // TODO: Set when file transfer is implemented
             };
 
             let message = ServerMessage::ServerInfoUpdated { server_info };

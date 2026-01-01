@@ -189,7 +189,7 @@ pub enum ClientMessage {
         #[serde(default)]
         destination_root: bool,
     },
-    /// Request a file download
+    /// Request a file download (port 7501 only)
     FileDownload {
         /// Path to download (file or directory)
         path: String,
@@ -454,7 +454,7 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
     },
-    /// Response to a FileDownload request
+    /// Response to a FileDownload request (port 7501 only)
     FileDownloadResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -464,22 +464,13 @@ pub enum ServerMessage {
         error_kind: Option<String>,
         /// Total size of all files in bytes
         #[serde(skip_serializing_if = "Option::is_none")]
-        total_size: Option<u64>,
+        size: Option<u64>,
         /// Number of files to transfer
         #[serde(skip_serializing_if = "Option::is_none")]
         file_count: Option<u64>,
-        /// Bytes that will actually be transferred (initially equals total_size; actual may be less due to resume)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        bytes_to_transfer: Option<u64>,
-        /// Transfer token (32 hex chars), null if file_count is 0
-        #[serde(skip_serializing_if = "Option::is_none")]
-        token: Option<String>,
-        /// Transfer ID for logging (8 hex chars), null if file_count is 0
+        /// Transfer ID for logging (8 hex chars)
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
-        /// Transfer port (typically 7501), null if file_count is 0
-        #[serde(skip_serializing_if = "Option::is_none")]
-        port: Option<u16>,
     },
 }
 
@@ -495,6 +486,9 @@ pub struct ServerInfo {
     pub max_connections_per_ip: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Port for file transfers (typically 7501), None if transfers not available
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1511,22 +1505,16 @@ mod tests {
             success: true,
             error: None,
             error_kind: None,
-            total_size: Some(1048576),
+            size: Some(1048576),
             file_count: Some(10),
-            bytes_to_transfer: Some(524288),
-            token: Some("ffeeddccbbaa99887766554433221100".to_string()),
             transfer_id: Some("ffeeddcc".to_string()),
-            port: Some(7501),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"FileDownloadResponse\""));
         assert!(json.contains("\"success\":true"));
-        assert!(json.contains("\"total_size\":1048576"));
+        assert!(json.contains("\"size\":1048576"));
         assert!(json.contains("\"file_count\":10"));
-        assert!(json.contains("\"bytes_to_transfer\":524288"));
-        assert!(json.contains("\"token\":\"ffeeddccbbaa99887766554433221100\""));
         assert!(json.contains("\"transfer_id\":\"ffeeddcc\""));
-        assert!(json.contains("\"port\":7501"));
     }
 
     #[test]
@@ -1535,20 +1523,15 @@ mod tests {
             success: true,
             error: None,
             error_kind: None,
-            total_size: Some(0),
+            size: Some(0),
             file_count: Some(0),
-            bytes_to_transfer: Some(0),
-            token: None,
             transfer_id: None,
-            port: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"size\":0"));
         assert!(json.contains("\"file_count\":0"));
-        assert!(json.contains("\"bytes_to_transfer\":0"));
-        assert!(!json.contains("\"token\""));
         assert!(!json.contains("\"transfer_id\""));
-        assert!(!json.contains("\"port\""));
     }
 
     #[test]
@@ -1557,12 +1540,9 @@ mod tests {
             success: false,
             error: Some("Path not found".to_string()),
             error_kind: Some("not_found".to_string()),
-            total_size: None,
+            size: None,
             file_count: None,
-            bytes_to_transfer: None,
-            token: None,
             transfer_id: None,
-            port: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":false"));

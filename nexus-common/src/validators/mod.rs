@@ -21,7 +21,6 @@ mod server_description;
 mod server_image;
 mod server_name;
 mod sha256;
-mod token;
 mod username;
 mod version;
 
@@ -46,6 +45,5 @@ pub use server_description::{
 pub use server_image::{MAX_SERVER_IMAGE_DATA_URI_LENGTH, ServerImageError, validate_server_image};
 pub use server_name::{MAX_SERVER_NAME_LENGTH, ServerNameError, validate_server_name};
 pub use sha256::{SHA256_HEX_LENGTH, Sha256Error, validate_sha256};
-pub use token::{TOKEN_HEX_LENGTH, TokenError, validate_token};
 pub use username::{MAX_USERNAME_LENGTH, UsernameError, validate_username};
 pub use version::{MAX_VERSION_LENGTH, VersionError, validate_version};

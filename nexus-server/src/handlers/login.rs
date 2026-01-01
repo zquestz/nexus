@@ -395,6 +395,7 @@ where
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
         max_connections_per_ip,
         image: Some(image),
+        transfer_port: None, // TODO: Set when file transfer is implemented
     });
 
     // Fetch chat info only if user has ChatTopic permission

@@ -30,10 +30,12 @@ const USER_UPDATE_BASE: usize = 758;
 const USER_EDIT_RESPONSE_BASE: usize = 154;
 
 /// Base overhead for LoginResponse message (without permissions array)
-const LOGIN_RESPONSE_BASE: usize = 700909;
+/// Includes ServerInfo with transfer_port field
+const LOGIN_RESPONSE_BASE: usize = 700931;
 
 /// Base overhead for PermissionsUpdated message (without permissions array)
-const PERMISSIONS_UPDATED_BASE: usize = 700847;
+/// Includes ServerInfo with transfer_port field
+const PERMISSIONS_UPDATED_BASE: usize = 700869;
 
 /// Maximum payload sizes for each message type
 ///
@@ -98,7 +100,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         PERMISSIONS_UPDATED_BASE as u64 + perm_size,
     );
     m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 700483); // includes ServerInfo with image
+    m.insert("ServerInfoUpdated", 700505); // includes ServerInfo with image + transfer_port
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176359);
     m.insert("UserCreateResponse", 614);
@@ -485,6 +487,7 @@ mod tests {
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
+                transfer_port: Some(u16::MAX),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -511,6 +514,7 @@ mod tests {
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
+                transfer_port: Some(u16::MAX),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -532,6 +536,7 @@ mod tests {
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
+                transfer_port: Some(u16::MAX),
             },
         };
         assert_eq!(
@@ -776,12 +781,9 @@ mod tests {
             success: false,
             error: Some(str_of_len(2048)),
             error_kind: Some(str_of_len(64)),
-            total_size: None,
+            size: None,
             file_count: None,
-            bytes_to_transfer: None,
-            token: None,
             transfer_id: None,
-            port: None,
         };
         assert_eq!(
             json_size(&msg),
