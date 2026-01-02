@@ -27,6 +27,8 @@ pub enum ActivePanel {
     News,
     /// Files panel (browse, upload, download files)
     Files,
+    /// Transfers panel (download/upload progress, global)
+    Transfers,
 }
 
 /// UI visibility state for toggleable panels

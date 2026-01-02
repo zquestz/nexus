@@ -89,6 +89,27 @@ impl NexusApp {
         self.handle_show_chat_view()
     }
 
+    // ==================== Transfers ====================
+
+    /// Toggle Transfers panel
+    ///
+    /// Transfers is a global panel (not per-connection) that shows all
+    /// file transfers across all connections. It can be opened even when
+    /// not connected to any server.
+    pub fn handle_toggle_transfers(&mut self) -> Task<Message> {
+        if self.active_panel() == ActivePanel::Transfers {
+            self.handle_show_chat_view()
+        } else {
+            self.set_active_panel(ActivePanel::Transfers);
+            Task::none()
+        }
+    }
+
+    /// Close Transfers panel
+    pub fn handle_close_transfers(&mut self) -> Task<Message> {
+        self.handle_show_chat_view()
+    }
+
     // ==================== Sidebar Toggles ====================
 
     /// Toggle bookmarks sidebar visibility

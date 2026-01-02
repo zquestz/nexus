@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::ClientConfig;
+use tokio_rustls::rustls::client::ClientConnection;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_socks::tcp::Socks5Stream;
 
@@ -87,6 +88,49 @@ impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
             tokio_rustls::rustls::SignatureScheme::ED25519,
         ]
     }
+}
+
+/// Create a TLS config that accepts any certificate (for TOFU model)
+///
+/// This is used by the transfer executor to establish connections to the
+/// transfer port (7501) with the same certificate verification behavior.
+#[allow(dead_code)] // Used by transfer executor (not yet integrated)
+pub fn create_tls_config() -> ClientConfig {
+    let mut config = ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoVerifier))
+        .with_no_client_auth();
+
+    // Disable SNI (Server Name Indication) since we're not verifying hostnames
+    config.enable_sni = false;
+
+    config
+}
+
+/// Get the certificate fingerprint from a TLS session
+///
+/// Returns the SHA-256 fingerprint of the server's certificate as a colon-separated
+/// hex string (e.g., "AA:BB:CC:...").
+#[allow(dead_code)] // Used by transfer executor (not yet integrated)
+pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String> {
+    let certs = session.peer_certificates()?;
+    if certs.is_empty() {
+        return None;
+    }
+
+    // Calculate SHA-256 fingerprint of the first certificate (end entity)
+    let mut hasher = Sha256::new();
+    hasher.update(certs[0].as_ref());
+    let fingerprint = hasher.finalize();
+
+    // Format as colon-separated hex string
+    let fingerprint_str = fingerprint
+        .iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    Some(fingerprint_str)
 }
 
 /// Establish TLS connection to the server and return certificate fingerprint

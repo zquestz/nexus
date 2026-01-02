@@ -253,6 +253,7 @@ impl NexusApp {
                         // Otherwise close panel
                         return self.update(Message::CancelFiles);
                     }
+                    ActivePanel::Transfers => return self.update(Message::CloseTransfers),
                     ActivePanel::None => {}
                 }
             }

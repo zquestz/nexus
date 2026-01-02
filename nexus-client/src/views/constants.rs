@@ -87,3 +87,6 @@ pub(crate) const PERMISSION_FILE_MOVE: &str = "file_move";
 
 /// Permission to copy files and directories
 pub(crate) const PERMISSION_FILE_COPY: &str = "file_copy";
+
+/// Permission to download files
+pub(crate) const PERMISSION_FILE_DOWNLOAD: &str = "file_download";

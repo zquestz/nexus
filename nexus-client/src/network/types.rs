@@ -137,5 +137,21 @@ pub struct LoginInfo {
     pub chat_topic_set_by: Option<String>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
+    pub transfer_port: Option<u16>,
     pub locale: String,
+}
+
+/// Connection parameters needed for transfer reconnection
+///
+/// These are client-side values that aren't returned from the server
+/// but are needed to reconnect for file transfers.
+pub struct TransferParams {
+    /// Server address (IP or hostname)
+    pub address: String,
+    /// Server port
+    pub port: u16,
+    /// Password for authentication
+    pub password: String,
+    /// Nickname for shared accounts (empty string if not used)
+    pub nickname: String,
 }

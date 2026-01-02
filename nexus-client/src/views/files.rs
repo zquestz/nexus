@@ -41,6 +41,21 @@ pub struct FilePermissions {
     pub file_rename: bool,
     pub file_move: bool,
     pub file_copy: bool,
+    pub file_download: bool,
+}
+
+/// State needed to render the files toolbar
+#[derive(Debug, Clone)]
+pub struct ToolbarState<'a> {
+    pub can_go_up: bool,
+    pub has_file_root: bool,
+    pub viewing_root: bool,
+    pub show_hidden: bool,
+    pub can_create_dir: bool,
+    pub has_clipboard: bool,
+    pub has_file_download: bool,
+    pub current_path: &'a str,
+    pub is_loading: bool,
 }
 
 // ============================================================================
@@ -257,18 +272,10 @@ fn breadcrumb_bar<'a>(current_path: &str, viewing_root: bool) -> Element<'a, Mes
         .into()
 }
 
-/// Build the toolbar with Home, View Root/Home, Refresh, New Directory, Up buttons
-fn toolbar<'a>(
-    can_go_up: bool,
-    has_file_root: bool,
-    viewing_root: bool,
-    show_hidden: bool,
-    can_create_dir: bool,
-    has_clipboard: bool,
-    is_loading: bool,
-) -> Element<'a, Message> {
+/// Build the toolbar with Home, View Root/Home, Refresh, Download All, New Directory, Up buttons
+fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     // Home button - tooltip changes based on viewing mode
-    let home_tooltip = if viewing_root {
+    let home_tooltip = if state.viewing_root {
         t("tooltip-files-go-root")
     } else {
         t("tooltip-files-home")
@@ -301,7 +308,7 @@ fn toolbar<'a>(
     .padding(TOOLTIP_PADDING);
 
     // Up button - enabled only when not at home
-    let up_button: Element<'a, Message> = if can_go_up {
+    let up_button: Element<'a, Message> = if state.can_go_up {
         tooltip(
             button(icon::up_dir().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
@@ -327,8 +334,8 @@ fn toolbar<'a>(
     let mut toolbar_row = row![home_button].spacing(SPACER_SIZE_SMALL);
 
     // Root toggle button - only shown if user has file_root permission
-    if has_file_root {
-        let root_toggle_tooltip = if viewing_root {
+    if state.has_file_root {
+        let root_toggle_tooltip = if state.viewing_root {
             t("tooltip-files-view-home")
         } else {
             t("tooltip-files-view-root")
@@ -354,12 +361,12 @@ fn toolbar<'a>(
     toolbar_row = toolbar_row.push(refresh_button);
 
     // Hidden files toggle button
-    let hidden_tooltip = if show_hidden {
+    let hidden_tooltip = if state.show_hidden {
         t("tooltip-files-hide-hidden")
     } else {
         t("tooltip-files-show-hidden")
     };
-    let hidden_icon = if show_hidden {
+    let hidden_icon = if state.show_hidden {
         icon::eye()
     } else {
         icon::eye_off()
@@ -379,9 +386,35 @@ fn toolbar<'a>(
 
     toolbar_row = toolbar_row.push(hidden_toggle_button);
 
+    // Download All button - downloads current directory recursively
+    let download_all_button: Element<'a, Message> = if state.has_file_download && !state.is_loading
+    {
+        tooltip(
+            button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FileDownloadAll(state.current_path.to_string())),
+            container(shaped_text(t("tooltip-download-all")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Bottom,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+        .into()
+    } else {
+        // Disabled download button
+        button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            .style(disabled_icon_button_style)
+            .into()
+    };
+
+    toolbar_row = toolbar_row.push(download_all_button);
+
     // New Directory button - enabled if user has file_create_dir permission OR current dir allows upload
     // Disabled while loading
-    let new_dir_button: Element<'a, Message> = if can_create_dir && !is_loading {
+    let new_dir_button: Element<'a, Message> = if state.can_create_dir && !state.is_loading {
         tooltip(
             button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
@@ -406,7 +439,7 @@ fn toolbar<'a>(
     toolbar_row = toolbar_row.push(new_dir_button);
 
     // Paste button - enabled if clipboard has content and not loading
-    let paste_button: Element<'a, Message> = if has_clipboard && !is_loading {
+    let paste_button: Element<'a, Message> = if state.has_clipboard && !state.is_loading {
         tooltip(
             button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
@@ -882,13 +915,19 @@ fn file_table<'a>(
         .align_y(Center)
         .into();
 
-        // For directories, make the row clickable
+        // Make rows clickable - directories navigate, files download
+        let entry_path = build_navigate_path(current_path, &entry.name);
         let row_element: Element<'_, Message> = if is_directory {
-            let navigate_path = build_navigate_path(current_path, &entry.name);
             button(name_content)
                 .padding(NO_SPACING)
                 .style(transparent_icon_button_style)
-                .on_press(Message::FileNavigate(navigate_path))
+                .on_press(Message::FileNavigate(entry_path.clone()))
+                .into()
+        } else if perms.file_download {
+            button(name_content)
+                .padding(NO_SPACING)
+                .style(transparent_icon_button_style)
+                .on_press(Message::FileDownload(entry_path.clone()))
                 .into()
         } else {
             name_content
@@ -899,21 +938,56 @@ fn file_table<'a>(
             || perms.file_delete
             || perms.file_rename
             || perms.file_move
-            || perms.file_copy;
+            || perms.file_copy
+            || perms.file_download;
         let has_clipboard = clipboard.is_some();
 
         if has_any_permission {
-            // Build the full path for this entry
-            let entry_path = build_navigate_path(current_path, &entry.name);
+            // entry_path already built above
             let entry_name = entry.name.clone();
             let entry_is_dir = is_directory;
 
             ContextMenu::new(row_element, move || {
                 let mut menu_items: Vec<Element<'_, Message>> = vec![];
+                let mut has_download_section = false;
                 let mut has_clipboard_section = false;
                 let mut has_normal_section = false;
 
-                // === Section 1: Clipboard actions ===
+                // === Section 1: Download (primary action) ===
+
+                // Download (if permission)
+                if perms.file_download {
+                    let download_message = if entry_is_dir {
+                        Message::FileDownloadAll(entry_path.clone())
+                    } else {
+                        Message::FileDownload(entry_path.clone())
+                    };
+                    menu_items.push(
+                        button(shaped_text(t("context-menu-download")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(download_message)
+                            .into(),
+                    );
+                    has_download_section = true;
+                }
+
+                // === Section 2: Clipboard actions ===
+
+                // Check if we'll have any clipboard items (Cut, Copy, or Paste)
+                let will_have_clipboard = perms.file_move || perms.file_copy;
+
+                // Separator before clipboard actions (if we had download section and will have clipboard items)
+                if has_download_section && will_have_clipboard {
+                    menu_items.push(
+                        container(Space::new())
+                            .width(Fill)
+                            .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                            .style(separator_style)
+                            .into(),
+                    );
+                }
 
                 // Cut (if permission)
                 if perms.file_move {
@@ -957,7 +1031,7 @@ fn file_table<'a>(
                     has_clipboard_section = true;
                 }
 
-                // === Section 2: Normal actions ===
+                // === Section 3: Normal actions ===
 
                 // Separator before normal actions (if we had clipboard actions)
                 if has_clipboard_section && (perms.file_info || perms.file_rename) {
@@ -996,12 +1070,12 @@ fn file_table<'a>(
                     has_normal_section = true;
                 }
 
-                // === Section 3: Destructive actions ===
+                // === Section 4: Destructive actions ===
 
                 // Delete (if permission) - with separator before destructive action
                 if perms.file_delete {
                     // Only add separator if there are items above it
-                    if has_clipboard_section || has_normal_section {
+                    if has_download_section || has_clipboard_section || has_normal_section {
                         menu_items.push(
                             container(Space::new())
                                 .width(Fill)
@@ -1324,15 +1398,18 @@ pub fn files_view<'a>(
     let has_clipboard = files_management.clipboard.is_some();
 
     // Toolbar with buttons
-    let toolbar = toolbar(
-        !is_at_home,
-        perms.file_root,
+    let toolbar_state = ToolbarState {
+        can_go_up: !is_at_home,
+        has_file_root: perms.file_root,
         viewing_root,
         show_hidden,
         can_create_dir,
         has_clipboard,
+        has_file_download: perms.file_download,
+        current_path: &tab.current_path,
         is_loading,
-    );
+    };
+    let toolbar = toolbar(&toolbar_state);
 
     // Content area (table or status message)
     // Priority: error > entries > loading

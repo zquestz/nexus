@@ -47,6 +47,7 @@ title-user-info = User Info
 title-about = About
 title-change-password = Change Password
 title-news = News
+title-transfers = Transfers
 title-news-create = Create News Post
 title-news-edit = Edit News Post
 
@@ -178,6 +179,8 @@ tooltip-files-paste = Paste
 tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
+tooltip-transfers = Transfers
+tooltip-download-all = Download All
 tooltip-settings = Settings
 tooltip-hide-bookmarks = Hide Bookmarks
 tooltip-show-bookmarks = Show Bookmarks
@@ -195,6 +198,7 @@ tooltip-add-bookmark = Add Bookmark
 tooltip-create-user = Create User
 tooltip-create-news = Create News Post
 tooltip-delete = Delete
+context-menu-download = Download
 
 # =============================================================================
 # Empty States
@@ -208,6 +212,7 @@ user-management-loading = Loading users...
 user-management-no-users = No users found
 news-loading = Loading news...
 news-no-posts = No news posts yet
+transfers-empty = No active transfers
 news-updated = Updated
 files-loading = Loading files...
 files-empty = This directory is empty

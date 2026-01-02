@@ -10,5 +10,6 @@ pub(crate) mod network;
 mod news;
 mod server_info;
 mod settings;
+mod transfers;
 mod ui;
 mod user_management;

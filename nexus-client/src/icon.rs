@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 7e3ebb8d005391adcf3bd80b0d126fb325eb29d6ddc71b287e9d050a0f5b2195
+// ebb64483600623f5595f8cab843e1fa36af1dd7d89a1e27519ddd9d58c1a77a8
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -30,8 +30,16 @@ pub fn down_dir<'a>() -> Text<'a> {
     icon("\u{25BE}")
 }
 
+pub fn download<'a>() -> Text<'a> {
+    icon("\u{1F4E5}")
+}
+
 pub fn edit<'a>() -> Text<'a> {
     icon("\u{270E}")
+}
+
+pub fn exchange<'a>() -> Text<'a> {
+    icon("\u{F0EC}")
 }
 
 pub fn expand_right<'a>() -> Text<'a> {

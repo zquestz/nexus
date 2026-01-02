@@ -9,6 +9,7 @@ use nexus_common::framing::MessageId;
 use super::form::{FileSortColumn, SettingsTab, TabId};
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::image::ImagePickerError;
+use crate::transfers::TransferEvent;
 
 /// Messages that drive the application state machine
 #[derive(Debug, Clone)]
@@ -205,6 +206,10 @@ pub enum Message {
     CloseUserInfo,
     /// Toolbar: Show About panel
     ShowAbout,
+    /// Toolbar: Toggle Transfers panel
+    ToggleTransfers,
+    /// Transfers panel: Close button pressed
+    CloseTransfers,
     /// Toolbar: Show Server Info panel
     ShowServerInfo,
     /// Settings panel: Use 24-hour time format toggled
@@ -367,6 +372,10 @@ pub enum Message {
     FileTabSwitch(TabId),
     /// Files: Close tab by ID
     FileTabClose(TabId),
+    /// Files: Download file (from context menu)
+    FileDownload(String),
+    /// Files: Download directory (from context menu or toolbar)
+    FileDownloadAll(String),
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed
@@ -385,4 +394,22 @@ pub enum Message {
     ProxyUsernameChanged(String),
     /// Settings panel: Proxy password field changed
     ProxyPasswordChanged(String),
+
+    // ==================== Transfers ====================
+    /// Transfer: Progress event from executor
+    TransferProgress(TransferEvent),
+    /// Transfer: Start next queued transfer
+    TransferStartNext,
+    /// Transfer: Pause a transfer (UI not yet implemented)
+    #[allow(dead_code)]
+    TransferPause(Uuid),
+    /// Transfer: Resume a paused transfer (UI not yet implemented)
+    #[allow(dead_code)]
+    TransferResume(Uuid),
+    /// Transfer: Cancel a transfer (UI not yet implemented)
+    #[allow(dead_code)]
+    TransferCancel(Uuid),
+    /// Transfer: Remove a completed/failed transfer from the list (UI not yet implemented)
+    #[allow(dead_code)]
+    TransferRemove(Uuid),
 }

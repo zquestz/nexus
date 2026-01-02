@@ -3391,6 +3391,7 @@ dependencies = [
  "chrono",
  "dirs",
  "fluent-bundle",
+ "hex",
  "iced",
  "iced_aw",
  "iced_fontello",

@@ -12,6 +12,7 @@ mod icon;
 mod image;
 mod network;
 mod style;
+mod transfers;
 mod types;
 mod views;
 
@@ -116,11 +117,18 @@ struct NexusApp {
     // -------------------------------------------------------------------------
     /// News body editor content, keyed by connection_id (used for both create and edit)
     news_body_content: HashMap<usize, text_editor::Content>,
+
+    // -------------------------------------------------------------------------
+    // Transfers
+    // -------------------------------------------------------------------------
+    /// Transfer manager for file downloads/uploads (global, not per-connection)
+    transfer_manager: transfers::TransferManager,
 }
 
 impl Default for NexusApp {
     fn default() -> Self {
         let config = config::Config::load();
+        let transfer_manager = transfers::TransferManager::load();
         Self {
             // Persistence
             config,
@@ -142,6 +150,8 @@ impl Default for NexusApp {
             bookmark_errors: HashMap::new(),
             // Text Editor State
             news_body_content: HashMap::new(),
+            // Transfers
+            transfer_manager,
         }
     }
 }
@@ -388,6 +398,10 @@ impl NexusApp {
             Message::OpenUrl(url) => self.handle_open_url(url),
             Message::ShowAbout => self.handle_show_about(),
 
+            // Transfers
+            Message::ToggleTransfers => self.handle_toggle_transfers(),
+            Message::CloseTransfers => self.handle_close_transfers(),
+
             // Server info
             Message::CancelEditServerInfo => self.handle_cancel_edit_server_info(),
             Message::ClearServerImagePressed => self.handle_clear_server_image_pressed(),
@@ -502,6 +516,16 @@ impl NexusApp {
             Message::FileTabNew => self.handle_file_tab_new(),
             Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
+            Message::FileDownload(path) => self.handle_file_download(path),
+            Message::FileDownloadAll(path) => self.handle_file_download_all(path),
+
+            // Transfer management
+            Message::TransferProgress(event) => self.handle_transfer_progress(event),
+            Message::TransferStartNext => self.handle_transfer_start_next(),
+            Message::TransferPause(id) => self.handle_transfer_pause(id),
+            Message::TransferResume(id) => self.handle_transfer_resume(id),
+            Message::TransferCancel(id) => self.handle_transfer_cancel(id),
+            Message::TransferRemove(id) => self.handle_transfer_remove(id),
         }
     }
 
@@ -523,6 +547,13 @@ impl NexusApp {
                 conn.connection_id,
                 network::network_stream,
             ));
+        }
+
+        // Subscribe to transfer execution - one subscription per queued/active transfer
+        // Each subscription is keyed by the transfer's stable UUID, so it remains
+        // stable even as the transfer status changes from Queued -> Connecting -> Transferring
+        for transfer in self.transfer_manager.queued_or_active() {
+            subscriptions.push(transfers::transfer_subscription(transfer.clone()));
         }
 
         Subscription::batch(subscriptions)
@@ -568,6 +599,7 @@ impl NexusApp {
             proxy: &self.config.settings.proxy,
             download_path: self.config.settings.download_path.as_deref(),
             show_hidden: self.config.settings.show_hidden_files,
+            transfer_manager: &self.transfer_manager,
         };
 
         let main_view = views::main_layout(config);

@@ -1,14 +1,15 @@
 //! Main application layout and toolbar
 
 use super::constants::{
-    PERMISSION_FILE_COPY, PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE, PERMISSION_FILE_INFO,
-    PERMISSION_FILE_LIST, PERMISSION_FILE_MOVE, PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT,
-    PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE,
-    PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_FILE_COPY, PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE,
+    PERMISSION_FILE_DOWNLOAD, PERMISSION_FILE_INFO, PERMISSION_FILE_LIST, PERMISSION_FILE_MOVE,
+    PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT, PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST,
+    PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::files::{FilePermissions, files_view};
 use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
+use super::transfers::transfers_view;
 use super::user_info::{password_change_view, user_info_view};
 use crate::config::settings::ProxySettings;
 use crate::i18n::t;
@@ -64,6 +65,8 @@ struct ServerContentContext<'a> {
     download_path: Option<&'a str>,
     /// Whether to show hidden files
     show_hidden: bool,
+    /// Transfer manager for file downloads/uploads
+    transfer_manager: &'a crate::transfers::TransferManager,
 }
 
 // ============================================================================
@@ -217,6 +220,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 proxy: config.proxy,
                 download_path: config.download_path,
                 show_hidden: config.show_hidden,
+                transfer_manager: config.transfer_manager,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -249,6 +253,12 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                     .width(Fill)
                     .height(Fill)
                     .into(),
+                ActivePanel::Transfers => {
+                    stack![conn_form, transfers_view(config.transfer_manager)]
+                        .width(Fill)
+                        .height(Fill)
+                        .into()
+                }
                 _ => conn_form,
             }
         };
@@ -463,6 +473,18 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
             container(shaped_text("")).width(Fill),
             // Collapse buttons group (with theme toggle)
             row![
+                // Transfers button (global - always enabled)
+                tooltip(
+                    button(icon::exchange().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleTransfers)
+                        .style(toolbar_button_style(active_panel == ActivePanel::Transfers)),
+                    container(shaped_text(t("tooltip-transfers")).size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(tooltip_container_style),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING),
                 // About button
                 tooltip(
                     button(icon::info_circled().size(TOOLBAR_ICON_SIZE))
@@ -666,6 +688,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 file_rename: ctx.conn.has_permission(PERMISSION_FILE_RENAME),
                 file_move: ctx.conn.has_permission(PERMISSION_FILE_MOVE),
                 file_copy: ctx.conn.has_permission(PERMISSION_FILE_COPY),
+                file_download: ctx.conn.has_permission(PERMISSION_FILE_DOWNLOAD),
             };
             stack![
                 chat,
@@ -675,6 +698,10 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             .height(Fill)
             .into()
         }
+        ActivePanel::Transfers => stack![chat, transfers_view(ctx.transfer_manager)]
+            .width(Fill)
+            .height(Fill)
+            .into(),
         ActivePanel::None => chat,
     }
 }

@@ -45,6 +45,18 @@ pub struct ServerConnectionParams {
     pub session_id: u32,
     /// Authenticated username
     pub username: String,
+    /// Password (stored for transfer reconnection)
+    pub password: String,
+    /// Nickname for shared accounts (if different from username)
+    pub nickname: String,
+    /// Server address (IP or hostname)
+    pub address: String,
+    /// Server port
+    pub port: u16,
+    /// Transfer port (from ServerInfo, typically 7501)
+    pub transfer_port: Option<u16>,
+    /// TLS certificate fingerprint (SHA-256)
+    pub certificate_fingerprint: String,
     /// Display name (bookmark name or address:port)
     pub display_name: String,
     /// Unique connection identifier
@@ -97,6 +109,19 @@ pub struct ServerConnection {
     pub session_id: u32,
     /// Authenticated username (used for PM routing)
     pub username: String,
+    /// Password (stored for transfer reconnection)
+    pub password: String,
+    /// Nickname for shared accounts (display name, may differ from username)
+    pub nickname: String,
+    /// Server address (IP or hostname)
+    pub address: String,
+    /// Server port (stored for future display use, e.g., status bar)
+    #[allow(dead_code)]
+    pub port: u16,
+    /// Transfer port (from ServerInfo, typically 7501)
+    pub transfer_port: Option<u16>,
+    /// TLS certificate fingerprint (SHA-256)
+    pub certificate_fingerprint: String,
     /// Display name (bookmark name or address:port)
     pub display_name: String,
     /// Unique connection identifier
@@ -221,6 +246,12 @@ impl ServerConnection {
             bookmark_id: params.bookmark_id,
             session_id: params.session_id,
             username: params.username,
+            password: params.password,
+            nickname: params.nickname,
+            address: params.address,
+            port: params.port,
+            transfer_port: params.transfer_port,
+            certificate_fingerprint: params.certificate_fingerprint,
             display_name: params.display_name,
             connection_id: params.connection_id,
             is_admin: params.is_admin,
@@ -294,10 +325,20 @@ pub struct NetworkConnection {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
+    /// Transfer port (from ServerInfo, typically 7501)
+    pub transfer_port: Option<u16>,
     /// Certificate fingerprint (SHA-256) for TOFU verification
     pub certificate_fingerprint: String,
     /// Locale accepted by the server
     pub locale: String,
+    /// Server address (IP or hostname) - stored for transfer reconnection
+    pub address: String,
+    /// Server port - stored for transfer reconnection
+    pub port: u16,
+    /// Password - stored for transfer reconnection
+    pub password: String,
+    /// Nickname for shared accounts - stored for transfer reconnection
+    pub nickname: String,
 }
 
 impl NetworkConnection {

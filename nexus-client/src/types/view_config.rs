@@ -3,6 +3,7 @@
 use uuid::Uuid;
 
 use crate::config::settings::ProxySettings;
+use crate::transfers::TransferManager;
 use crate::types::{
     ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
     SettingsFormState, UiState, UserManagementState,
@@ -81,6 +82,9 @@ pub struct ViewConfig<'a> {
 
     /// Whether to show hidden files in file browser (from config)
     pub show_hidden: bool,
+
+    /// Transfer manager for file downloads/uploads (global, not per-connection)
+    pub transfer_manager: &'a TransferManager,
 }
 
 /// Toolbar state configuration

@@ -13,7 +13,7 @@ use crate::types::NetworkConnection;
 use super::constants::DEFAULT_FEATURES;
 use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
-use super::types::{ConnectionParams, LoginInfo, Reader, Writer};
+use super::types::{ConnectionParams, LoginInfo, Reader, TransferParams, Writer};
 
 /// Connect to server, perform handshake and login
 ///
@@ -36,19 +36,28 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
     let login_info = perform_login(
         &mut frame_reader,
         &mut frame_writer,
-        params.username,
-        params.password,
-        params.nickname,
+        params.username.clone(),
+        params.password.clone(),
+        params.nickname.clone(),
         params.locale,
         params.avatar,
     )
     .await?;
+
+    // Build transfer params from connection params (client-side values not returned by server)
+    let transfer_params = TransferParams {
+        address: params.server_address,
+        port: params.port,
+        password: params.password,
+        nickname: params.nickname.unwrap_or_default(),
+    };
 
     // Set up bidirectional communication
     setup_communication_channels(
         frame_reader,
         frame_writer,
         login_info,
+        transfer_params,
         params.connection_id,
         fingerprint,
     )
@@ -138,7 +147,10 @@ async fn perform_login(
             max_connections_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_connections_per_ip),
-            max_transfers_per_ip: server_info.and_then(|info| info.max_transfers_per_ip),
+            max_transfers_per_ip: server_info
+                .as_ref()
+                .and_then(|info| info.max_transfers_per_ip),
+            transfer_port: server_info.and_then(|info| info.transfer_port),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         ServerMessage::LoginResponse {

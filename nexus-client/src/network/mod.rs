@@ -3,7 +3,7 @@
 mod connect;
 mod constants;
 mod stream;
-mod tls;
+pub mod tls;
 mod types;
 
 pub use connect::connect_to_server;

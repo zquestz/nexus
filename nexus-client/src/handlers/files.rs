@@ -934,4 +934,97 @@ impl NexusApp {
         conn.files_management.close_tab_by_id(tab_id);
         Task::none()
     }
+
+    // ==================== Downloads ====================
+
+    /// Handle file download request (single file)
+    ///
+    /// Creates a new transfer in the transfer manager and queues it for download.
+    pub fn handle_file_download(&mut self, path: String) -> Task<Message> {
+        self.queue_download(path, false)
+    }
+
+    /// Handle directory download request (recursive)
+    ///
+    /// Creates a new transfer in the transfer manager and queues it for download.
+    pub fn handle_file_download_all(&mut self, path: String) -> Task<Message> {
+        self.queue_download(path, true)
+    }
+
+    /// Queue a download transfer
+    ///
+    /// Creates a Transfer with Queued status and adds it to the transfer manager.
+    fn queue_download(&mut self, remote_path: String, is_directory: bool) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get connection info for the transfer
+        let server_name = conn.server_name.clone().unwrap_or_default();
+        let server_address = conn.address.clone();
+        let transfer_port = conn.transfer_port.unwrap_or(7501);
+        let certificate_fingerprint = conn.certificate_fingerprint.clone();
+        let username = conn.username.clone();
+        let password = conn.password.clone();
+        let nickname = if conn.nickname != conn.username {
+            Some(conn.nickname.clone())
+        } else {
+            None
+        };
+
+        // Get the current viewing mode (root or user area)
+        let remote_root = conn.files_management.active_tab().viewing_root;
+
+        // Build local path from download directory + remote filename
+        let download_dir = self
+            .config
+            .settings
+            .download_path
+            .clone()
+            .or_else(crate::config::settings::default_download_path)
+            .unwrap_or_else(|| ".".to_string());
+
+        // Extract filename from remote path
+        let filename = remote_path
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("download");
+
+        let local_path = std::path::PathBuf::from(&download_dir).join(filename);
+
+        // Create connection info for the transfer
+        let connection_info = crate::transfers::TransferConnectionInfo {
+            server_name,
+            server_address,
+            transfer_port,
+            certificate_fingerprint,
+            username,
+            password,
+            nickname,
+        };
+
+        // Create the transfer
+        let transfer = crate::transfers::Transfer::new_download(
+            connection_info,
+            remote_path,
+            remote_root,
+            is_directory,
+            local_path,
+            conn.bookmark_id,
+        );
+
+        // Add to transfer manager
+        self.transfer_manager.add(transfer);
+
+        // Save transfers to disk
+        if let Err(e) = self.transfer_manager.save() {
+            eprintln!("Failed to save transfers: {e}");
+        }
+
+        Task::none()
+    }
 }

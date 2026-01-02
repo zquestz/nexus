@@ -264,6 +264,19 @@ pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
 pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
 
 // ============================================================================
+// Transfers Panel Layout
+// ============================================================================
+
+/// Maximum width for transfers list view (double the standard form width)
+pub const TRANSFER_LIST_MAX_WIDTH: f32 = FORM_MAX_WIDTH * 2.0;
+
+/// Spacing between transfer items in list
+pub const TRANSFER_ITEM_SPACING: f32 = 3.0;
+
+/// Padding inside each transfer row (vertical, horizontal)
+pub const TRANSFER_ROW_PADDING: [f32; 2] = [4.0, 8.0];
+
+// ============================================================================
 // File Browser
 // ============================================================================
 
