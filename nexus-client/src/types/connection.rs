@@ -1,5 +1,7 @@
 //! Server connection types
 
+use uuid::Uuid;
+
 use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
@@ -37,8 +39,8 @@ use crate::image::CachedImage;
 
 /// Parameters for creating a new ServerConnection
 pub struct ServerConnectionParams {
-    /// Bookmark index or None for ad-hoc connections
-    pub bookmark_index: Option<usize>,
+    /// Bookmark ID or None for ad-hoc connections
+    pub bookmark_id: Option<Uuid>,
     /// Session ID assigned by server
     pub session_id: u32,
     /// Authenticated username
@@ -89,8 +91,8 @@ pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
 /// Contains connection state, chat history, user list, and UI state.
 #[derive(Debug, Clone)]
 pub struct ServerConnection {
-    /// Bookmark index or None for ad-hoc connections
-    pub bookmark_index: Option<usize>,
+    /// Bookmark ID or None for ad-hoc connections
+    pub bookmark_id: Option<Uuid>,
     /// Session ID assigned by server (used to identify our user in online_users list)
     pub session_id: u32,
     /// Authenticated username (used for PM routing)
@@ -216,7 +218,7 @@ impl ServerConnection {
     /// Create a new ServerConnection with the given parameters
     pub fn new(params: ServerConnectionParams) -> Self {
         Self {
-            bookmark_index: params.bookmark_index,
+            bookmark_id: params.bookmark_id,
             session_id: params.session_id,
             username: params.username,
             display_name: params.display_name,

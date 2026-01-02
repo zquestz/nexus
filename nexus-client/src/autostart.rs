@@ -13,9 +13,8 @@ pub fn generate_auto_connect_tasks(config: &Config) -> Vec<Task<Message>> {
     config
         .bookmarks
         .iter()
-        .enumerate()
-        .filter(|(_, bookmark)| bookmark.auto_connect)
-        .map(|(index, _)| Task::done(Message::ConnectToBookmark(index)))
+        .filter(|bookmark| bookmark.auto_connect)
+        .map(|bookmark| Task::done(Message::ConnectToBookmark(bookmark.id)))
         .collect()
 }
 

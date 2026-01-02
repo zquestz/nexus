@@ -17,6 +17,8 @@ mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use uuid::Uuid;
+
 use iced::widget::{Id, operation, text_editor};
 use iced::{Element, Subscription, Task, Theme};
 
@@ -78,8 +80,8 @@ struct NexusApp {
     active_connection: Option<usize>,
     /// Counter for generating unique connection IDs
     next_connection_id: usize,
-    /// Set of bookmark indices currently connecting (prevents duplicate attempts)
-    connecting_bookmarks: HashSet<usize>,
+    /// Set of bookmark IDs currently connecting (prevents duplicate attempts)
+    connecting_bookmarks: HashSet<Uuid>,
 
     // -------------------------------------------------------------------------
     // Forms
@@ -107,7 +109,7 @@ struct NexusApp {
     /// Certificate fingerprint mismatch queue (for handling multiple mismatches)
     fingerprint_mismatch_queue: VecDeque<FingerprintMismatch>,
     /// Transient per-bookmark connection errors (not persisted to disk)
-    bookmark_errors: HashMap<usize, String>,
+    bookmark_errors: HashMap<Uuid, String>,
 
     // -------------------------------------------------------------------------
     // Text Editor State (not Clone, stored outside ServerConnection)
@@ -202,7 +204,7 @@ impl NexusApp {
 
             // Connection management
             Message::ConnectPressed => self.handle_connect_pressed(),
-            Message::ConnectToBookmark(index) => self.handle_connect_to_bookmark(index),
+            Message::ConnectToBookmark(id) => self.handle_connect_to_bookmark(id),
             Message::DisconnectFromServer(connection_id) => {
                 self.handle_disconnect_from_server(connection_id)
             }
@@ -247,10 +249,10 @@ impl NexusApp {
                 self.handle_bookmark_nickname_changed(nickname)
             }
             Message::CancelBookmarkEdit => self.handle_cancel_bookmark_edit(),
-            Message::DeleteBookmark(index) => self.handle_delete_bookmark(index),
+            Message::DeleteBookmark(id) => self.handle_delete_bookmark(id),
             Message::SaveBookmark => self.handle_save_bookmark(),
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
-            Message::ShowEditBookmark(index) => self.handle_show_edit_bookmark(index),
+            Message::ShowEditBookmark(id) => self.handle_show_edit_bookmark(id),
             Message::BookmarkEditTabPressed => self.handle_bookmark_edit_tab_pressed(),
             Message::BookmarkEditFocusResult(name, address, port, username, password, nickname) => {
                 self.handle_bookmark_edit_focus_result(
@@ -438,9 +440,9 @@ impl NexusApp {
             // Network events (async results)
             Message::BookmarkConnectionResult {
                 result,
-                bookmark_index,
+                bookmark_id,
                 display_name,
-            } => self.handle_bookmark_connection_result(result, bookmark_index, display_name),
+            } => self.handle_bookmark_connection_result(result, bookmark_id, display_name),
             Message::ConnectionResult(result) => self.handle_connection_result(result),
             Message::NetworkError(connection_id, error) => {
                 self.handle_network_error(connection_id, error)

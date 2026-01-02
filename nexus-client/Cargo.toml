@@ -39,6 +39,7 @@ base64 = "0.22"
 identicon-rs = "7.0"
 image = "0.25"
 ipnet = "2.11"
+uuid = { version = "1.19", features = ["v4", "serde"] }
 
 [build-dependencies]
 iced_fontello = "0.13.2"

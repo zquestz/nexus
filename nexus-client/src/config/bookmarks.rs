@@ -1,5 +1,7 @@
 //! Bookmark management methods for Config
 
+use uuid::Uuid;
+
 use crate::types::ServerBookmark;
 
 use super::Config;
@@ -10,28 +12,33 @@ impl Config {
         self.bookmarks.push(bookmark);
     }
 
-    /// Delete a bookmark at the given index
+    /// Delete a bookmark by ID
     ///
-    /// Does nothing if the index is out of bounds.
-    pub fn delete_bookmark(&mut self, index: usize) {
-        if index < self.bookmarks.len() {
-            self.bookmarks.remove(index);
-        }
+    /// Does nothing if no bookmark with the given ID exists.
+    pub fn delete_bookmark(&mut self, id: Uuid) {
+        self.bookmarks.retain(|b| b.id != id);
     }
 
-    /// Get a bookmark by index
+    /// Get a bookmark by ID
     ///
-    /// Returns None if the index is out of bounds.
-    pub fn get_bookmark(&self, index: usize) -> Option<&ServerBookmark> {
-        self.bookmarks.get(index)
+    /// Returns None if no bookmark with the given ID exists.
+    pub fn get_bookmark(&self, id: Uuid) -> Option<&ServerBookmark> {
+        self.bookmarks.iter().find(|b| b.id == id)
     }
 
-    /// Update an existing bookmark at the given index
+    /// Get a mutable bookmark by ID
     ///
-    /// Does nothing if the index is out of bounds.
-    pub fn update_bookmark(&mut self, index: usize, bookmark: ServerBookmark) {
-        if index < self.bookmarks.len() {
-            self.bookmarks[index] = bookmark;
+    /// Returns None if no bookmark with the given ID exists.
+    pub fn get_bookmark_mut(&mut self, id: Uuid) -> Option<&mut ServerBookmark> {
+        self.bookmarks.iter_mut().find(|b| b.id == id)
+    }
+
+    /// Update an existing bookmark by ID
+    ///
+    /// Does nothing if no bookmark with the given ID exists.
+    pub fn update_bookmark(&mut self, id: Uuid, bookmark: ServerBookmark) {
+        if let Some(existing) = self.bookmarks.iter_mut().find(|b| b.id == id) {
+            *existing = bookmark;
         }
     }
 }
@@ -47,6 +54,7 @@ mod tests {
     /// Helper to create a bookmark with just a name
     fn bookmark(name: &str) -> ServerBookmark {
         ServerBookmark {
+            id: Uuid::new_v4(),
             name: name.to_string(),
             ..Default::default()
         }
@@ -75,21 +83,24 @@ mod tests {
     #[test]
     fn test_delete_bookmark() {
         let mut config = Config::default();
-        config.add_bookmark(bookmark("Server 1"));
-        config.add_bookmark(bookmark("Server 2"));
+        let bookmark1 = bookmark("Server 1");
+        let bookmark2 = bookmark("Server 2");
+        let id1 = bookmark1.id;
+        config.add_bookmark(bookmark1);
+        config.add_bookmark(bookmark2);
 
-        config.delete_bookmark(0);
+        config.delete_bookmark(id1);
 
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Server 2");
     }
 
     #[test]
-    fn test_delete_bookmark_out_of_bounds() {
+    fn test_delete_bookmark_nonexistent() {
         let mut config = Config::default();
         config.add_bookmark(bookmark("Server 1"));
 
-        config.delete_bookmark(10);
+        config.delete_bookmark(Uuid::new_v4());
 
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Server 1");
@@ -98,28 +109,33 @@ mod tests {
     #[test]
     fn test_get_bookmark() {
         let mut config = Config::default();
-        config.add_bookmark(bookmark("Test Server"));
+        let bm = bookmark("Test Server");
+        let id = bm.id;
+        config.add_bookmark(bm);
 
-        let result = config.get_bookmark(0);
+        let result = config.get_bookmark(id);
         assert_eq!(result.map(|b| b.name.as_str()), Some("Test Server"));
     }
 
     #[test]
-    fn test_get_bookmark_out_of_bounds() {
+    fn test_get_bookmark_nonexistent() {
         let mut config = Config::default();
         config.add_bookmark(bookmark("Test Server"));
 
-        assert!(config.get_bookmark(5).is_none());
+        assert!(config.get_bookmark(Uuid::new_v4()).is_none());
     }
 
     #[test]
     fn test_update_bookmark() {
         let mut config = Config::default();
-        config.add_bookmark(bookmark("Original"));
+        let bm = bookmark("Original");
+        let id = bm.id;
+        config.add_bookmark(bm);
 
         config.update_bookmark(
-            0,
+            id,
             ServerBookmark {
+                id,
                 name: "Updated".to_string(),
                 address: "200::2".to_string(),
                 port: 8000,
@@ -136,11 +152,11 @@ mod tests {
     }
 
     #[test]
-    fn test_update_bookmark_out_of_bounds() {
+    fn test_update_bookmark_nonexistent() {
         let mut config = Config::default();
         config.add_bookmark(bookmark("Server 1"));
 
-        config.update_bookmark(5, bookmark("Should Not Appear"));
+        config.update_bookmark(Uuid::new_v4(), bookmark("Should Not Appear"));
 
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Server 1");

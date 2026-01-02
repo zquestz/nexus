@@ -1,5 +1,7 @@
 //! Connection result handlers
 
+use uuid::Uuid;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
@@ -38,33 +40,37 @@ impl NexusApp {
                 self.connection_form.error = None;
 
                 // Find if this connection matches a bookmark (username/nickname case-insensitive)
-                let bookmark_index = self.config.bookmarks.iter().position(|b| {
-                    b.address == self.connection_form.server_address
-                        && b.port == self.connection_form.port
-                        && b.username.to_lowercase() == self.connection_form.username.to_lowercase()
-                        && b.nickname.to_lowercase() == self.connection_form.nickname.to_lowercase()
-                });
+                let bookmark_id = self
+                    .config
+                    .bookmarks
+                    .iter()
+                    .find(|b| {
+                        b.address == self.connection_form.server_address
+                            && b.port == self.connection_form.port
+                            && b.username.to_lowercase()
+                                == self.connection_form.username.to_lowercase()
+                            && b.nickname.to_lowercase()
+                                == self.connection_form.nickname.to_lowercase()
+                    })
+                    .map(|b| b.id);
 
                 // Verify and save certificate fingerprint
                 if let Err(mismatch_details) =
-                    self.verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                    self.verify_and_save_fingerprint(bookmark_id, &conn.certificate_fingerprint)
                 {
-                    let display_name = self.get_display_name(bookmark_index);
+                    let display_name = self.get_display_name(bookmark_id);
                     return self.handle_fingerprint_mismatch(*mismatch_details, conn, display_name);
                 }
 
                 let connection_id = conn.connection_id;
-                let display_name = self.get_display_name(bookmark_index);
+                let display_name = self.get_display_name(bookmark_id);
                 let username = self.connection_form.username.clone();
                 let certificate_fingerprint = conn.certificate_fingerprint.clone();
 
                 // Create and register connection
-                let Some(reg) = self.create_and_register_connection(
-                    conn,
-                    bookmark_index,
-                    username,
-                    display_name,
-                ) else {
+                let Some(reg) =
+                    self.create_and_register_connection(conn, bookmark_id, username, display_name)
+                else {
                     self.connection_form.error = Some(t("err-no-shutdown-handle"));
                     return Task::none();
                 };
@@ -83,7 +89,7 @@ impl NexusApp {
                 self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
 
                 // Save as bookmark if checkbox was enabled (and not already a bookmark)
-                if self.connection_form.add_bookmark && bookmark_index.is_none() {
+                if self.connection_form.add_bookmark && bookmark_id.is_none() {
                     self.save_new_bookmark(connection_id, certificate_fingerprint);
                 }
 
@@ -106,7 +112,7 @@ impl NexusApp {
     pub fn handle_bookmark_connection_result(
         &mut self,
         result: Result<NetworkConnection, String>,
-        bookmark_index: Option<usize>,
+        bookmark_id: Option<Uuid>,
         display_name: String,
     ) -> Task<Message> {
         match result {
@@ -114,34 +120,30 @@ impl NexusApp {
                 let connection_id = conn.connection_id;
 
                 // Clear the connecting lock and any previous error for this bookmark
-                if let Some(idx) = bookmark_index {
-                    self.connecting_bookmarks.remove(&idx);
-                    self.bookmark_errors.remove(&idx);
+                if let Some(id) = bookmark_id {
+                    self.connecting_bookmarks.remove(&id);
+                    self.bookmark_errors.remove(&id);
                 }
 
                 // Verify and save certificate fingerprint
                 if let Err(mismatch_details) =
-                    self.verify_and_save_fingerprint(bookmark_index, &conn.certificate_fingerprint)
+                    self.verify_and_save_fingerprint(bookmark_id, &conn.certificate_fingerprint)
                 {
                     return self.handle_fingerprint_mismatch(*mismatch_details, conn, display_name);
                 }
 
                 // Extract username from bookmark
-                let username = bookmark_index
-                    .and_then(|idx| self.config.get_bookmark(idx))
+                let username = bookmark_id
+                    .and_then(|id| self.config.get_bookmark(id))
                     .map(|b| b.username.clone())
                     .unwrap_or_default();
 
                 // Create and register connection
-                let Some(reg) = self.create_and_register_connection(
-                    conn,
-                    bookmark_index,
-                    username,
-                    display_name,
-                ) else {
-                    if let Some(idx) = bookmark_index {
-                        self.bookmark_errors
-                            .insert(idx, t("err-no-shutdown-handle"));
+                let Some(reg) =
+                    self.create_and_register_connection(conn, bookmark_id, username, display_name)
+                else {
+                    if let Some(id) = bookmark_id {
+                        self.bookmark_errors.insert(id, t("err-no-shutdown-handle"));
                     }
                     return Task::none();
                 };
@@ -152,8 +154,8 @@ impl NexusApp {
                 {
                     self.connections.remove(&connection_id);
                     self.active_connection = None;
-                    if let Some(idx) = bookmark_index {
-                        self.bookmark_errors.insert(idx, error_msg);
+                    if let Some(id) = bookmark_id {
+                        self.bookmark_errors.insert(id, error_msg);
                     }
                     return Task::none();
                 }
@@ -164,9 +166,9 @@ impl NexusApp {
                 operation::focus(Id::from(InputId::ChatInput))
             }
             Err(error) => {
-                if let Some(idx) = bookmark_index {
-                    self.connecting_bookmarks.remove(&idx);
-                    self.bookmark_errors.insert(idx, error);
+                if let Some(id) = bookmark_id {
+                    self.connecting_bookmarks.remove(&id);
+                    self.bookmark_errors.insert(id, error);
                 }
                 Task::none()
             }
@@ -215,7 +217,7 @@ impl NexusApp {
     fn create_and_register_connection(
         &mut self,
         conn: NetworkConnection,
-        bookmark_index: Option<usize>,
+        bookmark_id: Option<Uuid>,
         username: String,
         display_name: String,
     ) -> Option<ConnectionRegistration> {
@@ -231,7 +233,7 @@ impl NexusApp {
         };
 
         let server_conn = ServerConnection::new(ServerConnectionParams {
-            bookmark_index,
+            bookmark_id,
             session_id: conn.session_id,
             username,
             display_name,
@@ -266,11 +268,11 @@ impl NexusApp {
     }
 
     /// Get display name from connection form or bookmark
-    fn get_display_name(&self, bookmark_index: Option<usize>) -> String {
+    fn get_display_name(&self, bookmark_id: Option<Uuid>) -> String {
         if !self.connection_form.server_name.trim().is_empty() {
             self.connection_form.server_name.clone()
-        } else if let Some(name) = bookmark_index
-            .and_then(|idx| self.config.bookmarks.get(idx))
+        } else if let Some(name) = bookmark_id
+            .and_then(|id| self.config.get_bookmark(id))
             .map(|b| b.name.clone())
         {
             name
@@ -300,6 +302,7 @@ impl NexusApp {
     /// Save a new bookmark from the current connection form
     fn save_new_bookmark(&mut self, connection_id: usize, certificate_fingerprint: String) {
         let new_bookmark = ServerBookmark {
+            id: Uuid::new_v4(),
             name: self.connection_form.server_name.clone(),
             address: self.connection_form.server_address.clone(),
             port: self.connection_form.port,
@@ -309,12 +312,13 @@ impl NexusApp {
             auto_connect: false,
             certificate_fingerprint: Some(certificate_fingerprint),
         };
+        let bookmark_id = new_bookmark.id;
         self.config.add_bookmark(new_bookmark);
         let _ = self.config.save();
 
-        // Update the connection's bookmark_index to point to the new bookmark
+        // Update the connection's bookmark_id to point to the new bookmark
         if let Some(server_conn) = self.connections.get_mut(&connection_id) {
-            server_conn.bookmark_index = Some(self.config.bookmarks.len() - 1);
+            server_conn.bookmark_id = Some(bookmark_id);
         }
     }
 }

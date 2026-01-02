@@ -2,6 +2,7 @@
 
 use iced::Theme;
 use iced::widget::{markdown, text_editor};
+use uuid::Uuid;
 
 use nexus_common::framing::MessageId;
 
@@ -23,7 +24,7 @@ pub enum Message {
     /// Network: Bookmark connection attempt completed (with display name)
     BookmarkConnectionResult {
         result: Result<NetworkConnection, String>,
-        bookmark_index: Option<usize>,
+        bookmark_id: Option<Uuid>,
         display_name: String,
     },
     /// Bookmark editor: Name field changed
@@ -99,12 +100,12 @@ pub enum Message {
     CloseUserMessageTab(String),
     /// Connection form: Connect button pressed
     ConnectPressed,
-    /// Connect to a bookmark by index
-    ConnectToBookmark(usize),
+    /// Connect to a bookmark by ID
+    ConnectToBookmark(Uuid),
     /// Network: Connection attempt completed
     ConnectionResult(Result<NetworkConnection, String>),
-    /// Delete a bookmark by index
-    DeleteBookmark(usize),
+    /// Delete a bookmark by ID
+    DeleteBookmark(Uuid),
     /// Disconnect from server by connection_id
     DisconnectFromServer(usize),
 
@@ -157,7 +158,7 @@ pub enum Message {
     /// Toolbar: Show chat view
     ShowChatView,
     /// Bookmark list: Edit button pressed on bookmark
-    ShowEditBookmark(usize),
+    ShowEditBookmark(Uuid),
     /// Switch to a different chat tab
     SwitchChatTab(ChatTab),
     /// Switch active view to connection by connection_id

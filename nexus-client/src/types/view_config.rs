@@ -1,5 +1,7 @@
 //! View configuration struct for passing state to view rendering
 
+use uuid::Uuid;
+
 use crate::config::settings::ProxySettings;
 use crate::types::{
     ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
@@ -45,7 +47,7 @@ pub struct ViewConfig<'a> {
     pub bookmarks: &'a [ServerBookmark],
 
     /// Per-bookmark connection errors (transient)
-    pub bookmark_errors: &'a HashMap<usize, String>,
+    pub bookmark_errors: &'a HashMap<Uuid, String>,
 
     /// Connection form state
     pub connection_form: &'a ConnectionFormState,

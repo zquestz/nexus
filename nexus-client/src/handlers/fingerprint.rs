@@ -10,7 +10,7 @@ impl NexusApp {
     pub fn handle_accept_new_fingerprint(&mut self) -> Task<Message> {
         if let Some(mismatch) = self.fingerprint_mismatch_queue.pop_front() {
             // Update the stored fingerprint (handle case where bookmark was deleted)
-            if let Some(bookmark) = self.config.bookmarks.get_mut(mismatch.bookmark_index) {
+            if let Some(bookmark) = self.config.get_bookmark_mut(mismatch.bookmark_id) {
                 bookmark.certificate_fingerprint = Some(mismatch.received);
                 let _ = self.config.save();
             }
@@ -18,7 +18,7 @@ impl NexusApp {
             // Complete the connection that was pending
             return self.handle_bookmark_connection_result(
                 Ok(mismatch.connection),
-                Some(mismatch.bookmark_index),
+                Some(mismatch.bookmark_id),
                 mismatch.display_name,
             );
         }

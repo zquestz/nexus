@@ -1,12 +1,13 @@
 //! Bookmark management
 
+use uuid::Uuid;
+
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 use iced::Task;
 use iced::widget::{Id, operation};
-use std::collections::HashMap;
 
 impl NexusApp {
     // ==================== Form Field Handlers ====================
@@ -86,8 +87,8 @@ impl NexusApp {
             BookmarkEditMode::Add => {
                 self.config.add_bookmark(bookmark);
             }
-            BookmarkEditMode::Edit(index) => {
-                self.config.update_bookmark(index, bookmark);
+            BookmarkEditMode::Edit(id) => {
+                self.config.update_bookmark(id, bookmark);
             }
             BookmarkEditMode::None => {}
         }
@@ -113,14 +114,14 @@ impl NexusApp {
     }
 
     /// Show the edit bookmark dialog for a specific bookmark
-    pub fn handle_show_edit_bookmark(&mut self, index: usize) -> Task<Message> {
-        if let Some(bookmark) = self.config.get_bookmark(index) {
-            self.bookmark_edit.mode = BookmarkEditMode::Edit(index);
+    pub fn handle_show_edit_bookmark(&mut self, id: Uuid) -> Task<Message> {
+        if let Some(bookmark) = self.config.get_bookmark(id) {
+            self.bookmark_edit.mode = BookmarkEditMode::Edit(id);
             self.bookmark_edit.bookmark = bookmark.clone();
             self.focused_field = InputId::BookmarkName;
 
             // Move any connection error to the edit dialog (acknowledges and clears it)
-            self.bookmark_edit.error = self.bookmark_errors.remove(&index);
+            self.bookmark_edit.error = self.bookmark_errors.remove(&id);
 
             return operation::focus(Id::from(InputId::BookmarkName));
         }
@@ -130,13 +131,13 @@ impl NexusApp {
     // ==================== Bookmark Operations ====================
 
     /// Connect to a bookmarked server
-    pub fn handle_connect_to_bookmark(&mut self, index: usize) -> Task<Message> {
-        if self.connecting_bookmarks.contains(&index) {
+    pub fn handle_connect_to_bookmark(&mut self, id: Uuid) -> Task<Message> {
+        if self.connecting_bookmarks.contains(&id) {
             return Task::none();
         }
 
-        if let Some(bookmark) = self.config.get_bookmark(index) {
-            self.connecting_bookmarks.insert(index);
+        if let Some(bookmark) = self.config.get_bookmark(id) {
+            self.connecting_bookmarks.insert(id);
 
             let connection_id = self.next_connection_id;
             self.next_connection_id += 1;
@@ -185,7 +186,7 @@ impl NexusApp {
                 },
                 move |result| Message::BookmarkConnectionResult {
                     result,
-                    bookmark_index: Some(index),
+                    bookmark_id: Some(id),
                     display_name: display_name.clone(),
                 },
             );
@@ -193,9 +194,9 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Delete a bookmark by index
-    pub fn handle_delete_bookmark(&mut self, index: usize) -> Task<Message> {
-        self.config.delete_bookmark(index);
+    /// Delete a bookmark by ID
+    pub fn handle_delete_bookmark(&mut self, id: Uuid) -> Task<Message> {
+        self.config.delete_bookmark(id);
         if let Err(e) = self.config.save() {
             self.connection_form.error = Some(t_args(
                 "err-failed-save-config",
@@ -203,14 +204,8 @@ impl NexusApp {
             ));
         }
 
-        // Clean up bookmark_errors: remove the deleted index and shift higher indices down
-        self.bookmark_errors.remove(&index);
-        let shifted: HashMap<usize, String> = self
-            .bookmark_errors
-            .drain()
-            .map(|(i, err)| if i > index { (i - 1, err) } else { (i, err) })
-            .collect();
-        self.bookmark_errors = shifted;
+        // Clean up bookmark_errors for deleted bookmark
+        self.bookmark_errors.remove(&id);
 
         self.bookmark_edit = BookmarkEditState::default();
         Task::none()

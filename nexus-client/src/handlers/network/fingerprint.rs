@@ -1,5 +1,7 @@
 //! Certificate fingerprint verification and handling
 
+use uuid::Uuid;
+
 use crate::NexusApp;
 use crate::types::{FingerprintMismatch, FingerprintMismatchDetails, Message, NetworkConnection};
 use iced::Task;
@@ -8,16 +10,16 @@ impl NexusApp {
     /// Verify certificate fingerprint matches stored value, or save on first connection (TOFU)
     pub fn verify_and_save_fingerprint(
         &mut self,
-        bookmark_index: Option<usize>,
+        bookmark_id: Option<Uuid>,
         fingerprint: &str,
     ) -> Result<(), Box<FingerprintMismatchDetails>> {
-        let Some(idx) = bookmark_index else {
+        let Some(id) = bookmark_id else {
             // No bookmark - nothing to verify
             return Ok(());
         };
 
-        let Some(bookmark) = self.config.bookmarks.get_mut(idx) else {
-            // Invalid bookmark index - nothing to verify
+        let Some(bookmark) = self.config.get_bookmark_mut(id) else {
+            // Invalid bookmark ID - nothing to verify
             return Ok(());
         };
 
@@ -34,7 +36,7 @@ impl NexusApp {
                     Ok(())
                 } else {
                     Err(Box::new(FingerprintMismatchDetails {
-                        bookmark_index: idx,
+                        bookmark_id: id,
                         expected: stored.clone(),
                         received: fingerprint.to_string(),
                         bookmark_name: bookmark.name.clone(),
@@ -55,7 +57,7 @@ impl NexusApp {
     ) -> Task<Message> {
         self.fingerprint_mismatch_queue
             .push_back(FingerprintMismatch {
-                bookmark_index: details.bookmark_index,
+                bookmark_id: details.bookmark_id,
                 expected: details.expected,
                 received: details.received,
                 bookmark_name: details.bookmark_name,

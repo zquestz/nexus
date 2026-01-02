@@ -2,6 +2,7 @@
 
 use nexus_common::DEFAULT_PORT;
 use serde::{Deserialize, Deserializer, Serialize};
+use uuid::Uuid;
 
 /// Deserialize port from either a number or a string (for backward compatibility)
 fn deserialize_port<'de, D>(deserializer: D) -> Result<u16, D::Error>
@@ -46,6 +47,9 @@ where
 /// Supports optional username/password for quick connect and auto-connect flag.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerBookmark {
+    /// Unique identifier for this bookmark
+    #[serde(default = "Uuid::new_v4")]
+    pub id: Uuid,
     /// Display name for the bookmark
     pub name: String,
     /// Server address (IPv4 or IPv6)
@@ -71,6 +75,7 @@ pub struct ServerBookmark {
 impl Default for ServerBookmark {
     fn default() -> Self {
         Self {
+            id: Uuid::new_v4(),
             name: String::new(),
             address: String::new(),
             port: DEFAULT_PORT,
@@ -114,6 +119,6 @@ impl Default for BookmarkEditState {
 pub enum BookmarkEditMode {
     None,
     Add,
-    /// Editing bookmark at this index
-    Edit(usize),
+    /// Editing bookmark with this ID
+    Edit(Uuid),
 }

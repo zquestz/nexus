@@ -1,6 +1,7 @@
 //! UI state and widget identifier types
 
 use iced::widget::Id;
+use uuid::Uuid;
 
 /// Which panel is currently active in the main content area
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -56,8 +57,8 @@ impl Default for UiState {
 /// dummy NetworkConnection objects.
 #[derive(Debug, Clone)]
 pub struct FingerprintMismatchDetails {
-    /// Bookmark index with mismatched fingerprint
-    pub bookmark_index: usize,
+    /// Bookmark ID with mismatched fingerprint
+    pub bookmark_id: Uuid,
     /// Expected fingerprint (stored)
     pub expected: String,
     /// Received fingerprint (new)
@@ -75,8 +76,8 @@ pub struct FingerprintMismatchDetails {
 /// Used in the mismatch queue for user verification.
 #[derive(Debug, Clone)]
 pub struct FingerprintMismatch {
-    /// Bookmark index with mismatched fingerprint
-    pub bookmark_index: usize,
+    /// Bookmark ID with mismatched fingerprint
+    pub bookmark_id: Uuid,
     /// Expected fingerprint (stored)
     pub expected: String,
     /// Received fingerprint (new)

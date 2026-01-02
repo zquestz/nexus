@@ -140,10 +140,10 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             ];
 
             // Add Delete button in middle when editing (not adding)
-            if let BookmarkEditMode::Edit(index) = state.mode {
+            if let BookmarkEditMode::Edit(id) = state.mode {
                 buttons.push(
                     button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-                        .on_press(Message::DeleteBookmark(index))
+                        .on_press(Message::DeleteBookmark(id))
                         .padding(BUTTON_PADDING)
                         .style(btn::danger)
                         .into(),

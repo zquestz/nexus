@@ -1,5 +1,7 @@
 //! Server list panel (left sidebar)
 
+use uuid::Uuid;
+
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -129,7 +131,7 @@ fn connected_servers_section<'a>(
 fn bookmarks_section<'a>(
     bookmarks: &'a [ServerBookmark],
     connections: &'a HashMap<usize, ServerConnection>,
-    bookmark_errors: &'a HashMap<usize, String>,
+    bookmark_errors: &'a HashMap<Uuid, String>,
 ) -> Column<'a, Message> {
     let bookmarks_title = shaped_text(t("title-bookmarks"))
         .size(SECTION_TITLE_SIZE)
@@ -145,25 +147,27 @@ fn bookmarks_section<'a>(
         );
     } else {
         for (index, bookmark) in bookmarks.iter().enumerate() {
+            let bookmark_id = bookmark.id;
+
             // Check if this bookmark is currently connected
             let is_connected = connections
                 .iter()
-                .any(|(_, conn)| conn.bookmark_index == Some(index));
+                .any(|(_, conn)| conn.bookmark_id == Some(bookmark_id));
 
             // Check if this bookmark has an error
-            let has_error = bookmark_errors.contains_key(&index);
+            let has_error = bookmark_errors.contains_key(&bookmark_id);
 
             // Determine message based on whether bookmark is currently connected
             let bookmark_message = if let Some(conn_id) = connections
                 .iter()
-                .find(|(_, conn)| conn.bookmark_index == Some(index))
+                .find(|(_, conn)| conn.bookmark_id == Some(bookmark_id))
                 .map(|(id, _)| *id)
             {
                 // Bookmark is connected - switch to it
                 Message::SwitchToConnection(conn_id)
             } else {
                 // Not connected - connect to it
-                Message::ConnectToBookmark(index)
+                Message::ConnectToBookmark(bookmark_id)
             };
 
             // Transparent button with hover effect
@@ -177,7 +181,7 @@ fn bookmarks_section<'a>(
 
             // Action button (transparent icon button with hover effect)
             let edit_btn = tooltip(
-                transparent_edit_button(icon::cog(), Message::ShowEditBookmark(index)),
+                transparent_edit_button(icon::cog(), Message::ShowEditBookmark(bookmark_id)),
                 container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(tooltip_container_style),
@@ -257,7 +261,7 @@ pub fn server_list_panel<'a>(
     bookmarks: &'a [ServerBookmark],
     connections: &'a HashMap<usize, ServerConnection>,
     active_connection: Option<usize>,
-    bookmark_errors: &'a HashMap<usize, String>,
+    bookmark_errors: &'a HashMap<Uuid, String>,
 ) -> Element<'a, Message> {
     let main_column = column![
         connected_servers_section(connections, active_connection),
