@@ -3437,6 +3437,7 @@ dependencies = [
  "dirs",
  "fluent",
  "fluent-bundle",
+ "hex",
  "igd-next",
  "infer",
  "nexus-common",

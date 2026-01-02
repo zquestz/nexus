@@ -438,10 +438,12 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
     hasher.update(cert_der.contents());
     let fingerprint = hasher.finalize();
 
-    // Format as colon-separated hex string
-    let fingerprint_str = fingerprint
-        .iter()
-        .map(|byte| format!("{:02X}", byte))
+    // Format as colon-separated hex string (uppercase)
+    let hex_str = hex::encode_upper(fingerprint);
+    let fingerprint_str = hex_str
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
         .collect::<Vec<_>>()
         .join(":");
 

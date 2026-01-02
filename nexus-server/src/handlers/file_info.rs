@@ -100,7 +100,7 @@ fn compute_sha256(path: &Path) -> Option<String> {
     }
 
     let result = hasher.finalize();
-    Some(format!("{:x}", result))
+    Some(hex::encode(result))
 }
 
 /// Handle a file info request

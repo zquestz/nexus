@@ -190,10 +190,9 @@ async fn test_sha256_known_value() {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let hash = hasher.finalize();
-    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
 
     assert_eq!(
-        hex,
+        hex::encode(hash),
         "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
     );
 }

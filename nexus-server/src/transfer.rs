@@ -1111,8 +1111,7 @@ async fn compute_partial_sha256(path: &Path, max_bytes: u64) -> io::Result<Strin
 
     let hash = hasher.finalize();
 
-    // Format as hex string (same approach as client's certificate fingerprint)
-    Ok(hash.iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hex::encode(hash))
 }
 
 /// Generate a random transfer ID (8 hex chars, 32 bits)
@@ -1123,7 +1122,7 @@ async fn compute_partial_sha256(path: &Path, max_bytes: u64) -> io::Result<Strin
 fn generate_transfer_id() -> String {
     use rand::Rng;
     let bytes: [u8; 4] = rand::rng().random();
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    hex::encode(bytes)
 }
 
 #[cfg(test)]

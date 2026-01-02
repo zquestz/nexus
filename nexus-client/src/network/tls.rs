@@ -121,10 +121,12 @@ pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String>
     hasher.update(certs[0].as_ref());
     let fingerprint = hasher.finalize();
 
-    // Format as colon-separated hex string
-    let fingerprint_str = fingerprint
-        .iter()
-        .map(|byte| format!("{:02X}", byte))
+    // Format as colon-separated hex string (uppercase)
+    let hex_str = hex::encode_upper(fingerprint);
+    let fingerprint_str = hex_str
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
         .collect::<Vec<_>>()
         .join(":");
 
@@ -314,10 +316,12 @@ fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, S
     hasher.update(certs[0].as_ref());
     let fingerprint = hasher.finalize();
 
-    // Format as colon-separated hex string
-    let fingerprint_str = fingerprint
-        .iter()
-        .map(|byte| format!("{:02X}", byte))
+    // Format as colon-separated hex string (uppercase)
+    let hex_str = hex::encode_upper(fingerprint);
+    let fingerprint_str = hex_str
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
         .collect::<Vec<_>>()
         .join(":");
 
