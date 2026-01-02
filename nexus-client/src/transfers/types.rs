@@ -59,6 +59,7 @@ pub enum TransferDirection {
     /// Downloading from server to local
     Download,
     /// Uploading from local to server
+    #[allow(dead_code)] // For future upload support
     Upload,
 }
 
@@ -323,6 +324,7 @@ impl Transfer {
     }
 
     /// Create a new upload transfer
+    #[allow(dead_code)] // For future upload support
     pub fn new_upload(
         connection: TransferConnectionInfo,
         remote_path: String,
@@ -371,11 +373,17 @@ impl Transfer {
     /// Get a human-readable display name for the transfer
     pub fn display_name(&self) -> &str {
         // Use the last component of the remote path
-        self.remote_path
+        let name = self
+            .remote_path
             .rsplit('/')
             .next()
-            .filter(|s| !s.is_empty())
-            .unwrap_or(&self.remote_path)
+            .filter(|s| !s.is_empty());
+
+        // For root directory downloads ("/"), use server name instead
+        match name {
+            Some(n) => n,
+            None => &self.connection.server_name,
+        }
     }
 
     /// Mark the transfer as failed with an error
@@ -520,6 +528,7 @@ mod tests {
         );
         assert_eq!(transfer.display_name(), "app.zip");
 
+        // Root directory downloads use server name as display name
         let transfer2 = Transfer::new_download(
             conn.clone(),
             "/".to_string(),
@@ -528,7 +537,7 @@ mod tests {
             PathBuf::from("/tmp/root"),
             None,
         );
-        assert_eq!(transfer2.display_name(), "/");
+        assert_eq!(transfer2.display_name(), "Test Server");
 
         let transfer3 = Transfer::new_download(
             conn,

@@ -276,30 +276,24 @@ pub async fn handle_transfer_connection(
     }
 
     // Scan files to transfer
-    let files = match scan_files_for_transfer(
-        &resolved_path,
-        &download_path,
-        &user.username,
-        user.is_admin,
-    )
-    .await
-    {
-        Ok(files) => files,
-        Err(e) => {
-            if debug {
-                eprintln!("Failed to scan files: {e}");
+    let files =
+        match scan_files_for_transfer(&resolved_path, &user.username, user.is_admin, debug).await {
+            Ok(files) => files,
+            Err(e) => {
+                if debug {
+                    eprintln!("Failed to scan files: {e}");
+                }
+                send_transfer_error(
+                    &mut frame_writer,
+                    &err_transfer_read_failed(&locale),
+                    Some("io_error"),
+                    "FileDownload",
+                )
+                .await?;
+                let _ = frame_writer.get_mut().shutdown().await;
+                return Ok(());
             }
-            send_transfer_error(
-                &mut frame_writer,
-                &err_transfer_read_failed(&locale),
-                Some("io_error"),
-                "FileDownload",
-            )
-            .await?;
-            let _ = frame_writer.get_mut().shutdown().await;
-            return Ok(());
-        }
-    };
+        };
 
     // Calculate total size
     let total_size: u64 = files.iter().map(|f| f.size).sum();
@@ -796,9 +790,9 @@ fn can_access_for_download(path: &Path, username: &str, is_admin: bool) -> bool 
 /// Scan files to transfer from a path (file or directory)
 async fn scan_files_for_transfer(
     resolved_path: &Path,
-    client_path: &str,
     username: &str,
     is_admin: bool,
+    debug: bool,
 ) -> io::Result<Vec<FileInfo>> {
     let mut files = Vec::new();
 
@@ -819,21 +813,10 @@ async fn scan_files_for_transfer(
         });
     } else if metadata.is_dir() {
         // Directory download - recursively scan
-        let base_name = resolved_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                // Use the last component of client_path if available
-                client_path
-                    .trim_matches(['/', '\\'])
-                    .rsplit(['/', '\\'])
-                    .next()
-                    .unwrap_or("download")
-                    .to_string()
-            });
-
-        scan_directory_recursive(resolved_path, &base_name, &mut files, username, is_admin).await?;
+        // Use empty prefix because the client already includes the directory name in local_path.
+        // Files will have paths relative to inside the directory (e.g., "song.mp3", "Jazz/tune.mp3")
+        // rather than including the directory name (e.g., "Music/song.mp3", "Music/Jazz/tune.mp3").
+        scan_directory_recursive(resolved_path, "", &mut files, username, is_admin, debug).await?;
     }
 
     Ok(files)
@@ -850,20 +833,44 @@ fn scan_directory_recursive<'a>(
     files: &'a mut Vec<FileInfo>,
     username: &'a str,
     is_admin: bool,
+    debug: bool,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + 'a>> {
     Box::pin(async move {
+        if debug {
+            eprintln!("Scanning directory: {:?} (prefix: {:?})", dir, prefix);
+        }
+
         let mut entries = tokio::fs::read_dir(dir).await?;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            let metadata = entry.metadata().await?;
+            if debug {
+                eprintln!("  Processing entry: {:?}", path);
+            }
+            // Use tokio::fs::metadata instead of entry.metadata() to follow symlinks.
+            // entry.metadata() uses lstat which returns symlink metadata, not target metadata.
+            let metadata = match tokio::fs::metadata(&path).await {
+                Ok(m) => m,
+                Err(e) => {
+                    if debug {
+                        eprintln!("  Skipping {:?} - metadata failed: {}", path, e);
+                    }
+                    continue;
+                }
+            };
             // Skip files with non-UTF-8 names
             let Some(file_name) = entry.file_name().to_str().map(|s| s.to_string()) else {
+                if debug {
+                    eprintln!("  Skipping non-UTF-8 filename: {:?}", entry.file_name());
+                }
                 continue;
             };
 
             // Skip hidden files
             if file_name.starts_with('.') {
+                if debug {
+                    eprintln!("  Skipping hidden file: {}", file_name);
+                }
                 continue;
             }
 
@@ -872,27 +879,61 @@ fn scan_directory_recursive<'a>(
             // Skip broken symlinks (canonicalize fails) silently.
             let canonical_path = match std::fs::canonicalize(&path) {
                 Ok(p) => p,
-                Err(_) => continue,
+                Err(e) => {
+                    if debug {
+                        eprintln!("  Skipping {} - canonicalize failed: {}", file_name, e);
+                    }
+                    continue;
+                }
             };
 
             // Check dropbox access on canonical path (security: prevents leaking dropbox contents
             // even through symlinks that point to dropbox folders)
             if !can_access_for_download(&canonical_path, username, is_admin) {
+                if debug {
+                    eprintln!("  Skipping {} - dropbox access denied", file_name);
+                }
                 continue;
             }
 
-            let relative = format!("{}/{}", prefix, file_name);
+            // Build relative path, handling empty prefix for top-level files
+            let relative = if prefix.is_empty() {
+                file_name.clone()
+            } else {
+                format!("{}/{}", prefix, file_name)
+            };
 
             if metadata.is_file() {
+                if debug {
+                    eprintln!("  Adding file: {} (size: {})", relative, metadata.len());
+                }
                 files.push(FileInfo {
                     relative_path: relative,
                     absolute_path: path,
                     size: metadata.len(),
                 });
             } else if metadata.is_dir() {
-                let dir_relative = format!("{}/{}", prefix, file_name);
-                scan_directory_recursive(&path, &dir_relative, files, username, is_admin).await?;
+                if debug {
+                    eprintln!("  Recursing into directory: {}", relative);
+                }
+                // For subdirectories, use the relative path as the new prefix
+                scan_directory_recursive(&path, &relative, files, username, is_admin, debug)
+                    .await?;
+            } else if debug {
+                eprintln!(
+                    "  Skipping {} - neither file nor directory (is_symlink: {})",
+                    file_name,
+                    metadata.is_symlink()
+                );
             }
+        }
+
+        if debug {
+            eprintln!(
+                "Done scanning directory: {:?} (found {} files so far)",
+                dir,
+                files.len()
+            );
         }
 
         Ok(())

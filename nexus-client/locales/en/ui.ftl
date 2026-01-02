@@ -212,7 +212,7 @@ user-management-loading = Loading users...
 user-management-no-users = No users found
 news-loading = Loading news...
 news-no-posts = No news posts yet
-transfers-empty = No active transfers
+transfers-empty = No transfers
 news-updated = Updated
 files-loading = Loading files...
 files-empty = This directory is empty
@@ -561,3 +561,48 @@ about-app-name = Nexus BBS
 about-copyright = © 2025 Nexus BBS Project
 
 label-port = Port:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = Queued
+transfer-status-connecting = Connecting...
+transfer-status-transferring = Transferring
+transfer-status-paused = Paused
+transfer-status-completed = Completed
+transfer-status-failed = Failed
+
+# Transfer actions
+transfer-action-pause = Pause
+transfer-action-resume = Resume
+transfer-action-cancel = Cancel
+transfer-action-remove = Remove
+transfer-action-open-folder = Open Folder
+transfer-action-retry = Retry
+
+# Toolbar actions
+transfer-clear-completed = Clear Completed
+transfer-clear-failed = Clear Failed
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } files
+transfer-speed = { $speed }/s
+transfer-elapsed = { $time } elapsed
+transfer-eta = { $time } remaining
+transfer-from-server = From: { $server }
+
+# Transfer errors
+transfer-error-not-found = Path not found
+transfer-error-permission = Permission denied
+transfer-error-invalid = Invalid path
+transfer-error-unsupported-version = Protocol version not supported
+transfer-error-disk-full = Disk full
+transfer-error-hash-mismatch = File verification failed
+transfer-error-io = File I/O error
+transfer-error-protocol = Protocol error
+transfer-error-connection = Connection error
+transfer-error-certificate-mismatch = Certificate fingerprint mismatch
+transfer-error-auth-failed = Authentication failed
+transfer-error-unknown = Unknown error

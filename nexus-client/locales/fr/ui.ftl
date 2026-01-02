@@ -48,6 +48,7 @@ title-user-info = Infos Utilisateur
 title-about = À propos
 title-change-password = Changer le Mot de Passe
 title-news = Actualités
+title-transfers = Transferts
 title-news-create = Créer une Publication
 title-news-edit = Modifier la Publication
 
@@ -72,7 +73,6 @@ placeholder-broadcast-message = Message de diffusion
 placeholder-server-description = Description du serveur
 placeholder-news-body = Contenu de l'article
 placeholder-nickname-optional = Pseudo (optionnel)
-placeholder-nickname-optional = Pseudonyme (facultatif)
 placeholder-proxy-address = Adresse du Proxy
 placeholder-proxy-port = 9050
 placeholder-proxy-username = Nom d'utilisateur (facultatif)
@@ -175,6 +175,8 @@ tooltip-files-paste = Coller
 tooltip-manage-users = Gérer les Utilisateurs
 tooltip-server-info = Infos Serveur
 tooltip-about = À propos
+tooltip-transfers = Transferts
+tooltip-download-all = Tout Télécharger
 tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets
@@ -192,6 +194,7 @@ tooltip-add-bookmark = Ajouter un signet
 tooltip-create-user = Créer un Utilisateur
 tooltip-create-news = Créer une Publication
 tooltip-delete = Supprimer
+context-menu-download = Télécharger
 
 # =============================================================================
 # Empty States
@@ -205,6 +208,7 @@ user-management-loading = Chargement des utilisateurs...
 user-management-no-users = Aucun utilisateur trouvé
 news-loading = Chargement des actualités...
 news-no-posts = Aucune publication pour le moment
+transfers-empty = Aucun transfert
 news-updated = Modifié
 files-loading = Chargement des fichiers...
 files-empty = Ce répertoire est vide
@@ -550,3 +554,48 @@ err-news-image-too-large = L'image est trop volumineuse (max 512 Ko)
 err-news-image-unsupported-type = Type d'image non supporté (PNG, WebP, JPEG ou SVG uniquement)
 
 label-port = Port:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = En attente
+transfer-status-connecting = Connexion...
+transfer-status-transferring = Transfert en cours
+transfer-status-paused = En pause
+transfer-status-completed = Terminé
+transfer-status-failed = Échoué
+
+# Transfer actions
+transfer-action-pause = Pause
+transfer-action-resume = Reprendre
+transfer-action-cancel = Annuler
+transfer-action-remove = Supprimer
+transfer-action-open-folder = Ouvrir le dossier
+transfer-action-retry = Réessayer
+
+# Toolbar actions
+transfer-clear-completed = Effacer terminés
+transfer-clear-failed = Effacer échoués
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } fichiers
+transfer-speed = { $speed }/s
+transfer-elapsed = { $time } écoulé
+transfer-eta = { $time } restant
+transfer-from-server = De: { $server }
+
+# Transfer errors
+transfer-error-not-found = Chemin introuvable
+transfer-error-permission = Permission refusée
+transfer-error-invalid = Chemin invalide
+transfer-error-unsupported-version = Version du protocole non prise en charge
+transfer-error-disk-full = Disque plein
+transfer-error-hash-mismatch = Échec de la vérification du fichier
+transfer-error-io = Erreur d'E/S fichier
+transfer-error-protocol = Erreur de protocole
+transfer-error-connection = Erreur de connexion
+transfer-error-certificate-mismatch = Empreinte du certificat non concordante
+transfer-error-auth-failed = Échec de l'authentification
+transfer-error-unknown = Erreur inconnue

@@ -178,6 +178,7 @@ impl TransferManager {
     }
 
     /// Get a mutable reference to a transfer by ID
+    #[allow(dead_code)] // Useful for future direct mutation needs
     pub fn get_mut(&mut self, id: Uuid) -> Option<&mut Transfer> {
         let transfer = self.transfers.get_mut(&id);
         if transfer.is_some() {
@@ -192,6 +193,7 @@ impl TransferManager {
     }
 
     /// Get all active transfers (connecting or transferring)
+    #[allow(dead_code)] // Used by active_count(), kept for direct access
     pub fn active(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers.values().filter(|t| t.status.is_active())
     }
@@ -207,6 +209,7 @@ impl TransferManager {
     }
 
     /// Get all queued transfers
+    #[allow(dead_code)] // Kept for future queue management UI
     pub fn queued(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers
             .values()
@@ -217,6 +220,7 @@ impl TransferManager {
     ///
     /// Returns None if there are no queued transfers or if there's already
     /// an active transfer (Connecting or Transferring status).
+    #[allow(dead_code)] // Alternative queue selection strategy
     pub fn next_queued(&self) -> Option<&Transfer> {
         // Don't start a new transfer if one is already active
         if self.active_count() > 0 {
@@ -231,6 +235,7 @@ impl TransferManager {
     }
 
     /// Get all paused transfers
+    #[allow(dead_code)] // Kept for future pause management UI
     pub fn paused(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers
             .values()
@@ -252,11 +257,13 @@ impl TransferManager {
     }
 
     /// Count of all transfers
+    #[allow(dead_code)] // Useful for UI badge/counter
     pub fn count(&self) -> usize {
         self.transfers.len()
     }
 
     /// Count of active transfers
+    #[allow(dead_code)] // Used by next_queued(), useful for UI
     pub fn active_count(&self) -> usize {
         self.active().count()
     }
@@ -315,6 +322,7 @@ impl TransferManager {
     }
 
     /// Mark a file as completed within a transfer
+    #[allow(dead_code)] // Progress tracking via files_completed field
     pub fn complete_file(&mut self, id: Uuid) -> bool {
         if let Some(transfer) = self.transfers.get_mut(&id) {
             transfer.files_completed += 1;
@@ -405,11 +413,13 @@ impl TransferManager {
     }
 
     /// Check if there are unsaved changes
+    #[allow(dead_code)] // Useful for optimized save strategies
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
     /// Mark the manager as having unsaved changes
+    #[allow(dead_code)] // Useful for external state tracking
     pub fn mark_dirty(&mut self) {
         self.dirty = true;
     }
@@ -430,7 +440,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::transfers::{TransferConnectionInfo, TransferDirection};
+    use crate::transfers::TransferConnectionInfo;
 
     fn test_connection_info() -> TransferConnectionInfo {
         TransferConnectionInfo {

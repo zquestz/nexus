@@ -94,7 +94,6 @@ impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
 ///
 /// This is used by the transfer executor to establish connections to the
 /// transfer port (7501) with the same certificate verification behavior.
-#[allow(dead_code)] // Used by transfer executor (not yet integrated)
 pub fn create_tls_config() -> ClientConfig {
     let mut config = ClientConfig::builder()
         .dangerous()
@@ -111,7 +110,6 @@ pub fn create_tls_config() -> ClientConfig {
 ///
 /// Returns the SHA-256 fingerprint of the server's certificate as a colon-separated
 /// hex string (e.g., "AA:BB:CC:...").
-#[allow(dead_code)] // Used by transfer executor (not yet integrated)
 pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String> {
     let certs = session.peer_certificates()?;
     if certs.is_empty() {
@@ -140,7 +138,7 @@ pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String>
 ///
 /// Localhost/loopback addresses bypass the proxy since proxying to localhost
 /// doesn't make sense (the proxy server can't reach your local machine).
-pub(super) async fn establish_connection(
+pub(crate) async fn establish_connection(
     address: &str,
     port: u16,
     proxy: Option<&ProxyConfig>,
@@ -167,7 +165,7 @@ pub(super) async fn establish_connection(
 /// Bypasses:
 /// - Localhost/loopback addresses (127.x.x.x, ::1)
 /// - Yggdrasil mesh network addresses (0200::/7)
-fn should_bypass_proxy(address: &str) -> bool {
+pub(crate) fn should_bypass_proxy(address: &str) -> bool {
     is_loopback_address(address) || is_yggdrasil_address(address)
 }
 

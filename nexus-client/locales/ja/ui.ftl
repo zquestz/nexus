@@ -47,6 +47,7 @@ title-user-info = ユーザー情報
 title-about = アプリについて
 title-change-password = パスワードを変更
 title-news = ニュース
+title-transfers = 転送
 title-news-create = 投稿を作成
 title-news-edit = 投稿を編集
 
@@ -173,6 +174,8 @@ tooltip-files-paste = 貼り付け
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
+tooltip-transfers = 転送
+tooltip-download-all = すべてダウンロード
 tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示
@@ -190,6 +193,7 @@ tooltip-add-bookmark = ブックマークを追加
 tooltip-create-user = ユーザーを作成
 tooltip-create-news = 投稿を作成
 tooltip-delete = 削除
+context-menu-download = ダウンロード
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = ユーザーを読み込み中...
 user-management-no-users = ユーザーが見つかりません
 news-loading = ニュースを読み込み中...
 news-no-posts = まだ投稿がありません
+transfers-empty = 転送なし
 news-updated = 更新日時
 files-loading = ファイルを読み込み中...
 files-empty = このディレクトリは空です
@@ -524,6 +529,51 @@ err-proxy-connection-timeout = プロキシ接続が{ $seconds }秒後にタイ�
 err-proxy-address-required = プロキシが有効な場合、プロキシアドレスは必須です
 err-proxy-port-invalid = プロキシポートは1から65535の間である必要があります
 err-news-image-too-large = 画像が大きすぎます（最大512KB）
-err-news-image-unsupported-type = サポートされていない画像形式です（PNG、WebP、JPEG、SVGのみ）
+err-news-image-unsupported-type = 未対応の画像形式です（PNG、WebP、JPEG、SVGのみ対応）
 
 label-port = ポート:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = 待機中
+transfer-status-connecting = 接続中...
+transfer-status-transferring = 転送中
+transfer-status-paused = 一時停止
+transfer-status-completed = 完了
+transfer-status-failed = 失敗
+
+# Transfer actions
+transfer-action-pause = 一時停止
+transfer-action-resume = 再開
+transfer-action-cancel = キャンセル
+transfer-action-remove = 削除
+transfer-action-open-folder = フォルダを開く
+transfer-action-retry = 再試行
+
+# Toolbar actions
+transfer-clear-completed = 完了した転送を消去
+transfer-clear-failed = 失敗した転送を消去
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } ファイル
+transfer-speed = { $speed }/秒
+transfer-elapsed = { $time } 経過
+transfer-eta = 残り { $time }
+transfer-from-server = 送信元: { $server }
+
+# Transfer errors
+transfer-error-not-found = パスが見つかりません
+transfer-error-permission = アクセスが拒否されました
+transfer-error-invalid = 無効なパス
+transfer-error-unsupported-version = プロトコルバージョンがサポートされていません
+transfer-error-disk-full = ディスクがいっぱいです
+transfer-error-hash-mismatch = ファイルの検証に失敗しました
+transfer-error-io = ファイルI/Oエラー
+transfer-error-protocol = プロトコルエラー
+transfer-error-connection = 接続エラー
+transfer-error-certificate-mismatch = 証明書のフィンガープリントが一致しません
+transfer-error-auth-failed = 認証に失敗しました
+transfer-error-unknown = 不明なエラー

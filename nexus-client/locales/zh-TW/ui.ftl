@@ -47,6 +47,7 @@ title-user-info = 使用者資訊
 title-about = 關於
 title-change-password = 修改密碼
 title-news = 新聞
+title-transfers = 傳輸
 title-news-create = 建立貼文
 title-news-edit = 編輯貼文
 
@@ -173,6 +174,8 @@ tooltip-files-paste = 貼上
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
+tooltip-transfers = 傳輸
+tooltip-download-all = 全部下載
 tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤
@@ -190,6 +193,7 @@ tooltip-add-bookmark = 新增書籤
 tooltip-create-user = 建立使用者
 tooltip-create-news = 建立貼文
 tooltip-delete = 刪除
+context-menu-download = 下載
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = 正在載入使用者...
 user-management-no-users = 找不到使用者
 news-loading = 正在載入新聞...
 news-no-posts = 目前沒有貼文
+transfers-empty = 無傳輸
 news-updated = 已更新
 files-loading = 正在載入檔案...
 files-empty = 此目錄為空
@@ -521,9 +526,54 @@ err-news-image-decode-failed = 圖片解碼失敗。檔案可能已損壞。
 # Proxy errors
 err-proxy-connection-failed = 連線代理伺服器失敗：{ $error }
 err-proxy-connection-timeout = 代理連線在 { $seconds } 秒後逾時
-err-proxy-address-required = 啟用代理時需要代理伺服器地址
-err-proxy-port-invalid = 代理連接埠必須在 1 到 65535 之間
+err-proxy-address-required = 啟用代理時需要代理地址
+err-proxy-port-invalid = 代理端口必須在 1 到 65535 之間
 err-news-image-too-large = 圖片太大（最大512KB）
-err-news-image-unsupported-type = 不支援的圖片格式（僅支援PNG、WebP、JPEG或SVG）
+err-news-image-unsupported-type = 不支援的圖片類型（僅支援 PNG、WebP、JPEG 或 SVG）
 
-label-port = 連接埠：
+label-port = 連接埠:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = 排隊中
+transfer-status-connecting = 連線中...
+transfer-status-transferring = 傳輸中
+transfer-status-paused = 已暫停
+transfer-status-completed = 已完成
+transfer-status-failed = 失敗
+
+# Transfer actions
+transfer-action-pause = 暫停
+transfer-action-resume = 繼續
+transfer-action-cancel = 取消
+transfer-action-remove = 移除
+transfer-action-open-folder = 開啟資料夾
+transfer-action-retry = 重試
+
+# Toolbar actions
+transfer-clear-completed = 清除已完成
+transfer-clear-failed = 清除失敗項
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } 個檔案
+transfer-speed = { $speed }/秒
+transfer-elapsed = 已用時 { $time }
+transfer-eta = 剩餘 { $time }
+transfer-from-server = 來源: { $server }
+
+# Transfer errors
+transfer-error-not-found = 路徑未找到
+transfer-error-permission = 權限被拒絕
+transfer-error-invalid = 無效路徑
+transfer-error-unsupported-version = 不支援的協議版本
+transfer-error-disk-full = 磁碟已滿
+transfer-error-hash-mismatch = 檔案驗證失敗
+transfer-error-io = 檔案I/O錯誤
+transfer-error-protocol = 協議錯誤
+transfer-error-connection = 連線錯誤
+transfer-error-certificate-mismatch = 憑證指紋不符
+transfer-error-auth-failed = 認證失敗
+transfer-error-unknown = 未知錯誤

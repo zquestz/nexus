@@ -47,6 +47,7 @@ title-user-info = Info do Usuário
 title-about = Sobre
 title-change-password = Alterar Senha
 title-news = Notícias
+title-transfers = Transferências
 title-news-create = Criar Publicação
 title-news-edit = Editar Publicação
 
@@ -173,6 +174,8 @@ tooltip-files-paste = Colar
 tooltip-manage-users = Gerenciar Usuários
 tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
+tooltip-transfers = Transferências
+tooltip-download-all = Baixar Tudo
 tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos
@@ -190,6 +193,7 @@ tooltip-add-bookmark = Adicionar Favorito
 tooltip-create-user = Criar Usuário
 tooltip-create-news = Criar Publicação
 tooltip-delete = Excluir
+context-menu-download = Baixar
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = Carregando usuários...
 user-management-no-users = Nenhum usuário encontrado
 news-loading = Carregando notícias...
 news-no-posts = Nenhuma publicação ainda
+transfers-empty = Sem transferências
 news-updated = Atualizado
 files-loading = Carregando arquivos...
 files-empty = Este diretório está vazio
@@ -548,3 +553,48 @@ err-news-image-too-large = A imagem é muito grande (máximo 512KB)
 err-news-image-unsupported-type = Tipo de imagem não suportado (apenas PNG, WebP, JPEG ou SVG)
 
 label-port = Porta:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = Na fila
+transfer-status-connecting = Conectando...
+transfer-status-transferring = Transferindo
+transfer-status-paused = Pausado
+transfer-status-completed = Concluído
+transfer-status-failed = Falhou
+
+# Transfer actions
+transfer-action-pause = Pausar
+transfer-action-resume = Retomar
+transfer-action-cancel = Cancelar
+transfer-action-remove = Remover
+transfer-action-open-folder = Abrir pasta
+transfer-action-retry = Tentar novamente
+
+# Toolbar actions
+transfer-clear-completed = Limpar concluídos
+transfer-clear-failed = Limpar falhos
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } arquivos
+transfer-speed = { $speed }/s
+transfer-elapsed = { $time } decorrido
+transfer-eta = { $time } restante
+transfer-from-server = De: { $server }
+
+# Transfer errors
+transfer-error-not-found = Caminho não encontrado
+transfer-error-permission = Permissão negada
+transfer-error-invalid = Caminho inválido
+transfer-error-unsupported-version = Versão do protocolo não suportada
+transfer-error-disk-full = Disco cheio
+transfer-error-hash-mismatch = Falha na verificação do arquivo
+transfer-error-io = Erro de E/S de arquivo
+transfer-error-protocol = Erro de protocolo
+transfer-error-connection = Erro de conexão
+transfer-error-certificate-mismatch = Impressão digital do certificado não corresponde
+transfer-error-auth-failed = Falha na autenticação
+transfer-error-unknown = Erro desconhecido

@@ -526,6 +526,9 @@ impl NexusApp {
             Message::TransferResume(id) => self.handle_transfer_resume(id),
             Message::TransferCancel(id) => self.handle_transfer_cancel(id),
             Message::TransferRemove(id) => self.handle_transfer_remove(id),
+            Message::TransferOpenFolder(id) => self.handle_transfer_open_folder(id),
+            Message::TransferClearCompleted => self.handle_transfer_clear_completed(),
+            Message::TransferClearFailed => self.handle_transfer_clear_failed(),
         }
     }
 
@@ -553,7 +556,10 @@ impl NexusApp {
         // Each subscription is keyed by the transfer's stable UUID, so it remains
         // stable even as the transfer status changes from Queued -> Connecting -> Transferring
         for transfer in self.transfer_manager.queued_or_active() {
-            subscriptions.push(transfers::transfer_subscription(transfer.clone()));
+            subscriptions.push(transfers::transfer_subscription(
+                transfer.clone(),
+                &self.config.settings.proxy,
+            ));
         }
 
         Subscription::batch(subscriptions)

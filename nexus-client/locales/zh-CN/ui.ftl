@@ -47,6 +47,7 @@ title-user-info = 用户信息
 title-about = 关于
 title-change-password = 修改密码
 title-news = 新闻
+title-transfers = 传输
 title-news-create = 创建帖子
 title-news-edit = 编辑帖子
 
@@ -173,6 +174,8 @@ tooltip-files-paste = 粘贴
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
+tooltip-transfers = 传输
+tooltip-download-all = 全部下载
 tooltip-settings = 设置
 tooltip-hide-bookmarks = 隐藏书签
 tooltip-show-bookmarks = 显示书签
@@ -190,6 +193,7 @@ tooltip-add-bookmark = 添加书签
 tooltip-create-user = 创建用户
 tooltip-create-news = 创建帖子
 tooltip-delete = 删除
+context-menu-download = 下载
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = 正在加载用户...
 user-management-no-users = 未找到用户
 news-loading = 正在加载新闻...
 news-no-posts = 暂无新闻
+transfers-empty = 无传输
 news-updated = 已更新
 files-loading = 正在加载文件...
 files-empty = 此目录为空
@@ -524,6 +529,51 @@ err-proxy-connection-timeout = 代理连接在 { $seconds } 秒后超时
 err-proxy-address-required = 启用代理时需要代理地址
 err-proxy-port-invalid = 代理端口必须在 1 到 65535 之间
 err-news-image-too-large = 图片太大（最大512KB）
-err-news-image-unsupported-type = 不支持的图片格式（仅支持PNG、WebP、JPEG或SVG）
+err-news-image-unsupported-type = 不支持的图片类型（仅支持 PNG、WebP、JPEG 或 SVG）
 
-label-port = 端口：
+label-port = 端口:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = 排队中
+transfer-status-connecting = 连接中...
+transfer-status-transferring = 传输中
+transfer-status-paused = 已暂停
+transfer-status-completed = 已完成
+transfer-status-failed = 失败
+
+# Transfer actions
+transfer-action-pause = 暂停
+transfer-action-resume = 继续
+transfer-action-cancel = 取消
+transfer-action-remove = 移除
+transfer-action-open-folder = 打开文件夹
+transfer-action-retry = 重试
+
+# Toolbar actions
+transfer-clear-completed = 清除已完成
+transfer-clear-failed = 清除失败项
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } 个文件
+transfer-speed = { $speed }/秒
+transfer-elapsed = 已用时 { $time }
+transfer-eta = 剩余 { $time }
+transfer-from-server = 来源: { $server }
+
+# Transfer errors
+transfer-error-not-found = 路径未找到
+transfer-error-permission = 权限被拒绝
+transfer-error-invalid = 无效路径
+transfer-error-unsupported-version = 不支持的协议版本
+transfer-error-disk-full = 磁盘已满
+transfer-error-hash-mismatch = 文件验证失败
+transfer-error-io = 文件I/O错误
+transfer-error-protocol = 协议错误
+transfer-error-connection = 连接错误
+transfer-error-certificate-mismatch = 证书指纹不匹配
+transfer-error-auth-failed = 认证失败
+transfer-error-unknown = 未知错误

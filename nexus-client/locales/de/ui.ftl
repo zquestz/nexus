@@ -47,6 +47,7 @@ title-user-info = Benutzer-Info
 title-about = Über
 title-change-password = Passwort ändern
 title-news = Neuigkeiten
+title-transfers = Übertragungen
 title-news-create = Beitrag erstellen
 title-news-edit = Beitrag bearbeiten
 
@@ -173,6 +174,8 @@ tooltip-files-paste = Einfügen
 tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
+tooltip-transfers = Übertragungen
+tooltip-download-all = Alles herunterladen
 tooltip-settings = Einstellungen
 tooltip-hide-bookmarks = Lesezeichen ausblenden
 tooltip-show-bookmarks = Lesezeichen anzeigen
@@ -190,6 +193,7 @@ tooltip-add-bookmark = Lesezeichen hinzufügen
 tooltip-create-user = Benutzer erstellen
 tooltip-create-news = Beitrag erstellen
 tooltip-delete = Löschen
+context-menu-download = Herunterladen
 
 # =============================================================================
 # Empty States
@@ -548,3 +552,50 @@ err-news-image-too-large = Das Bild ist zu groß (maximal 512KB)
 err-news-image-unsupported-type = Nicht unterstützter Bildtyp (nur PNG, WebP, JPEG oder SVG)
 
 label-port = Port:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+transfers-empty = Keine Übertragungen
+
+# Transfer statuses
+transfer-status-queued = In Warteschlange
+transfer-status-connecting = Verbinde...
+transfer-status-transferring = Übertragung
+transfer-status-paused = Pausiert
+transfer-status-completed = Abgeschlossen
+transfer-status-failed = Fehlgeschlagen
+
+# Transfer actions
+transfer-action-pause = Pause
+transfer-action-resume = Fortsetzen
+transfer-action-cancel = Abbrechen
+transfer-action-remove = Entfernen
+transfer-action-open-folder = Ordner öffnen
+transfer-action-retry = Wiederholen
+
+# Toolbar actions
+transfer-clear-completed = Abgeschlossene löschen
+transfer-clear-failed = Fehlgeschlagene löschen
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } Dateien
+transfer-speed = { $speed }/s
+transfer-elapsed = { $time } vergangen
+transfer-eta = { $time } verbleibend
+transfer-from-server = Von: { $server }
+
+# Transfer errors
+transfer-error-not-found = Pfad nicht gefunden
+transfer-error-permission = Zugriff verweigert
+transfer-error-invalid = Ungültiger Pfad
+transfer-error-unsupported-version = Protokollversion nicht unterstützt
+transfer-error-disk-full = Festplatte voll
+transfer-error-hash-mismatch = Dateiüberprüfung fehlgeschlagen
+transfer-error-io = Datei-E/A-Fehler
+transfer-error-protocol = Protokollfehler
+transfer-error-connection = Verbindungsfehler
+transfer-error-certificate-mismatch = Zertifikats-Fingerabdruck stimmt nicht überein
+transfer-error-auth-failed = Authentifizierung fehlgeschlagen
+transfer-error-unknown = Unbekannter Fehler

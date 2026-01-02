@@ -214,14 +214,9 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
         .gap(TOOLTIP_GAP)
         .padding(TOOLTIP_PADDING);
 
-        let tab_content = row![
-            iced::widget::text(label)
-                .size(CHAT_MESSAGE_SIZE)
-                .shaping(iced::widget::text::Shaping::Advanced),
-            close_button
-        ]
-        .spacing(SMALL_SPACING)
-        .align_y(iced::Alignment::Center);
+        let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
+            .spacing(SMALL_SPACING)
+            .align_y(iced::Alignment::Center);
 
         button(tab_content)
             .on_press(Message::SwitchChatTab(tab))

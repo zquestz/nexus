@@ -47,6 +47,7 @@ title-user-info = 사용자 정보
 title-about = 정보
 title-change-password = 비밀번호 변경
 title-news = 뉴스
+title-transfers = 전송
 title-news-create = 게시물 작성
 title-news-edit = 게시물 편집
 
@@ -173,6 +174,8 @@ tooltip-files-paste = 붙여넣기
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
+tooltip-transfers = 전송
+tooltip-download-all = 전체 다운로드
 tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
@@ -190,6 +193,7 @@ tooltip-add-bookmark = 북마크 추가
 tooltip-create-user = 사용자 생성
 tooltip-create-news = 게시물 작성
 tooltip-delete = 삭제
+context-menu-download = 다운로드
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = 사용자 로딩 중...
 user-management-no-users = 사용자를 찾을 수 없습니다
 news-loading = 뉴스 로딩 중...
 news-no-posts = 아직 게시물이 없습니다
+transfers-empty = 전송 없음
 news-updated = 수정됨
 files-loading = 파일 로딩 중...
 files-empty = 이 디렉토리가 비어 있습니다
@@ -524,6 +529,51 @@ err-proxy-connection-timeout = { $seconds }초 후 프록시 연결 시간 초�
 err-proxy-address-required = 프록시가 활성화된 경우 프록시 주소가 필요합니다
 err-proxy-port-invalid = 프록시 포트는 1에서 65535 사이여야 합니다
 err-news-image-too-large = 이미지가 너무 큽니다 (최대 512KB)
-err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG, SVG만 가능)
+err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG 또는 SVG만 가능)
 
 label-port = 포트:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = 대기 중
+transfer-status-connecting = 연결 중...
+transfer-status-transferring = 전송 중
+transfer-status-paused = 일시 정지
+transfer-status-completed = 완료
+transfer-status-failed = 실패
+
+# Transfer actions
+transfer-action-pause = 일시 정지
+transfer-action-resume = 재개
+transfer-action-cancel = 취소
+transfer-action-remove = 제거
+transfer-action-open-folder = 폴더 열기
+transfer-action-retry = 재시도
+
+# Toolbar actions
+transfer-clear-completed = 완료된 항목 지우기
+transfer-clear-failed = 실패한 항목 지우기
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } 파일
+transfer-speed = { $speed }/초
+transfer-elapsed = { $time } 경과
+transfer-eta = { $time } 남음
+transfer-from-server = 출처: { $server }
+
+# Transfer errors
+transfer-error-not-found = 경로를 찾을 수 없습니다
+transfer-error-permission = 권한이 거부되었습니다
+transfer-error-invalid = 잘못된 경로
+transfer-error-unsupported-version = 지원되지 않는 프로토콜 버전
+transfer-error-disk-full = 디스크가 가득 찼습니다
+transfer-error-hash-mismatch = 파일 확인 실패
+transfer-error-io = 파일 I/O 오류
+transfer-error-protocol = 프로토콜 오류
+transfer-error-connection = 연결 오류
+transfer-error-certificate-mismatch = 인증서 지문이 일치하지 않습니다
+transfer-error-auth-failed = 인증 실패
+transfer-error-unknown = 알 수 없는 오류

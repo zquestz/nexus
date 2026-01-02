@@ -16,7 +16,7 @@ use super::constants::*;
 pub(super) fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     let lang: LanguageIdentifier = locale
         .parse()
-        .unwrap_or_else(|_| DEFAULT_LOCALE.parse().unwrap());
+        .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect("'en' is a valid locale"));
 
     let mut bundle = FluentBundle::new(vec![lang]);
 

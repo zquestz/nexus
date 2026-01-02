@@ -107,11 +107,8 @@ impl NexusApp {
                 };
 
                 // Only add to PM tab if it still exists (user didn't close it)
-                if conn.user_messages.contains_key(&nickname) {
-                    conn.user_messages
-                        .get_mut(&nickname)
-                        .unwrap()
-                        .push(error_msg);
+                if let Some(messages) = conn.user_messages.get_mut(&nickname) {
+                    messages.push(error_msg);
 
                     // Scroll to bottom if we're viewing this tab
                     let pm_tab = ChatTab::UserMessage(nickname);

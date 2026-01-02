@@ -400,16 +400,18 @@ pub enum Message {
     TransferProgress(TransferEvent),
     /// Transfer: Start next queued transfer
     TransferStartNext,
-    /// Transfer: Pause a transfer (UI not yet implemented)
-    #[allow(dead_code)]
+    /// Transfer: Pause a transfer
     TransferPause(Uuid),
-    /// Transfer: Resume a paused transfer (UI not yet implemented)
-    #[allow(dead_code)]
+    /// Transfer: Resume a paused transfer
     TransferResume(Uuid),
-    /// Transfer: Cancel a transfer (UI not yet implemented)
-    #[allow(dead_code)]
+    /// Transfer: Cancel a transfer
     TransferCancel(Uuid),
-    /// Transfer: Remove a completed/failed transfer from the list (UI not yet implemented)
-    #[allow(dead_code)]
+    /// Transfer: Remove a completed/failed transfer from the list
     TransferRemove(Uuid),
+    /// Transfer: Open the folder containing a completed transfer
+    TransferOpenFolder(Uuid),
+    /// Transfer: Clear all completed transfers
+    TransferClearCompleted,
+    /// Transfer: Clear all failed transfers
+    TransferClearFailed,
 }

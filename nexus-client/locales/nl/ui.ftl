@@ -48,6 +48,7 @@ title-user-info = Gebruiker Info
 title-about = Over
 title-change-password = Wachtwoord Wijzigen
 title-news = Nieuws
+title-transfers = Overdrachten
 title-news-create = Bericht Maken
 title-news-edit = Bericht Bewerken
 
@@ -174,6 +175,8 @@ tooltip-files-paste = Plakken
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
+tooltip-transfers = Overdrachten
+tooltip-download-all = Alles Downloaden
 tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen
@@ -191,6 +194,7 @@ tooltip-close-tab = Tabblad Sluiten
 tooltip-create-user = Gebruiker Aanmaken
 tooltip-create-news = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
+context-menu-download = Downloaden
 
 # =============================================================================
 # Empty States
@@ -204,6 +208,7 @@ user-management-loading = Gebruikers laden...
 user-management-no-users = Geen gebruikers gevonden
 news-loading = Nieuws laden...
 news-no-posts = Nog geen berichten
+transfers-empty = Geen overdrachten
 news-updated = Bijgewerkt
 files-loading = Bestanden laden...
 files-empty = Deze map is leeg
@@ -549,3 +554,48 @@ err-news-image-too-large = De afbeelding is te groot (max 512KB)
 err-news-image-unsupported-type = Niet-ondersteund afbeeldingstype (alleen PNG, WebP, JPEG of SVG)
 
 label-port = Poort:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = In wachtrij
+transfer-status-connecting = Verbinden...
+transfer-status-transferring = Bezig met overdracht
+transfer-status-paused = Gepauzeerd
+transfer-status-completed = Voltooid
+transfer-status-failed = Mislukt
+
+# Transfer actions
+transfer-action-pause = Pauzeren
+transfer-action-resume = Hervatten
+transfer-action-cancel = Annuleren
+transfer-action-remove = Verwijderen
+transfer-action-open-folder = Map openen
+transfer-action-retry = Opnieuw proberen
+
+# Toolbar actions
+transfer-clear-completed = Voltooide wissen
+transfer-clear-failed = Mislukte wissen
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } bestanden
+transfer-speed = { $speed }/s
+transfer-elapsed = { $time } verstreken
+transfer-eta = { $time } resterend
+transfer-from-server = Van: { $server }
+
+# Transfer errors
+transfer-error-not-found = Pad niet gevonden
+transfer-error-permission = Toegang geweigerd
+transfer-error-invalid = Ongeldig pad
+transfer-error-unsupported-version = Protocolversie niet ondersteund
+transfer-error-disk-full = Schijf vol
+transfer-error-hash-mismatch = Bestandsverificatie mislukt
+transfer-error-io = Bestand I/O-fout
+transfer-error-protocol = Protocolfout
+transfer-error-connection = Verbindingsfout
+transfer-error-certificate-mismatch = Certificaatvingerafdruk komt niet overeen
+transfer-error-auth-failed = Authenticatie mislukt
+transfer-error-unknown = Onbekende fout

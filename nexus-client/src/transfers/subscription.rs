@@ -7,9 +7,15 @@
 //!
 //! Uses a global registry pattern similar to network_stream to pass transfer
 //! data to the subscription without closure captures.
+//!
+//! Cancellation is supported via a global registry of cancellation flags.
+//! When pause/cancel is requested, the flag is set to true and the executor
+//! checks it periodically. The subscription detects the abort and sends
+//! appropriate events to the UI.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use iced::futures::{SinkExt, Stream};
 use iced::stream;
@@ -19,6 +25,7 @@ use uuid::Uuid;
 
 use super::executor::{TransferEvent, execute_transfer};
 use super::{Transfer, TransferStatus};
+use crate::config::settings::ProxySettings;
 use crate::types::Message;
 
 /// Channel size for the transfer event stream
@@ -34,12 +41,92 @@ const TRANSFER_CHANNEL_SIZE: usize = 100;
 pub static TRANSFER_REGISTRY: Lazy<Mutex<HashMap<Uuid, Transfer>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Global registry for cancellation flags
+///
+/// When a transfer should be cancelled, its flag is set to true.
+/// The executor checks this flag periodically and aborts if set.
+pub static CANCEL_REGISTRY: Lazy<Mutex<HashMap<Uuid, Arc<AtomicBool>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Global registry for proxy configuration
+///
+/// When a transfer is registered, the current proxy settings are stored here.
+/// The executor retrieves them when starting the transfer.
+pub static PROXY_REGISTRY: Lazy<Mutex<HashMap<Uuid, Option<ProxyConfig>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Proxy configuration for transfers (simplified from settings)
+#[derive(Clone, Debug)]
+pub struct ProxyConfig {
+    pub address: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+impl ProxyConfig {
+    /// Create from app proxy settings if enabled
+    pub fn from_settings(settings: &ProxySettings) -> Option<Self> {
+        if settings.enabled {
+            Some(ProxyConfig {
+                address: settings.address.clone(),
+                port: settings.port,
+                username: settings.username.clone(),
+                password: settings.password.clone(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
 /// Register a transfer in the global registry for the subscription to pick up
-fn register_transfer(transfer: Transfer) {
+fn register_transfer(transfer: Transfer, proxy: Option<ProxyConfig>) {
+    let id = transfer.id;
     let mut registry = TRANSFER_REGISTRY
         .lock()
         .expect("transfer registry poisoned");
-    registry.insert(transfer.id, transfer);
+    registry.insert(id, transfer);
+
+    // Register cancellation flag
+    let mut cancel_registry = CANCEL_REGISTRY.lock().expect("cancel registry poisoned");
+    cancel_registry.insert(id, Arc::new(AtomicBool::new(false)));
+
+    // Register proxy config
+    let mut proxy_registry = PROXY_REGISTRY.lock().expect("proxy registry poisoned");
+    proxy_registry.insert(id, proxy);
+}
+
+/// Request cancellation of a transfer
+///
+/// Sets the cancellation flag for the given transfer ID. The executor will
+/// check this flag and abort the transfer.
+pub fn request_cancel(transfer_id: Uuid) {
+    let cancel_registry = CANCEL_REGISTRY.lock().expect("cancel registry poisoned");
+    if let Some(flag) = cancel_registry.get(&transfer_id) {
+        flag.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Get the cancellation flag for a transfer
+fn get_cancel_flag(transfer_id: Uuid) -> Option<Arc<AtomicBool>> {
+    let cancel_registry = CANCEL_REGISTRY.lock().expect("cancel registry poisoned");
+    cancel_registry.get(&transfer_id).cloned()
+}
+
+/// Get the proxy config for a transfer
+fn get_proxy_config(transfer_id: Uuid) -> Option<ProxyConfig> {
+    let proxy_registry = PROXY_REGISTRY.lock().expect("proxy registry poisoned");
+    proxy_registry.get(&transfer_id).cloned().flatten()
+}
+
+/// Remove a transfer from all registries
+fn remove_from_registries(transfer_id: Uuid) {
+    let mut cancel_registry = CANCEL_REGISTRY.lock().expect("cancel registry poisoned");
+    cancel_registry.remove(&transfer_id);
+
+    let mut proxy_registry = PROXY_REGISTRY.lock().expect("proxy registry poisoned");
+    proxy_registry.remove(&transfer_id);
 }
 
 /// Create an Iced subscription for a transfer
@@ -54,16 +141,20 @@ fn register_transfer(transfer: Transfer) {
 /// remains alive even as status changes from Queued -> Connecting -> Transferring.
 /// This is critical - if we returned a different subscription when status changed,
 /// Iced would cancel the running stream.
-pub fn transfer_subscription(transfer: Transfer) -> iced::Subscription<Message> {
+pub fn transfer_subscription(
+    transfer: Transfer,
+    proxy_settings: &ProxySettings,
+) -> iced::Subscription<Message> {
     let transfer_id = transfer.id;
 
     // Only register and start execution for Queued transfers
     // Active transfers already have a running stream - just return the same
     // subscription ID to keep it alive
     if transfer.status == TransferStatus::Queued {
-        // Register the transfer in the global registry
+        // Register the transfer in the global registry with current proxy settings
         // Uses sync Mutex so no async/block_on needed
-        register_transfer(transfer);
+        let proxy = ProxyConfig::from_settings(proxy_settings);
+        register_transfer(transfer, proxy);
     }
 
     // Use run_with with the transfer ID as key
@@ -98,12 +189,20 @@ pub fn transfer_stream(
                 return;
             };
 
+            // Get cancellation flag and proxy config for this transfer
+            let cancel_flag = get_cancel_flag(transfer_id);
+            let proxy_config = get_proxy_config(transfer_id);
+
             // Create channel for executor events
             let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TransferEvent>();
 
+            // Clone cancel flag for the executor
+            let executor_cancel_flag = cancel_flag.clone();
+
             // Spawn the executor task
-            let executor_handle =
-                tokio::spawn(async move { execute_transfer(&transfer, event_tx).await });
+            let executor_handle = tokio::spawn(async move {
+                execute_transfer(&transfer, event_tx, executor_cancel_flag, proxy_config).await
+            });
 
             // Forward events from executor to Iced
             // Use a flag to track if we've seen a terminal event
@@ -117,7 +216,9 @@ pub fn transfer_stream(
                             Some(evt) => {
                                 let is_terminal = matches!(
                                     evt,
-                                    TransferEvent::Completed { .. } | TransferEvent::Failed { .. }
+                                    TransferEvent::Completed { .. }
+                                        | TransferEvent::Failed { .. }
+                                        | TransferEvent::Paused { .. }
                                 );
 
                                 // Send event to UI
@@ -145,6 +246,9 @@ pub fn transfer_stream(
 
             // Wait for executor to finish
             let exec_result = executor_handle.await;
+
+            // Clean up registries
+            remove_from_registries(transfer_id);
 
             // If we didn't see a terminal event, send one based on executor result
             if !seen_terminal {
@@ -227,7 +331,7 @@ mod tests {
         let transfer = create_test_transfer();
         let id = transfer.id;
 
-        register_transfer(transfer);
+        register_transfer(transfer, None);
 
         let registry = TRANSFER_REGISTRY.lock().expect("registry poisoned");
         assert!(registry.contains_key(&id));

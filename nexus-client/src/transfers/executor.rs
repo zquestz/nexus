@@ -3,19 +3,24 @@
 //! The executor watches for queued transfers and processes them one at a time.
 //! It connects to the transfer port (7501), performs authentication, and
 //! executes the download protocol.
+//!
+//! Supports cancellation via an atomic flag that is checked periodically
+//! during the transfer.
 
 use std::io::SeekFrom;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
+use tokio_socks::tcp::Socks5Stream;
 use uuid::Uuid;
 
 use nexus_common::PROTOCOL_VERSION;
@@ -23,7 +28,9 @@ use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+use super::subscription::ProxyConfig;
 use super::{Transfer, TransferConnectionInfo, TransferError};
+use crate::i18n::t;
 
 // =============================================================================
 // Constants
@@ -36,6 +43,9 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Frame completion timeout (once first byte received)
+/// Currently unused - using PROGRESS_TIMEOUT for FileData frames instead.
+/// Kept for potential future use with non-FileData frames.
+#[allow(dead_code)]
 const FRAME_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Progress timeout for FileData (must receive some bytes within this time)
@@ -73,7 +83,8 @@ pub enum TransferEvent {
         current_file: Option<String>,
     },
 
-    /// File completed
+    /// File completed (fields used for logging/debugging, not currently read by handler)
+    #[allow(dead_code)]
     FileCompleted { id: Uuid, path: String },
 
     /// Transfer completed successfully
@@ -103,21 +114,51 @@ pub enum TransferEvent {
 /// 4. Send FileDownload request
 /// 5. Receive files and write to disk
 /// 6. Handle resume via .part files
+///
+/// The optional `cancel_flag` is checked periodically during the transfer.
+/// If set to true, the transfer is aborted and a Paused event is sent.
 pub async fn execute_transfer(
     transfer: &Transfer,
     event_tx: mpsc::UnboundedSender<TransferEvent>,
+    cancel_flag: Option<Arc<AtomicBool>>,
+    proxy: Option<ProxyConfig>,
 ) -> Result<(), TransferError> {
     let id = transfer.id;
+
+    // Check for cancellation before starting
+    if is_cancelled(&cancel_flag) {
+        let _ = event_tx.send(TransferEvent::Paused { id });
+        return Ok(());
+    }
 
     // Notify UI that we're connecting
     let _ = event_tx.send(TransferEvent::Connecting { id });
 
     // Connect and authenticate
-    let (mut reader, mut writer, _fingerprint) = connect_and_authenticate(
+    let (mut reader, mut writer, _fingerprint) = match connect_and_authenticate(
         &transfer.connection,
         &transfer.connection.certificate_fingerprint,
+        proxy,
     )
-    .await?;
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            let error = match e {
+                TransferError::ConnectionError => t("transfer-error-connection"),
+                TransferError::CertificateMismatch => t("transfer-error-certificate-mismatch"),
+                TransferError::AuthenticationFailed => t("transfer-error-auth-failed"),
+                TransferError::UnsupportedVersion => t("transfer-error-unsupported-version"),
+                _ => t("transfer-error-unknown"),
+            };
+            let _ = event_tx.send(TransferEvent::Failed {
+                id,
+                error,
+                error_kind: Some(e.clone()),
+            });
+            return Err(e);
+        }
+    };
 
     // Send FileDownload request
     let download_request = ClientMessage::FileDownload {
@@ -149,18 +190,22 @@ pub async fn execute_transfer(
 
         ServerMessage::FileDownloadResponse {
             success: false,
-            error,
             error_kind,
             ..
         } => {
-            let err_msg = error.unwrap_or_else(|| "Download failed".to_string());
             let err_kind = error_kind
                 .as_deref()
                 .map(TransferError::from_server_error_kind)
                 .unwrap_or(TransferError::Unknown);
+            let error = match err_kind {
+                TransferError::NotFound => t("transfer-error-not-found"),
+                TransferError::Permission => t("transfer-error-permission"),
+                TransferError::Invalid => t("transfer-error-invalid"),
+                _ => t("transfer-error-unknown"),
+            };
             let _ = event_tx.send(TransferEvent::Failed {
                 id,
-                error: err_msg,
+                error,
                 error_kind: Some(err_kind.clone()),
             });
             return Err(err_kind);
@@ -170,7 +215,7 @@ pub async fn execute_transfer(
             eprintln!("Unexpected response to FileDownload: {other:?}");
             let _ = event_tx.send(TransferEvent::Failed {
                 id,
-                error: "Unexpected server response".to_string(),
+                error: t("transfer-error-protocol"),
                 error_kind: Some(TransferError::ProtocolError),
             });
             return Err(TransferError::ProtocolError);
@@ -185,6 +230,12 @@ pub async fn execute_transfer(
         server_transfer_id,
     });
 
+    // Check for cancellation after connecting
+    if is_cancelled(&cancel_flag) {
+        let _ = event_tx.send(TransferEvent::Paused { id });
+        return Ok(());
+    }
+
     // Handle empty directory case
     if file_count == 0 {
         // Wait for TransferComplete
@@ -198,6 +249,12 @@ pub async fn execute_transfer(
     let base_path = &transfer.local_path;
 
     for _file_index in 0..file_count {
+        // Check for cancellation before each file
+        if is_cancelled(&cancel_flag) {
+            let _ = event_tx.send(TransferEvent::Paused { id });
+            return Ok(());
+        }
+
         // Read FileStart
         let file_start = read_message_with_timeout(&mut reader, IDLE_TIMEOUT).await?;
 
@@ -211,7 +268,7 @@ pub async fn execute_transfer(
                 eprintln!("Expected FileStart, got: {other:?}");
                 let _ = event_tx.send(TransferEvent::Failed {
                     id,
-                    error: "Expected FileStart message".to_string(),
+                    error: t("transfer-error-protocol"),
                     error_kind: Some(TransferError::ProtocolError),
                 });
                 return Err(TransferError::ProtocolError);
@@ -222,10 +279,10 @@ pub async fn execute_transfer(
         if !is_safe_path(&file_path) {
             let _ = event_tx.send(TransferEvent::Failed {
                 id,
-                error: format!("Invalid file path from server: {file_path}"),
-                error_kind: Some(TransferError::ProtocolError),
+                error: t("transfer-error-invalid"),
+                error_kind: Some(TransferError::Invalid),
             });
-            return Err(TransferError::ProtocolError);
+            return Err(TransferError::Invalid);
         }
 
         // Update current file in progress
@@ -244,12 +301,39 @@ pub async fn execute_transfer(
         } else {
             base_path.clone()
         };
+
+        // Check if a COMPLETE file exists at the destination with DIFFERENT content.
+        // This is separate from resume logic - we only auto-rename if:
+        // 1. A complete file (not .part) exists at the destination
+        // 2. Its size matches the server's file size (so it's a complete file)
+        // 3. Its hash differs from the server's hash (different content)
+        //
+        // If a .part file exists, that's a partial download - we'll resume it.
+        // If a complete file exists with the SAME hash, we skip the download.
+        let local_file_path = if let Ok(metadata) = tokio::fs::metadata(&local_file_path).await
+            && metadata.is_file()
+            && metadata.len() == file_size
+            && file_size > 0
+        {
+            // Complete file exists - check if it's the same content
+            if let Ok(existing_hash) = compute_file_sha256(&local_file_path).await {
+                if existing_hash != file_sha256 {
+                    // Different file with same size - auto-rename to avoid overwriting
+                    generate_unique_path(&local_file_path).await
+                } else {
+                    // Same file - will be skipped by the "already complete" check below
+                    local_file_path
+                }
+            } else {
+                // Couldn't hash existing file - just use original path
+                local_file_path
+            }
+        } else {
+            local_file_path
+        };
         let part_path = PathBuf::from(format!("{}{}", local_file_path.display(), PART_SUFFIX));
 
-        // Check for existing partial/complete file
-        // TODO: If a complete file exists but has a different hash than the server's file,
-        // we should auto-rename the new file (e.g., "foo.txt" -> "foo (1).txt") like
-        // browsers do, rather than overwriting. For now, the file will be overwritten silently.
+        // Check for existing partial/complete file for resume
         let (local_size, local_hash) = check_local_file(&local_file_path, &part_path).await;
 
         // Send FileStartResponse
@@ -321,6 +405,14 @@ pub async fn execute_transfer(
 
             // Receive FileData frames
             while bytes_received < bytes_to_receive {
+                // Check for cancellation during data transfer
+                if is_cancelled(&cancel_flag) {
+                    // Flush what we have so far
+                    file.flush().await.ok();
+                    let _ = event_tx.send(TransferEvent::Paused { id });
+                    return Ok(());
+                }
+
                 let frame = read_raw_frame_with_progress_timeout(&mut reader).await?;
 
                 if frame.message_type != "FileData" {
@@ -329,7 +421,7 @@ pub async fn execute_transfer(
                         eprintln!("Received {} during file transfer", frame.message_type);
                         let _ = event_tx.send(TransferEvent::Failed {
                             id,
-                            error: "Transfer interrupted".to_string(),
+                            error: t("transfer-error-connection"),
                             error_kind: Some(TransferError::ConnectionError),
                         });
                         return Err(TransferError::ConnectionError);
@@ -338,7 +430,7 @@ pub async fn execute_transfer(
                     eprintln!("Expected FileData, got: {}", frame.message_type);
                     let _ = event_tx.send(TransferEvent::Failed {
                         id,
-                        error: "Expected FileData message".to_string(),
+                        error: t("transfer-error-protocol"),
                         error_kind: Some(TransferError::ProtocolError),
                     });
                     return Err(TransferError::ProtocolError);
@@ -353,7 +445,7 @@ pub async fn execute_transfer(
                 bytes_received += frame.payload.len() as u64;
                 transferred_bytes += frame.payload.len() as u64;
 
-                // Send periodic progress updates (every 64KB or so)
+                // Send progress update (once per file frame received)
                 let _ = event_tx.send(TransferEvent::Progress {
                     id,
                     transferred_bytes,
@@ -376,7 +468,7 @@ pub async fn execute_transfer(
                 let _ = tokio::fs::remove_file(&part_path).await;
                 let _ = event_tx.send(TransferEvent::Failed {
                     id,
-                    error: format!("Hash verification failed for {file_path}"),
+                    error: t("transfer-error-hash-mismatch"),
                     error_kind: Some(TransferError::HashMismatch),
                 });
                 return Err(TransferError::HashMismatch);
@@ -435,55 +527,113 @@ pub async fn execute_transfer(
 // =============================================================================
 
 /// Connect to transfer port, verify certificate, and authenticate
+///
+/// Returns boxed trait objects for the reader/writer to support both direct
+/// and proxied connections with different underlying stream types.
 async fn connect_and_authenticate(
     conn_info: &TransferConnectionInfo,
     expected_fingerprint: &str,
+    proxy: Option<ProxyConfig>,
 ) -> Result<
     (
-        FrameReader<BufReader<tokio::io::ReadHalf<tokio_rustls::client::TlsStream<TcpStream>>>>,
-        FrameWriter<tokio::io::WriteHalf<tokio_rustls::client::TlsStream<TcpStream>>>,
+        FrameReader<BufReader<Box<dyn AsyncRead + Unpin + Send>>>,
+        FrameWriter<Box<dyn AsyncWrite + Unpin + Send>>,
         String,
     ),
     TransferError,
 > {
-    // Connect with timeout
-    let addr = format!("{}:{}", conn_info.server_address, conn_info.transfer_port);
+    let target_addr = &conn_info.server_address;
+    let target_port = conn_info.transfer_port;
 
-    let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addr))
+    // Set up TLS config
+    let tls_config = crate::network::tls::create_tls_config();
+    let connector = TlsConnector::from(Arc::new(tls_config));
+
+    // Use "localhost" for SNI since we disable hostname verification
+    let server_name = "localhost"
+        .try_into()
+        .expect("localhost is valid server name");
+
+    // Check if we should bypass proxy for this address (localhost, Yggdrasil)
+    let use_proxy = proxy.filter(|_| !crate::network::tls::should_bypass_proxy(target_addr));
+
+    // Connect and perform TLS handshake - either direct or through proxy
+    let (fingerprint, read_half, write_half): (
+        String,
+        Box<dyn AsyncRead + Unpin + Send>,
+        Box<dyn AsyncWrite + Unpin + Send>,
+    ) = if let Some(proxy_config) = use_proxy {
+        // Proxied connection via SOCKS5
+        let proxy_addr = format!("{}:{}", proxy_config.address, proxy_config.port);
+
+        let socks_stream = timeout(CONNECTION_TIMEOUT, async {
+            match (&proxy_config.username, &proxy_config.password) {
+                (Some(username), Some(password)) => {
+                    Socks5Stream::connect_with_password(
+                        proxy_addr.as_str(),
+                        (target_addr.as_str(), target_port),
+                        username.as_str(),
+                        password.as_str(),
+                    )
+                    .await
+                }
+                _ => {
+                    Socks5Stream::connect(proxy_addr.as_str(), (target_addr.as_str(), target_port))
+                        .await
+                }
+            }
+        })
         .await
         .map_err(|_| TransferError::ConnectionError)?
         .map_err(|_| TransferError::ConnectionError)?;
 
-    // Set up TLS
-    let tls_config = crate::network::tls::create_tls_config();
-    let connector = TlsConnector::from(Arc::new(tls_config));
+        let tls_stream = timeout(
+            CONNECTION_TIMEOUT,
+            connector.connect(server_name, socks_stream),
+        )
+        .await
+        .map_err(|_| TransferError::ConnectionError)?
+        .map_err(|_| TransferError::ConnectionError)?;
 
-    // Use server address as SNI
-    let server_name = conn_info
-        .server_address
-        .clone()
-        .try_into()
-        .unwrap_or_else(|_| "localhost".try_into().expect("localhost is valid"));
+        // Get fingerprint before splitting
+        let (_, session) = tls_stream.get_ref();
+        let fp = crate::network::tls::get_certificate_fingerprint(session)
+            .ok_or(TransferError::CertificateMismatch)?;
 
-    let tls_stream = timeout(
-        CONNECTION_TIMEOUT,
-        connector.connect(server_name, tcp_stream),
-    )
-    .await
-    .map_err(|_| TransferError::ConnectionError)?
-    .map_err(|_| TransferError::ConnectionError)?;
+        let (r, w) = tokio::io::split(tls_stream);
+        (fp, Box::new(r), Box::new(w))
+    } else {
+        // Direct connection
+        let addr = format!("{}:{}", target_addr, target_port);
+
+        let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addr))
+            .await
+            .map_err(|_| TransferError::ConnectionError)?
+            .map_err(|_| TransferError::ConnectionError)?;
+
+        let tls_stream = timeout(
+            CONNECTION_TIMEOUT,
+            connector.connect(server_name, tcp_stream),
+        )
+        .await
+        .map_err(|_| TransferError::ConnectionError)?
+        .map_err(|_| TransferError::ConnectionError)?;
+
+        // Get fingerprint before splitting
+        let (_, session) = tls_stream.get_ref();
+        let fp = crate::network::tls::get_certificate_fingerprint(session)
+            .ok_or(TransferError::CertificateMismatch)?;
+
+        let (r, w) = tokio::io::split(tls_stream);
+        (fp, Box::new(r), Box::new(w))
+    };
 
     // Verify certificate fingerprint
-    let (_, session) = tls_stream.get_ref();
-    let fingerprint = crate::network::tls::get_certificate_fingerprint(session)
-        .ok_or(TransferError::CertificateMismatch)?;
-
     if fingerprint != expected_fingerprint {
         return Err(TransferError::CertificateMismatch);
     }
 
-    // Split stream and set up framing
-    let (read_half, write_half) = tokio::io::split(tls_stream);
+    // Set up framing
     let buf_reader = BufReader::new(read_half);
     let mut reader = FrameReader::new(buf_reader);
     let mut writer = FrameWriter::new(write_half);
@@ -617,8 +767,49 @@ async fn check_local_file(complete_path: &PathBuf, part_path: &PathBuf) -> (u64,
     (0, None)
 }
 
+/// Generate a unique file path by appending (1), (2), etc.
+///
+/// Given "/path/to/file.txt", tries:
+/// - /path/to/file (1).txt
+/// - /path/to/file (2).txt
+/// - etc.
+async fn generate_unique_path(original: &Path) -> PathBuf {
+    let stem = original
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file");
+    let extension = original.extension().and_then(|s| s.to_str());
+    let parent = original.parent();
+
+    for i in 1..1000 {
+        let new_name = if let Some(ext) = extension {
+            format!("{} ({}).{}", stem, i, ext)
+        } else {
+            format!("{} ({})", stem, i)
+        };
+
+        let new_path = if let Some(parent) = parent {
+            parent.join(&new_name)
+        } else {
+            PathBuf::from(&new_name)
+        };
+
+        // Check if this path is available (no file and no .part file)
+        if tokio::fs::metadata(&new_path).await.is_err()
+            && tokio::fs::metadata(format!("{}{}", new_path.display(), PART_SUFFIX))
+                .await
+                .is_err()
+        {
+            return new_path;
+        }
+    }
+
+    // Fallback: just use the original (will overwrite)
+    original.to_path_buf()
+}
+
 /// Compute SHA-256 hash of a file
-async fn compute_file_sha256(path: &PathBuf) -> Result<String, TransferError> {
+async fn compute_file_sha256(path: &Path) -> Result<String, TransferError> {
     let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
 
     let mut reader = BufReader::new(file);
@@ -640,6 +831,13 @@ async fn compute_file_sha256(path: &PathBuf) -> Result<String, TransferError> {
 
     let hash = hasher.finalize();
     Ok(hex::encode(hash))
+}
+
+/// Check if the transfer has been cancelled
+fn is_cancelled(cancel_flag: &Option<Arc<AtomicBool>>) -> bool {
+    cancel_flag
+        .as_ref()
+        .is_some_and(|flag| flag.load(Ordering::SeqCst))
 }
 
 /// Validate that a path from the server is safe
@@ -695,17 +893,24 @@ fn handle_transfer_complete(
         }
         ServerMessage::TransferComplete {
             success: false,
-            error,
             error_kind,
+            ..
         } => {
-            let err_msg = error.unwrap_or_else(|| "Transfer failed".to_string());
             let err_kind = error_kind
                 .as_deref()
                 .map(TransferError::from_server_error_kind)
                 .unwrap_or(TransferError::Unknown);
+            let error = match err_kind {
+                TransferError::NotFound => t("transfer-error-not-found"),
+                TransferError::Permission => t("transfer-error-permission"),
+                TransferError::Invalid => t("transfer-error-invalid"),
+                TransferError::IoError => t("transfer-error-io"),
+                TransferError::DiskFull => t("transfer-error-disk-full"),
+                _ => t("transfer-error-unknown"),
+            };
             let _ = event_tx.send(TransferEvent::Failed {
                 id,
-                error: err_msg,
+                error,
                 error_kind: Some(err_kind.clone()),
             });
             Err(err_kind)
@@ -714,7 +919,7 @@ fn handle_transfer_complete(
             eprintln!("Expected TransferComplete, got: {other:?}");
             let _ = event_tx.send(TransferEvent::Failed {
                 id,
-                error: "Expected TransferComplete message".to_string(),
+                error: t("transfer-error-protocol"),
                 error_kind: Some(TransferError::ProtocolError),
             });
             Err(TransferError::ProtocolError)

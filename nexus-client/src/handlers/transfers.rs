@@ -4,11 +4,9 @@ use iced::Task;
 use uuid::Uuid;
 
 use crate::NexusApp;
-use crate::transfers::{TransferEvent, TransferStatus};
+use crate::transfers::{TransferEvent, TransferStatus, request_cancel};
 use crate::types::Message;
 
-// Allow unused handlers - UI buttons for these will be added later
-#[allow(dead_code)]
 impl NexusApp {
     /// Handle transfer progress event from executor
     pub fn handle_transfer_progress(&mut self, event: TransferEvent) -> Task<Message> {
@@ -67,8 +65,13 @@ impl NexusApp {
             }
 
             TransferEvent::Paused { id } => {
-                self.transfer_manager.pause(id);
-                self.save_transfers();
+                // Only update to Paused if not already Failed (cancel sets Failed immediately)
+                if let Some(transfer) = self.transfer_manager.get(id)
+                    && !transfer.status.is_failed()
+                {
+                    self.transfer_manager.pause(id);
+                    self.save_transfers();
+                }
             }
         }
 
@@ -87,18 +90,17 @@ impl NexusApp {
 
     /// Handle request to pause a transfer
     ///
-    /// TODO: Implement executor cancellation. Currently this only updates the status
-    /// but the executor continues running. Both pause and cancel should abort the
-    /// executor task immediately (cutting the connection). The transfer can then
-    /// be resumed later using the .part file for resume support.
+    /// Requests cancellation of the executor task via the cancellation flag.
+    /// The executor will check this flag and abort, sending a Paused event.
+    /// The transfer can then be resumed later using the .part file for resume support.
     pub fn handle_transfer_pause(&mut self, id: Uuid) -> Task<Message> {
-        // TODO: Abort the executor task to stop the transfer immediately
         if let Some(transfer) = self.transfer_manager.get(id)
             && (transfer.status == TransferStatus::Transferring
                 || transfer.status == TransferStatus::Connecting)
         {
-            self.transfer_manager.pause(id);
-            self.save_transfers();
+            // Request the executor to stop
+            request_cancel(id);
+            // Status will be updated when we receive the Paused event from executor
         }
         Task::none()
     }
@@ -118,15 +120,16 @@ impl NexusApp {
 
     /// Handle request to cancel a transfer
     ///
-    /// TODO: Implement executor cancellation. Currently this only updates the status
-    /// but the executor continues running. Cancel should abort the executor task
-    /// immediately (cutting the connection), same as pause but marking as Failed
-    /// instead of Paused.
+    /// Requests cancellation of the executor task via the cancellation flag.
+    /// The executor will check this flag and abort. We mark it as failed
+    /// with a "Cancelled by user" message.
     pub fn handle_transfer_cancel(&mut self, id: Uuid) -> Task<Message> {
-        // TODO: Abort the executor task to stop the transfer immediately
         if let Some(transfer) = self.transfer_manager.get(id)
             && transfer.status.is_active()
         {
+            // Request the executor to stop
+            request_cancel(id);
+            // Mark as failed immediately (executor will also send Paused, but we want Failed)
             self.transfer_manager
                 .fail(id, "Cancelled by user".to_string(), None);
             self.save_transfers();
@@ -143,6 +146,44 @@ impl NexusApp {
             self.transfer_manager.remove(id);
             self.save_transfers();
         }
+        Task::none()
+    }
+
+    /// Handle request to open the folder containing a completed transfer
+    pub fn handle_transfer_open_folder(&mut self, id: Uuid) -> Task<Message> {
+        if let Some(transfer) = self.transfer_manager.get(id) {
+            // Get the parent directory of the local path
+            let folder = if transfer.is_directory {
+                // For directory downloads, the local_path is the directory itself
+                transfer.local_path.clone()
+            } else {
+                // For file downloads, get the parent directory
+                transfer
+                    .local_path
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| transfer.local_path.clone())
+            };
+
+            // Open the folder in the system file manager
+            if let Err(e) = open::that(&folder) {
+                eprintln!("Failed to open folder {:?}: {e}", folder);
+            }
+        }
+        Task::none()
+    }
+
+    /// Handle request to clear all completed transfers
+    pub fn handle_transfer_clear_completed(&mut self) -> Task<Message> {
+        self.transfer_manager.clear_completed();
+        self.save_transfers();
+        Task::none()
+    }
+
+    /// Handle request to clear all failed transfers
+    pub fn handle_transfer_clear_failed(&mut self) -> Task<Message> {
+        self.transfer_manager.clear_failed();
+        self.save_transfers();
         Task::none()
     }
 

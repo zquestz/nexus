@@ -47,6 +47,7 @@ title-user-info = Информация о пользователе
 title-about = О программе
 title-change-password = Изменить пароль
 title-news = Новости
+title-transfers = Передачи
 title-news-create = Создать публикацию
 title-news-edit = Редактировать публикацию
 
@@ -173,6 +174,8 @@ tooltip-files-paste = Вставить
 tooltip-manage-users = Управление пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
+tooltip-transfers = Передачи
+tooltip-download-all = Скачать всё
 tooltip-settings = Настройки
 tooltip-hide-bookmarks = Скрыть закладки
 tooltip-show-bookmarks = Показать закладки
@@ -190,6 +193,7 @@ tooltip-add-bookmark = Добавить закладку
 tooltip-create-user = Создать пользователя
 tooltip-create-news = Создать публикацию
 tooltip-delete = Удалить
+context-menu-download = Скачать
 
 # =============================================================================
 # Empty States
@@ -203,6 +207,7 @@ user-management-loading = Загрузка пользователей...
 user-management-no-users = Пользователи не найдены
 news-loading = Загрузка новостей...
 news-no-posts = Пока нет публикаций
+transfers-empty = Нет передач
 news-updated = Обновлено
 files-loading = Загрузка файлов...
 files-empty = Эта папка пуста
@@ -555,3 +560,48 @@ err-news-image-too-large = Изображение слишком большое 
 err-news-image-unsupported-type = Неподдерживаемый тип изображения (только PNG, WebP, JPEG или SVG)
 
 label-port = Порт:
+
+# =============================================================================
+# Transfers Panel
+# =============================================================================
+
+# Transfer statuses
+transfer-status-queued = В очереди
+transfer-status-connecting = Подключение...
+transfer-status-transferring = Передача
+transfer-status-paused = Приостановлено
+transfer-status-completed = Завершено
+transfer-status-failed = Ошибка
+
+# Transfer actions
+transfer-action-pause = Пауза
+transfer-action-resume = Продолжить
+transfer-action-cancel = Отменить
+transfer-action-remove = Удалить
+transfer-action-open-folder = Открыть папку
+transfer-action-retry = Повторить
+
+# Toolbar actions
+transfer-clear-completed = Очистить завершённые
+transfer-clear-failed = Очистить неудачные
+
+# Transfer info
+transfer-files-progress = { $completed }/{ $total } файлов
+transfer-speed = { $speed }/с
+transfer-elapsed = { $time } прошло
+transfer-eta = { $time } осталось
+transfer-from-server = От: { $server }
+
+# Transfer errors
+transfer-error-not-found = Путь не найден
+transfer-error-permission = Доступ запрещён
+transfer-error-invalid = Недопустимый путь
+transfer-error-unsupported-version = Версия протокола не поддерживается
+transfer-error-disk-full = Диск заполнен
+transfer-error-hash-mismatch = Ошибка проверки файла
+transfer-error-io = Ошибка ввода-вывода файла
+transfer-error-protocol = Ошибка протокола
+transfer-error-connection = Ошибка соединения
+transfer-error-certificate-mismatch = Отпечаток сертификата не совпадает
+transfer-error-auth-failed = Ошибка аутентификации
+transfer-error-unknown = Неизвестная ошибка

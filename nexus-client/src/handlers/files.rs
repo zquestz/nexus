@@ -988,13 +988,21 @@ impl NexusApp {
             .unwrap_or_else(|| ".".to_string());
 
         // Extract filename from remote path
-        let filename = remote_path
-            .rsplit('/')
-            .next()
-            .filter(|s| !s.is_empty())
-            .unwrap_or("download");
-
-        let local_path = std::path::PathBuf::from(&download_dir).join(filename);
+        // For single files: use the filename
+        // For directories: use the directory name as the containing folder
+        // For root path ("/") downloads: use server name as the folder
+        let trimmed_path = remote_path.trim_matches('/');
+        let local_path = if is_directory && trimmed_path.is_empty() {
+            // Root directory download - use server name as folder
+            // Sanitize server name to be filesystem-safe, fall back to address
+            let safe_name = sanitize_filename(&server_name, &server_address);
+            std::path::PathBuf::from(&download_dir).join(safe_name)
+        } else {
+            // Extract last path component for the local filename/folder
+            // trimmed_path is guaranteed non-empty here, so rsplit will return a non-empty value
+            let filename = trimmed_path.rsplit('/').next().expect("non-empty path");
+            std::path::PathBuf::from(&download_dir).join(filename)
+        };
 
         // Create connection info for the transfer
         let connection_info = crate::transfers::TransferConnectionInfo {
@@ -1026,5 +1034,32 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+}
+
+/// Sanitize a string to be safe for use as a filename
+///
+/// Replaces characters that are invalid in filenames on various platforms.
+/// Falls back to the provided fallback if the result would be empty.
+fn sanitize_filename(name: &str, fallback: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| match c {
+            // Invalid on Windows and/or problematic on Unix
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            // Control characters
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+
+    // Trim whitespace and dots from ends (Windows doesn't like trailing dots/spaces)
+    let trimmed = sanitized.trim().trim_end_matches('.');
+
+    // If empty after sanitization, use the fallback (typically server address)
+    if trimmed.is_empty() {
+        fallback.to_string()
+    } else {
+        trimmed.to_string()
     }
 }
