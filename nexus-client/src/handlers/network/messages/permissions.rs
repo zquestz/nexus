@@ -1,13 +1,14 @@
 //! Permissions update handler
 
+use iced::Task;
+use nexus_common::protocol::{ChatInfo, ClientMessage, ServerInfo};
+
 use crate::NexusApp;
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_USER_LIST;
-use iced::Task;
-use nexus_common::protocol::{ChatInfo, ClientMessage, ServerInfo};
 
 impl NexusApp {
     /// Handle permissions updated notification

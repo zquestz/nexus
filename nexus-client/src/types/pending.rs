@@ -9,8 +9,9 @@
 //! This module provides types to track these requests by message ID so the
 //! response handler knows how to route them.
 
-use crate::types::TabId;
 use nexus_common::framing::MessageId;
+
+use crate::types::TabId;
 
 /// How to route a response when it arrives
 #[derive(Debug, Clone)]

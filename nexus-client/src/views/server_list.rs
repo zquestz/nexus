@@ -1,5 +1,9 @@
 //! Server list panel (left sidebar)
 
+use std::collections::HashMap;
+
+use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
+use iced::{Element, Fill, alignment};
 use uuid::Uuid;
 
 use crate::i18n::t;
@@ -15,9 +19,6 @@ use crate::style::{
     transparent_icon_button_style,
 };
 use crate::types::{Message, ServerBookmark, ServerConnection};
-use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Element, Fill, alignment};
-use std::collections::HashMap;
 
 // ============================================================================
 // Helper Functions

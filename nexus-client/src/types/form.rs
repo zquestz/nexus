@@ -2,6 +2,9 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use nexus_common::protocol::{NewsItem, UserInfo};
+use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT};
+
 use crate::avatar::generate_identicon;
 use crate::config::Config;
 use crate::i18n::t;
@@ -9,8 +12,6 @@ use crate::image::{CachedImage, decode_data_uri_max_width, decode_data_uri_squar
 use crate::style::{
     AVATAR_MAX_CACHE_SIZE, NEWS_IMAGE_MAX_CACHE_WIDTH, SERVER_IMAGE_MAX_CACHE_WIDTH,
 };
-use nexus_common::protocol::{NewsItem, UserInfo};
-use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT};
 
 // =============================================================================
 // Password Change State

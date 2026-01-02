@@ -1,10 +1,11 @@
 //! /help command implementation
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::commands::{command_list_for_permissions, get_command_info};
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
-use iced::Task;
 
 /// Execute the /help command
 ///

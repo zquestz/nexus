@@ -2,6 +2,11 @@
 
 use std::collections::HashMap;
 
+use iced::widget::button as btn;
+use iced::widget::{Id, Space, button, column, row, text_input};
+use iced::{Center, Color, Element, Fill, Theme};
+use nexus_common::protocol::UserInfoDetailed;
+
 use super::constants::PERMISSION_USER_EDIT;
 use super::layout::scrollable_panel;
 use crate::avatar::generate_identicon;
@@ -15,10 +20,6 @@ use crate::style::{
     chat, error_text_style, panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, PasswordChangeState, ServerConnection};
-use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, column, row, text_input};
-use iced::{Center, Color, Element, Fill, Theme};
-use nexus_common::protocol::UserInfoDetailed;
 
 /// Render the user info panel
 ///

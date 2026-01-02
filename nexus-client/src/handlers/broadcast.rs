@@ -1,12 +1,13 @@
 //! Broadcast message handlers
 
-use crate::NexusApp;
-use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, ChatMessage, InputId, Message};
 use iced::Task;
 use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
+
+use crate::NexusApp;
+use crate::i18n::{t, t_args};
+use crate::types::{ActivePanel, ChatMessage, InputId, Message};
 
 impl NexusApp {
     // ==================== Panel Actions ====================

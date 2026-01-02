@@ -1,11 +1,12 @@
 //! User message handlers
 
-use crate::NexusApp;
-use crate::i18n::t_args;
-use crate::types::{ChatMessage, ChatTab, Message, ResponseRouting};
 use chrono::Local;
 use iced::Task;
 use nexus_common::framing::MessageId;
+
+use crate::NexusApp;
+use crate::i18n::t_args;
+use crate::types::{ChatMessage, ChatTab, Message, ResponseRouting};
 
 impl NexusApp {
     /// Handle incoming private message

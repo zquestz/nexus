@@ -7,11 +7,13 @@ mod queries;
 
 pub use mutations::AddUserError;
 
-use crate::users::user::UserSession;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+
 use tokio::sync::RwLock;
+
+use crate::users::user::UserSession;
 
 /// Manages all connected users
 #[derive(Debug, Clone)]

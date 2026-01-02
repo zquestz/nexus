@@ -1,6 +1,12 @@
 //! Files panel view (browse, upload, download files)
 
 use chrono::{DateTime, Local, TimeZone, Utc};
+use iced::widget::button as btn;
+use iced::widget::text::Wrapping;
+use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
+use iced::{Center, Element, Fill, Right, alignment};
+use iced_aw::ContextMenu;
+use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
 use super::layout::scrollable_panel;
 use crate::i18n::t;
@@ -24,12 +30,6 @@ use crate::types::{
     ClipboardOperation, FileSortColumn, FileTab, FilesManagementState, InputId, Message,
     ScrollableId, TabId,
 };
-use iced::widget::button as btn;
-use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
-use iced::{Center, Element, Fill, Right, alignment};
-use iced_aw::ContextMenu;
-use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
 /// File permission flags for view rendering
 #[derive(Debug, Clone, Copy)]

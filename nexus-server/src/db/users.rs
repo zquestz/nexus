@@ -1,9 +1,10 @@
 //! User account database operations
 
-use super::permissions::{Permission, Permissions};
-use super::sql::*;
 use nexus_common::validators;
 use sqlx::SqlitePool;
+
+use super::permissions::{Permission, Permissions};
+use super::sql::*;
 
 /// User account stored in database
 ///

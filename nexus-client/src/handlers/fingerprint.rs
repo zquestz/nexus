@@ -1,9 +1,10 @@
 //! Certificate fingerprint mismatch handlers
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::Message;
-use iced::Task;
 
 impl NexusApp {
     /// Accept new certificate fingerprint (update stored fingerprint and complete connection)

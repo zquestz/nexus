@@ -1,5 +1,10 @@
 //! Main application layout and toolbar
 
+use iced::widget::{
+    Column, Space, button, column, container, row, scrollable, stack, text_editor, tooltip,
+};
+use iced::{Center, Element, Fill};
+
 use super::constants::{
     PERMISSION_FILE_COPY, PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE,
     PERMISSION_FILE_DOWNLOAD, PERMISSION_FILE_INFO, PERMISSION_FILE_LIST, PERMISSION_FILE_MOVE,
@@ -26,10 +31,6 @@ use crate::types::{
     ActivePanel, BookmarkEditMode, Message, ServerConnection, SettingsFormState, ToolbarState,
     UserManagementState, ViewConfig,
 };
-use iced::widget::{
-    Column, Space, button, column, container, row, scrollable, stack, text_editor, tooltip,
-};
-use iced::{Center, Element, Fill};
 
 // ============================================================================
 // Server Content Context

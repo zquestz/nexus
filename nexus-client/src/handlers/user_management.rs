@@ -1,5 +1,11 @@
 //! User management handlers
 
+use iced::Task;
+use iced::widget::{Id, operation};
+use nexus_common::is_shared_account_permission;
+use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, PasswordError, UsernameError};
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
@@ -7,12 +13,6 @@ use crate::types::{
     ResponseRouting, UserManagementMode,
 };
 use crate::views::constants::PERMISSION_USER_INFO;
-use iced::Task;
-use iced::widget::{Id, operation};
-
-use nexus_common::is_shared_account_permission;
-use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, PasswordError, UsernameError};
 
 impl NexusApp {
     // ==================== Panel Toggle ====================

@@ -1,6 +1,17 @@
 //! News management panel view (list, create, edit, delete news posts)
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Local, Utc};
+use iced::widget::Id;
+use iced::widget::button as btn;
+use iced::widget::markdown;
+use iced::widget::{
+    Column, Row, Space, button, column, container, image, row, scrollable, svg, text_editor,
+    tooltip,
+};
+use iced::{Center, Element, Fill, Length, Theme, alignment};
+use nexus_common::protocol::NewsItem;
 
 use super::constants::{PERMISSION_NEWS_CREATE, PERMISSION_NEWS_DELETE, PERMISSION_NEWS_EDIT};
 use super::layout::scrollable_panel;
@@ -18,16 +29,6 @@ use crate::style::{
     tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
-use iced::widget::Id;
-use iced::widget::button as btn;
-use iced::widget::markdown;
-use iced::widget::{
-    Column, Row, Space, button, column, container, image, row, scrollable, svg, text_editor,
-    tooltip,
-};
-use iced::{Center, Element, Fill, Length, Theme, alignment};
-use nexus_common::protocol::NewsItem;
-use std::collections::HashMap;
 
 // ============================================================================
 // Helper Functions

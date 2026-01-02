@@ -1,12 +1,13 @@
 //! User connection/disconnection handlers
 
+use iced::Task;
+use nexus_common::protocol::UserInfo as ProtocolUserInfo;
+
 use crate::NexusApp;
 use crate::avatar::{compute_avatar_hash, get_or_create_avatar};
 use crate::handlers::network::helpers::sort_user_list;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
-use iced::Task;
-use nexus_common::protocol::UserInfo as ProtocolUserInfo;
 
 impl NexusApp {
     /// Handle user connected notification

@@ -1,10 +1,10 @@
 //! Certificate fingerprint verification and handling
 
+use iced::Task;
 use uuid::Uuid;
 
 use crate::NexusApp;
 use crate::types::{FingerprintMismatch, FingerprintMismatchDetails, Message, NetworkConnection};
-use iced::Task;
 
 impl NexusApp {
     /// Verify certificate fingerprint matches stored value, or save on first connection (TOFU)

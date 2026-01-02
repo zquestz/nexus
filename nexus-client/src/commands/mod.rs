@@ -46,6 +46,8 @@ mod window;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
@@ -53,7 +55,6 @@ use crate::views::constants::{
     PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_USER_BROADCAST,
     PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
-use iced::Task;
 
 /// Command handler function type
 /// Parameters: app, connection_id, invoked_name, args

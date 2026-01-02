@@ -1,8 +1,9 @@
 //! Error message handler
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::types::{ActivePanel, ChatMessage, Message, UserManagementMode};
-use iced::Task;
 
 // Protocol command names (must match server exactly)
 const CMD_USER_EDIT: &str = "UserEdit";

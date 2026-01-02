@@ -1,9 +1,12 @@
 //! Server configuration database operations
 
+use std::io;
+
 use nexus_common::validators::{
     ServerDescriptionError, ServerImageError, ServerNameError, validate_server_description,
     validate_server_image, validate_server_name,
 };
+use sqlx::SqlitePool;
 
 use super::sql::{SQL_GET_CONFIG, SQL_SET_CONFIG};
 use crate::constants::{
@@ -15,8 +18,6 @@ use crate::constants::{
     ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY,
     ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
 };
-use sqlx::SqlitePool;
-use std::io;
 
 /// Database interface for server configuration
 #[derive(Clone)]

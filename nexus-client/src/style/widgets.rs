@@ -4,6 +4,9 @@
 //! All styles derive from Iced's theme palette for compatibility with
 //! all 30 themes (22 built-in Iced + 8 custom Celestial).
 
+use iced::widget::{Container, button, container, text};
+use iced::{Background, Border, Center, Color, Fill, Theme};
+
 use super::shaping::shaped_text;
 use super::ui;
 use super::{
@@ -12,8 +15,6 @@ use super::{
     TITLE_SIZE,
 };
 use crate::types::Message;
-use iced::widget::{Container, button, container, text};
-use iced::{Background, Border, Center, Color, Fill, Theme};
 
 // ============================================================================
 // Button Styles

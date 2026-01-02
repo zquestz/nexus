@@ -1,11 +1,11 @@
 //! /serverinfo command implementation - display server information
 
 use chrono::Local;
+use iced::Task;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
-use iced::Task;
 
 /// Indentation for server info display lines (matching user info style)
 const INFO_INDENT: &str = "  ";

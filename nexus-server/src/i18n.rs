@@ -1,8 +1,9 @@
 //! Internationalization support using Fluent
 
-use crate::constants::*;
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
+
+use crate::constants::*;
 
 /// Get a translated message
 ///

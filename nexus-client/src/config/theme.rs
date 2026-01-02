@@ -4,9 +4,10 @@
 //! that matches Theme's Display implementation. Also supports custom Celestial
 //! themes from the celestial module.
 
-use crate::style::celestial;
 use iced::Theme;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::style::celestial;
 
 /// Theme preference wrapper that enables serialization of iced::Theme
 ///

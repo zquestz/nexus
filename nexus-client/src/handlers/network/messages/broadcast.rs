@@ -1,8 +1,9 @@
 //! Broadcast message handlers
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::types::{ChatMessage, Message};
-use iced::Task;
 
 impl NexusApp {
     /// Handle incoming server broadcast message

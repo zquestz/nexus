@@ -1,5 +1,10 @@
 //! Bookmark add/edit form
 
+use iced::widget::button as btn;
+use iced::widget::{Id, Row, Space, button, checkbox, column, row, text, text_input};
+use iced::{Center, Element, Fill};
+use iced_aw::NumberInput;
+
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -8,10 +13,6 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
-use iced::widget::button as btn;
-use iced::widget::{Id, Row, Space, button, checkbox, column, row, text, text_input};
-use iced::{Center, Element, Fill};
-use iced_aw::NumberInput;
 
 // ============================================================================
 // Bookmark Edit View

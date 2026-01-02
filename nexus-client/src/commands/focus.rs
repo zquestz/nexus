@@ -1,9 +1,10 @@
 //! /focus command implementation - switch focus to a chat tab
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, ChatTab, Message};
-use iced::Task;
 
 /// Execute the /focus command
 ///

@@ -1,9 +1,10 @@
 //! UI panel management and toggles
 
-use crate::NexusApp;
-use crate::types::{ActivePanel, Message};
 use iced::Task;
 use iced::widget::markdown;
+
+use crate::NexusApp;
+use crate::types::{ActivePanel, Message};
 
 impl NexusApp {
     // ==================== Active Panel Helpers ====================

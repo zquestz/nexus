@@ -1,5 +1,14 @@
 //! Settings panel view
 
+use iced::widget::button as btn;
+use iced::widget::{
+    Column, Id, Space, button, checkbox, container, pick_list, row, scrollable, text_input,
+};
+use iced::{Center, Element, Fill, Theme};
+use iced_aw::NumberInput;
+use iced_aw::TabLabel;
+use iced_aw::Tabs;
+
 use super::chat::TimestampSettings;
 use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings, default_download_path};
 use crate::config::theme::all_themes;
@@ -12,14 +21,6 @@ use crate::style::{
     shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, SettingsFormState, SettingsTab};
-use iced::widget::button as btn;
-use iced::widget::{
-    Column, Id, Space, button, checkbox, container, pick_list, row, scrollable, text_input,
-};
-use iced::{Center, Element, Fill, Theme};
-use iced_aw::NumberInput;
-use iced_aw::TabLabel;
-use iced_aw::Tabs;
 
 // ============================================================================
 // Settings View Data

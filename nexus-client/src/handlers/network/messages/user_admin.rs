@@ -1,13 +1,13 @@
 //! User administration response handlers
 
+use iced::Task;
+use iced::widget::{Id, operation};
 use nexus_common::framing::MessageId;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::InputId;
 use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting, UserManagementMode};
-use iced::Task;
-use iced::widget::{Id, operation};
 
 /// Data from a UserEditResponse message
 pub struct UserEditResponseData {

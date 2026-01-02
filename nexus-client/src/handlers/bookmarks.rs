@@ -1,13 +1,13 @@
 //! Bookmark management
 
+use iced::Task;
+use iced::widget::{Id, operation};
 use uuid::Uuid;
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
-use iced::Task;
-use iced::widget::{Id, operation};
 
 impl NexusApp {
     // ==================== Form Field Handlers ====================

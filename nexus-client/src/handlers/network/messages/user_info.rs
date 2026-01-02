@@ -1,5 +1,10 @@
 //! User info response handlers
 
+use chrono::Local;
+use iced::Task;
+use nexus_common::framing::MessageId;
+use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
+
 use crate::NexusApp;
 use crate::avatar::{compute_avatar_hash, get_or_create_avatar};
 use crate::handlers::network::constants::DATETIME_FORMAT;
@@ -8,10 +13,6 @@ use crate::i18n::{t, t_args};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, Message, ResponseRouting, UserInfo as ClientUserInfo,
 };
-use chrono::Local;
-use iced::Task;
-use nexus_common::framing::MessageId;
-use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
 
 /// Indentation for user info display lines
 const INFO_INDENT: &str = "  ";

@@ -1,5 +1,8 @@
 //! About panel view
 
+use iced::widget::{Space, button, column, rich_text, row, span, svg};
+use iced::{Center, Element, Fill, Theme};
+
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -7,8 +10,6 @@ use crate::style::{
     TITLE_SIZE, shaped_text,
 };
 use crate::types::Message;
-use iced::widget::{Space, button, column, rich_text, row, span, svg};
-use iced::{Center, Element, Fill, Theme};
 
 /// App icon SVG bytes (embedded at compile time)
 const APP_ICON_SVG: &[u8] = include_bytes!("../../assets/linux/nexus.svg");

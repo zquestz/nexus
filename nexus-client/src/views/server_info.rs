@@ -1,5 +1,10 @@
 //! Server info panel view
 
+use iced::widget::button as btn;
+use iced::widget::{Id, Space, button, image, row, svg, text_input};
+use iced::{Center, Element, Fill, Length};
+use iced_aw::NumberInput;
+
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::image::CachedImage;
@@ -9,10 +14,6 @@ use crate::style::{
     error_text_style, panel_title, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
 use crate::types::{InputId, Message, ServerInfoEditState};
-use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, image, row, svg, text_input};
-use iced::{Center, Element, Fill, Length};
-use iced_aw::NumberInput;
 
 /// Data needed to render the server info panel
 pub struct ServerInfoData<'a> {

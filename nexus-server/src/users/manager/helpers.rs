@@ -1,8 +1,9 @@
 //! Helper methods for UserManager
 
+use nexus_common::protocol::ServerMessage;
+
 use super::UserManager;
 use crate::db::{Permission, UserDb};
-use nexus_common::protocol::ServerMessage;
 
 impl UserManager {
     /// Remove disconnected users from the manager with permission checking

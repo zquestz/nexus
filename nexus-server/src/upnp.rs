@@ -42,10 +42,12 @@
 //! All UPnP failures are non-fatal. If UPnP setup fails, the server continues without port
 //! forwarding and prints a warning suggesting manual configuration.
 
-use crate::constants::*;
-use igd_next::SearchOptions;
 use std::net::{IpAddr, SocketAddrV4};
 use std::time::Duration;
+
+use igd_next::SearchOptions;
+
+use crate::constants::*;
 
 /// UPnP port mapping lease duration (in seconds)
 /// 3600 seconds = 1 hour
@@ -96,7 +98,8 @@ impl UpnpGateway {
     /// ```no_run
     /// # use std::net::IpAddr;
     /// # async fn example() -> Result<(), String> {
-    /// let gateway = UpnpGateway::setup("0.0.0.0".parse().unwrap(), 7500, 7501).await?;
+    /// let bind_addr: IpAddr = "0.0.0.0".parse().expect("valid IP address");
+    /// let gateway = UpnpGateway::setup(bind_addr, 7500, 7501).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -217,7 +220,11 @@ impl UpnpGateway {
     /// This is called during graceful shutdown to clean up the UPnP port mappings.
     /// If removal fails, the mappings will expire after the lease duration (1 hour).
     pub async fn remove_port_mapping(&self) -> Result<(), String> {
-        let gateway = self.gateway.read().unwrap().clone();
+        let gateway = self
+            .gateway
+            .read()
+            .expect("UPnP gateway lock poisoned")
+            .clone();
 
         // Remove main port mapping
         let main_port = self.main_port;
@@ -246,7 +253,11 @@ impl UpnpGateway {
     /// Extends the port forwarding leases for another hour. This is called automatically
     /// by the background renewal task every 30 minutes.
     pub async fn renew_lease(&self) -> Result<(), String> {
-        let gateway = self.gateway.read().unwrap().clone();
+        let gateway = self
+            .gateway
+            .read()
+            .expect("UPnP gateway lock poisoned")
+            .clone();
         let local_addr = self.local_addr;
 
         // Renew main port lease
@@ -340,7 +351,7 @@ impl UpnpGateway {
         .map_err(|e| format!("{}{}", ERR_UPNP_ADD_PORT_MAPPING, e))?;
 
         // Update stored gateway
-        *self.gateway.write().unwrap() = new_gateway;
+        *self.gateway.write().expect("UPnP gateway lock poisoned") = new_gateway;
 
         Ok(())
     }

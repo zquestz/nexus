@@ -1,20 +1,19 @@
 //! Connection result handlers
 
+use iced::Task;
+use iced::widget::{Id, operation};
+use nexus_common::protocol::ClientMessage;
 use uuid::Uuid;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
-
 use crate::types::{
     ActivePanel, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
     ServerConnectionParams,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
-use iced::Task;
-use iced::widget::{Id, operation};
-use nexus_common::protocol::ClientMessage;
 
 /// Result of creating and registering a connection
 struct ConnectionRegistration {

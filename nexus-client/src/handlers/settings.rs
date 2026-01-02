@@ -1,5 +1,9 @@
 //! Settings panel handlers
 
+use iced::Task;
+use iced::widget::{Id, operation};
+use rfd::AsyncFileDialog;
+
 use crate::NexusApp;
 use crate::config::settings::{
     AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
@@ -8,9 +12,6 @@ use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
 use crate::types::{ActivePanel, InputId, Message, SettingsFormState, SettingsTab};
-use iced::Task;
-use iced::widget::{Id, operation};
-use rfd::AsyncFileDialog;
 
 impl NexusApp {
     // ==================== Settings Panel ====================

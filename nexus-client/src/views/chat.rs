@@ -1,14 +1,5 @@
 //! Chat interface for active server connections
 
-use crate::i18n::t;
-use crate::style::{
-    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CLOSE_BUTTON_PADDING,
-    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TAB_CONTENT_PADDING,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
-    chat_tab_active_style, close_button_on_primary_style, content_background_style, shaped_text,
-    tooltip_container_style,
-};
-use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{
@@ -18,6 +9,16 @@ use iced::widget::{
 use iced::{Color, Element, Fill, Font, Theme};
 use linkify::{LinkFinder, LinkKind};
 use once_cell::sync::Lazy;
+
+use crate::i18n::t;
+use crate::style::{
+    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CLOSE_BUTTON_PADDING,
+    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TAB_CONTENT_PADDING,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
+    chat_tab_active_style, close_button_on_primary_style, content_background_style, shaped_text,
+    tooltip_container_style,
+};
+use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 
 // ============================================================================
 // Timestamp Settings

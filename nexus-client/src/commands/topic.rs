@@ -1,12 +1,13 @@
 //! /topic command implementation - view and manage chat topic
 
+use iced::Task;
+use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, ChatTopicError};
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::PERMISSION_CHAT_TOPIC_EDIT;
-use iced::Task;
-use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, ChatTopicError};
 
 /// Execute the /topic command
 ///

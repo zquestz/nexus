@@ -1,5 +1,13 @@
 //! User management panel view (list, create, edit, delete users)
 
+use iced::widget::button as btn;
+use iced::widget::{
+    Column, Id, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
+    tooltip,
+};
+use iced::{Center, Element, Fill, Theme, alignment};
+use nexus_common::is_shared_account_permission;
+
 use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
@@ -16,13 +24,6 @@ use crate::style::{
 };
 use crate::types::InputId;
 use crate::types::{Message, ServerConnection, UserManagementMode, UserManagementState};
-use iced::widget::button as btn;
-use iced::widget::{
-    Column, Id, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
-    tooltip,
-};
-use iced::{Center, Element, Fill, Theme, alignment};
-use nexus_common::is_shared_account_permission;
 
 // ============================================================================
 // Edit User Context

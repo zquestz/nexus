@@ -1,7 +1,5 @@
 //! Database module for persistent storage
 
-use crate::constants::*;
-
 pub mod chat;
 pub mod config;
 pub mod news;
@@ -20,8 +18,11 @@ pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 pub use users::UserDb;
 
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
+
+use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+
+use crate::constants::*;
 
 /// Combined database access for all database operations
 #[derive(Clone)]

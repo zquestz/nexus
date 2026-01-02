@@ -1,11 +1,12 @@
 //! /userinfo command implementation - request user info from server
 
-use crate::NexusApp;
-use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, NicknameError};
+
+use crate::NexusApp;
+use crate::i18n::{t, t_args};
+use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 
 /// Execute the /userinfo command
 ///

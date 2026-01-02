@@ -1,5 +1,9 @@
 //! Broadcast message panel view
 
+use iced::widget::button as btn;
+use iced::widget::{Id, Space, button, row, text_input};
+use iced::{Center, Element, Fill};
+
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -8,9 +12,6 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
-use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, row, text_input};
-use iced::{Center, Element, Fill};
 
 // ============================================================================
 // Broadcast View

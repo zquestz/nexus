@@ -1,9 +1,10 @@
 //! User kick response handler
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
-use iced::Task;
 
 impl NexusApp {
     /// Handle user kick response

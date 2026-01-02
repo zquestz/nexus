@@ -1,11 +1,12 @@
 //! /kick command implementation - kick users from server
 
-use crate::NexusApp;
-use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, NicknameError};
+
+use crate::NexusApp;
+use crate::i18n::{t, t_args};
+use crate::types::{ChatMessage, Message};
 
 /// Execute the /kick command
 ///

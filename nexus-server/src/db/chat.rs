@@ -1,10 +1,12 @@
 //! Chat state database operations
 
-use super::sql::{SQL_GET_CHAT_STATE, SQL_SET_CHAT_STATE};
-use crate::constants::{CHAT_STATE_KEY_TOPIC, CHAT_STATE_KEY_TOPIC_SET_BY};
+use std::io;
+
 use nexus_common::validators;
 use sqlx::SqlitePool;
-use std::io;
+
+use super::sql::{SQL_GET_CHAT_STATE, SQL_SET_CHAT_STATE};
+use crate::constants::{CHAT_STATE_KEY_TOPIC, CHAT_STATE_KEY_TOPIC_SET_BY};
 
 /// Chat topic with the username who set it
 #[derive(Debug, Clone, Default)]

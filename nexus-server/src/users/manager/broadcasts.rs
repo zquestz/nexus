@@ -1,8 +1,9 @@
 //! Broadcast methods for UserManager
 
+use nexus_common::protocol::{ServerInfo, ServerMessage};
+
 use super::UserManager;
 use crate::db::{Permission, UserDb};
-use nexus_common::protocol::{ServerInfo, ServerMessage};
 
 /// Parameters for broadcasting server info updates
 pub struct ServerInfoBroadcastParams {

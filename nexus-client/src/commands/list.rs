@@ -1,11 +1,12 @@
 //! /list command implementation - display connected users
 
+use iced::Task;
+use nexus_common::protocol::ClientMessage;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use crate::views::constants::{PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
-use iced::Task;
-use nexus_common::protocol::ClientMessage;
 
 /// Execute the /list command
 ///

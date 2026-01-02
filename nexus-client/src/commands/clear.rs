@@ -1,9 +1,10 @@
 //! /clear command implementation - clear chat history for current tab
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, ChatTab, Message};
-use iced::Task;
 
 /// Execute the /clear command
 ///

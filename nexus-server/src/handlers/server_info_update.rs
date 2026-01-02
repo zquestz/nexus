@@ -5,12 +5,12 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
-
-use crate::users::manager::broadcasts::ServerInfoBroadcastParams;
 use nexus_common::validators::{
     self, ServerDescriptionError, ServerImageError, ServerNameError, validate_server_description,
     validate_server_image, validate_server_name,
 };
+
+use crate::users::manager::broadcasts::ServerInfoBroadcastParams;
 
 use super::{
     HandlerContext, err_admin_required, err_authentication, err_database, err_no_fields_to_update,

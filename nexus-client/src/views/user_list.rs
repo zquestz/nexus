@@ -1,5 +1,8 @@
 //! User list panel (right sidebar)
 
+use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
+use iced::{Center, Color, Element, Fill, Theme};
+
 use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
 use crate::avatar::generate_identicon;
 use crate::i18n::t;
@@ -15,8 +18,6 @@ use crate::style::{
     user_list_item_button_style, user_toolbar_separator_style,
 };
 use crate::types::{Message, ServerConnection};
-use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Center, Color, Element, Fill, Theme};
 
 // ============================================================================
 // Helper Functions

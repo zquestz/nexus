@@ -1,9 +1,10 @@
 //! /window command implementation - manage chat tabs
 
+use iced::Task;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message};
-use iced::Task;
 
 /// Get translated subcommand keywords
 fn get_keywords() -> (String, String, String) {

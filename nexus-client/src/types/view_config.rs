@@ -1,5 +1,9 @@
 //! View configuration struct for passing state to view rendering
 
+use std::collections::HashMap;
+
+use iced::Theme;
+use iced::widget::text_editor;
 use uuid::Uuid;
 
 use crate::config::settings::ProxySettings;
@@ -8,9 +12,6 @@ use crate::types::{
     ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
     SettingsFormState, UiState, UserManagementState,
 };
-use iced::Theme;
-use iced::widget::text_editor;
-use std::collections::HashMap;
 
 /// Configuration struct for view rendering
 ///

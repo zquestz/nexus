@@ -1,5 +1,9 @@
 //! Connection form for new server connections
 
+use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
+use iced::{Center, Element, Fill};
+use iced_aw::NumberInput;
+
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -8,9 +12,6 @@ use crate::style::{
     shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
-use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
-use iced::{Center, Element, Fill};
-use iced_aw::NumberInput;
 
 // ============================================================================
 // Connection Form View

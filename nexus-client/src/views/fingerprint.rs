@@ -1,5 +1,9 @@
 //! Certificate fingerprint mismatch dialog view
 
+use iced::widget::button as btn;
+use iced::widget::{Space, button, column, row};
+use iced::{Element, Length};
+
 use super::layout::scrollable_modal;
 use crate::i18n::t;
 use crate::style::{
@@ -10,9 +14,6 @@ use crate::style::{
     shaped_text, shaped_text_wrapped,
 };
 use crate::types::{FingerprintMismatch, Message};
-use iced::widget::button as btn;
-use iced::widget::{Space, button, column, row};
-use iced::{Element, Length};
 
 // ============================================================================
 // Helper Functions

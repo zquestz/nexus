@@ -1,13 +1,14 @@
 //! Keyboard navigation
 
+use iced::keyboard::{self, key};
+use iced::widget::{Id, operation};
+use iced::{Event, Task};
+
 use crate::NexusApp;
 use crate::types::{
     ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode,
     UserManagementMode,
 };
-use iced::keyboard::{self, key};
-use iced::widget::{Id, operation};
-use iced::{Event, Task};
 
 impl NexusApp {
     /// Handle keyboard events (Tab, Enter, Escape, F5)

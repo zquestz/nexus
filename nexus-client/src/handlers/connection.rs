@@ -1,5 +1,10 @@
 //! Connection and chat message handlers
 
+use iced::Task;
+use iced::widget::{Id, operation, scrollable};
+use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::{self, MessageError};
+
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
@@ -9,10 +14,6 @@ use crate::types::{
 };
 use crate::views::constants::{PERMISSION_CHAT_SEND, PERMISSION_USER_MESSAGE};
 use crate::{NexusApp, network};
-use iced::Task;
-use iced::widget::{Id, operation, scrollable};
-use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, MessageError};
 
 /// Threshold for considering scroll position "at bottom" (0.0 = top, 1.0 = bottom)
 const SCROLL_BOTTOM_THRESHOLD: f32 = 0.99;
