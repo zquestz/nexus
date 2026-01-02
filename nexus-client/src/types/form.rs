@@ -920,6 +920,8 @@ pub struct ServerInfoEditState {
     pub description: String,
     /// Max connections per IP (editable, uses NumberInput)
     pub max_connections_per_ip: Option<u32>,
+    /// Max transfers per IP (editable, uses NumberInput)
+    pub max_transfers_per_ip: Option<u32>,
     /// Server image data URI (editable, empty string means no image)
     pub image: String,
     /// Cached image for preview (decoded from image field)
@@ -935,6 +937,7 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("name", &self.name)
             .field("description", &self.description)
             .field("max_connections_per_ip", &self.max_connections_per_ip)
+            .field("max_transfers_per_ip", &self.max_transfers_per_ip)
             .field("image", &format!("<{} bytes>", self.image.len()))
             .field(
                 "cached_image",
@@ -951,6 +954,7 @@ impl ServerInfoEditState {
         name: Option<&str>,
         description: Option<&str>,
         max_connections_per_ip: Option<u32>,
+        max_transfers_per_ip: Option<u32>,
         image: &str,
     ) -> Self {
         // Decode image for preview
@@ -964,6 +968,7 @@ impl ServerInfoEditState {
             name: name.unwrap_or("").to_string(),
             description: description.unwrap_or("").to_string(),
             max_connections_per_ip,
+            max_transfers_per_ip,
             image: image.to_string(),
             cached_image,
             error: None,
@@ -976,13 +981,15 @@ impl ServerInfoEditState {
         original_name: Option<&str>,
         original_description: Option<&str>,
         original_max_connections: Option<u32>,
+        original_max_transfers: Option<u32>,
         original_image: &str,
     ) -> bool {
         let name_changed = self.name != original_name.unwrap_or("");
         let desc_changed = self.description != original_description.unwrap_or("");
         let max_conn_changed = self.max_connections_per_ip != original_max_connections;
+        let max_xfer_changed = self.max_transfers_per_ip != original_max_transfers;
         let image_changed = self.image != original_image;
-        name_changed || desc_changed || max_conn_changed || image_changed
+        name_changed || desc_changed || max_conn_changed || max_xfer_changed || image_changed
     }
 }
 

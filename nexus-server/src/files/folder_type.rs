@@ -102,10 +102,6 @@ pub fn parse_folder_type(name: &str) -> FolderType {
 mod tests {
     use super::*;
 
-    // ==========================================================================
-    // parse_folder_type tests
-    // ==========================================================================
-
     #[test]
     fn test_default_folder() {
         assert_eq!(parse_folder_type("Documents"), FolderType::Default);

@@ -114,6 +114,8 @@ pub enum Message {
     EditServerInfoImageLoaded(Result<String, ImagePickerError>),
     /// Server info edit: Max connections per IP field changed
     EditServerInfoMaxConnectionsChanged(u32),
+    /// Server info edit: Max transfers per IP field changed
+    EditServerInfoMaxTransfersChanged(u32),
     /// Server info edit: Name field changed
     EditServerInfoNameChanged(String),
     /// Server info edit: Edit button pressed (enter edit mode)

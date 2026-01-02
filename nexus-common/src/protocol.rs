@@ -93,6 +93,8 @@ pub enum ClientMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         max_connections_per_ip: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        max_transfers_per_ip: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         image: Option<String>,
     },
     NewsList,
@@ -196,6 +198,14 @@ pub enum ClientMessage {
         /// If true, path is relative to file root instead of user's area (requires file_root permission)
         #[serde(default)]
         root: bool,
+    },
+    /// Client response to FileStart - reports local file state for resume
+    FileStartResponse {
+        /// Size of local file (0 if no local file exists)
+        size: u64,
+        /// SHA-256 hash of local file (None if size is 0)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
     },
 }
 
@@ -472,6 +482,23 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
     },
+    /// Server announces a file to transfer (transfer port only)
+    FileStart {
+        /// Relative path (e.g., "Games/app.zip")
+        path: String,
+        /// File size in bytes
+        size: u64,
+        /// SHA-256 hash of complete file
+        sha256: String,
+    },
+    /// Server signals transfer completion (transfer port only)
+    TransferComplete {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -484,6 +511,8 @@ pub struct ServerInfo {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_connections_per_ip: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transfers_per_ip: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
     /// Port for file transfers (typically 7501), None if transfers not available
@@ -702,12 +731,14 @@ impl std::fmt::Debug for ClientMessage {
                 name,
                 description,
                 max_connections_per_ip,
+                max_transfers_per_ip,
                 image,
             } => {
                 let mut s = f.debug_struct("ServerInfoUpdate");
                 s.field("name", name)
                     .field("description", description)
-                    .field("max_connections_per_ip", max_connections_per_ip);
+                    .field("max_connections_per_ip", max_connections_per_ip)
+                    .field("max_transfers_per_ip", max_transfers_per_ip);
                 if let Some(img) = image {
                     if img.len() > 100 {
                         s.field(
@@ -830,6 +861,11 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("FileDownload")
                 .field("path", path)
                 .field("root", root)
+                .finish(),
+            ClientMessage::FileStartResponse { size, sha256 } => f
+                .debug_struct("FileStartResponse")
+                .field("size", size)
+                .field("sha256", sha256)
                 .finish(),
         }
     }
@@ -1548,5 +1584,129 @@ mod tests {
         assert!(json.contains("\"success\":false"));
         assert!(json.contains("\"error\":\"Path not found\""));
         assert!(json.contains("\"error_kind\":\"not_found\""));
+    }
+
+    #[test]
+    fn test_serialize_file_start() {
+        let msg = ServerMessage::FileStart {
+            path: "Games/app.zip".to_string(),
+            size: 1048576,
+            sha256: "abc123def456".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileStart\""));
+        assert!(json.contains("\"path\":\"Games/app.zip\""));
+        assert!(json.contains("\"size\":1048576"));
+        assert!(json.contains("\"sha256\":\"abc123def456\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_start() {
+        let json = r#"{"type":"FileStart","path":"Documents/readme.txt","size":256,"sha256":"fedcba987654"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::FileStart { path, size, sha256 } => {
+                assert_eq!(path, "Documents/readme.txt");
+                assert_eq!(size, 256);
+                assert_eq!(sha256, "fedcba987654");
+            }
+            _ => panic!("Expected FileStart"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_start_response_with_hash() {
+        let msg = ClientMessage::FileStartResponse {
+            size: 524288,
+            sha256: Some("abc123def456".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileStartResponse\""));
+        assert!(json.contains("\"size\":524288"));
+        assert!(json.contains("\"sha256\":\"abc123def456\""));
+    }
+
+    #[test]
+    fn test_serialize_file_start_response_no_hash() {
+        let msg = ClientMessage::FileStartResponse {
+            size: 0,
+            sha256: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileStartResponse\""));
+        assert!(json.contains("\"size\":0"));
+        assert!(!json.contains("\"sha256\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_start_response() {
+        let json = r#"{"type":"FileStartResponse","size":1024,"sha256":"hash123"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileStartResponse { size, sha256 } => {
+                assert_eq!(size, 1024);
+                assert_eq!(sha256, Some("hash123".to_string()));
+            }
+            _ => panic!("Expected FileStartResponse"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_file_start_response_no_hash() {
+        let json = r#"{"type":"FileStartResponse","size":0}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileStartResponse { size, sha256 } => {
+                assert_eq!(size, 0);
+                assert_eq!(sha256, None);
+            }
+            _ => panic!("Expected FileStartResponse"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_transfer_complete_success() {
+        let msg = ServerMessage::TransferComplete {
+            success: true,
+            error: None,
+            error_kind: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"TransferComplete\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(!json.contains("\"error\""));
+        assert!(!json.contains("\"error_kind\""));
+    }
+
+    #[test]
+    fn test_serialize_transfer_complete_error() {
+        let msg = ServerMessage::TransferComplete {
+            success: false,
+            error: Some("File not found".to_string()),
+            error_kind: Some("not_found".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"TransferComplete\""));
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"File not found\""));
+        assert!(json.contains("\"error_kind\":\"not_found\""));
+    }
+
+    #[test]
+    fn test_deserialize_transfer_complete() {
+        let json = r#"{"type":"TransferComplete","success":false,"error":"IO error","error_kind":"io_error"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::TransferComplete {
+                success,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some("IO error".to_string()));
+                assert_eq!(error_kind, Some("io_error".to_string()));
+            }
+            _ => panic!("Expected TransferComplete"),
+        }
     }
 }

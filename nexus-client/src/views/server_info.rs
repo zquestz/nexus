@@ -24,6 +24,8 @@ pub struct ServerInfoData<'a> {
     pub version: Option<String>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
+    /// Max transfers per IP (admin only)
+    pub max_transfers_per_ip: Option<u32>,
     /// Cached server image for display (None if no image set)
     pub cached_server_image: Option<&'a CachedImage>,
     /// Whether the current user is an admin
@@ -102,6 +104,16 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 .into()
         });
 
+    // Max transfers per IP (admin only)
+    let max_xfer_row: Option<Element<'static, Message>> =
+        data.max_transfers_per_ip.map(|max_xfer| {
+            let label = shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE);
+            let value = shaped_text(max_xfer.to_string()).size(TEXT_SIZE);
+            row![label, Space::new().width(ELEMENT_SPACING), value]
+                .align_y(Center)
+                .into()
+        });
+
     // Buttons: Edit (admin only, secondary) and Close (primary)
     let buttons = if data.is_admin {
         row![
@@ -142,6 +154,9 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
     }
     if let Some(conn) = max_conn_row {
         items.push(conn);
+    }
+    if let Some(xfer) = max_xfer_row {
+        items.push(xfer);
     }
     items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     items.push(buttons.into());
@@ -261,10 +276,10 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     // Max connections per IP input using NumberInput
     let max_conn_label = shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE);
-    let current_value = edit_state.max_connections_per_ip.unwrap_or(1);
+    let max_conn_value = edit_state.max_connections_per_ip.unwrap_or(1);
     let max_conn_input: Element<'static, Message> = NumberInput::new(
-        &current_value,
-        1..=u32::MAX,
+        &max_conn_value,
+        0..=u32::MAX,
         Message::EditServerInfoMaxConnectionsChanged,
     )
     .id(Id::from(InputId::EditServerInfoMaxConnections))
@@ -274,6 +289,22 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
     form_items.push(max_conn_row.into());
+
+    // Max transfers per IP input using NumberInput
+    let max_xfer_label = shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE);
+    let max_xfer_value = edit_state.max_transfers_per_ip.unwrap_or(1);
+    let max_xfer_input: Element<'static, Message> = NumberInput::new(
+        &max_xfer_value,
+        0..=u32::MAX,
+        Message::EditServerInfoMaxTransfersChanged,
+    )
+    .id(Id::from(InputId::EditServerInfoMaxTransfers))
+    .padding(INPUT_PADDING)
+    .into();
+    let max_xfer_row = row![max_xfer_label, max_xfer_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    form_items.push(max_xfer_row.into());
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 

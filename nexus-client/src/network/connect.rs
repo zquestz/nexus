@@ -135,7 +135,10 @@ async fn perform_login(
                 .unwrap_or_default(),
             chat_topic: chat_info.as_ref().map(|info| info.topic.clone()),
             chat_topic_set_by: chat_info.as_ref().map(|info| info.topic_set_by.clone()),
-            max_connections_per_ip: server_info.and_then(|info| info.max_connections_per_ip),
+            max_connections_per_ip: server_info
+                .as_ref()
+                .and_then(|info| info.max_connections_per_ip),
+            max_transfers_per_ip: server_info.and_then(|info| info.max_transfers_per_ip),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         ServerMessage::LoginResponse {

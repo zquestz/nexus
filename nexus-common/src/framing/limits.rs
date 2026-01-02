@@ -30,12 +30,12 @@ const USER_UPDATE_BASE: usize = 758;
 const USER_EDIT_RESPONSE_BASE: usize = 154;
 
 /// Base overhead for LoginResponse message (without permissions array)
-/// Includes ServerInfo with transfer_port field
-const LOGIN_RESPONSE_BASE: usize = 700931;
+/// Includes ServerInfo with transfer_port and max_transfers_per_ip fields
+const LOGIN_RESPONSE_BASE: usize = 700965;
 
 /// Base overhead for PermissionsUpdated message (without permissions array)
-/// Includes ServerInfo with transfer_port field
-const PERMISSIONS_UPDATED_BASE: usize = 700869;
+/// Includes ServerInfo with transfer_port and max_transfers_per_ip fields
+const PERMISSIONS_UPDATED_BASE: usize = 700903;
 
 /// Maximum payload sizes for each message type
 ///
@@ -67,7 +67,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserKick", 65);
     m.insert("UserList", 31);
     m.insert("UserUpdate", USER_UPDATE_BASE as u64 + perm_size);
-    m.insert("ServerInfoUpdate", 700421); // includes image field (700000 + overhead)
+    m.insert("ServerInfoUpdate", 700455); // includes image field (700000 + overhead) + max_transfers_per_ip
 
     // News client messages
     m.insert("NewsList", 19);
@@ -86,6 +86,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
+    m.insert("FileStartResponse", 135); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -100,7 +101,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         PERMISSIONS_UPDATED_BASE as u64 + perm_size,
     );
     m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 700505); // includes ServerInfo with image + transfer_port
+    m.insert("ServerInfoUpdated", 700539); // includes ServerInfo with image + transfer_port + max_transfers_per_ip
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176359);
     m.insert("UserCreateResponse", 614);
@@ -141,6 +142,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileDownloadResponse", 2186); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileStart", 4235); // path (4096) + size (u64 max 20 digits) + sha256 (64 hex) + overhead
+    m.insert("TransferComplete", 2200); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileData", 0); // unlimited - streaming binary data
 
     m
 });
@@ -221,8 +225,8 @@ mod tests {
         //
         // Note: UserMessage is shared between client and server (same type name),
         // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 28; // Added 6 News + 7 File + 1 Transfer client messages
-        const SERVER_MESSAGE_COUNT: usize = 38; // Added 7 News + 7 File + 1 Transfer server messages
+        const CLIENT_MESSAGE_COUNT: usize = 29; // Added 6 News + 7 File + 2 Transfer client messages
+        const SERVER_MESSAGE_COUNT: usize = 41; // Added 7 News + 7 File + 4 Transfer server messages (FileData has limit too)
         const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -386,6 +390,7 @@ mod tests {
             name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
             description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
             max_connections_per_ip: Some(u32::MAX),
+            max_transfers_per_ip: Some(u32::MAX),
             image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
         };
         assert_eq!(
@@ -486,6 +491,7 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: Some(u16::MAX),
             }),
@@ -513,6 +519,7 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: Some(u16::MAX),
             }),
@@ -535,6 +542,7 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
+                max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: Some(u16::MAX),
             },
@@ -801,5 +809,63 @@ mod tests {
             json_size(&msg),
             max_payload_for_type("FileDownload") as usize
         );
+    }
+
+    #[test]
+    fn test_limit_file_start_response() {
+        // Max size: u64 + 64 char sha256 + overhead
+        let msg = ClientMessage::FileStartResponse {
+            size: u64::MAX,
+            sha256: Some(str_of_len(64)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("FileStartResponse") as usize;
+        assert!(
+            size <= limit,
+            "FileStartResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_file_start() {
+        let msg = ServerMessage::FileStart {
+            path: str_of_len(MAX_FILE_PATH_LENGTH),
+            size: u64::MAX,
+            sha256: str_of_len(64),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("FileStart") as usize;
+        assert!(
+            size <= limit,
+            "FileStart size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_transfer_complete() {
+        // Error case is larger than success case
+        let msg = ServerMessage::TransferComplete {
+            success: false,
+            error: Some(str_of_len(2048)),
+            error_kind: Some(str_of_len(64)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TransferComplete") as usize;
+        assert!(
+            size <= limit,
+            "TransferComplete size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_file_data_unlimited() {
+        // FileData has unlimited payload (streaming binary)
+        assert_eq!(max_payload_for_type("FileData"), 0);
     }
 }

@@ -5,18 +5,20 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
+
+use crate::users::manager::broadcasts::ServerInfoBroadcastParams;
 use nexus_common::validators::{
     self, ServerDescriptionError, ServerImageError, ServerNameError, validate_server_description,
     validate_server_image, validate_server_name,
 };
 
 use super::{
-    HandlerContext, err_admin_required, err_authentication, err_database,
-    err_max_connections_per_ip_invalid, err_no_fields_to_update, err_not_logged_in,
-    err_server_description_contains_newlines, err_server_description_invalid_characters,
-    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
-    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
-    err_server_name_invalid_characters, err_server_name_too_long,
+    HandlerContext, err_admin_required, err_authentication, err_database, err_no_fields_to_update,
+    err_not_logged_in, err_server_description_contains_newlines,
+    err_server_description_invalid_characters, err_server_description_too_long,
+    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
+    err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
+    err_server_name_too_long,
 };
 
 /// Handle ServerInfoUpdate command
@@ -24,6 +26,7 @@ pub async fn handle_server_info_update<W>(
     name: Option<String>,
     description: Option<String>,
     max_connections_per_ip: Option<u32>,
+    max_transfers_per_ip: Option<u32>,
     image: Option<String>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -64,6 +67,7 @@ where
     if name.is_none()
         && description.is_none()
         && max_connections_per_ip.is_none()
+        && max_transfers_per_ip.is_none()
         && image.is_none()
     {
         return ctx
@@ -108,17 +112,8 @@ where
         return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
     }
 
-    // Validate max_connections_per_ip if provided (must be > 0)
-    if let Some(max_conn) = max_connections_per_ip
-        && max_conn == 0
-    {
-        return ctx
-            .send_error(
-                &err_max_connections_per_ip_invalid(ctx.locale),
-                Some("ServerInfoUpdate"),
-            )
-            .await;
-    }
+    // Note: max_connections_per_ip and max_transfers_per_ip allow 0 (meaning unlimited)
+    // No validation needed beyond Option<u32> type checking
 
     // Validate image if provided (empty string is allowed to clear image)
     if let Some(ref img) = image
@@ -152,13 +147,28 @@ where
             .await;
     }
 
-    if let Some(max_conn) = max_connections_per_ip
-        && let Err(e) = ctx.db.config.set_max_connections_per_ip(max_conn).await
-    {
-        eprintln!("Database error setting max_connections_per_ip: {}", e);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
-            .await;
+    if let Some(max_conn) = max_connections_per_ip {
+        if let Err(e) = ctx.db.config.set_max_connections_per_ip(max_conn).await {
+            eprintln!("Database error setting max_connections_per_ip: {}", e);
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .await;
+        }
+        // Update the connection tracker limit dynamically
+        ctx.connection_tracker
+            .set_max_connections_per_ip(max_conn as usize);
+    }
+
+    if let Some(max_xfer) = max_transfers_per_ip {
+        if let Err(e) = ctx.db.config.set_max_transfers_per_ip(max_xfer).await {
+            eprintln!("Database error setting max_transfers_per_ip: {}", e);
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .await;
+        }
+        // Update the connection tracker limit dynamically
+        ctx.connection_tracker
+            .set_max_transfers_per_ip(max_xfer as usize);
     }
 
     if let Some(ref img) = image
@@ -174,19 +184,22 @@ where
     let current_name = ctx.db.config.get_server_name().await;
     let current_description = ctx.db.config.get_server_description().await;
     let current_max_connections = ctx.db.config.get_max_connections_per_ip().await as u32;
+    let current_max_transfers = ctx.db.config.get_max_transfers_per_ip().await as u32;
     let current_image = ctx.db.config.get_server_image().await;
     let server_version = env!("CARGO_PKG_VERSION").to_string();
 
     // Broadcast ServerInfoUpdated to all connected users
-    // Admins get max_connections_per_ip, non-admins don't
+    // Admins get max_connections_per_ip and max_transfers_per_ip, non-admins don't
     ctx.user_manager
-        .broadcast_server_info_updated(
-            current_name,
-            current_description,
-            server_version,
-            current_max_connections,
-            current_image,
-        )
+        .broadcast_server_info_updated(ServerInfoBroadcastParams {
+            name: current_name,
+            description: current_description,
+            version: server_version,
+            max_connections_per_ip: current_max_connections,
+            max_transfers_per_ip: current_max_transfers,
+            image: current_image,
+            transfer_port: ctx.transfer_port,
+        })
         .await;
 
     // Send success response to requester
@@ -210,6 +223,7 @@ mod tests {
 
         let result = handle_server_info_update(
             Some("New Name".to_string()),
+            None,
             None,
             None,
             None,
@@ -242,6 +256,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -267,6 +282,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_server_info_update(
+            None,
             None,
             None,
             None,
@@ -300,6 +316,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -327,6 +344,7 @@ mod tests {
         let long_name = "a".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
         let result = handle_server_info_update(
             Some(long_name),
+            None,
             None,
             None,
             None,
@@ -360,6 +378,7 @@ mod tests {
             Some(long_desc),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -378,16 +397,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_server_info_update_max_connections_zero_fails() {
+    async fn test_server_info_update_max_connections_zero_means_unlimited() {
         let mut test_ctx = create_test_context().await;
 
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
+        // 0 means unlimited - should succeed
         let result = handle_server_info_update(
             None,
             None,
             Some(0),
+            None,
             None,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -398,15 +419,16 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(
-                    message,
-                    err_max_connections_per_ip_invalid(DEFAULT_TEST_LOCALE)
-                );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
+
+        // Verify 0 was saved (means unlimited)
+        let saved_max = test_ctx.db.config.get_max_connections_per_ip().await;
+        assert_eq!(saved_max, 0);
     }
 
     #[tokio::test]
@@ -418,6 +440,7 @@ mod tests {
 
         let result = handle_server_info_update(
             Some("My New Server".to_string()),
+            None,
             None,
             None,
             None,
@@ -454,6 +477,7 @@ mod tests {
             Some("Welcome to my server!".to_string()),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -487,6 +511,7 @@ mod tests {
             None,
             Some(10),
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -519,6 +544,7 @@ mod tests {
             Some("Full Update Server".to_string()),
             Some("All fields updated".to_string()),
             Some(15),
+            None,
             None,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -568,6 +594,7 @@ mod tests {
             Some("".to_string()),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -600,12 +627,15 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let image = "data:image/png;base64,iVBORw0KGgo=";
+        // Create a test image (minimal valid PNG data URI)
+        let test_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
         let result = handle_server_info_update(
             None,
             None,
             None,
-            Some(image.to_string()),
+            None,
+            Some(test_image.to_string()),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -624,7 +654,7 @@ mod tests {
 
         // Verify image was saved
         let saved_image = test_ctx.db.config.get_server_image().await;
-        assert_eq!(saved_image, image);
+        assert_eq!(saved_image, test_image);
     }
 
     #[tokio::test]
@@ -644,6 +674,7 @@ mod tests {
 
         // Then clear it
         let result = handle_server_info_update(
+            None,
             None,
             None,
             None,
@@ -685,6 +716,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(large_image),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -710,11 +742,15 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
+        // Invalid format (not a data URI)
+        let invalid_image = "not a data uri";
+
         let result = handle_server_info_update(
             None,
             None,
             None,
-            Some("not a data uri".to_string()),
+            None,
+            Some(invalid_image.to_string()),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -742,12 +778,15 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // GIF is not supported
+        // Unsupported image type (GIF)
+        let unsupported_image = "data:image/gif;base64,R0lGODlh";
+
         let result = handle_server_info_update(
             None,
             None,
             None,
-            Some("data:image/gif;base64,R0lGODlh".to_string()),
+            None,
+            Some(unsupported_image.to_string()),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )

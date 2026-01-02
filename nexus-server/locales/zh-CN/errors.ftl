@@ -128,7 +128,7 @@ err-server-name-invalid-characters = 服务器名称包含无效字符
 err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字符）
 err-server-description-contains-newlines = 服务器描述不能包含换行符
 err-server-description-invalid-characters = 服务器描述包含无效字符
-err-max-connections-per-ip-invalid = 每个IP的最大连接数必须大于0
+
 err-no-fields-to-update = 没有要更新的字段
 
 err-server-image-too-large = 服务器图片太大（最大512KB）
@@ -167,3 +167,14 @@ err-destination-exists = 目标位置已存在同名文件或目录
 err-cannot-move-into-itself = 无法将目录移动到其自身内部
 err-cannot-copy-into-itself = 无法将目录复制到其自身内部
 err-destination-not-directory = 目标路径不是目录
+
+# Transfer Errors
+err-expected-file-download = 需要 FileDownload 消息
+err-file-area-not-configured = 文件区域未配置
+err-file-area-not-accessible = 文件区域无法访问
+err-transfer-path-too-long = 路径太长
+err-transfer-path-invalid = 路径包含无效字符
+err-transfer-access-denied = 访问被拒绝
+err-transfer-read-failed = 无法读取文件
+err-transfer-path-not-found = 文件或目录未找到
+err-transfer-file-failed = 传输 { $path } 失败: { $error }

@@ -39,6 +39,8 @@ pub enum Permission {
     NewsEdit,
     /// Permission to delete any news post (without: only own posts)
     NewsDelete,
+    /// Permission to download files
+    FileDownload,
     /// Permission to list files and directories
     FileList,
     /// Permission to browse entire file area from root
@@ -94,11 +96,12 @@ impl Permission {
             "file_list" => Some(Permission::FileList),
             "file_root" => Some(Permission::FileRoot),
             "file_create_dir" => Some(Permission::FileCreateDir),
-            "file_delete" => Some(Permission::FileDelete),
-            "file_info" => Some(Permission::FileInfo),
-            "file_rename" => Some(Permission::FileRename),
-            "file_move" => Some(Permission::FileMove),
             "file_copy" => Some(Permission::FileCopy),
+            "file_delete" => Some(Permission::FileDelete),
+            "file_download" => Some(Permission::FileDownload),
+            "file_info" => Some(Permission::FileInfo),
+            "file_move" => Some(Permission::FileMove),
+            "file_rename" => Some(Permission::FileRename),
             _ => None,
         }
     }
@@ -190,14 +193,15 @@ mod tests {
         assert_eq!(Permission::NewsCreate.as_str(), "news_create");
         assert_eq!(Permission::NewsEdit.as_str(), "news_edit");
         assert_eq!(Permission::NewsDelete.as_str(), "news_delete");
-        assert_eq!(Permission::FileList.as_str(), "file_list");
-        assert_eq!(Permission::FileRoot.as_str(), "file_root");
+        assert_eq!(Permission::FileCopy.as_str(), "file_copy");
         assert_eq!(Permission::FileCreateDir.as_str(), "file_create_dir");
         assert_eq!(Permission::FileDelete.as_str(), "file_delete");
+        assert_eq!(Permission::FileDownload.as_str(), "file_download");
         assert_eq!(Permission::FileInfo.as_str(), "file_info");
-        assert_eq!(Permission::FileRename.as_str(), "file_rename");
+        assert_eq!(Permission::FileList.as_str(), "file_list");
         assert_eq!(Permission::FileMove.as_str(), "file_move");
-        assert_eq!(Permission::FileCopy.as_str(), "file_copy");
+        assert_eq!(Permission::FileRename.as_str(), "file_rename");
+        assert_eq!(Permission::FileRoot.as_str(), "file_root");
     }
 
     #[test]
@@ -243,8 +247,7 @@ mod tests {
             Permission::parse("news_delete"),
             Some(Permission::NewsDelete)
         );
-        assert_eq!(Permission::parse("file_list"), Some(Permission::FileList));
-        assert_eq!(Permission::parse("file_root"), Some(Permission::FileRoot));
+        assert_eq!(Permission::parse("file_copy"), Some(Permission::FileCopy));
         assert_eq!(
             Permission::parse("file_create_dir"),
             Some(Permission::FileCreateDir)
@@ -253,13 +256,18 @@ mod tests {
             Permission::parse("file_delete"),
             Some(Permission::FileDelete)
         );
+        assert_eq!(
+            Permission::parse("file_download"),
+            Some(Permission::FileDownload)
+        );
         assert_eq!(Permission::parse("file_info"), Some(Permission::FileInfo));
+        assert_eq!(Permission::parse("file_list"), Some(Permission::FileList));
+        assert_eq!(Permission::parse("file_move"), Some(Permission::FileMove));
         assert_eq!(
             Permission::parse("file_rename"),
             Some(Permission::FileRename)
         );
-        assert_eq!(Permission::parse("file_move"), Some(Permission::FileMove));
-        assert_eq!(Permission::parse("file_copy"), Some(Permission::FileCopy));
+        assert_eq!(Permission::parse("file_root"), Some(Permission::FileRoot));
     }
 
     #[test]
@@ -332,9 +340,10 @@ mod tests {
             Permission::ChatSend,
             Permission::ChatTopic,
             Permission::ChatTopicEdit,
+            Permission::FileCopy,
             Permission::FileCreateDir,
             Permission::FileDelete,
-            Permission::FileCopy,
+            Permission::FileDownload,
             Permission::FileInfo,
             Permission::FileList,
             Permission::FileMove,

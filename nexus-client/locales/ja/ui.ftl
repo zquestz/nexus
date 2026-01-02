@@ -101,6 +101,7 @@ label-server-version = バージョン:
 label-chat-topic = チャットトピック:
 label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
+label-max-transfers-per-ip = IP毎の最大転送数:
 label-avatar = アバター:
 label-server-image = サーバー画像:
 label-details = 技術詳細

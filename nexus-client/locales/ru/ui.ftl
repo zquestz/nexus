@@ -101,6 +101,7 @@ label-server-version = Версия:
 label-chat-topic = Тема чата:
 label-chat-topic-set-by = Тема Установлена:
 label-max-connections-per-ip = Макс. Подключений На IP:
+label-max-transfers-per-ip = Макс. Передач На IP:
 label-avatar = Аватар:
 label-server-image = Изображение сервера:
 label-details = Технические Детали

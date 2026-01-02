@@ -17,6 +17,9 @@ pub const PROTOCOL_VERSION: &str = "0.5.0";
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;
 
+/// Default port for file transfers
+pub const DEFAULT_TRANSFER_PORT: u16 = 7501;
+
 /// Default port as a string for form fields and display.
 ///
 /// This is the string representation of [`DEFAULT_PORT`], provided as a constant
@@ -36,6 +39,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `file_copy`: Copy files and directories
 /// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_delete`: Delete files and empty directories
+/// - `file_download`: Download files from file area
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories in user's area
 /// - `file_move`: Move files and directories
@@ -61,6 +65,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "file_copy",
     "file_create_dir",
     "file_delete",
+    "file_download",
     "file_info",
     "file_list",
     "file_move",
@@ -95,6 +100,7 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 /// - `chat_receive`: Receive chat messages from #server
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic (but not edit)
+/// - `file_download`: Download files from file area
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories (read-only)
 /// - `news_list`: View news posts (but not create/edit/delete)
@@ -105,6 +111,7 @@ pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
+    "file_download",
     "file_info",
     "file_list",
     "news_list",
@@ -155,14 +162,14 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (24)
-        assert_eq!(ALL_PERMISSIONS.len(), 24);
+        // Verify we have the expected number of permissions (25)
+        assert_eq!(ALL_PERMISSIONS.len(), 25);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (9)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 9);
+        // Verify we have the expected number of shared account permissions (10)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 10);
     }
 
     #[test]

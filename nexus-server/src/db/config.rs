@@ -7,13 +7,13 @@ use nexus_common::validators::{
 
 use super::sql::{SQL_GET_CONFIG, SQL_SET_CONFIG};
 use crate::constants::{
-    CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
-    CONFIG_KEY_SERVER_NAME, DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_SERVER_DESCRIPTION,
-    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_MAX_CONNECTIONS_ZERO,
-    ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
-    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
-    ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
-    ERR_SERVER_NAME_TOO_LONG,
+    CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
+    CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE, CONFIG_KEY_SERVER_NAME,
+    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_SERVER_DESCRIPTION,
+    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_SERVER_DESC_INVALID_CHARS,
+    ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT,
+    ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY,
+    ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
 };
 use sqlx::SqlitePool;
 use std::io;
@@ -45,17 +45,46 @@ impl ConfigDb {
 
     /// Set the maximum connections allowed per IP address
     ///
+    /// A value of 0 means unlimited connections are allowed.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the value is zero or if the database update fails.
+    /// Returns an error if the database update fails.
     pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
-        if value == 0 {
-            return Err(io::Error::other(ERR_MAX_CONNECTIONS_ZERO));
-        }
-
         sqlx::query(SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Get the maximum file transfer connections allowed per IP address
+    ///
+    /// Returns the configured value, or 3 (the default) if not found or invalid.
+    pub async fn get_max_transfers_per_ip(&self) -> usize {
+        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
+            .fetch_one(&self.pool)
+            .await
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MAX_TRANSFERS_PER_IP)
+    }
+
+    /// Set the maximum file transfer connections allowed per IP address
+    ///
+    /// A value of 0 means unlimited transfers are allowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
+        sqlx::query(SQL_SET_CONFIG)
+            .bind(value.to_string())
+            .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -207,18 +236,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_max_connections_per_ip_zero_fails() {
+    async fn test_set_max_connections_per_ip_zero_allowed() {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        let result = config_db.set_max_connections_per_ip(0).await;
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("must be greater than 0")
-        );
+        // 0 means unlimited
+        config_db.set_max_connections_per_ip(0).await.unwrap();
+        let limit = config_db.get_max_connections_per_ip().await;
+        assert_eq!(limit, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_max_transfers_per_ip_default() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Migration sets default to 3
+        let limit = config_db.get_max_transfers_per_ip().await;
+        assert_eq!(limit, 3);
+    }
+
+    #[tokio::test]
+    async fn test_set_max_transfers_per_ip() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Set to new value
+        config_db.set_max_transfers_per_ip(5).await.unwrap();
+        let limit = config_db.get_max_transfers_per_ip().await;
+        assert_eq!(limit, 5);
+    }
+
+    #[tokio::test]
+    async fn test_set_max_transfers_per_ip_zero_allowed() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // 0 means unlimited
+        config_db.set_max_transfers_per_ip(0).await.unwrap();
+        let limit = config_db.get_max_transfers_per_ip().await;
+        assert_eq!(limit, 0);
     }
 
     #[tokio::test]

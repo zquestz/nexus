@@ -41,6 +41,7 @@ impl NexusApp {
             conn.server_name.as_deref(),
             conn.server_description.as_deref(),
             conn.max_connections_per_ip,
+            conn.max_transfers_per_ip,
             &conn.server_image,
         ));
 
@@ -136,6 +137,7 @@ impl NexusApp {
             conn.server_name.as_deref(),
             conn.server_description.as_deref(),
             conn.max_connections_per_ip,
+            conn.max_transfers_per_ip,
             &conn.server_image,
         ) {
             // No changes, just close the edit view
@@ -164,6 +166,12 @@ impl NexusApp {
                 None
             };
 
+        let max_transfers_per_ip = if edit_state.max_transfers_per_ip != conn.max_transfers_per_ip {
+            edit_state.max_transfers_per_ip
+        } else {
+            None
+        };
+
         let image = if edit_state.image != conn.server_image {
             Some(edit_state.image.clone())
         } else {
@@ -174,6 +182,7 @@ impl NexusApp {
             name,
             description,
             max_connections_per_ip,
+            max_transfers_per_ip,
             image,
         };
 
@@ -229,6 +238,20 @@ impl NexusApp {
             && let Some(edit_state) = &mut conn.server_info_edit
         {
             edit_state.max_connections_per_ip = Some(max_connections);
+        }
+        Task::none()
+    }
+
+    /// Handle server info max transfers field change
+    pub fn handle_edit_server_info_max_transfers_changed(
+        &mut self,
+        max_transfers: u32,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.max_transfers_per_ip = Some(max_transfers);
         }
         Task::none()
     }

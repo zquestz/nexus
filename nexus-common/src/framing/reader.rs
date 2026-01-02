@@ -18,6 +18,9 @@ use super::{
 /// Default timeout for completing a frame once the first byte is received
 pub const DEFAULT_FRAME_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Default idle timeout for transfer connections (waiting for first byte)
+pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Reads protocol frames from an async reader
 pub struct FrameReader<R> {
     reader: R,
@@ -91,6 +94,47 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         let first_byte = match self.read_byte_allow_eof().await? {
             Some(b) => b,
             None => return Ok(None), // Clean disconnect
+        };
+
+        // Once we have the first byte, apply timeout for the rest of the frame
+        match timeout(frame_timeout, self.read_frame_after_first_byte(first_byte)).await {
+            Ok(result) => result,
+            Err(_) => Err(FrameError::FrameTimeout),
+        }
+    }
+
+    /// Read the next frame from the stream with a full timeout (including idle wait)
+    ///
+    /// Unlike [`read_frame_with_timeout`](Self::read_frame_with_timeout), this method
+    /// applies a timeout to the entire read operation, including waiting for the first byte.
+    /// This is appropriate for protocols where idle connections should be disconnected,
+    /// such as the file transfer port.
+    ///
+    /// Returns `Ok(None)` if the connection is cleanly closed.
+    ///
+    /// # Arguments
+    ///
+    /// * `idle_timeout` - Maximum time to wait for the first byte
+    /// * `frame_timeout` - Maximum time to complete the frame after the first byte
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The frame is malformed
+    /// - An I/O error occurs
+    /// - No data is received within `idle_timeout`
+    /// - The frame doesn't complete within `frame_timeout` after the first byte
+    pub async fn read_frame_with_full_timeout(
+        &mut self,
+        idle_timeout: Duration,
+        frame_timeout: Duration,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        // Apply timeout waiting for the first byte (no idle connections allowed)
+        let first_byte = match timeout(idle_timeout, self.read_byte_allow_eof()).await {
+            Ok(Ok(Some(b))) => b,
+            Ok(Ok(None)) => return Ok(None), // Clean disconnect
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(FrameError::IdleTimeout),
         };
 
         // Once we have the first byte, apply timeout for the rest of the frame
@@ -632,5 +676,70 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(frame.message_type, "ChatSend");
+    }
+
+    #[tokio::test]
+    async fn test_frame_reader_with_full_timeout_valid_frame() {
+        let data = b"NX|8|ChatSend|a1b2c3d4e5f6|20|{\"message\":\"Hello!\"}\n";
+        let cursor = Cursor::new(data.as_slice());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let frame = reader
+            .read_frame_with_full_timeout(DEFAULT_IDLE_TIMEOUT, DEFAULT_FRAME_TIMEOUT)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.message_type, "ChatSend");
+    }
+
+    #[tokio::test]
+    async fn test_frame_reader_with_full_timeout_clean_disconnect() {
+        let data = b"";
+        let cursor = Cursor::new(data.as_slice());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = reader
+            .read_frame_with_full_timeout(DEFAULT_IDLE_TIMEOUT, DEFAULT_FRAME_TIMEOUT)
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_frame_reader_with_full_timeout_idle_timeout() {
+        use tokio::io::duplex;
+
+        // Create a duplex stream where we control both ends
+        let (_client, server) = duplex(64);
+        let buf_reader = BufReader::new(server);
+        let mut reader = FrameReader::new(buf_reader);
+
+        // Don't write anything - should hit idle timeout waiting for first byte
+        let result = reader
+            .read_frame_with_full_timeout(Duration::from_millis(10), DEFAULT_FRAME_TIMEOUT)
+            .await;
+        assert!(matches!(result, Err(FrameError::IdleTimeout)));
+    }
+
+    #[tokio::test]
+    async fn test_frame_reader_with_full_timeout_frame_timeout() {
+        use tokio::io::duplex;
+
+        // Create a duplex stream where we control both ends
+        let (client, server) = duplex(64);
+        let buf_reader = BufReader::new(server);
+        let mut reader = FrameReader::new(buf_reader);
+
+        // Write the first byte to pass idle timeout, but don't complete the frame
+        let mut client = client;
+        client.write_all(b"N").await.unwrap();
+
+        // Should pass idle timeout but fail frame timeout
+        let result = reader
+            .read_frame_with_full_timeout(Duration::from_secs(1), Duration::from_millis(10))
+            .await;
+        assert!(matches!(result, Err(FrameError::FrameTimeout)));
     }
 }

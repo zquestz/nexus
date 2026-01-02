@@ -86,6 +86,7 @@ pub(super) async fn setup_communication_channels(
         chat_topic: login_info.chat_topic,
         chat_topic_set_by: login_info.chat_topic_set_by,
         max_connections_per_ip: login_info.max_connections_per_ip,
+        max_transfers_per_ip: login_info.max_transfers_per_ip,
         certificate_fingerprint: fingerprint,
         locale: login_info.locale,
     })

@@ -128,7 +128,7 @@ err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함
 err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length }자)
 err-server-description-contains-newlines = 서버 설명에 줄 바꿈을 포함할 수 없습니다
 err-server-description-invalid-characters = 서버 설명에 잘못된 문자가 포함되어 있습니다
-err-max-connections-per-ip-invalid = IP당 최대 연결 수는 0보다 커야 합니다
+
 err-no-fields-to-update = 업데이트할 필드가 없습니다
 
 err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
@@ -167,3 +167,14 @@ err-destination-exists = 해당 이름의 파일 또는 디렉토리가 대상 �
 err-cannot-move-into-itself = 폴더를 자기 자신 안으로 이동할 수 없습니다
 err-cannot-copy-into-itself = 폴더를 자기 자신 안으로 복사할 수 없습니다
 err-destination-not-directory = 대상 경로가 디렉토리가 아닙니다
+
+# Transfer Errors
+err-expected-file-download = FileDownload 메시지가 필요합니다
+err-file-area-not-configured = 파일 영역이 구성되지 않았습니다
+err-file-area-not-accessible = 파일 영역에 접근할 수 없습니다
+err-transfer-path-too-long = 경로가 너무 깁니다
+err-transfer-path-invalid = 경로에 잘못된 문자가 포함되어 있습니다
+err-transfer-access-denied = 접근이 거부되었습니다
+err-transfer-read-failed = 파일을 읽지 못했습니다
+err-transfer-path-not-found = 파일 또는 디렉터리를 찾을 수 없습니다
+err-transfer-file-failed = { $path } 전송 실패: { $error }

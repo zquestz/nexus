@@ -556,11 +556,6 @@ pub fn err_server_image_unsupported_type(locale: &str) -> String {
     t(locale, "err-server-image-unsupported-type")
 }
 
-/// Get translated "max connections per ip invalid" error
-pub fn err_max_connections_per_ip_invalid(locale: &str) -> String {
-    t(locale, "err-max-connections-per-ip-invalid")
-}
-
 /// Get translated "no fields to update" error
 pub fn err_no_fields_to_update(locale: &str) -> String {
     t(locale, "err-no-fields-to-update")
@@ -720,4 +715,57 @@ pub fn err_cannot_copy_into_itself(locale: &str) -> String {
 /// Get translated "destination not a directory" error
 pub fn err_destination_not_directory(locale: &str) -> String {
     t(locale, "err-destination-not-directory")
+}
+
+// =============================================================================
+// File Transfer Errors
+// =============================================================================
+
+/// Get translated "expected file download" error
+pub fn err_expected_file_download(locale: &str) -> String {
+    t(locale, "err-expected-file-download")
+}
+
+/// Get translated "file area not configured" error
+pub fn err_file_area_not_configured(locale: &str) -> String {
+    t(locale, "err-file-area-not-configured")
+}
+
+/// Get translated "file area not accessible" error
+pub fn err_file_area_not_accessible(locale: &str) -> String {
+    t(locale, "err-file-area-not-accessible")
+}
+
+/// Get translated "transfer path too long" error
+pub fn err_transfer_path_too_long(locale: &str) -> String {
+    t(locale, "err-transfer-path-too-long")
+}
+
+/// Get translated "transfer path invalid" error
+pub fn err_transfer_path_invalid(locale: &str) -> String {
+    t(locale, "err-transfer-path-invalid")
+}
+
+/// Get translated "transfer access denied" error
+pub fn err_transfer_access_denied(locale: &str) -> String {
+    t(locale, "err-transfer-access-denied")
+}
+
+/// Get translated "transfer read failed" error
+pub fn err_transfer_read_failed(locale: &str) -> String {
+    t(locale, "err-transfer-read-failed")
+}
+
+/// Get translated "transfer path not found" error
+pub fn err_transfer_path_not_found(locale: &str) -> String {
+    t(locale, "err-transfer-path-not-found")
+}
+
+/// Get translated "transfer file failed" error
+pub fn err_transfer_file_failed(locale: &str, path: &str, error: &str) -> String {
+    t_args(
+        locale,
+        "err-transfer-file-failed",
+        &[("path", path), ("error", error)],
+    )
 }

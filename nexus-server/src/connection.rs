@@ -3,6 +3,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -13,10 +14,22 @@ use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{read_client_message_with_timeout, send_server_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
 use crate::handlers::{self, HandlerContext, err_invalid_message_format};
 use crate::users::UserManager;
+
+/// Parameters for handling a connection
+pub struct ConnectionParams {
+    pub peer_addr: SocketAddr,
+    pub user_manager: UserManager,
+    pub db: Database,
+    pub debug: bool,
+    pub file_root: Option<&'static Path>,
+    pub transfer_port: u16,
+    pub connection_tracker: Arc<ConnectionTracker>,
+}
 
 /// Connection state for a single client
 struct ConnectionState {
@@ -30,7 +43,7 @@ impl ConnectionState {
         Self {
             session_id: None,
             handshake_complete: false,
-            locale: "en".to_string(),
+            locale: DEFAULT_LOCALE.to_string(),
         }
     }
 }
@@ -38,12 +51,8 @@ impl ConnectionState {
 /// Handle a client connection (always with TLS)
 pub async fn handle_connection(
     socket: TcpStream,
-    peer_addr: SocketAddr,
-    user_manager: UserManager,
-    db: Database,
-    debug: bool,
     tls_acceptor: TlsAcceptor,
-    file_root: Option<&'static Path>,
+    params: ConnectionParams,
 ) -> io::Result<()> {
     // Perform TLS handshake (mandatory)
     let tls_stream = tls_acceptor
@@ -51,21 +60,24 @@ pub async fn handle_connection(
         .await
         .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
 
-    handle_connection_inner(tls_stream, peer_addr, user_manager, db, debug, file_root).await
+    handle_connection_inner(tls_stream, params).await
 }
 
 /// Inner connection handler that works with any AsyncRead + AsyncWrite stream
-async fn handle_connection_inner<S>(
-    socket: S,
-    peer_addr: SocketAddr,
-    user_manager: UserManager,
-    db: Database,
-    debug: bool,
-    file_root: Option<&'static Path>,
-) -> io::Result<()>
+async fn handle_connection_inner<S>(socket: S, params: ConnectionParams) -> io::Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    let ConnectionParams {
+        peer_addr,
+        user_manager,
+        db,
+        debug,
+        file_root,
+        transfer_port,
+        connection_tracker,
+    } = params;
+
     let (reader, writer) = tokio::io::split(socket);
     let buf_reader = BufReader::new(reader);
     let mut frame_reader = FrameReader::new(buf_reader);
@@ -99,6 +111,8 @@ where
                             locale: &locale,
                             message_id: received.message_id,
                             file_root,
+                            transfer_port,
+                            connection_tracker: connection_tracker.clone(),
                         };
 
                         if let Err(e) = handle_client_message(
@@ -294,12 +308,14 @@ where
             name,
             description,
             max_connections_per_ip,
+            max_transfers_per_ip,
             image,
         } => {
             handlers::handle_server_info_update(
                 name,
                 description,
                 max_connections_per_ip,
+                max_transfers_per_ip,
                 image,
                 conn_state.session_id,
                 ctx,
@@ -383,9 +399,12 @@ where
             )
             .await?;
         }
-        ClientMessage::FileDownload { .. } => {
-            // TODO: Implement file download handler
-            eprintln!("FileDownload not yet implemented");
+        ClientMessage::FileDownload { .. } | ClientMessage::FileStartResponse { .. } => {
+            // These messages are only valid on the transfer port (7501), not the main BBS port
+            eprintln!(
+                "Transfer message received on main port from {}",
+                ctx.peer_addr
+            );
         }
     }
 

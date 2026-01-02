@@ -11,6 +11,7 @@ use nexus_server::users::user::NewSessionParams;
 use tokio::sync::mpsc;
 
 /// Default locale for integration tests
+#[allow(unused)] // Not all test files use this
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
 /// Create an in-memory test database with migrations applied
@@ -39,6 +40,7 @@ pub async fn create_test_db() -> Database {
 /// * `username` - The username
 /// * `is_admin` - Whether the user is an admin (admins bypass permission checks)
 /// * `permissions` - Cached permissions for non-admin users
+#[allow(unused)] // Not all test files use this
 pub async fn add_test_user(
     user_manager: &UserManager,
     db_user_id: i64,

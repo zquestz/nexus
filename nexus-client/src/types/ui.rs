@@ -130,6 +130,8 @@ pub enum InputId {
     EditServerInfoDescription,
     /// Server info edit: Max connections per IP input
     EditServerInfoMaxConnections,
+    /// Server info edit: Max transfers per IP input
+    EditServerInfoMaxTransfers,
     /// Broadcast panel: Message input
     BroadcastMessage,
     /// Chat: Message input
@@ -182,6 +184,7 @@ impl From<InputId> for Id {
             InputId::EditServerInfoName => "InputId::EditServerInfoName",
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
             InputId::EditServerInfoMaxConnections => "InputId::EditServerInfoMaxConnections",
+            InputId::EditServerInfoMaxTransfers => "InputId::EditServerInfoMaxTransfers",
             InputId::BroadcastMessage => "InputId::BroadcastMessage",
             InputId::ChatInput => "InputId::ChatInput",
             InputId::ChangePasswordCurrent => "InputId::ChangePasswordCurrent",

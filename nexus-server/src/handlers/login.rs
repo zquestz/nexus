@@ -377,25 +377,23 @@ where
             .collect()
     };
 
-    // Fetch server info (name/description/image always, topic requires permission, max_conn requires admin)
+    // Fetch server info (name/description/image always, topic requires permission)
     let name = ctx.db.config.get_server_name().await;
     let description = ctx.db.config.get_server_description().await;
     let image = ctx.db.config.get_server_image().await;
 
-    // Fetch max connections per IP (admin only)
-    let max_connections_per_ip = if authenticated_account.is_admin {
-        Some(ctx.db.config.get_max_connections_per_ip().await as u32)
-    } else {
-        None
-    };
+    // Fetch max connections and transfers per IP (visible to all users)
+    let max_connections_per_ip = Some(ctx.db.config.get_max_connections_per_ip().await as u32);
+    let max_transfers_per_ip = Some(ctx.db.config.get_max_transfers_per_ip().await as u32);
 
     let server_info = Some(ServerInfo {
         name: Some(name),
         description: Some(description),
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
         max_connections_per_ip,
+        max_transfers_per_ip,
         image: Some(image),
-        transfer_port: None, // TODO: Set when file transfer is implemented
+        transfer_port: Some(ctx.transfer_port),
     });
 
     // Fetch chat info only if user has ChatTopic permission
@@ -932,8 +930,8 @@ mod tests {
                     "Should include server description"
                 );
                 assert!(
-                    info.max_connections_per_ip.is_none(),
-                    "Non-admin should not receive max_connections_per_ip"
+                    info.max_connections_per_ip.is_some(),
+                    "All users should receive max_connections_per_ip"
                 );
                 assert!(chat_info.is_some(), "Should include chat_info");
                 let chat = chat_info.unwrap();
@@ -1015,8 +1013,8 @@ mod tests {
                     "Should include server description"
                 );
                 assert!(
-                    info.max_connections_per_ip.is_none(),
-                    "Non-admin should not receive max_connections_per_ip"
+                    info.max_connections_per_ip.is_some(),
+                    "All users should receive max_connections_per_ip"
                 );
                 assert!(
                     chat_info.is_none(),

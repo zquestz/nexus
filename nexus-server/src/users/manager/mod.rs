@@ -1,6 +1,6 @@
 //! User manager for tracking connected users
 
-mod broadcasts;
+pub mod broadcasts;
 mod helpers;
 mod mutations;
 mod queries;

@@ -65,8 +65,11 @@ const ROUTING_TEST_ADDRESS: &str = "8.8.8.8:80";
 
 /// UPnP gateway handle for managing port mappings
 pub struct UpnpGateway {
-    gateway: igd_next::Gateway,
-    external_port: u16,
+    gateway: std::sync::RwLock<igd_next::Gateway>,
+    /// Main BBS port
+    main_port: u16,
+    /// Transfer port for file downloads
+    transfer_port: u16,
     local_addr: SocketAddrV4,
 }
 
@@ -81,7 +84,8 @@ impl UpnpGateway {
     ///
     /// # Arguments
     /// * `bind_addr` - The IP address the server is bound to
-    /// * `port` - The port to forward
+    /// * `main_port` - The main BBS port to forward
+    /// * `transfer_port` - The transfer port to forward
     ///
     /// # Returns
     /// * `Ok(UpnpGateway)` - Successfully configured port forwarding
@@ -92,11 +96,15 @@ impl UpnpGateway {
     /// ```no_run
     /// # use std::net::IpAddr;
     /// # async fn example() -> Result<(), String> {
-    /// let gateway = UpnpGateway::setup("0.0.0.0".parse().unwrap(), 7500).await?;
+    /// let gateway = UpnpGateway::setup("0.0.0.0".parse().unwrap(), 7500, 7501).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn setup(bind_addr: IpAddr, port: u16) -> Result<Self, String> {
+    pub async fn setup(
+        bind_addr: IpAddr,
+        main_port: u16,
+        transfer_port: u16,
+    ) -> Result<Self, String> {
         // UPnP only works with IPv4, but :: (dual-stack) binds IPv4 too
         let local_addr = match bind_addr {
             IpAddr::V4(ipv4) => {
@@ -118,7 +126,7 @@ impl UpnpGateway {
             }
         };
 
-        let local_socket = SocketAddrV4::new(local_addr, port);
+        let local_addr_only = local_addr;
 
         // Search for gateway with timeout
         let gateway = tokio::task::spawn_blocking(move || {
@@ -140,19 +148,20 @@ impl UpnpGateway {
         .map_err(|e| format!("{}{}", ERR_UPNP_GET_EXTERNAL_IP_TASK, e))?
         .map_err(|e| format!("{}{}", ERR_UPNP_GET_EXTERNAL_IP, e))?;
 
-        // Request port forwarding
+        // Request port forwarding for main BBS port
         println!(
             "{}{}:{} -> {}:{}",
-            MSG_REQUESTING_PORT_FORWARD, external_ip, port, local_addr, port
+            MSG_REQUESTING_PORT_FORWARD, external_ip, main_port, local_addr_only, main_port
         );
 
+        let main_socket = SocketAddrV4::new(local_addr_only, main_port);
         tokio::task::spawn_blocking({
             let gateway = gateway.clone();
             move || {
                 gateway.add_port(
                     igd_next::PortMappingProtocol::TCP,
-                    port,
-                    std::net::SocketAddr::V4(local_socket),
+                    main_port,
+                    std::net::SocketAddr::V4(main_socket),
                     LEASE_DURATION,
                     PROTOCOL_DESCRIPTION,
                 )
@@ -164,26 +173,66 @@ impl UpnpGateway {
 
         println!(
             "{}{}:{} -> {}:{}",
-            MSG_UPNP_CONFIGURED, external_ip, port, local_addr, port
+            MSG_UPNP_CONFIGURED, external_ip, main_port, local_addr_only, main_port
+        );
+
+        // Request port forwarding for transfer port
+        println!(
+            "{}{}:{} -> {}:{}",
+            MSG_REQUESTING_PORT_FORWARD, external_ip, transfer_port, local_addr_only, transfer_port
+        );
+
+        let transfer_socket = SocketAddrV4::new(local_addr_only, transfer_port);
+        tokio::task::spawn_blocking({
+            let gateway = gateway.clone();
+            move || {
+                gateway.add_port(
+                    igd_next::PortMappingProtocol::TCP,
+                    transfer_port,
+                    std::net::SocketAddr::V4(transfer_socket),
+                    LEASE_DURATION,
+                    PROTOCOL_DESCRIPTION,
+                )
+            }
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_PORT_FORWARD_TASK, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_ADD_PORT_MAPPING, e))?;
+
+        println!(
+            "{}{}:{} -> {}:{}",
+            MSG_UPNP_CONFIGURED, external_ip, transfer_port, local_addr_only, transfer_port
         );
 
         Ok(Self {
-            gateway,
-            external_port: port,
-            local_addr: local_socket,
+            gateway: std::sync::RwLock::new(gateway),
+            main_port,
+            transfer_port,
+            local_addr: main_socket,
         })
     }
 
-    /// Remove port forwarding mapping from the router
+    /// Remove port forwarding mappings from the router
     ///
-    /// This is called during graceful shutdown to clean up the UPnP port mapping.
-    /// If removal fails, the mapping will expire after the lease duration (1 hour).
+    /// This is called during graceful shutdown to clean up the UPnP port mappings.
+    /// If removal fails, the mappings will expire after the lease duration (1 hour).
     pub async fn remove_port_mapping(&self) -> Result<(), String> {
-        let gateway = self.gateway.clone();
-        let external_port = self.external_port;
+        let gateway = self.gateway.read().unwrap().clone();
 
+        // Remove main port mapping
+        let main_port = self.main_port;
+        let gw = gateway.clone();
         tokio::task::spawn_blocking(move || {
-            gateway.remove_port(igd_next::PortMappingProtocol::TCP, external_port)
+            gw.remove_port(igd_next::PortMappingProtocol::TCP, main_port)
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+
+        // Remove transfer port mapping
+        let transfer_port = self.transfer_port;
+        tokio::task::spawn_blocking(move || {
+            gateway.remove_port(igd_next::PortMappingProtocol::TCP, transfer_port)
         })
         .await
         .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
@@ -192,21 +241,24 @@ impl UpnpGateway {
         Ok(())
     }
 
-    /// Renew the port mapping lease
+    /// Renew the port mapping leases
     ///
-    /// Extends the port forwarding lease for another hour. This is called automatically
+    /// Extends the port forwarding leases for another hour. This is called automatically
     /// by the background renewal task every 30 minutes.
     pub async fn renew_lease(&self) -> Result<(), String> {
-        let gateway = self.gateway.clone();
-        let external_port = self.external_port;
-
+        let gateway = self.gateway.read().unwrap().clone();
         let local_addr = self.local_addr;
 
+        // Renew main port lease
+        let main_port = self.main_port;
+        let main_socket = SocketAddrV4::new(*local_addr.ip(), main_port);
+        let gw = gateway.clone();
+
         tokio::task::spawn_blocking(move || {
-            gateway.add_port(
+            gw.add_port(
                 igd_next::PortMappingProtocol::TCP,
-                external_port,
-                std::net::SocketAddr::V4(local_addr),
+                main_port,
+                std::net::SocketAddr::V4(main_socket),
                 LEASE_DURATION,
                 PROTOCOL_DESCRIPTION,
             )
@@ -214,6 +266,81 @@ impl UpnpGateway {
         .await
         .map_err(|e| format!("{}{}", ERR_UPNP_RENEW_LEASE_TASK, e))?
         .map_err(|e| format!("{}{}", ERR_UPNP_RENEW_LEASE, e))?;
+
+        // Renew transfer port lease
+        let transfer_port = self.transfer_port;
+        let transfer_socket = SocketAddrV4::new(*local_addr.ip(), transfer_port);
+
+        tokio::task::spawn_blocking(move || {
+            gateway.add_port(
+                igd_next::PortMappingProtocol::TCP,
+                transfer_port,
+                std::net::SocketAddr::V4(transfer_socket),
+                LEASE_DURATION,
+                PROTOCOL_DESCRIPTION,
+            )
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_RENEW_LEASE_TASK, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_RENEW_LEASE, e))?;
+
+        Ok(())
+    }
+
+    /// Re-discover gateway and re-establish port mappings
+    ///
+    /// Called when lease renewal fails, attempts to find the gateway again
+    /// (in case router rebooted) and re-add the port mappings.
+    pub async fn rediscover_and_remap(&self) -> Result<(), String> {
+        let local_addr = self.local_addr;
+        let main_port = self.main_port;
+        let transfer_port = self.transfer_port;
+
+        // Search for gateway again
+        let new_gateway = tokio::task::spawn_blocking(move || {
+            igd_next::search_gateway(SearchOptions {
+                timeout: Some(SEARCH_TIMEOUT),
+                ..Default::default()
+            })
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_SEARCH_TASK_FAILED, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_GATEWAY_NOT_FOUND, e))?;
+
+        // Add main port mapping
+        let main_socket = SocketAddrV4::new(*local_addr.ip(), main_port);
+        let gw = new_gateway.clone();
+        tokio::task::spawn_blocking(move || {
+            gw.add_port(
+                igd_next::PortMappingProtocol::TCP,
+                main_port,
+                std::net::SocketAddr::V4(main_socket),
+                LEASE_DURATION,
+                PROTOCOL_DESCRIPTION,
+            )
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_PORT_FORWARD_TASK, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_ADD_PORT_MAPPING, e))?;
+
+        // Add transfer port mapping
+        let transfer_socket = SocketAddrV4::new(*local_addr.ip(), transfer_port);
+        let gw = new_gateway.clone();
+        tokio::task::spawn_blocking(move || {
+            gw.add_port(
+                igd_next::PortMappingProtocol::TCP,
+                transfer_port,
+                std::net::SocketAddr::V4(transfer_socket),
+                LEASE_DURATION,
+                PROTOCOL_DESCRIPTION,
+            )
+        })
+        .await
+        .map_err(|e| format!("{}{}", ERR_UPNP_PORT_FORWARD_TASK, e))?
+        .map_err(|e| format!("{}{}", ERR_UPNP_ADD_PORT_MAPPING, e))?;
+
+        // Update stored gateway
+        *self.gateway.write().unwrap() = new_gateway;
 
         Ok(())
     }
@@ -254,7 +381,7 @@ impl UpnpGateway {
 /// 1-hour lease duration). This ensures the port mapping never expires while the
 /// server is running.
 ///
-/// If renewal fails, a warning is printed to stderr but the task continues trying.
+/// If renewal fails, attempts to re-discover the gateway and re-establish mappings.
 /// The task should be aborted during server shutdown.
 ///
 /// # Arguments
@@ -278,7 +405,18 @@ pub fn spawn_lease_renewal_task(
 
             if let Err(e) = gateway.renew_lease().await {
                 eprintln!("{}{}", WARN_UPNP_RENEW_FAILED, e);
-                eprintln!("{}", WARN_UPNP_PORT_EXPIRE);
+                eprintln!("{}", MSG_UPNP_REDISCOVERING);
+
+                // Try to re-discover gateway and re-establish mappings
+                match gateway.rediscover_and_remap().await {
+                    Ok(()) => {
+                        eprintln!("{}", MSG_UPNP_REDISCOVERED);
+                    }
+                    Err(e2) => {
+                        eprintln!("{}{}", WARN_UPNP_REDISCOVER_FAILED, e2);
+                        eprintln!("{}", WARN_UPNP_PORT_EXPIRE);
+                    }
+                }
             }
         }
     })

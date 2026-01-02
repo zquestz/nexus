@@ -624,6 +624,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 description: ctx.conn.server_description.clone(),
                 version: ctx.conn.server_version.clone(),
                 max_connections_per_ip: ctx.conn.max_connections_per_ip,
+                max_transfers_per_ip: ctx.conn.max_transfers_per_ip,
                 cached_server_image: ctx.conn.cached_server_image.as_ref(),
                 is_admin: ctx.conn.is_admin,
                 edit_state: ctx.conn.server_info_edit.as_ref(),

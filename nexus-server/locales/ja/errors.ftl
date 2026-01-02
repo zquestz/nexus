@@ -128,7 +128,7 @@ err-server-name-invalid-characters = サーバー名に無効な文字が含ま�
 err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }文字）
 err-server-description-contains-newlines = サーバーの説明に改行を含めることはできません
 err-server-description-invalid-characters = サーバーの説明に無効な文字が含まれています
-err-max-connections-per-ip-invalid = IPあたりの最大接続数は0より大きくなければなりません
+
 err-no-fields-to-update = 更新するフィールドがありません
 
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
@@ -167,3 +167,14 @@ err-destination-exists = その名前のファイルまたはディレクトリ�
 err-cannot-move-into-itself = フォルダを自分自身の中に移動することはできません
 err-cannot-copy-into-itself = フォルダを自分自身の中にコピーすることはできません
 err-destination-not-directory = 宛先パスはディレクトリではありません
+
+# Transfer Errors
+err-expected-file-download = FileDownloadメッセージが必要です
+err-file-area-not-configured = ファイルエリアが設定されていません
+err-file-area-not-accessible = ファイルエリアにアクセスできません
+err-transfer-path-too-long = パスが長すぎます
+err-transfer-path-invalid = パスに無効な文字が含まれています
+err-transfer-access-denied = アクセスが拒否されました
+err-transfer-read-failed = ファイルの読み取りに失敗しました
+err-transfer-path-not-found = ファイルまたはディレクトリが見つかりません
+err-transfer-file-failed = { $path } の転送に失敗しました: { $error }

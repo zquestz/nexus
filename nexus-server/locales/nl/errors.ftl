@@ -128,7 +128,7 @@ err-server-name-invalid-characters = De servernaam bevat ongeldige tekens
 err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } tekens)
 err-server-description-contains-newlines = De serverbeschrijving mag geen regeleinden bevatten
 err-server-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
-err-max-connections-per-ip-invalid = Maximale verbindingen per IP moet groter zijn dan 0
+
 err-no-fields-to-update = Geen velden om bij te werken
 
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
@@ -167,3 +167,14 @@ err-destination-exists = Een bestand of map met deze naam bestaat al op de beste
 err-cannot-move-into-itself = Kan een map niet naar zichzelf verplaatsen
 err-cannot-copy-into-itself = Kan een map niet naar zichzelf kopiëren
 err-destination-not-directory = Bestemmingspad is geen map
+
+# Transfer Errors
+err-expected-file-download = FileDownload-bericht verwacht
+err-file-area-not-configured = Bestandsgebied niet geconfigureerd
+err-file-area-not-accessible = Bestandsgebied niet toegankelijk
+err-transfer-path-too-long = Pad is te lang
+err-transfer-path-invalid = Pad bevat ongeldige tekens
+err-transfer-access-denied = Toegang geweigerd
+err-transfer-read-failed = Kan bestanden niet lezen
+err-transfer-path-not-found = Bestand of map niet gevonden
+err-transfer-file-failed = Overdracht van { $path } mislukt: { $error }

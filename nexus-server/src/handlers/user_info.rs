@@ -7,6 +7,8 @@ use tokio::io::AsyncWrite;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
 
+use crate::constants::DEFAULT_LOCALE;
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
@@ -109,7 +111,7 @@ where
     let locale = target_sessions
         .first()
         .map(|s| s.locale.clone())
-        .unwrap_or_else(|| "en".to_string());
+        .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
     // Collect unique features from all sessions
     let mut all_features = std::collections::HashSet::new();

@@ -132,7 +132,6 @@ err-server-description-invalid-characters = Server description contains invalid 
 err-server-image-too-large = Server image is too large (max 512KB)
 err-server-image-invalid-format = Invalid server image format (must be a data URI with base64 encoding)
 err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
-err-max-connections-per-ip-invalid = Max connections per IP must be greater than 0
 err-no-fields-to-update = No fields to update
 
 # News Errors
@@ -166,3 +165,14 @@ err-destination-exists = A file or directory with that name already exists at th
 err-cannot-move-into-itself = Cannot move a directory into itself
 err-cannot-copy-into-itself = Cannot copy a directory into itself
 err-destination-not-directory = Destination path is not a directory
+
+# Transfer Errors
+err-expected-file-download = Expected FileDownload message
+err-file-area-not-configured = File area not configured
+err-file-area-not-accessible = File area not accessible
+err-transfer-path-too-long = Path is too long
+err-transfer-path-invalid = Path contains invalid characters
+err-transfer-access-denied = Access denied
+err-transfer-read-failed = Failed to read files
+err-transfer-path-not-found = File or directory not found
+err-transfer-file-failed = Failed to transfer { $path }: { $error }

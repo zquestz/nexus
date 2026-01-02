@@ -69,6 +69,8 @@ pub struct ServerConnectionParams {
     pub chat_topic_set_by: Option<String>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
+    /// Max transfers per IP (admin only)
+    pub max_transfers_per_ip: Option<u32>,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -123,6 +125,8 @@ pub struct ServerConnection {
     pub chat_topic_set_by: Option<String>,
     /// Max connections per IP (admin only, from ServerInfo)
     pub max_connections_per_ip: Option<u32>,
+    /// Max transfers per IP (admin only, from ServerInfo)
+    pub max_transfers_per_ip: Option<u32>,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -228,6 +232,7 @@ impl ServerConnection {
             chat_topic: params.chat_topic,
             chat_topic_set_by: params.chat_topic_set_by,
             max_connections_per_ip: params.max_connections_per_ip,
+            max_transfers_per_ip: params.max_transfers_per_ip,
             active_chat_tab: ChatTab::Server,
             chat_messages: Vec::new(),
             user_messages: HashMap::new(),
@@ -285,6 +290,8 @@ pub struct NetworkConnection {
     pub chat_topic_set_by: Option<String>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
+    /// Max transfers per IP (admin only)
+    pub max_transfers_per_ip: Option<u32>,
     /// Certificate fingerprint (SHA-256) for TOFU verification
     pub certificate_fingerprint: String,
     /// Locale accepted by the server

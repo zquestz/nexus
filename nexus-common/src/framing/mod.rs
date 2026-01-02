@@ -40,7 +40,7 @@ pub use error::FrameError;
 pub use frame::RawFrame;
 pub use limits::{is_known_message_type, known_message_types, max_payload_for_type};
 pub use message_id::MessageId;
-pub use reader::{DEFAULT_FRAME_TIMEOUT, FrameReader};
+pub use reader::{DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameReader};
 pub use writer::FrameWriter;
 
 // =============================================================================

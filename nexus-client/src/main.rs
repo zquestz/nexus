@@ -399,6 +399,9 @@ impl NexusApp {
             Message::EditServerInfoMaxConnectionsChanged(max_connections) => {
                 self.handle_edit_server_info_max_connections_changed(max_connections)
             }
+            Message::EditServerInfoMaxTransfersChanged(max_transfers) => {
+                self.handle_edit_server_info_max_transfers_changed(max_transfers)
+            }
             Message::EditServerInfoNameChanged(name) => {
                 self.handle_edit_server_info_name_changed(name)
             }

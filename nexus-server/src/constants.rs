@@ -35,12 +35,22 @@ pub const CONFIG_KEY_MAX_CONNECTIONS_PER_IP: &str = "max_connections_per_ip";
 /// Default maximum connections per IP address (matches migration default)
 pub const DEFAULT_MAX_CONNECTIONS_PER_IP: usize = 5;
 
+/// Configuration key for max transfers per IP in the database
+pub const CONFIG_KEY_MAX_TRANSFERS_PER_IP: &str = "max_transfers_per_ip";
+
+/// Default maximum file transfer connections per IP address (matches migration default)
+pub const DEFAULT_MAX_TRANSFERS_PER_IP: usize = 3;
+
+// =============================================================================
+// File Transfer
+// =============================================================================
+
+/// Buffer size for SHA-256 hashing operations (8KB)
+pub const HASH_BUFFER_SIZE: usize = 8192;
+
 // =============================================================================
 // Database Validation Errors (defense-in-depth, operator-facing)
 // =============================================================================
-
-/// Error when max_connections_per_ip is set to zero
-pub const ERR_MAX_CONNECTIONS_ZERO: &str = "max_connections_per_ip must be greater than 0";
 
 /// Error when server name is empty
 pub const ERR_SERVER_NAME_EMPTY: &str = "Server name cannot be empty";
@@ -171,6 +181,9 @@ pub const MSG_CERTIFICATES: &str = "Certificates: ";
 
 /// Listening address display
 pub const MSG_LISTENING: &str = "Listening on ";
+
+/// Transfer port listening display
+pub const MSG_TRANSFER_LISTENING: &str = "Transfer port: ";
 
 /// TLS enabled indicator
 pub const MSG_TLS_ENABLED: &str = " (TLS enabled)";
@@ -336,6 +349,15 @@ pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: "
 /// UPnP port expiration warning
 pub const WARN_UPNP_PORT_EXPIRE: &str =
     "Port forwarding may expire. You may need to restart the server.";
+
+/// UPnP rediscovery attempt message
+pub const MSG_UPNP_REDISCOVERING: &str = "Attempting to rediscover UPnP gateway...";
+
+/// UPnP rediscovery success message
+pub const MSG_UPNP_REDISCOVERED: &str = "UPnP gateway rediscovered, port mappings restored.";
+
+/// UPnP rediscovery failure warning
+pub const WARN_UPNP_REDISCOVER_FAILED: &str = "Warning: Failed to rediscover UPnP gateway: ";
 
 /// UPnP mapping removal failure warning
 pub const WARN_UPNP_REMOVE_MAPPING_FAILED: &str = "Warning: Failed to remove UPnP port mapping: ";

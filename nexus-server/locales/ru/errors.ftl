@@ -128,7 +128,7 @@ err-server-name-invalid-characters = Имя сервера содержит не
 err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } символов)
 err-server-description-contains-newlines = Описание сервера не может содержать переносы строк
 err-server-description-invalid-characters = Описание сервера содержит недопустимые символы
-err-max-connections-per-ip-invalid = Максимальное количество подключений на IP должно быть больше 0
+
 err-no-fields-to-update = Нет полей для обновления
 
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
@@ -167,3 +167,14 @@ err-destination-exists = Файл или каталог с таким имене
 err-cannot-move-into-itself = Невозможно переместить каталог внутрь самого себя
 err-cannot-copy-into-itself = Невозможно скопировать каталог внутрь самого себя
 err-destination-not-directory = Путь назначения не является каталогом
+
+# Transfer Errors
+err-expected-file-download = Ожидалось сообщение FileDownload
+err-file-area-not-configured = Файловая область не настроена
+err-file-area-not-accessible = Файловая область недоступна
+err-transfer-path-too-long = Путь слишком длинный
+err-transfer-path-invalid = Путь содержит недопустимые символы
+err-transfer-access-denied = Доступ запрещён
+err-transfer-read-failed = Не удалось прочитать файлы
+err-transfer-path-not-found = Файл или каталог не найден
+err-transfer-file-failed = Не удалось передать { $path }: { $error }

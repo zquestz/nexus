@@ -10,6 +10,7 @@ mod error;
 mod files;
 mod news;
 mod permissions;
+mod server_info;
 mod user_admin;
 mod user_connection;
 mod user_info;

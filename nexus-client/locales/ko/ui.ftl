@@ -101,6 +101,7 @@ label-server-version = 버전:
 label-chat-topic = 채팅 주제:
 label-chat-topic-set-by = 토픽 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
+label-max-transfers-per-ip = IP당 최대 전송 수:
 label-avatar = 아바타:
 label-server-image = 서버 이미지:
 label-details = 기술 세부사항

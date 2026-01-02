@@ -64,6 +64,7 @@ pub use user_update::{UserUpdateRequest, handle_user_update};
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
@@ -72,6 +73,7 @@ use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
+use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::users::UserManager;
 
@@ -88,6 +90,10 @@ pub struct HandlerContext<'a, W> {
     pub message_id: MessageId,
     /// File area root path (None if file area is not configured)
     pub file_root: Option<&'static Path>,
+    /// Port for file transfers (typically 7501)
+    pub transfer_port: u16,
+    /// Connection tracker for both main and transfer connections
+    pub connection_tracker: Arc<ConnectionTracker>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

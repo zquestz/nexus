@@ -27,6 +27,7 @@ fluent = "0.17"
 fluent-bundle = "0.16"
 unic-langid = "0.9"
 infer = "0.19"
+rand = "0.9"
 
 [dev-dependencies]
 tempfile = "3.20"

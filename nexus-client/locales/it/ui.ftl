@@ -101,6 +101,7 @@ label-server-version = Versione:
 label-chat-topic = Argomento Chat:
 label-chat-topic-set-by = Argomento Impostato Da:
 label-max-connections-per-ip = Max Connessioni Per IP:
+label-max-transfers-per-ip = Max Trasferimenti Per IP:
 label-avatar = Icona:
 label-server-image = Immagine del server:
 label-details = Dettagli Tecnici

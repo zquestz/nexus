@@ -7,8 +7,11 @@ use std::io;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use std::time::Duration;
+
 use crate::framing::{
-    DEFAULT_FRAME_TIMEOUT, FrameError, FrameReader, FrameWriter, MessageId, RawFrame,
+    DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameError, FrameReader, FrameWriter, MessageId,
+    RawFrame,
 };
 use crate::protocol::{ClientMessage, ServerMessage};
 
@@ -170,6 +173,40 @@ where
     parse_client_frame(frame).map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
+/// Read a `ClientMessage` from the stream with full timeout (no idle allowed)
+///
+/// Unlike [`read_client_message_with_timeout`], this method applies a timeout
+/// to the entire read operation, including waiting for the first byte.
+/// This is appropriate for protocols where idle connections should be disconnected,
+/// such as the file transfer port.
+///
+/// Returns `Ok(None)` if the connection was cleanly closed.
+///
+/// # Arguments
+///
+/// * `reader` - The frame reader to read from
+/// * `idle_timeout` - Maximum time to wait for the first byte (defaults to 30 seconds)
+/// * `frame_timeout` - Maximum time to complete the frame after the first byte (defaults to 60 seconds)
+pub async fn read_client_message_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+) -> Result<Option<ReceivedClientMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let frame = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let frame = match reader.read_frame_with_full_timeout(idle, frame).await {
+        Ok(Some(frame)) => frame,
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+
+    parse_client_frame(frame).map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
 /// Parse a raw frame into a `ReceivedClientMessage`
 fn parse_client_frame(frame: RawFrame) -> io::Result<Option<ReceivedClientMessage>> {
     // Parse the JSON payload
@@ -267,6 +304,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileMove { .. } => "FileMove",
         ClientMessage::FileCopy { .. } => "FileCopy",
         ClientMessage::FileDownload { .. } => "FileDownload",
+        ClientMessage::FileStartResponse { .. } => "FileStartResponse",
     }
 }
 
@@ -312,6 +350,8 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileMoveResponse { .. } => "FileMoveResponse",
         ServerMessage::FileCopyResponse { .. } => "FileCopyResponse",
         ServerMessage::FileDownloadResponse { .. } => "FileDownloadResponse",
+        ServerMessage::FileStart { .. } => "FileStart",
+        ServerMessage::TransferComplete { .. } => "TransferComplete",
     }
 }
 

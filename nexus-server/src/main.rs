@@ -8,11 +8,13 @@ mod db;
 mod files;
 mod handlers;
 mod i18n;
+mod transfer;
 mod upnp;
 mod users;
 
 use args::Args;
 use clap::Parser;
+use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
 use sha2::{Digest, Sha256};
@@ -25,6 +27,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
+use transfer::TransferParams;
 use users::UserManager;
 
 #[tokio::main]
@@ -40,15 +43,23 @@ async fn main() {
     // Setup file area
     let file_root = setup_file_area(args.file_root);
 
-    // Setup network (TCP listener + TLS)
-    let (listener, tls_acceptor) = setup_network(args.bind, args.port, &db_path).await;
+    // Setup network (TCP listeners + TLS)
+    let (listener, transfer_listener, tls_acceptor) =
+        setup_network(args.bind, args.port, args.transfer_port, &db_path).await;
 
-    // Setup UPnP port forwarding if requested
-    let upnp_handle = setup_upnp(args.upnp, args.bind, args.port).await;
+    // Store transfer port for ServerInfo
+    let transfer_port = args.transfer_port;
 
-    // Setup connection tracking for DoS protection (load limit from database)
+    // Setup UPnP port forwarding if requested (forwards both main and transfer ports)
+    let upnp_handle = setup_upnp(args.upnp, args.bind, args.port, transfer_port).await;
+
+    // Setup connection tracking for DoS protection (load limits from database)
     let max_connections_per_ip = database.config.get_max_connections_per_ip().await;
-    let connection_tracker = ConnectionTracker::new(max_connections_per_ip);
+    let max_transfers_per_ip = database.config.get_max_transfers_per_ip().await;
+    let connection_tracker = Arc::new(ConnectionTracker::new(
+        max_connections_per_ip,
+        max_transfers_per_ip,
+    ));
 
     // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
@@ -56,7 +67,7 @@ async fn main() {
     // Leak the PathBuf to get a 'static reference - it lives for the program lifetime anyway
     let file_root: &'static Path = Box::leak(file_root.into_boxed_path());
 
-    // Main server loop - accept incoming connections
+    // Main server loops - accept incoming connections on both ports
     let debug = args.debug;
     tokio::select! {
         _ = shutdown_signal => {
@@ -72,6 +83,7 @@ async fn main() {
                 }
             }
         }
+        // Main BBS port accept loop
         _ = async {
             loop {
                 match listener.accept().await {
@@ -88,25 +100,23 @@ async fn main() {
                             }
                         };
 
-                        let user_manager = user_manager.clone();
-                        let database = database.clone();
+                        let params = ConnectionParams {
+                            peer_addr,
+                            user_manager: user_manager.clone(),
+                            db: database.clone(),
+                            debug,
+                            file_root: Some(file_root),
+                            transfer_port,
+                            connection_tracker: connection_tracker.clone(),
+                        };
                         let tls_acceptor = tls_acceptor.clone();
-
 
                         // Spawn a new task to handle this connection
                         tokio::spawn(async move {
                             // Hold guard until connection ends to track active connections
                             let _guard = connection_guard;
-                            if let Err(e) = connection::handle_connection(
-                                socket,
-                                peer_addr,
-                                user_manager,
-                                database,
-                                debug,
-                                tls_acceptor,
-                                Some(file_root),
-                            )
-                            .await
+                            if let Err(e) =
+                                connection::handle_connection(socket, tls_acceptor, params).await
                             {
                                 let error_msg = e.to_string();
 
@@ -116,6 +126,64 @@ async fn main() {
                                 }
 
                                 // TLS handshake failures are debug-only (scanners, incompatible clients)
+                                if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
+                                    if debug {
+                                        eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                                    }
+                                    return;
+                                }
+
+                                eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("{}{}", ERR_ACCEPT, e);
+                    }
+                }
+            }
+        } => {}
+        // Transfer port accept loop
+        _ = async {
+            loop {
+                match transfer_listener.accept().await {
+                    Ok((socket, peer_addr)) => {
+                        // Check transfer connection limit before accepting
+                        let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
+                            Some(guard) => guard,
+                            None => {
+                                if debug {
+                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
+                                }
+                                // Just drop the socket - client will see connection reset
+                                continue;
+                            }
+                        };
+
+                        let params = TransferParams {
+                            peer_addr,
+                            db: database.clone(),
+                            debug,
+                            file_root: Some(file_root),
+                        };
+                        let tls_acceptor = tls_acceptor.clone();
+
+                        // Spawn a new task to handle this transfer connection
+                        tokio::spawn(async move {
+                            // Hold guard until connection ends to track active connections
+                            let _guard = transfer_guard;
+                            if let Err(e) =
+                                transfer::handle_transfer_connection(socket, tls_acceptor, params)
+                                    .await
+                            {
+                                let error_msg = e.to_string();
+
+                                // Filter out benign TLS close_notify warnings
+                                if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
+                                    return;
+                                }
+
+                                // TLS handshake failures are debug-only
                                 if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
                                     if debug {
                                         eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
@@ -285,13 +353,14 @@ async fn setup_db(
 async fn setup_upnp(
     enabled: bool,
     bind: std::net::IpAddr,
-    port: u16,
+    main_port: u16,
+    transfer_port: u16,
 ) -> Option<(Arc<upnp::UpnpGateway>, tokio::task::JoinHandle<()>)> {
     if !enabled {
         return None;
     }
 
-    match upnp::UpnpGateway::setup(bind, port).await {
+    match upnp::UpnpGateway::setup(bind, main_port, transfer_port).await {
         Ok(gateway) => {
             // Spawn background task to renew UPnP lease periodically
             let gateway_arc = Arc::new(gateway);
@@ -307,12 +376,13 @@ async fn setup_upnp(
     }
 }
 
-/// Setup network: TCP listener and TLS acceptor
+/// Setup network: TCP listeners (main + transfer) and TLS acceptor
 async fn setup_network(
     bind: std::net::IpAddr,
     port: u16,
+    transfer_port: u16,
     db_path: &std::path::Path,
-) -> (TcpListener, TlsAcceptor) {
+) -> (TcpListener, TcpListener, TlsAcceptor) {
     // Get certificate directory (same parent as database)
     let cert_dir = db_path.parent().expect(ERR_DB_PATH_NO_PARENT).to_path_buf();
 
@@ -326,9 +396,8 @@ async fn setup_network(
     };
     println!("{}{}", MSG_CERTIFICATES, cert_dir.display());
 
-    // Create socket address
+    // Create main BBS listener
     let addr = SocketAddr::new(bind, port);
-
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(e) => {
@@ -336,10 +405,23 @@ async fn setup_network(
             std::process::exit(1);
         }
     };
-
     println!("{}{}{}", MSG_LISTENING, addr, MSG_TLS_ENABLED);
 
-    (listener, tls_acceptor)
+    // Create transfer port listener
+    let transfer_addr = SocketAddr::new(bind, transfer_port);
+    let transfer_listener = match TcpListener::bind(transfer_addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!("{}{}: {}", ERR_BIND_FAILED, transfer_addr, e);
+            std::process::exit(1);
+        }
+    };
+    println!(
+        "{}{}{}",
+        MSG_TRANSFER_LISTENING, transfer_addr, MSG_TLS_ENABLED
+    );
+
+    (listener, transfer_listener, tls_acceptor)
 }
 
 /// Calculate and display certificate fingerprint (SHA-256)

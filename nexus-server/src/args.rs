@@ -1,7 +1,7 @@
 //! Command-line argument parsing
 
 use clap::Parser;
-use nexus_common::DEFAULT_PORT;
+use nexus_common::{DEFAULT_PORT, DEFAULT_TRANSFER_PORT};
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -64,4 +64,8 @@ pub struct Args {
     /// Enable UPnP port forwarding (automatic NAT traversal)
     #[arg(long, default_value = "false")]
     pub upnp: bool,
+
+    /// Port for file transfers
+    #[arg(short = 't', long, default_value_t = DEFAULT_TRANSFER_PORT)]
+    pub transfer_port: u16,
 }

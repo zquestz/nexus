@@ -8,6 +8,8 @@ use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
+use crate::constants::DEFAULT_LOCALE;
+
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
@@ -508,8 +510,9 @@ where
                                 .permissions
                                 .contains(&Permission::ChatTopic);
 
-                        // Only send max_connections_per_ip if user is now admin
-                        // (other server info fields like name/description/image don't change with permissions)
+                        // Only send fields that change with permissions (max_connections_per_ip for admins)
+                        // Other fields (name, description, image, transfer_port) are unchanged and
+                        // the client already knows them from login
                         let server_info = if updated_account.is_admin {
                             Some(ServerInfo {
                                 max_connections_per_ip: Some(
@@ -655,7 +658,7 @@ where
                         let locale = user_sessions
                             .first()
                             .map(|u| u.locale.clone())
-                            .unwrap_or_else(|| "en".to_string());
+                            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
                         // Avatar from most recent login
                         let avatar = user_sessions
@@ -665,7 +668,7 @@ where
 
                         (login_time, locale, avatar)
                     } else {
-                        (0, "en".to_string(), None) // User not currently online
+                        (0, DEFAULT_LOCALE.to_string(), None) // User not currently online
                     };
 
                     let user_info = UserInfo {

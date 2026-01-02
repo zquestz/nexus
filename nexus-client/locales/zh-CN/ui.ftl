@@ -101,6 +101,7 @@ label-server-version = 版本：
 label-chat-topic = 聊天主题：
 label-chat-topic-set-by = 主题设置者：
 label-max-connections-per-ip = 每IP最大连接数：
+label-max-transfers-per-ip = 每IP最大传输数：
 label-avatar = 头像：
 label-server-image = 服务器图片：
 label-details = 技术详情

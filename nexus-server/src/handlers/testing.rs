@@ -5,6 +5,7 @@ pub const DEFAULT_TEST_LOCALE: &str = "en";
 
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
@@ -15,6 +16,7 @@ use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::HandlerContext;
+use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
@@ -33,6 +35,7 @@ pub struct TestContext {
     pub _rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>, // Keep receiver alive to prevent channel closure
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
+    pub connection_tracker: Arc<ConnectionTracker>,
 }
 
 impl TestContext {
@@ -48,6 +51,8 @@ impl TestContext {
             locale: DEFAULT_TEST_LOCALE,
             message_id: self.message_id,
             file_root: self.file_root,
+            transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+            connection_tracker: self.connection_tracker.clone(),
         }
     }
 }
@@ -88,6 +93,9 @@ pub async fn create_test_context() -> TestContext {
     // Create a default message ID for tests (must be valid hex characters)
     let message_id = MessageId::from_bytes(b"000000000000").unwrap();
 
+    // Create connection tracker for tests (unlimited by default)
+    let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));
+
     TestContext {
         client,
         frame_writer,
@@ -98,6 +106,7 @@ pub async fn create_test_context() -> TestContext {
         _rx: rx,
         message_id,
         file_root: None,
+        connection_tracker,
     }
 }
 

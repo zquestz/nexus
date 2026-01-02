@@ -129,7 +129,7 @@ err-server-name-invalid-characters = El nombre del servidor contiene caracteres 
 err-server-description-too-long = La descripción del servidor es demasiado larga (máx. { $max_length } caracteres)
 err-server-description-contains-newlines = La descripción del servidor no puede contener saltos de línea
 err-server-description-invalid-characters = La descripción del servidor contiene caracteres inválidos
-err-max-connections-per-ip-invalid = Las conexiones máximas por IP deben ser mayores que 0
+
 err-no-fields-to-update = No hay campos para actualizar
 
 err-server-image-too-large = La imagen del servidor es demasiado grande (máx. 512KB)
@@ -168,3 +168,14 @@ err-destination-exists = Ya existe un archivo o directorio con ese nombre en el 
 err-cannot-move-into-itself = No se puede mover un directorio dentro de sí mismo
 err-cannot-copy-into-itself = No se puede copiar un directorio dentro de sí mismo
 err-destination-not-directory = La ruta de destino no es un directorio
+
+# Transfer Errors
+err-expected-file-download = Se esperaba un mensaje FileDownload
+err-file-area-not-configured = Área de archivos no configurada
+err-file-area-not-accessible = Área de archivos no accesible
+err-transfer-path-too-long = La ruta es demasiado larga
+err-transfer-path-invalid = La ruta contiene caracteres inválidos
+err-transfer-access-denied = Acceso denegado
+err-transfer-read-failed = No se pudieron leer los archivos
+err-transfer-path-not-found = Archivo o directorio no encontrado
+err-transfer-file-failed = Error al transferir { $path }: { $error }

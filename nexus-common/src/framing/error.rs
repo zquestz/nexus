@@ -46,6 +46,10 @@ pub enum FrameError {
     ConnectionClosed,
     /// Frame read timeout (frame started but not completed in time)
     FrameTimeout,
+    /// Idle timeout (no data received within idle timeout period)
+    IdleTimeout,
+    /// Stream timeout (no progress during streaming transfer)
+    StreamTimeout,
 }
 
 impl fmt::Display for FrameError {
@@ -92,6 +96,8 @@ impl fmt::Display for FrameError {
             FrameError::Io(e) => write!(f, "I/O error: {e}"),
             FrameError::ConnectionClosed => write!(f, "connection closed"),
             FrameError::FrameTimeout => write!(f, "frame read timeout"),
+            FrameError::IdleTimeout => write!(f, "idle timeout"),
+            FrameError::StreamTimeout => write!(f, "stream timeout"),
         }
     }
 }
@@ -169,6 +175,8 @@ mod tests {
             ),
             (FrameError::ConnectionClosed, "connection closed"),
             (FrameError::FrameTimeout, "frame read timeout"),
+            (FrameError::IdleTimeout, "idle timeout"),
+            (FrameError::StreamTimeout, "stream timeout"),
         ];
 
         for (error, expected) in cases {

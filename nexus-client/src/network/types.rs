@@ -136,5 +136,6 @@ pub struct LoginInfo {
     pub chat_topic: Option<String>,
     pub chat_topic_set_by: Option<String>,
     pub max_connections_per_ip: Option<u32>,
+    pub max_transfers_per_ip: Option<u32>,
     pub locale: String,
 }
