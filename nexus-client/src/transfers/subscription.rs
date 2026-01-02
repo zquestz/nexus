@@ -24,8 +24,9 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::executor::{TransferEvent, execute_transfer};
-use super::{Transfer, TransferStatus};
+use super::{Transfer, TransferError, TransferStatus};
 use crate::config::settings::ProxySettings;
+use crate::i18n::t;
 use crate::types::Message;
 
 /// Channel size for the transfer event stream
@@ -263,11 +264,29 @@ pub fn transfer_stream(
                         let _ = output.send(Message::TransferStartNext).await;
                     }
                     Ok(Err(err)) => {
-                        // Executor returned error
+                        // Executor returned error - use i18n for user-facing message
+                        let error = match err {
+                            TransferError::NotFound => t("transfer-error-not-found"),
+                            TransferError::Permission => t("transfer-error-permission"),
+                            TransferError::Invalid => t("transfer-error-invalid"),
+                            TransferError::UnsupportedVersion => {
+                                t("transfer-error-unsupported-version")
+                            }
+                            TransferError::DiskFull => t("transfer-error-disk-full"),
+                            TransferError::HashMismatch => t("transfer-error-hash-mismatch"),
+                            TransferError::IoError => t("transfer-error-io"),
+                            TransferError::ProtocolError => t("transfer-error-protocol"),
+                            TransferError::ConnectionError => t("transfer-error-connection"),
+                            TransferError::CertificateMismatch => {
+                                t("transfer-error-certificate-mismatch")
+                            }
+                            TransferError::AuthenticationFailed => t("transfer-error-auth-failed"),
+                            TransferError::Unknown => t("transfer-error-unknown"),
+                        };
                         let _ = output
                             .send(Message::TransferProgress(TransferEvent::Failed {
                                 id: transfer_id,
-                                error: format!("Transfer error: {err}"),
+                                error,
                                 error_kind: Some(err),
                             }))
                             .await;

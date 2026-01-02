@@ -871,8 +871,9 @@ fn is_safe_path(path: &str) -> bool {
             return false;
         }
 
-        // Reject current directory references at start
-        if component == "." && path.starts_with('.') {
+        // Reject current directory references anywhere (e.g., "./foo", "foo/./bar")
+        // These serve no purpose and could be used to confuse path matching/logging
+        if component == "." {
             return false;
         }
     }
@@ -968,8 +969,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_safe_path_rejects_dot_start() {
+    fn test_is_safe_path_rejects_dot_components() {
+        // Reject "." anywhere in path - serves no purpose and could confuse logging
         assert!(!is_safe_path("./file.txt"));
         assert!(!is_safe_path(".\\file.txt"));
+        assert!(!is_safe_path("foo/./bar"));
+        assert!(!is_safe_path("dir/./subdir/file.txt"));
+        assert!(!is_safe_path("."));
     }
 }

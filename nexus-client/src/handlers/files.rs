@@ -1058,7 +1058,41 @@ fn sanitize_filename(name: &str, fallback: &str) -> String {
 
     // If empty after sanitization, use the fallback (typically server address)
     if trimmed.is_empty() {
-        fallback.to_string()
+        return fallback.to_string();
+    }
+
+    // Check for Windows reserved names (case-insensitive)
+    // These cannot be used as filenames on Windows, even with extensions
+    let upper = trimmed.to_uppercase();
+    let is_reserved = matches!(
+        upper.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    );
+
+    if is_reserved {
+        // Prefix with underscore to make it safe
+        format!("_{trimmed}")
     } else {
         trimmed.to_string()
     }

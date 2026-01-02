@@ -866,13 +866,8 @@ fn scan_directory_recursive<'a>(
                 continue;
             };
 
-            // Skip hidden files
-            if file_name.starts_with('.') {
-                if debug {
-                    eprintln!("  Skipping hidden file: {}", file_name);
-                }
-                continue;
-            }
+            // Note: Hidden files (dotfiles) are included in downloads.
+            // The show_hidden setting only affects the file browser UI, not transfers.
 
             // Canonicalize the path before dropbox check to handle symlinks correctly.
             // If a symlink points to a dropbox folder, the canonical path will reveal it.
