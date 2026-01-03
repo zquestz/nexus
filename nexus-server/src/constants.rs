@@ -389,9 +389,6 @@ pub const ERR_UPNP_REMOVE_PORT_TASK: &str = "Remove port mapping task failed: ";
 /// Port mapping removal error
 pub const ERR_UPNP_REMOVE_PORT_MAPPING: &str = "Failed to remove port mapping: ";
 
-/// Lease renewal task error
-pub const ERR_UPNP_RENEW_LEASE_TASK: &str = "Renew lease task failed: ";
-
 /// Lease renewal error
 pub const ERR_UPNP_RENEW_LEASE: &str = "Failed to renew lease: ";
 
