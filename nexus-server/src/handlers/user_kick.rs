@@ -154,7 +154,6 @@ where
                         session_id: target_session_id,
                         nickname: removed_user.nickname.clone(),
                     },
-                    &ctx.db.users,
                     Some(target_session_id), // Exclude the kicked user
                 )
                 .await;

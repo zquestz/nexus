@@ -21,22 +21,23 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, SeekFrom};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 
+use nexus_common::HASH_BUFFER_SIZE;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
-use nexus_common::validators::{self, FilePathError, PasswordError, UsernameError, VersionError};
+use nexus_common::validators::{self, FilePathError, PasswordError, VersionError};
 use nexus_common::version::{self, CompatibilityResult};
 
-use crate::constants::{DEFAULT_LOCALE, HASH_BUFFER_SIZE};
+use crate::constants::{DEFAULT_FILENAME, DEFAULT_LOCALE};
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Database, Permission};
 use crate::files::area::resolve_user_area;
 use crate::files::folder_type::{FolderType, parse_folder_type};
 use crate::files::path::{build_and_validate_candidate_path, resolve_path};
 use crate::handlers::{
-    err_account_disabled, err_authentication, err_database, err_expected_file_download,
-    err_file_area_not_accessible, err_file_area_not_configured, err_guest_disabled,
-    err_handshake_required, err_invalid_credentials, err_not_logged_in, err_permission_denied,
+    err_account_disabled, err_authentication, err_database, err_file_area_not_accessible,
+    err_file_area_not_configured, err_guest_disabled, err_handshake_required,
+    err_invalid_credentials, err_message_not_supported, err_not_logged_in, err_permission_denied,
     err_transfer_access_denied, err_transfer_file_failed, err_transfer_path_invalid,
     err_transfer_path_not_found, err_transfer_path_too_long, err_transfer_read_failed,
     err_version_client_too_new, err_version_empty, err_version_invalid_semver,
@@ -131,15 +132,12 @@ pub async fn handle_transfer_connection(
     // Phase 3: FileDownload request
     let Some(file_root) = file_root else {
         // File area not configured
-        send_transfer_error(
+        return send_error_and_close(
             &mut frame_writer,
             &err_file_area_not_configured(&locale),
             Some("not_found"),
-            "FileDownload",
         )
-        .await?;
-        let _ = frame_writer.get_mut().shutdown().await;
-        return Ok(());
+        .await;
     };
 
     let (download_path, use_root) =
@@ -162,41 +160,27 @@ pub async fn handle_transfer_connection(
             | FilePathError::InvalidCharacters
             | FilePathError::ContainsWindowsDrive => err_transfer_path_invalid(&locale),
         };
-        send_transfer_error(
-            &mut frame_writer,
-            &error_msg,
-            Some("invalid"),
-            "FileDownload",
-        )
-        .await?;
-        let _ = frame_writer.get_mut().shutdown().await;
-        return Ok(());
+        return send_error_and_close(&mut frame_writer, &error_msg, Some("invalid")).await;
     }
 
     // Check download permission
     if !user.is_admin && !user.permissions.contains(&Permission::FileDownload) {
-        send_transfer_error(
+        return send_error_and_close(
             &mut frame_writer,
             &err_permission_denied(&locale),
             Some("permission"),
-            "FileDownload",
         )
-        .await?;
-        let _ = frame_writer.get_mut().shutdown().await;
-        return Ok(());
+        .await;
     }
 
     // Check file_root permission if using root mode
     if use_root && !user.is_admin && !user.permissions.contains(&Permission::FileRoot) {
-        send_transfer_error(
+        return send_error_and_close(
             &mut frame_writer,
             &err_permission_denied(&locale),
             Some("permission"),
-            "FileDownload",
         )
-        .await?;
-        let _ = frame_writer.get_mut().shutdown().await;
-        return Ok(());
+        .await;
     }
 
     // Resolve area root
@@ -210,15 +194,12 @@ pub async fn handle_transfer_connection(
     let area_root = match std::fs::canonicalize(&area_root) {
         Ok(p) => p,
         Err(_) => {
-            send_transfer_error(
+            return send_error_and_close(
                 &mut frame_writer,
                 &err_file_area_not_accessible(&locale),
                 Some("not_found"),
-                "FileDownload",
             )
-            .await?;
-            let _ = frame_writer.get_mut().shutdown().await;
-            return Ok(());
+            .await;
         }
     };
 
@@ -226,15 +207,12 @@ pub async fn handle_transfer_connection(
     let candidate = match build_and_validate_candidate_path(&area_root, &download_path) {
         Ok(p) => p,
         Err(_) => {
-            send_transfer_error(
+            return send_error_and_close(
                 &mut frame_writer,
                 &err_transfer_path_invalid(&locale),
                 Some("invalid"),
-                "FileDownload",
             )
-            .await?;
-            let _ = frame_writer.get_mut().shutdown().await;
-            return Ok(());
+            .await;
         }
     };
 
@@ -250,29 +228,18 @@ pub async fn handle_transfer_connection(
                 }
                 _ => (err_transfer_path_invalid(&locale), "invalid"),
             };
-            send_transfer_error(
-                &mut frame_writer,
-                &error_msg,
-                Some(error_kind),
-                "FileDownload",
-            )
-            .await?;
-            let _ = frame_writer.get_mut().shutdown().await;
-            return Ok(());
+            return send_error_and_close(&mut frame_writer, &error_msg, Some(error_kind)).await;
         }
     };
 
     // Check dropbox access
     if !can_access_for_download(&resolved_path, &user.username, user.is_admin) {
-        send_transfer_error(
+        return send_error_and_close(
             &mut frame_writer,
             &err_transfer_access_denied(&locale),
             Some("permission"),
-            "FileDownload",
         )
-        .await?;
-        let _ = frame_writer.get_mut().shutdown().await;
-        return Ok(());
+        .await;
     }
 
     // Scan files to transfer
@@ -283,15 +250,12 @@ pub async fn handle_transfer_connection(
                 if debug {
                     eprintln!("Failed to scan files: {e}");
                 }
-                send_transfer_error(
+                return send_error_and_close(
                     &mut frame_writer,
                     &err_transfer_read_failed(&locale),
                     Some("io_error"),
-                    "FileDownload",
                 )
-                .await?;
-                let _ = frame_writer.get_mut().shutdown().await;
-                return Ok(());
+                .await;
             }
         };
 
@@ -504,16 +468,7 @@ where
             ..
         } => (username, password, req_locale),
         _ => {
-            let response = ServerMessage::LoginResponse {
-                success: false,
-                error: Some(err_not_logged_in(locale)),
-                session_id: None,
-                is_admin: None,
-                permissions: None,
-                server_info: None,
-                chat_info: None,
-                locale: None,
-            };
+            let response = login_error_response(err_not_logged_in(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other("Expected Login message"));
         }
@@ -531,43 +486,16 @@ where
 
     // Validate username (skip for guest which was normalized from empty)
     if username.to_lowercase() != GUEST_USERNAME
-        && let Err(e) = validators::validate_username(&username)
+        && let Err(_) = validators::validate_username(&username)
     {
-        let error_msg = match e {
-            UsernameError::Empty | UsernameError::TooLong | UsernameError::InvalidCharacters => {
-                err_invalid_credentials(locale)
-            }
-        };
-        let response = ServerMessage::LoginResponse {
-            success: false,
-            error: Some(error_msg),
-            session_id: None,
-            is_admin: None,
-            permissions: None,
-            server_info: None,
-            chat_info: None,
-            locale: None,
-        };
+        let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other("Invalid username"));
     }
 
     // Validate password (use validate_password_input which allows empty for guest accounts)
-    if let Err(e) = validators::validate_password_input(&password) {
-        let error_msg = match e {
-            PasswordError::Empty => err_invalid_credentials(locale), // Should never happen with validate_password_input
-            PasswordError::TooLong => err_invalid_credentials(locale),
-        };
-        let response = ServerMessage::LoginResponse {
-            success: false,
-            error: Some(error_msg),
-            session_id: None,
-            is_admin: None,
-            permissions: None,
-            server_info: None,
-            chat_info: None,
-            locale: None,
-        };
+    if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
+        let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other("Invalid password"));
     }
@@ -576,30 +504,12 @@ where
     let account = match db.users.get_user_by_username(&username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
-            let response = ServerMessage::LoginResponse {
-                success: false,
-                error: Some(err_invalid_credentials(locale)),
-                session_id: None,
-                is_admin: None,
-                permissions: None,
-                server_info: None,
-                chat_info: None,
-                locale: None,
-            };
+            let response = login_error_response(err_invalid_credentials(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other("User not found"));
         }
         Err(e) => {
-            let response = ServerMessage::LoginResponse {
-                success: false,
-                error: Some(err_database(locale)),
-                session_id: None,
-                is_admin: None,
-                permissions: None,
-                server_info: None,
-                chat_info: None,
-                locale: None,
-            };
+            let response = login_error_response(err_database(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(format!("Database error: {e}")));
         }
@@ -613,16 +523,7 @@ where
         match db::verify_password(&password, &account.hashed_password) {
             Ok(valid) => valid,
             Err(e) => {
-                let response = ServerMessage::LoginResponse {
-                    success: false,
-                    error: Some(err_authentication(locale)),
-                    session_id: None,
-                    is_admin: None,
-                    permissions: None,
-                    server_info: None,
-                    chat_info: None,
-                    locale: None,
-                };
+                let response = login_error_response(err_authentication(locale));
                 send_server_message_with_id(frame_writer, &response, received.message_id).await?;
                 return Err(io::Error::other(format!(
                     "Password verification error: {e}"
@@ -632,16 +533,7 @@ where
     };
 
     if !password_valid {
-        let response = ServerMessage::LoginResponse {
-            success: false,
-            error: Some(err_invalid_credentials(locale)),
-            session_id: None,
-            is_admin: None,
-            permissions: None,
-            server_info: None,
-            chat_info: None,
-            locale: None,
-        };
+        let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other("Invalid credentials"));
     }
@@ -653,16 +545,7 @@ where
         } else {
             err_account_disabled(locale, &username)
         };
-        let response = ServerMessage::LoginResponse {
-            success: false,
-            error: Some(error_msg),
-            session_id: None,
-            is_admin: None,
-            permissions: None,
-            server_info: None,
-            chat_info: None,
-            locale: None,
-        };
+        let response = login_error_response(error_msg);
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other("Account disabled"));
     }
@@ -719,9 +602,8 @@ where
         _ => {
             send_transfer_error(
                 frame_writer,
-                &err_expected_file_download(locale),
+                &err_message_not_supported(locale),
                 Some("protocol_error"),
-                "FileDownload",
             )
             .await?;
             Err(io::Error::other("Expected FileDownload message"))
@@ -729,35 +611,63 @@ where
     }
 }
 
-/// Send a transfer error response
-async fn send_transfer_error<W>(
+/// Create a LoginResponse error message (simplified for transfer port)
+fn login_error_response(error: String) -> ServerMessage {
+    ServerMessage::LoginResponse {
+        success: false,
+        error: Some(error),
+        session_id: None,
+        is_admin: None,
+        permissions: None,
+        server_info: None,
+        chat_info: None,
+        locale: None,
+    }
+}
+
+/// Send a transfer error response and close the connection
+///
+/// This is a convenience wrapper that sends the error, shuts down the writer,
+/// and returns `Ok(())` for early exit from the handler.
+async fn send_error_and_close<W>(
     frame_writer: &mut FrameWriter<W>,
     error: &str,
     error_kind: Option<&str>,
-    command: &str,
 ) -> io::Result<()>
 where
     W: AsyncWriteExt + Unpin,
 {
-    // For FileDownload errors, use FileDownloadResponse
-    if command == "FileDownload" {
-        let response = ServerMessage::FileDownloadResponse {
-            success: false,
-            error: Some(error.to_string()),
-            error_kind: error_kind.map(String::from),
-            size: None,
-            file_count: None,
-            transfer_id: None,
-        };
-        send_server_message_with_id(frame_writer, &response, MessageId::new()).await
-    } else {
-        // For other errors, use generic Error message
-        let response = ServerMessage::Error {
-            message: error.to_string(),
-            command: Some(command.to_string()),
-        };
-        send_server_message_with_id(frame_writer, &response, MessageId::new()).await
-    }
+    let response = ServerMessage::FileDownloadResponse {
+        success: false,
+        error: Some(error.to_string()),
+        error_kind: error_kind.map(String::from),
+        size: None,
+        file_count: None,
+        transfer_id: None,
+    };
+    let _ = send_server_message_with_id(frame_writer, &response, MessageId::new()).await;
+    let _ = frame_writer.get_mut().shutdown().await;
+    Ok(())
+}
+
+/// Send a transfer error response (without closing connection)
+async fn send_transfer_error<W>(
+    frame_writer: &mut FrameWriter<W>,
+    error: &str,
+    error_kind: Option<&str>,
+) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    let response = ServerMessage::FileDownloadResponse {
+        success: false,
+        error: Some(error.to_string()),
+        error_kind: error_kind.map(String::from),
+        size: None,
+        file_count: None,
+        transfer_id: None,
+    };
+    send_server_message_with_id(frame_writer, &response, MessageId::new()).await
 }
 
 /// Check if a path can be accessed for download (dropbox restrictions)
@@ -803,7 +713,7 @@ async fn scan_files_for_transfer(
         let file_name = resolved_path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("file");
+            .unwrap_or(DEFAULT_FILENAME);
 
         // Use just the filename for single file downloads
         files.push(FileInfo {
@@ -916,9 +826,8 @@ fn scan_directory_recursive<'a>(
                     .await?;
             } else if debug {
                 eprintln!(
-                    "  Skipping {} - neither file nor directory (is_symlink: {})",
-                    file_name,
-                    metadata.is_symlink()
+                    "  Skipping {} - special file (not a regular file or directory)",
+                    file_name
                 );
             }
         }

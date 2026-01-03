@@ -47,6 +47,7 @@ err-database = Database error
 
 # Message Format Errors
 err-invalid-message-format = Invalid message format
+err-message-not-supported = Message type not supported
 
 # User Management Errors
 err-cannot-delete-last-admin = Cannot delete the last admin
@@ -167,7 +168,6 @@ err-cannot-copy-into-itself = Cannot copy a directory into itself
 err-destination-not-directory = Destination path is not a directory
 
 # Transfer Errors
-err-expected-file-download = Expected FileDownload message
 err-file-area-not-configured = File area not configured
 err-file-area-not-accessible = File area not accessible
 err-transfer-path-too-long = Path is too long

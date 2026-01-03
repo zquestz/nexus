@@ -91,7 +91,7 @@ pub async fn create_test_context() -> TestContext {
     let (tx, rx) = mpsc::unbounded_channel();
 
     // Create a default message ID for tests (must be valid hex characters)
-    let message_id = MessageId::from_bytes(b"000000000000").unwrap();
+    let message_id = MessageId::from_bytes(b"000000000000").expect("valid hex test message ID");
 
     // Create connection tracker for tests (unlimited by default)
     let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));

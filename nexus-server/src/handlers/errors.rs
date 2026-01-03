@@ -288,6 +288,11 @@ pub fn err_invalid_message_format(locale: &str) -> String {
     t(locale, "err-invalid-message-format")
 }
 
+/// Get translated "message not supported" error
+pub fn err_message_not_supported(locale: &str) -> String {
+    t(locale, "err-message-not-supported")
+}
+
 /// Get translated "kicked by" message
 pub fn err_kicked_by(locale: &str, username: &str) -> String {
     t_args(locale, "err-kicked-by", &[("username", username)])
@@ -720,11 +725,6 @@ pub fn err_destination_not_directory(locale: &str) -> String {
 // =============================================================================
 // File Transfer Errors
 // =============================================================================
-
-/// Get translated "expected file download" error
-pub fn err_expected_file_download(locale: &str) -> String {
-    t(locale, "err-expected-file-download")
-}
 
 /// Get translated "file area not configured" error
 pub fn err_file_area_not_configured(locale: &str) -> String {

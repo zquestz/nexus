@@ -59,17 +59,28 @@ impl ChatDb {
             return Err(io::Error::other(format!("{e:?}")));
         }
 
+        // Use a transaction to ensure topic and set_by are updated atomically
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
         sqlx::query(SQL_SET_CHAT_STATE)
             .bind(CHAT_STATE_KEY_TOPIC)
             .bind(topic)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         sqlx::query(SQL_SET_CHAT_STATE)
             .bind(CHAT_STATE_KEY_TOPIC_SET_BY)
             .bind(set_by)
-            .execute(&self.pool)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        tx.commit()
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 

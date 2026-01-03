@@ -131,12 +131,12 @@ where
     // - Regular accounts: nickname == username, so all sessions receive it
     // - Shared accounts: unique nickname, so only that session receives it
     ctx.user_manager
-        .broadcast_to_nickname(&requesting_user_session.nickname, &broadcast, &ctx.db.users)
+        .broadcast_to_nickname(&requesting_user_session.nickname, &broadcast)
         .await;
 
     // Send to receiver's session(s) by nickname
     ctx.user_manager
-        .broadcast_to_nickname(&target_session.nickname, &broadcast, &ctx.db.users)
+        .broadcast_to_nickname(&target_session.nickname, &broadcast)
         .await;
 
     Ok(())

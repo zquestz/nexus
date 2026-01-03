@@ -48,6 +48,7 @@ err-database = Error de base de datos
 
 # Errores de formato de mensaje
 err-invalid-message-format = Formato de mensaje inválido
+err-message-not-supported = Tipo de mensaje no soportado
 
 # Errores de gestión de usuarios
 err-cannot-delete-last-admin = No se puede eliminar el último administrador
@@ -170,7 +171,6 @@ err-cannot-copy-into-itself = No se puede copiar un directorio dentro de sí mis
 err-destination-not-directory = La ruta de destino no es un directorio
 
 # Transfer Errors
-err-expected-file-download = Se esperaba un mensaje FileDownload
 err-file-area-not-configured = Área de archivos no configurada
 err-file-area-not-accessible = Área de archivos no accesible
 err-transfer-path-too-long = La ruta es demasiado larga

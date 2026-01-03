@@ -47,6 +47,7 @@ err-database = 데이터베이스 오류
 
 # 메시지 형식 오류
 err-invalid-message-format = 잘못된 메시지 형식
+err-message-not-supported = 지원되지 않는 메시지 유형
 
 # 사용자 관리 오류
 err-cannot-delete-last-admin = 마지막 관리자를 삭제할 수 없습니다
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = 폴더를 자기 자신 안으로 복사할 수 �
 err-destination-not-directory = 대상 경로가 디렉토리가 아닙니다
 
 # Transfer Errors
-err-expected-file-download = FileDownload 메시지가 필요합니다
 err-file-area-not-configured = 파일 영역이 구성되지 않았습니다
 err-file-area-not-accessible = 파일 영역에 접근할 수 없습니다
 err-transfer-path-too-long = 경로가 너무 깁니다

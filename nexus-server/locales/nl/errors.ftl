@@ -47,6 +47,7 @@ err-database = Databasefout
 
 # Berichtformaatfouten
 err-invalid-message-format = Ongeldig berichtformaat
+err-message-not-supported = Berichttype niet ondersteund
 
 # Gebruikersbeheersfouten
 err-cannot-delete-last-admin = Kan de laatste beheerder niet verwijderen
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = Kan een map niet naar zichzelf kopiëren
 err-destination-not-directory = Bestemmingspad is geen map
 
 # Transfer Errors
-err-expected-file-download = FileDownload-bericht verwacht
 err-file-area-not-configured = Bestandsgebied niet geconfigureerd
 err-file-area-not-accessible = Bestandsgebied niet toegankelijk
 err-transfer-path-too-long = Pad is te lang

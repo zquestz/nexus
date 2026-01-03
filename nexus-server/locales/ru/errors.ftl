@@ -47,6 +47,7 @@ err-database = Ошибка базы данных
 
 # Ошибки формата сообщения
 err-invalid-message-format = Неверный формат сообщения
+err-message-not-supported = Тип сообщения не поддерживается
 
 # Ошибки управления пользователями
 err-cannot-delete-last-admin = Невозможно удалить последнего администратора
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = Невозможно скопировать кат
 err-destination-not-directory = Путь назначения не является каталогом
 
 # Transfer Errors
-err-expected-file-download = Ожидалось сообщение FileDownload
 err-file-area-not-configured = Файловая область не настроена
 err-file-area-not-accessible = Файловая область недоступна
 err-transfer-path-too-long = Путь слишком длинный

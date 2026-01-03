@@ -60,9 +60,10 @@ cargo build --release
 ```
 
 Server options:
-- `--upnp` — Enable UPnP port forwarding
+- `--upnp` — Enable UPnP port forwarding (both ports)
 - `--bind ::` — Bind to IPv6 (required for Yggdrasil)
-- `--port 7500` — Change port (default: 7500)
+- `--port 7500` — Main BBS port (default: 7500)
+- `--transfer-port 7501` — File transfer port (default: 7501)
 
 ## Proxy Support
 

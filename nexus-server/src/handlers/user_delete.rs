@@ -153,7 +153,6 @@ where
                         session_id,
                         nickname: removed_user.nickname.clone(),
                     },
-                    &ctx.db.users,
                     Some(session_id), // Exclude the deleted user
                 )
                 .await;

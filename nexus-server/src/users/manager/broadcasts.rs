@@ -3,7 +3,7 @@
 use nexus_common::protocol::{ServerInfo, ServerMessage};
 
 use super::UserManager;
-use crate::db::{Permission, UserDb};
+use crate::db::Permission;
 
 /// Parameters for broadcasting server info updates
 pub struct ServerInfoBroadcastParams {
@@ -21,7 +21,7 @@ impl UserManager {
     ///
     /// Automatically removes users whose channels have closed and notifies other clients
     /// with user_list permission about the disconnection.
-    pub async fn broadcast(&self, message: ServerMessage, user_db: &UserDb) {
+    pub async fn broadcast(&self, message: ServerMessage) {
         let mut disconnected = Vec::new();
 
         {
@@ -33,7 +33,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast a message to all users with a specific feature and permission
@@ -46,7 +46,6 @@ impl UserManager {
         &self,
         feature: &str,
         message: ServerMessage,
-        user_db: &UserDb,
         required_permission: Permission,
     ) {
         let mut disconnected = Vec::new();
@@ -71,7 +70,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast a message to all sessions of a specific user (by username, case-insensitive)
@@ -80,12 +79,7 @@ impl UserManager {
     /// from multiple devices/connections and all sessions need to be notified.
     ///
     /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_to_username(
-        &self,
-        username: &str,
-        message: &ServerMessage,
-        user_db: &UserDb,
-    ) {
+    pub async fn broadcast_to_username(&self, username: &str, message: &ServerMessage) {
         let mut disconnected = Vec::new();
 
         let username_lower = username.to_lowercase();
@@ -101,7 +95,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast a message to all sessions with a specific nickname (case-insensitive)
@@ -111,12 +105,7 @@ impl UserManager {
     /// - Shared accounts: each session has a unique nickname, so only that session receives it
     ///
     /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_to_nickname(
-        &self,
-        nickname: &str,
-        message: &ServerMessage,
-        user_db: &UserDb,
-    ) {
+    pub async fn broadcast_to_nickname(&self, nickname: &str, message: &ServerMessage) {
         let mut disconnected = Vec::new();
 
         let nickname_lower = nickname.to_lowercase();
@@ -132,7 +121,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast a message to all users with a specific permission
@@ -144,7 +133,6 @@ impl UserManager {
     pub async fn broadcast_to_permission(
         &self,
         message: ServerMessage,
-        user_db: &UserDb,
         required_permission: Permission,
     ) {
         let mut disconnected = Vec::new();
@@ -164,7 +152,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast a user event (UserConnected/UserDisconnected) to users with user_list permission
@@ -178,7 +166,6 @@ impl UserManager {
     pub async fn broadcast_user_event(
         &self,
         message: ServerMessage,
-        user_db: &UserDb,
         exclude_session_id: Option<u32>,
     ) {
         let mut disconnected = Vec::new();
@@ -205,30 +192,39 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected, user_db).await;
+        self.remove_disconnected(disconnected).await;
     }
 
     /// Broadcast ServerInfoUpdated to all connected users
     ///
     /// All users receive the full server info including connection/transfer limits.
     /// This is called when server configuration is updated via ServerUpdate.
+    ///
+    /// Automatically removes users whose channels have closed (disconnected connections).
     pub async fn broadcast_server_info_updated(&self, params: ServerInfoBroadcastParams) {
-        let users = self.users.read().await;
-        for user in users.values() {
-            let server_info = ServerInfo {
-                name: Some(params.name.clone()),
-                description: Some(params.description.clone()),
-                version: Some(params.version.clone()),
-                max_connections_per_ip: Some(params.max_connections_per_ip),
-                max_transfers_per_ip: Some(params.max_transfers_per_ip),
-                image: Some(params.image.clone()),
-                transfer_port: Some(params.transfer_port),
-            };
+        let mut disconnected = Vec::new();
 
-            let message = ServerMessage::ServerInfoUpdated { server_info };
+        {
+            let users = self.users.read().await;
+            for user in users.values() {
+                let server_info = ServerInfo {
+                    name: Some(params.name.clone()),
+                    description: Some(params.description.clone()),
+                    version: Some(params.version.clone()),
+                    max_connections_per_ip: Some(params.max_connections_per_ip),
+                    max_transfers_per_ip: Some(params.max_transfers_per_ip),
+                    image: Some(params.image.clone()),
+                    transfer_port: Some(params.transfer_port),
+                };
 
-            // Ignore send errors - user will be cleaned up by their connection handler
-            let _ = user.tx.send((message, None));
+                let message = ServerMessage::ServerInfoUpdated { server_info };
+
+                if user.tx.send((message, None)).is_err() {
+                    disconnected.push(user.session_id);
+                }
+            }
         }
+
+        self.remove_disconnected(disconnected).await;
     }
 }

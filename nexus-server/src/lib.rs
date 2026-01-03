@@ -8,4 +8,6 @@ pub mod db;
 pub mod files;
 pub mod handlers;
 pub mod i18n;
+pub mod transfer;
+pub mod upnp;
 pub mod users;

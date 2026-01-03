@@ -189,7 +189,6 @@ where
     let server_version = env!("CARGO_PKG_VERSION").to_string();
 
     // Broadcast ServerInfoUpdated to all connected users
-    // Admins get max_connections_per_ip and max_transfers_per_ip, non-admins don't
     ctx.user_manager
         .broadcast_server_info_updated(ServerInfoBroadcastParams {
             name: current_name,

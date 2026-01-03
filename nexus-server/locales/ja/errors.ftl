@@ -47,6 +47,7 @@ err-database = データベースエラー
 
 # メッセージ形式のエラー
 err-invalid-message-format = 無効なメッセージ形式です
+err-message-not-supported = サポートされていないメッセージタイプです
 
 # ユーザー管理のエラー
 err-cannot-delete-last-admin = 最後の管理者を削除できません
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = フォルダを自分自身の中にコピーす�
 err-destination-not-directory = 宛先パスはディレクトリではありません
 
 # Transfer Errors
-err-expected-file-download = FileDownloadメッセージが必要です
 err-file-area-not-configured = ファイルエリアが設定されていません
 err-file-area-not-accessible = ファイルエリアにアクセスできません
 err-transfer-path-too-long = パスが長すぎます

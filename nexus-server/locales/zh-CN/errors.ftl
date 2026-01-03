@@ -47,6 +47,7 @@ err-database = 数据库错误
 
 # 消息格式错误
 err-invalid-message-format = 无效的消息格式
+err-message-not-supported = 不支持的消息类型
 
 # 用户管理错误
 err-cannot-delete-last-admin = 无法删除最后一个管理员
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = 无法将目录复制到其自身内部
 err-destination-not-directory = 目标路径不是目录
 
 # Transfer Errors
-err-expected-file-download = 需要 FileDownload 消息
 err-file-area-not-configured = 文件区域未配置
 err-file-area-not-accessible = 文件区域无法访问
 err-transfer-path-too-long = 路径太长

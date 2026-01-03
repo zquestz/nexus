@@ -25,6 +25,9 @@ pub const FOLDER_SUFFIX_DROPBOX: &str = " [NEXUS-DB]";
 /// Drop box folder suffix prefix for user-specific drop boxes (includes leading space)
 pub const FOLDER_SUFFIX_DROPBOX_PREFIX: &str = " [NEXUS-DB-";
 
+/// Default filename when path has no filename or non-UTF-8 filename
+pub const DEFAULT_FILENAME: &str = "file";
+
 // =============================================================================
 // Connection Limits
 // =============================================================================
@@ -40,13 +43,6 @@ pub const CONFIG_KEY_MAX_TRANSFERS_PER_IP: &str = "max_transfers_per_ip";
 
 /// Default maximum file transfer connections per IP address (matches migration default)
 pub const DEFAULT_MAX_TRANSFERS_PER_IP: usize = 3;
-
-// =============================================================================
-// File Transfer
-// =============================================================================
-
-/// Buffer size for SHA-256 hashing operations (8KB)
-pub const HASH_BUFFER_SIZE: usize = 8192;
 
 // =============================================================================
 // Database Validation Errors (defense-in-depth, operator-facing)

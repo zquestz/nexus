@@ -80,7 +80,6 @@ where
                 topic,
                 username: user.username.clone(),
             },
-            &ctx.db.users,
             Permission::ChatTopic,
         )
         .await;

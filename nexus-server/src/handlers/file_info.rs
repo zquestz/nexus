@@ -7,6 +7,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWrite;
 
+use nexus_common::HASH_BUFFER_SIZE;
 use nexus_common::protocol::{FileInfoDetails, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
@@ -89,7 +90,7 @@ fn count_directory_items(path: &Path) -> Option<u64> {
 fn compute_sha256(path: &Path) -> Option<String> {
     let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; HASH_BUFFER_SIZE];
 
     loop {
         let bytes_read = file.read(&mut buffer).ok()?;

@@ -57,20 +57,6 @@ impl ConnectionTracker {
         self.max_transfers_per_ip.store(limit, Ordering::Relaxed);
     }
 
-    /// Get the current main connection limit
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn max_connections_per_ip(&self) -> usize {
-        self.max_connections_per_ip.load(Ordering::Relaxed)
-    }
-
-    /// Get the current transfer connection limit
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn max_transfers_per_ip(&self) -> usize {
-        self.max_transfers_per_ip.load(Ordering::Relaxed)
-    }
-
     /// Try to acquire a main connection slot for the given IP
     ///
     /// Returns `Some(ConnectionGuard)` if the connection is allowed,
@@ -118,44 +104,6 @@ impl ConnectionTracker {
             ip,
             connections: self.transfer_connections.clone(),
         })
-    }
-
-    /// Get the current main connection count for an IP
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn connection_count(&self, ip: IpAddr) -> usize {
-        let connections = self.connections.lock().expect("connection tracker lock");
-        connections.get(&ip).copied().unwrap_or(0)
-    }
-
-    /// Get the current transfer connection count for an IP
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn transfer_count(&self, ip: IpAddr) -> usize {
-        let connections = self
-            .transfer_connections
-            .lock()
-            .expect("transfer tracker lock");
-        connections.get(&ip).copied().unwrap_or(0)
-    }
-
-    /// Get the total number of active main connections across all IPs
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn total_connections(&self) -> usize {
-        let connections = self.connections.lock().expect("connection tracker lock");
-        connections.values().sum()
-    }
-
-    /// Get the total number of active transfer connections across all IPs
-    #[must_use]
-    #[allow(dead_code)] // Used in tests
-    pub fn total_transfers(&self) -> usize {
-        let connections = self
-            .transfer_connections
-            .lock()
-            .expect("transfer tracker lock");
-        connections.values().sum()
     }
 }
 
@@ -207,6 +155,48 @@ impl Drop for TransferGuard {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+
+    impl ConnectionTracker {
+        /// Get the current main connection limit
+        fn max_connections_per_ip(&self) -> usize {
+            self.max_connections_per_ip.load(Ordering::Relaxed)
+        }
+
+        /// Get the current transfer connection limit
+        fn max_transfers_per_ip(&self) -> usize {
+            self.max_transfers_per_ip.load(Ordering::Relaxed)
+        }
+
+        /// Get the current main connection count for an IP
+        fn connection_count(&self, ip: IpAddr) -> usize {
+            let connections = self.connections.lock().expect("connection tracker lock");
+            connections.get(&ip).copied().unwrap_or(0)
+        }
+
+        /// Get the current transfer connection count for an IP
+        fn transfer_count(&self, ip: IpAddr) -> usize {
+            let connections = self
+                .transfer_connections
+                .lock()
+                .expect("transfer tracker lock");
+            connections.get(&ip).copied().unwrap_or(0)
+        }
+
+        /// Get the total number of active main connections across all IPs
+        fn total_connections(&self) -> usize {
+            let connections = self.connections.lock().expect("connection tracker lock");
+            connections.values().sum()
+        }
+
+        /// Get the total number of active transfer connections across all IPs
+        fn total_transfers(&self) -> usize {
+            let connections = self
+                .transfer_connections
+                .lock()
+                .expect("transfer tracker lock");
+            connections.values().sum()
+        }
+    }
 
     // =========================================================================
     // Main connection tests

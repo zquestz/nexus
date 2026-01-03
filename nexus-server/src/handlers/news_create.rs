@@ -161,7 +161,7 @@ where
         id: news.id,
     };
     ctx.user_manager
-        .broadcast_to_feature(FEATURE_NEWS, broadcast, &ctx.db.users, Permission::NewsList)
+        .broadcast_to_feature(FEATURE_NEWS, broadcast, Permission::NewsList)
         .await;
 
     Ok(())

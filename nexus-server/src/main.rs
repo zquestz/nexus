@@ -12,21 +12,23 @@ mod transfer;
 mod upnp;
 mod users;
 
-use args::Args;
-use clap::Parser;
-use connection::ConnectionParams;
-use connection_tracker::ConnectionTracker;
-use constants::*;
-use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::BufReader;
+use std::io::{self, BufReader};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+
+use clap::Parser;
+use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
+
+use args::Args;
+use connection::ConnectionParams;
+use connection_tracker::ConnectionTracker;
+use constants::*;
 use transfer::TransferParams;
 use users::UserManager;
 
@@ -118,22 +120,7 @@ async fn main() {
                             if let Err(e) =
                                 connection::handle_connection(socket, tls_acceptor, params).await
                             {
-                                let error_msg = e.to_string();
-
-                                // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
-                                if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
-                                    return;
-                                }
-
-                                // TLS handshake failures are debug-only (scanners, incompatible clients)
-                                if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
-                                    if debug {
-                                        eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
-                                    }
-                                    return;
-                                }
-
-                                eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                                log_connection_error(&e, peer_addr, debug);
                             }
                         });
                     }
@@ -168,30 +155,13 @@ async fn main() {
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
-                        // Spawn a new task to handle this transfer connection
                         tokio::spawn(async move {
-                            // Hold guard until connection ends to track active connections
                             let _guard = transfer_guard;
                             if let Err(e) =
                                 transfer::handle_transfer_connection(socket, tls_acceptor, params)
                                     .await
                             {
-                                let error_msg = e.to_string();
-
-                                // Filter out benign TLS close_notify warnings
-                                if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
-                                    return;
-                                }
-
-                                // TLS handshake failures are debug-only
-                                if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
-                                    if debug {
-                                        eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
-                                    }
-                                    return;
-                                }
-
-                                eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, e);
+                                log_connection_error(&e, peer_addr, debug);
                             }
                         });
                     }
@@ -443,7 +413,7 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
     let fingerprint_str = hex_str
         .as_bytes()
         .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .map(|chunk| std::str::from_utf8(chunk).expect("hex encoding produces valid ASCII"))
         .collect::<Vec<_>>()
         .join(":");
 
@@ -484,6 +454,30 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf 
     println!("{}{}", MSG_FILE_ROOT, canonical_root.display());
 
     canonical_root
+}
+
+/// Log connection errors, filtering out benign TLS warnings
+///
+/// Filters out:
+/// - TLS close_notify warnings (clients disconnecting abruptly)
+/// - TLS handshake failures (only logged in debug mode)
+fn log_connection_error(error: &io::Error, peer_addr: SocketAddr, debug: bool) {
+    let error_msg = error.to_string();
+
+    // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
+    if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
+        return;
+    }
+
+    // TLS handshake failures are debug-only (scanners, incompatible clients)
+    if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
+        if debug {
+            eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, error);
+        }
+        return;
+    }
+
+    eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, error);
 }
 
 /// Setup graceful shutdown signal handling (Ctrl+C)

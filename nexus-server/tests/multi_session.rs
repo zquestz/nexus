@@ -72,7 +72,6 @@ async fn test_multi_session_partial_disconnect() {
                 session_id: session_id2,
                 nickname: "alice".to_string(),
             },
-            &db.users,
             Some(session_id2), // Exclude disconnected session
         )
         .await;
@@ -206,7 +205,6 @@ async fn test_broadcast_respects_user_list_permission() {
                     avatar: None,
                 },
             },
-            &db.users,
             None, // Don't exclude anyone
         )
         .await;
@@ -290,7 +288,6 @@ async fn test_broadcast_excludes_specified_session() {
                     avatar: None,
                 },
             },
-            &db.users,
             Some(session_id1), // Exclude session 1
         )
         .await;
@@ -377,7 +374,6 @@ async fn test_broadcast_detects_closed_channels() {
                 is_shared: false,
                 message: "test".to_string(),
             },
-            &db.users,
             Permission::ChatReceive,
         )
         .await;

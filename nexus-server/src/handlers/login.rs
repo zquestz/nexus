@@ -448,7 +448,6 @@ where
     ctx.user_manager
         .broadcast_user_event(
             ServerMessage::UserConnected { user: user_info },
-            &ctx.db.users,
             Some(id), // Don't send to the connecting user
         )
         .await;

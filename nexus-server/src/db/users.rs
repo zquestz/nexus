@@ -63,13 +63,6 @@ impl UserDb {
         Self { pool }
     }
 
-    /// Get a reference to the connection pool (for testing)
-    #[cfg(test)]
-    #[allow(dead_code)] // Used in bin tests
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
-    }
-
     // ========================================================================
     // Query Methods - User Lookup
     // ========================================================================
@@ -136,6 +129,12 @@ impl UserDb {
     ///
     /// Used to check if a shared account nickname collides with an existing username.
     pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
+        // Validate username format (failsafe - handlers should also validate)
+        // If this fails, it indicates a bug or attack bypassing handler validation
+        if let Err(e) = validators::validate_username(username) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
         let (count,): (i64,) = sqlx::query_as(SQL_CHECK_USERNAME_EXISTS)
             .bind(username)
             .fetch_one(&self.pool)
@@ -225,22 +224,19 @@ impl UserDb {
         Ok(count.0 > 0)
     }
 
-    /// Set permissions for a user (replaces all existing permissions)
+    /// Set permissions within an existing transaction
     ///
-    /// This operation is atomic - uses a transaction to ensure either all permissions
-    /// are updated or none are (prevents partial permission states on errors).
-    pub async fn set_permissions(
-        &self,
+    /// Deletes all existing permissions and inserts the new ones.
+    /// The caller is responsible for committing or rolling back the transaction.
+    async fn set_permissions_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         user_id: i64,
         permissions: &Permissions,
     ) -> Result<(), sqlx::Error> {
-        // Use a transaction to make this atomic
-        let mut tx = self.pool.begin().await?;
-
         // Delete existing permissions
         sqlx::query(SQL_DELETE_PERMISSIONS)
             .bind(user_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
 
         // Insert new permissions
@@ -248,12 +244,9 @@ impl UserDb {
             sqlx::query(SQL_INSERT_PERMISSION)
                 .bind(user_id)
                 .bind(perm.as_str())
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
         }
-
-        // Commit the transaction
-        tx.commit().await?;
 
         Ok(())
     }
@@ -280,6 +273,9 @@ impl UserDb {
 
         let created_at = chrono::Utc::now().timestamp();
 
+        // Use a transaction to ensure user and permissions are created atomically
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(SQL_INSERT_USER)
             .bind(username)
             .bind(hashed_password)
@@ -287,7 +283,7 @@ impl UserDb {
             .bind(is_shared)
             .bind(enabled)
             .bind(created_at)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         let user_id = result.last_insert_rowid();
@@ -295,8 +291,10 @@ impl UserDb {
         // Only set permissions for non-admin users
         // Admins automatically get all permissions via has_permission()
         if !is_admin {
-            self.set_permissions(user_id, permissions).await?;
+            Self::set_permissions_in_tx(&mut tx, user_id, permissions).await?;
         }
+
+        tx.commit().await?;
 
         Ok(UserAccount {
             id: user_id,
@@ -469,6 +467,9 @@ impl UserDb {
         let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
         let final_enabled = requested_enabled.unwrap_or(user.enabled);
 
+        // Use a transaction to ensure user update and permissions are atomic
+        let mut tx = self.pool.begin().await?;
+
         // Execute update with atomic last-admin protection
         // The SQL includes conditions to prevent:
         // 1. Disabling the last enabled admin
@@ -481,13 +482,14 @@ impl UserDb {
             .bind(user.id)
             .bind(final_enabled) // Final enabled status for the "enabling" check
             .bind(final_is_admin) // Final admin status for the "promoting" check
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         // Check if the update was blocked (0 rows affected means constraints prevented update)
         if result.rows_affected() == 0 {
             // Update was blocked - could be last admin protection or user not found
-            // Check if user still exists to distinguish between the cases
+            // Rollback and check if user still exists to distinguish between the cases
+            tx.rollback().await?;
             if self.get_user_by_username(username).await?.is_some() {
                 // User exists but update was blocked - must be last admin protection
                 return Ok(false);
@@ -500,15 +502,17 @@ impl UserDb {
         if let Some(perms) = requested_permissions {
             // Only set permissions for non-admin users
             if !final_is_admin {
-                self.set_permissions(user.id, perms).await?;
+                Self::set_permissions_in_tx(&mut tx, user.id, perms).await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
                 sqlx::query(SQL_DELETE_PERMISSIONS)
                     .bind(user.id)
-                    .execute(&self.pool)
+                    .execute(&mut *tx)
                     .await?;
             }
         }
+
+        tx.commit().await?;
 
         Ok(true)
     }
@@ -774,7 +778,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_permissions_replaces_existing() {
+    async fn test_update_user_permissions_replaces_existing() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
@@ -788,10 +792,13 @@ mod tests {
             set
         };
 
-        let user = db
+        let _user = db
             .create_user("alice", "hash", false, false, true, &initial_perms)
             .await
             .unwrap();
+
+        // Get user to verify initial permissions
+        let user = db.get_user_by_username("alice").await.unwrap().unwrap();
 
         // Verify initial permissions
         assert!(
@@ -805,7 +812,7 @@ mod tests {
                 .unwrap()
         );
 
-        // Set new permissions (should replace, not merge)
+        // Update user with new permissions (should replace, not merge)
         let mut new_perms = Permissions::new();
         new_perms.permissions = {
             let mut set = HashSet::new();
@@ -813,7 +820,11 @@ mod tests {
             set
         };
 
-        db.set_permissions(user.id, &new_perms).await.unwrap();
+        let updated = db
+            .update_user("alice", None, None, None, None, Some(&new_perms))
+            .await
+            .unwrap();
+        assert!(updated);
 
         // Should have new permission
         assert!(
@@ -1053,8 +1064,8 @@ mod tests {
         };
 
         let (result1, result2) = tokio::join!(
-            db1.set_permissions(user.id, &perms1),
-            db2.set_permissions(user.id, &perms2)
+            db1.update_user("bob", None, None, None, None, Some(&perms1)),
+            db2.update_user("bob", None, None, None, None, Some(&perms2))
         );
 
         // Both operations should succeed

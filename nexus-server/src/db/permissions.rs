@@ -93,15 +93,15 @@ impl Permission {
             "news_create" => Some(Permission::NewsCreate),
             "news_edit" => Some(Permission::NewsEdit),
             "news_delete" => Some(Permission::NewsDelete),
-            "file_list" => Some(Permission::FileList),
-            "file_root" => Some(Permission::FileRoot),
-            "file_create_dir" => Some(Permission::FileCreateDir),
             "file_copy" => Some(Permission::FileCopy),
+            "file_create_dir" => Some(Permission::FileCreateDir),
             "file_delete" => Some(Permission::FileDelete),
             "file_download" => Some(Permission::FileDownload),
             "file_info" => Some(Permission::FileInfo),
+            "file_list" => Some(Permission::FileList),
             "file_move" => Some(Permission::FileMove),
             "file_rename" => Some(Permission::FileRename),
+            "file_root" => Some(Permission::FileRoot),
             _ => None,
         }
     }
@@ -156,7 +156,7 @@ impl Permissions {
     /// # Note
     ///
     /// This method is primarily used in tests to build permission sets.
-    /// Production code typically uses `set_permissions()` from the database layer.
+    /// Production code typically uses `update_user()` from the database layer.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn add(&mut self, permission: Permission) {
         self.permissions.insert(permission);

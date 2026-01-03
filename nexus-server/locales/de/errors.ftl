@@ -47,6 +47,7 @@ err-database = Datenbankfehler
 
 # Nachrichtenformatfehler
 err-invalid-message-format = Ungültiges Nachrichtenformat
+err-message-not-supported = Nachrichtentyp wird nicht unterstützt
 
 # Benutzerverwaltungsfehler
 err-cannot-delete-last-admin = Der letzte Administrator kann nicht gelöscht werden
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = Ein Verzeichnis kann nicht in sich selbst kopiert 
 err-destination-not-directory = Zielpfad ist kein Verzeichnis
 
 # Transfer Errors
-err-expected-file-download = FileDownload-Nachricht erwartet
 err-file-area-not-configured = Dateibereich nicht konfiguriert
 err-file-area-not-accessible = Dateibereich nicht zugänglich
 err-transfer-path-too-long = Pfad ist zu lang

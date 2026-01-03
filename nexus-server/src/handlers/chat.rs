@@ -85,7 +85,6 @@ where
                 is_shared: user.is_shared,
                 message,
             },
-            &ctx.db.users,
             Permission::ChatReceive,
         )
         .await;

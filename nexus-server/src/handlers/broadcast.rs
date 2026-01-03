@@ -72,14 +72,11 @@ where
 
     // Send broadcast to all users
     ctx.user_manager
-        .broadcast(
-            ServerMessage::ServerBroadcast {
-                session_id: id,
-                username: user.username.clone(),
-                message,
-            },
-            &ctx.db.users,
-        )
+        .broadcast(ServerMessage::ServerBroadcast {
+            session_id: id,
+            username: user.username.clone(),
+            message,
+        })
         .await;
 
     // Send success response to the sender

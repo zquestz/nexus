@@ -47,6 +47,7 @@ err-database = 資料庫錯誤
 
 # 訊息格式錯誤
 err-invalid-message-format = 無效的訊息格式
+err-message-not-supported = 不支援的訊息類型
 
 # 使用者管理錯誤
 err-cannot-delete-last-admin = 無法刪除最後一個管理員
@@ -169,7 +170,6 @@ err-cannot-copy-into-itself = 無法將目錄複製到其自身內部
 err-destination-not-directory = 目標路徑不是目錄
 
 # Transfer Errors
-err-expected-file-download = 預期收到 FileDownload 訊息
 err-file-area-not-configured = 檔案區域未設定
 err-file-area-not-accessible = 檔案區域無法存取
 err-transfer-path-too-long = 路徑太長

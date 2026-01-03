@@ -17,7 +17,9 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
-use crate::handlers::{self, HandlerContext, err_invalid_message_format};
+use crate::handlers::{
+    self, HandlerContext, err_invalid_message_format, err_message_not_supported,
+};
 use crate::users::UserManager;
 
 /// Parameters for handling a connection
@@ -191,7 +193,6 @@ where
                     session_id: id,
                     nickname: user.nickname.clone(),
                 },
-                &db.users,
                 Some(id), // Exclude the disconnecting user
             )
             .await;
@@ -405,6 +406,9 @@ where
                 "Transfer message received on main port from {}",
                 ctx.peer_addr
             );
+            return ctx
+                .send_error_and_disconnect(&err_message_not_supported(ctx.locale), None)
+                .await;
         }
     }
 

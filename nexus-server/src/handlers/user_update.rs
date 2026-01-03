@@ -546,11 +546,7 @@ where
 
                         // Send to all sessions belonging to the updated user
                         ctx.user_manager
-                            .broadcast_to_username(
-                                &updated_account.username,
-                                &permissions_update,
-                                &ctx.db.users,
-                            )
+                            .broadcast_to_username(&updated_account.username, &permissions_update)
                             .await;
                     }
                 }
@@ -602,7 +598,6 @@ where
                                         session_id,
                                         nickname: removed_user.nickname.clone(),
                                     },
-                                    &ctx.db.users,
                                     Some(session_id), // Exclude the disabled user
                                 )
                                 .await;
@@ -692,7 +687,7 @@ where
                         user: user_info,
                     };
                     ctx.user_manager
-                        .broadcast_to_permission(user_updated, &ctx.db.users, Permission::UserList)
+                        .broadcast_to_permission(user_updated, Permission::UserList)
                         .await;
                 }
             }
@@ -2071,7 +2066,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .set_permissions(admin2.id, &perms)
+            .update_user("admin2", None, None, None, None, Some(&perms))
             .await
             .unwrap();
 

@@ -20,6 +20,9 @@ pub const DEFAULT_PORT: u16 = 7500;
 /// Default port for file transfers
 pub const DEFAULT_TRANSFER_PORT: u16 = 7501;
 
+/// Buffer size for SHA-256 hashing operations (64KB)
+pub const HASH_BUFFER_SIZE: usize = 65536;
+
 /// Default port as a string for form fields and display.
 ///
 /// This is the string representation of [`DEFAULT_PORT`], provided as a constant

@@ -7,17 +7,17 @@ use tokio::io::AsyncWrite;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
 
-use crate::constants::DEFAULT_LOCALE;
-
-#[cfg(test)]
-use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_database, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
+use crate::constants::DEFAULT_LOCALE;
+use crate::db::Permission;
+
+#[cfg(test)]
+use super::testing::DEFAULT_TEST_LOCALE;
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
-use crate::db::Permission;
 
 /// Handle a userinfo request from the client
 pub async fn handle_user_info<W>(
@@ -107,7 +107,11 @@ where
 
     // Aggregate session data
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
-    let earliest_login = target_sessions.iter().map(|s| s.login_time).min().unwrap();
+    let earliest_login = target_sessions
+        .iter()
+        .map(|s| s.login_time)
+        .min()
+        .expect("target_sessions is non-empty");
     let locale = target_sessions
         .first()
         .map(|s| s.locale.clone())
