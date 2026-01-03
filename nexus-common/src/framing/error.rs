@@ -3,9 +3,7 @@
 use std::fmt;
 use std::io;
 
-use super::{
-    MAX_PAYLOAD_LENGTH, MAX_PAYLOAD_LENGTH_DIGITS, MAX_TYPE_LENGTH, MAX_TYPE_LENGTH_DIGITS,
-};
+use super::{MAX_PAYLOAD_LENGTH_DIGITS, MAX_TYPE_LENGTH, MAX_TYPE_LENGTH_DIGITS};
 
 /// Errors that can occur when parsing or writing frames
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,10 +20,8 @@ pub enum FrameError {
     TypeLengthTooManyDigits,
     /// Invalid payload length field (not a valid number)
     InvalidPayloadLength,
-    /// Payload length field has too many digits (max 10)
+    /// Payload length field has too many digits (max 20)
     PayloadLengthTooManyDigits,
-    /// Payload length exceeds sanity maximum
-    PayloadLengthTooLarge,
     /// Payload length exceeds per-type maximum
     PayloadLengthExceedsTypeMax {
         message_type: String,
@@ -74,9 +70,6 @@ impl fmt::Display for FrameError {
                     "payload length field exceeds {MAX_PAYLOAD_LENGTH_DIGITS} digits"
                 )
             }
-            FrameError::PayloadLengthTooLarge => {
-                write!(f, "payload length exceeds maximum of {MAX_PAYLOAD_LENGTH}")
-            }
             FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
                 length,
@@ -118,66 +111,72 @@ mod tests {
     #[test]
     fn test_frame_error_display() {
         // Test all error variants have sensible display messages
-        let cases: Vec<(FrameError, &str)> = vec![
-            (
-                FrameError::InvalidMagic,
-                "invalid magic bytes, expected 'NX|'",
-            ),
-            (
-                FrameError::InvalidMessageId,
-                "invalid message ID, expected 12 hex characters",
-            ),
-            (FrameError::InvalidTypeLength, "invalid type length field"),
-            (
-                FrameError::TypeLengthOutOfRange,
-                "type length must be between 1 and 999",
-            ),
-            (
-                FrameError::TypeLengthTooManyDigits,
-                "type length field exceeds 3 digits",
-            ),
-            (
-                FrameError::InvalidPayloadLength,
-                "invalid payload length field",
-            ),
-            (
-                FrameError::PayloadLengthTooManyDigits,
-                "payload length field exceeds 10 digits",
-            ),
-            (
-                FrameError::PayloadLengthTooLarge,
-                "payload length exceeds maximum of 9999999999",
-            ),
-            (
-                FrameError::PayloadLengthExceedsTypeMax {
-                    message_type: "ChatSend".to_string(),
-                    length: 5000,
-                    max: 2048,
-                },
-                "payload length 5000 exceeds maximum 2048 for message type 'ChatSend'",
-            ),
-            (FrameError::MissingDelimiter, "missing delimiter '|'"),
-            (FrameError::MissingTerminator, "missing terminator '\\n'"),
-            (
-                FrameError::UnknownMessageType("FakeType".to_string()),
-                "unknown message type: 'FakeType'",
-            ),
-            (
-                FrameError::InvalidJson("expected value".to_string()),
-                "invalid JSON payload: expected value",
-            ),
-            (
-                FrameError::Io("connection reset".to_string()),
-                "I/O error: connection reset",
-            ),
-            (FrameError::ConnectionClosed, "connection closed"),
-            (FrameError::FrameTimeout, "frame read timeout"),
-            (FrameError::IdleTimeout, "idle timeout"),
-        ];
-
-        for (error, expected) in cases {
-            assert_eq!(error.to_string(), expected, "Failed for {:?}", error);
-        }
+        assert_eq!(
+            FrameError::InvalidMagic.to_string(),
+            "invalid magic bytes, expected 'NX|'"
+        );
+        assert_eq!(
+            FrameError::InvalidMessageId.to_string(),
+            "invalid message ID, expected 12 hex characters"
+        );
+        assert_eq!(
+            FrameError::InvalidTypeLength.to_string(),
+            "invalid type length field"
+        );
+        assert_eq!(
+            FrameError::TypeLengthOutOfRange.to_string(),
+            "type length must be between 1 and 999"
+        );
+        assert_eq!(
+            FrameError::TypeLengthTooManyDigits.to_string(),
+            "type length field exceeds 3 digits"
+        );
+        assert_eq!(
+            FrameError::InvalidPayloadLength.to_string(),
+            "invalid payload length field"
+        );
+        assert_eq!(
+            FrameError::PayloadLengthTooManyDigits.to_string(),
+            format!(
+                "payload length field exceeds {} digits",
+                MAX_PAYLOAD_LENGTH_DIGITS
+            )
+        );
+        assert_eq!(
+            FrameError::PayloadLengthExceedsTypeMax {
+                message_type: "ChatSend".to_string(),
+                length: 5000,
+                max: 2048,
+            }
+            .to_string(),
+            "payload length 5000 exceeds maximum 2048 for message type 'ChatSend'"
+        );
+        assert_eq!(
+            FrameError::MissingDelimiter.to_string(),
+            "missing delimiter '|'"
+        );
+        assert_eq!(
+            FrameError::MissingTerminator.to_string(),
+            "missing terminator '\\n'"
+        );
+        assert_eq!(
+            FrameError::UnknownMessageType("FakeType".to_string()).to_string(),
+            "unknown message type: 'FakeType'"
+        );
+        assert_eq!(
+            FrameError::InvalidJson("expected value".to_string()).to_string(),
+            "invalid JSON payload: expected value"
+        );
+        assert_eq!(
+            FrameError::Io("connection reset".to_string()).to_string(),
+            "I/O error: connection reset"
+        );
+        assert_eq!(
+            FrameError::ConnectionClosed.to_string(),
+            "connection closed"
+        );
+        assert_eq!(FrameError::FrameTimeout.to_string(), "frame read timeout");
+        assert_eq!(FrameError::IdleTimeout.to_string(), "idle timeout");
     }
 
     #[test]

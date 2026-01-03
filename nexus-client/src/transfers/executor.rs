@@ -24,7 +24,7 @@ use tokio_socks::tcp::Socks5Stream;
 use uuid::Uuid;
 
 use nexus_common::PROTOCOL_VERSION;
-use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::framing::{FrameError, FrameHeader, FrameReader, FrameWriter};
 use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
@@ -401,33 +401,21 @@ pub async fn execute_transfer(
 
             // Calculate bytes to receive
             let bytes_to_receive = file_size - local_size;
-            let mut bytes_received: u64 = 0;
 
-            // Receive FileData frames
-            while bytes_received < bytes_to_receive {
-                // Check for cancellation during data transfer
-                if is_cancelled(&cancel_flag) {
-                    // Flush what we have so far
-                    file.flush().await.ok();
-                    let _ = event_tx.send(TransferEvent::Paused { id });
-                    return Ok(());
+            // Read the FileData frame header first (without loading payload into memory)
+            let header = match timeout(IDLE_TIMEOUT, reader.read_frame_header()).await {
+                Ok(Ok(Some(h))) => h,
+                Ok(Ok(None)) => {
+                    eprintln!("Connection closed while waiting for FileData");
+                    let _ = event_tx.send(TransferEvent::Failed {
+                        id,
+                        error: t("transfer-error-connection"),
+                        error_kind: Some(TransferError::ConnectionError),
+                    });
+                    return Err(TransferError::ConnectionError);
                 }
-
-                let frame = read_raw_frame_with_progress_timeout(&mut reader).await?;
-
-                if frame.message_type != "FileData" {
-                    // Check if it's an error
-                    if frame.message_type == "TransferComplete" || frame.message_type == "Error" {
-                        eprintln!("Received {} during file transfer", frame.message_type);
-                        let _ = event_tx.send(TransferEvent::Failed {
-                            id,
-                            error: t("transfer-error-connection"),
-                            error_kind: Some(TransferError::ConnectionError),
-                        });
-                        return Err(TransferError::ConnectionError);
-                    }
-
-                    eprintln!("Expected FileData, got: {}", frame.message_type);
+                Ok(Err(e)) => {
+                    eprintln!("Error reading FileData header: {e}");
                     let _ = event_tx.send(TransferEvent::Failed {
                         id,
                         error: t("transfer-error-protocol"),
@@ -435,23 +423,96 @@ pub async fn execute_transfer(
                     });
                     return Err(TransferError::ProtocolError);
                 }
+                Err(_) => {
+                    eprintln!("Timeout waiting for FileData");
+                    let _ = event_tx.send(TransferEvent::Failed {
+                        id,
+                        error: t("transfer-error-connection"),
+                        error_kind: Some(TransferError::ConnectionError),
+                    });
+                    return Err(TransferError::ConnectionError);
+                }
+            };
 
-                // Write data to file
-                file.write_all(&frame.payload).await.map_err(|e| {
-                    eprintln!("Failed to write to file: {e}");
-                    TransferError::IoError
-                })?;
-
-                bytes_received += frame.payload.len() as u64;
-                transferred_bytes += frame.payload.len() as u64;
-
-                // Send progress update (once per file frame received)
-                let _ = event_tx.send(TransferEvent::Progress {
+            if header.message_type != "FileData" {
+                eprintln!("Expected FileData, got: {}", header.message_type);
+                let _ = event_tx.send(TransferEvent::Failed {
                     id,
-                    transferred_bytes,
-                    files_completed,
-                    current_file: Some(file_path.clone()),
+                    error: t("transfer-error-protocol"),
+                    error_kind: Some(TransferError::ProtocolError),
                 });
+                return Err(TransferError::ProtocolError);
+            }
+
+            if header.payload_length != bytes_to_receive {
+                eprintln!(
+                    "FileData size mismatch: expected {}, got {}",
+                    bytes_to_receive, header.payload_length
+                );
+                let _ = event_tx.send(TransferEvent::Failed {
+                    id,
+                    error: t("transfer-error-protocol"),
+                    error_kind: Some(TransferError::ProtocolError),
+                });
+                return Err(TransferError::ProtocolError);
+            }
+
+            // Stream FileData payload directly to file with progress-based timeout
+            // and cancellation support
+            let stream_result = stream_payload_to_file_with_progress(
+                &mut reader,
+                &header,
+                &mut file,
+                PROGRESS_TIMEOUT,
+                &cancel_flag,
+                |bytes_written| {
+                    // Send progress update
+                    let _ = event_tx.send(TransferEvent::Progress {
+                        id,
+                        transferred_bytes: transferred_bytes + bytes_written,
+                        files_completed,
+                        current_file: Some(file_path.clone()),
+                    });
+                },
+            )
+            .await;
+
+            match stream_result {
+                Ok(bytes_written) => {
+                    transferred_bytes += bytes_written;
+                }
+                Err(StreamError::Cancelled) => {
+                    file.flush().await.ok();
+                    let _ = event_tx.send(TransferEvent::Paused { id });
+                    return Ok(());
+                }
+                Err(StreamError::Frame(FrameError::FrameTimeout)) => {
+                    eprintln!("Timeout during file transfer (no progress for 60s)");
+                    let _ = event_tx.send(TransferEvent::Failed {
+                        id,
+                        error: t("transfer-error-connection"),
+                        error_kind: Some(TransferError::ConnectionError),
+                    });
+                    return Err(TransferError::ConnectionError);
+                }
+                Err(StreamError::Frame(e)) => {
+                    eprintln!("Error streaming file data: {e}");
+                    let _ = event_tx.send(TransferEvent::Failed {
+                        id,
+                        error: t("transfer-error-io"),
+                        error_kind: Some(TransferError::IoError),
+                    });
+                    return Err(TransferError::IoError);
+                }
+                Err(StreamError::Io(e)) => {
+                    eprintln!("IO error writing file: {e}");
+                    let _ = event_tx.send(TransferEvent::Failed {
+                        id,
+                        error: t("transfer-error-io"),
+                        error_kind: Some(TransferError::IoError),
+                    });
+                    return Err(TransferError::IoError);
+                }
             }
 
             // Flush and close file
@@ -708,26 +769,102 @@ where
     }
 }
 
-/// Read a raw frame with progress-based timeout (for FileData)
+/// Error type for streaming operations
+enum StreamError {
+    /// Transfer was cancelled by user
+    Cancelled,
+    /// Frame/protocol error
+    Frame(FrameError),
+    /// IO error writing to file
+    Io(std::io::Error),
+}
+
+/// Stream FileData payload directly to a file with progress-based timeout and cancellation
 ///
-/// Uses FrameReader::read_frame() which returns a RawFrame containing
-/// the raw payload bytes (not parsed as JSON).
-async fn read_raw_frame_with_progress_timeout<R>(
+/// This function streams the payload bytes directly to the file without loading
+/// the entire payload into memory. The timeout resets each time bytes are received.
+/// Cancellation is checked between each chunk read.
+///
+/// The progress callback is called periodically with the total bytes written so far.
+async fn stream_payload_to_file_with_progress<R, F>(
     reader: &mut FrameReader<R>,
-) -> Result<nexus_common::framing::RawFrame, TransferError>
+    header: &FrameHeader,
+    file: &mut File,
+    progress_timeout: Duration,
+    cancel_flag: &Option<Arc<AtomicBool>>,
+    mut on_progress: F,
+) -> Result<u64, StreamError>
 where
     R: tokio::io::AsyncBufRead + Unpin,
+    F: FnMut(u64),
 {
-    // For now, use simple timeout. A more sophisticated implementation would
-    // track bytes received and reset timeout on each chunk.
-    let result = timeout(PROGRESS_TIMEOUT, reader.read_frame()).await;
+    let mut remaining = header.payload_length;
+    let mut total_written: u64 = 0;
+    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut last_progress_update = 0u64;
 
-    match result {
-        Ok(Ok(Some(frame))) => Ok(frame),
-        Ok(Ok(None)) => Err(TransferError::ConnectionError),
-        Ok(Err(_)) => Err(TransferError::ProtocolError),
-        Err(_) => Err(TransferError::ConnectionError),
+    while remaining > 0 {
+        // Check for cancellation before each read
+        if is_cancelled(cancel_flag) {
+            return Err(StreamError::Cancelled);
+        }
+
+        let to_read = (remaining as usize).min(buffer.len());
+
+        // Read with progress timeout - resets on each successful read
+        let bytes_read = match timeout(
+            progress_timeout,
+            reader.get_mut().read(&mut buffer[..to_read]),
+        )
+        .await
+        {
+            Ok(Ok(0)) => return Err(StreamError::Frame(FrameError::ConnectionClosed)),
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(StreamError::Frame(FrameError::Io(e.to_string()))),
+            Err(_) => return Err(StreamError::Frame(FrameError::FrameTimeout)),
+        };
+
+        // Write to file
+        file.write_all(&buffer[..bytes_read])
+            .await
+            .map_err(StreamError::Io)?;
+
+        remaining -= bytes_read as u64;
+        total_written += bytes_read as u64;
+
+        // Send progress updates every 64KB or so
+        if total_written - last_progress_update >= BUFFER_SIZE as u64 {
+            on_progress(total_written);
+            last_progress_update = total_written;
+        }
     }
+
+    // Final progress update
+    if total_written != last_progress_update {
+        on_progress(total_written);
+    }
+
+    // Flush the file
+    file.flush().await.map_err(StreamError::Io)?;
+
+    // Read terminator byte
+    let mut terminator = [0u8; 1];
+    match timeout(
+        progress_timeout,
+        reader.get_mut().read_exact(&mut terminator),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return Err(StreamError::Frame(FrameError::Io(e.to_string()))),
+        Err(_) => return Err(StreamError::Frame(FrameError::FrameTimeout)),
+    }
+
+    if terminator[0] != b'\n' {
+        return Err(StreamError::Frame(FrameError::MissingTerminator));
+    }
+
+    Ok(total_written)
 }
 
 // =============================================================================

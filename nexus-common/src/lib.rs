@@ -155,6 +155,12 @@ mod tests {
     }
 
     #[test]
+    fn test_default_transfer_port() {
+        // Verify default transfer port is the expected value
+        assert_eq!(DEFAULT_TRANSFER_PORT, 7501);
+    }
+
+    #[test]
     fn test_default_port_str_matches() {
         // Verify DEFAULT_PORT_STR matches DEFAULT_PORT
         assert_eq!(DEFAULT_PORT_STR, DEFAULT_PORT.to_string());
@@ -178,6 +184,7 @@ mod tests {
         assert!(is_shared_account_permission("chat_receive"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));
+        assert!(is_shared_account_permission("file_download"));
         assert!(is_shared_account_permission("file_info"));
         assert!(is_shared_account_permission("file_list"));
         assert!(is_shared_account_permission("news_list"));
@@ -195,6 +202,12 @@ mod tests {
         assert!(!is_shared_account_permission("news_create"));
         assert!(!is_shared_account_permission("news_edit"));
         assert!(!is_shared_account_permission("news_delete"));
+        assert!(!is_shared_account_permission("file_root"));
+        assert!(!is_shared_account_permission("file_copy"));
+        assert!(!is_shared_account_permission("file_move"));
+        assert!(!is_shared_account_permission("file_rename"));
+        assert!(!is_shared_account_permission("file_delete"));
+        assert!(!is_shared_account_permission("file_create_dir"));
 
         // Invalid permissions
         assert!(!is_shared_account_permission("invalid"));

@@ -18,12 +18,13 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - IRC-style commands (`/msg`, `/kick`, `/topic`, `/list`, etc.)
 
 ### Files
-- Multi-tab file browser
+- Multi-tab file browser with downloads
+- Resume support for interrupted transfers
 - Create, rename, move, copy, and delete
-- Upload folders and drop boxes
+- Upload folders and drop boxes (coming soon)
 
 ### Users
-- 24 granular permissions with admin override
+- 25 granular permissions with admin override
 - Shared accounts with unique nicknames
 - Guest access for casual users
 - Custom avatars or auto-generated identicons

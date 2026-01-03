@@ -1709,4 +1709,59 @@ mod tests {
             _ => panic!("Expected TransferComplete"),
         }
     }
+
+    #[test]
+    fn test_deserialize_file_download_response() {
+        let json = r#"{"type":"FileDownloadResponse","success":true,"size":1048576,"file_count":10,"transfer_id":"aabbccdd"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::FileDownloadResponse {
+                success,
+                error,
+                error_kind,
+                size,
+                file_count,
+                transfer_id,
+            } => {
+                assert!(success);
+                assert_eq!(error, None);
+                assert_eq!(error_kind, None);
+                assert_eq!(size, Some(1048576));
+                assert_eq!(file_count, Some(10));
+                assert_eq!(transfer_id, Some("aabbccdd".to_string()));
+            }
+            _ => panic!("Expected FileDownloadResponse"),
+        }
+    }
+
+    #[test]
+    fn test_server_info_with_transfer_fields() {
+        let info = ServerInfo {
+            name: Some("Test Server".to_string()),
+            description: None,
+            version: Some("0.5.0".to_string()),
+            max_connections_per_ip: Some(5),
+            max_transfers_per_ip: Some(3),
+            image: None,
+            transfer_port: Some(7501),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"max_transfers_per_ip\":3"));
+        assert!(json.contains("\"transfer_port\":7501"));
+
+        // Test deserialization
+        let parsed: ServerInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.max_transfers_per_ip, Some(3));
+        assert_eq!(parsed.transfer_port, Some(7501));
+    }
+
+    #[test]
+    fn test_server_info_without_transfer_fields() {
+        // Ensure backward compatibility - missing fields default to None
+        let json = r#"{"name":"Old Server","version":"0.4.0"}"#;
+        let info: ServerInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.name, Some("Old Server".to_string()));
+        assert_eq!(info.max_transfers_per_ip, None);
+        assert_eq!(info.transfer_port, None);
+    }
 }

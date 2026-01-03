@@ -5,7 +5,22 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use super::error::FrameError;
 use super::frame::RawFrame;
 use super::message_id::MessageId;
-use super::{DELIMITER, MAGIC, TERMINATOR};
+use super::{
+    DELIMITER, MAGIC, MAX_PAYLOAD_LENGTH_DIGITS, MAX_TYPE_LENGTH, MAX_TYPE_LENGTH_DIGITS,
+    MSG_ID_LENGTH, TERMINATOR,
+};
+
+/// Fixed overhead for frame header (excluding variable-length message type)
+/// Format: NX|<type_len>|<type>|<msg_id>|<payload_len>|
+const HEADER_FIXED_OVERHEAD: usize = MAGIC.len() // "NX|"
+    + MAX_TYPE_LENGTH_DIGITS                     // type length (up to 3 digits)
+    + 1                                          // '|' delimiter
+    // + message_type.len()                      // (variable, added separately)
+    + 1                                          // '|' delimiter
+    + MSG_ID_LENGTH                              // message ID (12 hex chars)
+    + 1                                          // '|' delimiter
+    + MAX_PAYLOAD_LENGTH_DIGITS                  // payload length (up to 20 digits)
+    + 1; // '|' delimiter
 
 /// Writes protocol frames to an async writer
 pub struct FrameWriter<W> {
@@ -60,6 +75,11 @@ impl<W: AsyncWriteExt + Unpin> FrameWriter<W> {
         message_type: &str,
         payload: &[u8],
     ) -> Result<(), FrameError> {
+        // Validate message type to catch programming errors early
+        if message_type.is_empty() || message_type.len() > MAX_TYPE_LENGTH {
+            return Err(FrameError::TypeLengthOutOfRange);
+        }
+
         let frame = RawFrame::new(message_id, message_type.to_string(), payload.to_vec());
         self.write_frame(&frame).await
     }
@@ -92,20 +112,24 @@ impl<W: AsyncWriteExt + Unpin> FrameWriter<W> {
     where
         R: AsyncRead + Unpin,
     {
-        // Write frame header: NX|<type_len>|<type>|<msg_id>|<payload_len>|
-        self.writer.write_all(MAGIC).await?;
-        self.writer
-            .write_all(message_type.len().to_string().as_bytes())
-            .await?;
-        self.writer.write_all(&[DELIMITER]).await?;
-        self.writer.write_all(message_type.as_bytes()).await?;
-        self.writer.write_all(&[DELIMITER]).await?;
-        self.writer.write_all(message_id.as_bytes()).await?;
-        self.writer.write_all(&[DELIMITER]).await?;
-        self.writer
-            .write_all(payload_len.to_string().as_bytes())
-            .await?;
-        self.writer.write_all(&[DELIMITER]).await?;
+        // Validate message type to catch programming errors early
+        if message_type.is_empty() || message_type.len() > MAX_TYPE_LENGTH {
+            return Err(FrameError::TypeLengthOutOfRange);
+        }
+
+        // Build frame header in a single buffer to reduce syscalls
+        let mut header = Vec::with_capacity(HEADER_FIXED_OVERHEAD + message_type.len());
+        header.extend_from_slice(MAGIC);
+        header.extend_from_slice(message_type.len().to_string().as_bytes());
+        header.push(DELIMITER);
+        header.extend_from_slice(message_type.as_bytes());
+        header.push(DELIMITER);
+        header.extend_from_slice(message_id.as_bytes());
+        header.push(DELIMITER);
+        header.extend_from_slice(payload_len.to_string().as_bytes());
+        header.push(DELIMITER);
+
+        self.writer.write_all(&header).await?;
 
         // Stream payload bytes from reader to writer
         let bytes_copied = tokio::io::copy(&mut reader.take(payload_len), &mut self.writer).await?;
@@ -223,7 +247,267 @@ mod tests {
                 .write_streaming_frame(id, "FileData", &mut reader, 100) // Claim 100 bytes but only have 5
                 .await;
 
-            assert!(result.is_err());
+            assert!(
+                matches!(result, Err(FrameError::Io(msg)) if msg.contains("expected 100 bytes, got 5"))
+            );
         }
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_streaming_large() {
+        // Test with a larger payload to ensure streaming works correctly
+        let payload: Vec<u8> = (0..=255).cycle().take(256 * 1024).collect(); // 256KB
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+            let mut reader = Cursor::new(payload.as_slice());
+            writer
+                .write_streaming_frame(id, "FileData", &mut reader, payload.len() as u64)
+                .await
+                .unwrap();
+        }
+
+        // Verify header
+        let header = format!("NX|8|FileData|{}|{}|", id, payload.len());
+        assert!(buffer.starts_with(header.as_bytes()));
+
+        // Verify terminator
+        assert_eq!(buffer.last(), Some(&b'\n'));
+
+        // Verify payload
+        let payload_start = header.len();
+        let payload_end = buffer.len() - 1; // exclude terminator
+        assert_eq!(&buffer[payload_start..payload_end], payload.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_empty_payload() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+            let frame = RawFrame::new(id, "UserList".to_string(), vec![]);
+            writer.write_frame(&frame).await.unwrap();
+        }
+
+        let expected = format!("NX|8|UserList|{}|0|\n", id);
+        assert_eq!(buffer, expected.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_binary_payload() {
+        // Test with binary payload containing all byte values including null and non-UTF8
+        let payload: Vec<u8> = (0..=255).collect();
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+            let frame = RawFrame::new(id, "FileData".to_string(), payload.clone());
+            writer.write_frame(&frame).await.unwrap();
+        }
+
+        // Verify header
+        let header = format!("NX|8|FileData|{}|256|", id);
+        assert!(buffer.starts_with(header.as_bytes()));
+
+        // Verify terminator
+        assert_eq!(buffer.last(), Some(&b'\n'));
+
+        // Verify payload
+        let payload_start = header.len();
+        let payload_end = buffer.len() - 1;
+        assert_eq!(&buffer[payload_start..payload_end], payload.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_streaming_binary_payload() {
+        // Test streaming with binary payload
+        let payload: Vec<u8> = (0..=255).collect();
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+            let mut reader = Cursor::new(payload.as_slice());
+            writer
+                .write_streaming_frame(id, "FileData", &mut reader, payload.len() as u64)
+                .await
+                .unwrap();
+        }
+
+        // Verify header
+        let header = format!("NX|8|FileData|{}|256|", id);
+        assert!(buffer.starts_with(header.as_bytes()));
+
+        // Verify terminator
+        assert_eq!(buffer.last(), Some(&b'\n'));
+
+        // Verify payload
+        let payload_start = header.len();
+        let payload_end = buffer.len() - 1;
+        assert_eq!(&buffer[payload_start..payload_end], payload.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_multiple_frames() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id1 = MessageId::new();
+        let id2 = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+
+            let frame1 = RawFrame::new(id1, "ChatSend".to_string(), b"first".to_vec());
+            writer.write_frame(&frame1).await.unwrap();
+
+            let frame2 = RawFrame::new(id2, "ChatSend".to_string(), b"second".to_vec());
+            writer.write_frame(&frame2).await.unwrap();
+        }
+
+        let expected = format!(
+            "NX|8|ChatSend|{}|5|first\nNX|8|ChatSend|{}|6|second\n",
+            id1, id2
+        );
+        assert_eq!(buffer, expected.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_long_message_type() {
+        // Use a real long message type name
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+            writer
+                .write(id, "ChatTopicUpdateResponse", b"{}")
+                .await
+                .unwrap();
+        }
+
+        // ChatTopicUpdateResponse is 23 characters
+        let expected = format!("NX|23|ChatTopicUpdateResponse|{}|2|{{}}\n", id);
+        assert_eq!(buffer, expected.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn test_frame_writer_streaming_multiple_frames() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id1 = MessageId::new();
+        let id2 = MessageId::new();
+
+        let payload1 = b"first payload";
+        let payload2 = b"second payload";
+
+        {
+            let mut writer = FrameWriter::new(cursor);
+
+            let mut reader1 = Cursor::new(payload1.as_slice());
+            writer
+                .write_streaming_frame(id1, "FileData", &mut reader1, payload1.len() as u64)
+                .await
+                .unwrap();
+
+            let mut reader2 = Cursor::new(payload2.as_slice());
+            writer
+                .write_streaming_frame(id2, "FileData", &mut reader2, payload2.len() as u64)
+                .await
+                .unwrap();
+        }
+
+        let expected = format!(
+            "NX|8|FileData|{}|{}|first payload\nNX|8|FileData|{}|{}|second payload\n",
+            id1,
+            payload1.len(),
+            id2,
+            payload2.len()
+        );
+        assert_eq!(buffer, expected.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn test_write_empty_message_type_rejected() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        let mut writer = FrameWriter::new(cursor);
+        let result = writer.write(id, "", b"{}").await;
+
+        assert_eq!(result, Err(FrameError::TypeLengthOutOfRange));
+    }
+
+    #[tokio::test]
+    async fn test_write_message_type_too_long_rejected() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        // MAX_TYPE_LENGTH is 999, so 1000 chars should be rejected
+        let long_type = "X".repeat(1000);
+
+        let mut writer = FrameWriter::new(cursor);
+        let result = writer.write(id, &long_type, b"{}").await;
+
+        assert_eq!(result, Err(FrameError::TypeLengthOutOfRange));
+    }
+
+    #[tokio::test]
+    async fn test_write_streaming_empty_message_type_rejected() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        let mut writer = FrameWriter::new(cursor);
+        let mut reader = Cursor::new(b"payload".as_slice());
+        let result = writer.write_streaming_frame(id, "", &mut reader, 7).await;
+
+        assert_eq!(result, Err(FrameError::TypeLengthOutOfRange));
+    }
+
+    #[tokio::test]
+    async fn test_write_streaming_message_type_too_long_rejected() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        // MAX_TYPE_LENGTH is 999, so 1000 chars should be rejected
+        let long_type = "X".repeat(1000);
+
+        let mut writer = FrameWriter::new(cursor);
+        let mut reader = Cursor::new(b"payload".as_slice());
+        let result = writer
+            .write_streaming_frame(id, &long_type, &mut reader, 7)
+            .await;
+
+        assert_eq!(result, Err(FrameError::TypeLengthOutOfRange));
+    }
+
+    #[tokio::test]
+    async fn test_write_max_length_message_type_accepted() {
+        let mut buffer = Vec::new();
+        let cursor = Cursor::new(&mut buffer);
+        let id = MessageId::new();
+
+        // MAX_TYPE_LENGTH is 999, so exactly 999 chars should be accepted
+        let max_type = "X".repeat(999);
+
+        let mut writer = FrameWriter::new(cursor);
+        let result = writer.write(id, &max_type, b"{}").await;
+
+        assert!(result.is_ok());
+        // Verify the type length is written as "999"
+        assert!(buffer.starts_with(b"NX|999|"));
     }
 }

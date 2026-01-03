@@ -40,7 +40,9 @@ pub use error::FrameError;
 pub use frame::RawFrame;
 pub use limits::{is_known_message_type, known_message_types, max_payload_for_type};
 pub use message_id::MessageId;
-pub use reader::{DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameReader};
+pub use reader::{
+    DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader,
+};
 pub use writer::FrameWriter;
 
 // =============================================================================
@@ -65,11 +67,11 @@ pub const MAX_TYPE_LENGTH_DIGITS: usize = 3;
 /// Maximum type name length
 pub const MAX_TYPE_LENGTH: usize = 999;
 
-/// Maximum digits for payload length field (sanity check ~10GB)
-pub const MAX_PAYLOAD_LENGTH_DIGITS: usize = 10;
+/// Maximum digits for payload length field (supports up to u64::MAX, 20 digits)
+pub const MAX_PAYLOAD_LENGTH_DIGITS: usize = 20;
 
-/// Maximum payload length (sanity check, per-type limits are enforced separately)
-pub const MAX_PAYLOAD_LENGTH: u64 = 9_999_999_999;
+/// Maximum payload length (u64::MAX, ~18 exabytes)
+pub const MAX_PAYLOAD_LENGTH: u64 = u64::MAX;
 
 #[cfg(test)]
 mod tests {

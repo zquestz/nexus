@@ -4,10 +4,9 @@
 //! (`ClientMessage`, `ServerMessage`) and the wire format (framing).
 
 use std::io;
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use std::time::Duration;
 
 use crate::framing::{
     DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameError, FrameReader, FrameWriter, MessageId,
@@ -141,13 +140,11 @@ pub async fn read_client_message<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let frame = match reader.read_frame().await {
-        Ok(Some(frame)) => frame,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e.into()),
+    let Some(frame) = reader.read_frame().await? else {
+        return Ok(None);
     };
 
-    parse_client_frame(frame)
+    parse_client_frame(frame).map(Some)
 }
 
 /// Read a `ClientMessage` from the stream with a timeout
@@ -164,13 +161,16 @@ pub async fn read_client_message_with_timeout<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let frame = match reader.read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT).await {
-        Ok(Some(frame)) => frame,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
+    let Some(frame) = reader
+        .read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT)
+        .await?
+    else {
+        return Ok(None);
     };
 
-    parse_client_frame(frame).map_err(|e| FrameError::InvalidJson(e.to_string()))
+    parse_client_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
 /// Read a `ClientMessage` from the stream with full timeout (no idle allowed)
@@ -196,19 +196,22 @@ where
     R: AsyncReadExt + Unpin,
 {
     let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-    let frame = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
-    let frame = match reader.read_frame_with_full_timeout(idle, frame).await {
-        Ok(Some(frame)) => frame,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e),
+    let Some(frame) = reader
+        .read_frame_with_full_timeout(idle, frame_time)
+        .await?
+    else {
+        return Ok(None);
     };
 
-    parse_client_frame(frame).map_err(|e| FrameError::InvalidJson(e.to_string()))
+    parse_client_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
 /// Parse a raw frame into a `ReceivedClientMessage`
-fn parse_client_frame(frame: RawFrame) -> io::Result<Option<ReceivedClientMessage>> {
+fn parse_client_frame(frame: RawFrame) -> io::Result<ReceivedClientMessage> {
     // Parse the JSON payload
     let message: ClientMessage = serde_json::from_slice(&frame.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {e}")))?;
@@ -225,27 +228,14 @@ fn parse_client_frame(frame: RawFrame) -> io::Result<Option<ReceivedClientMessag
         ));
     }
 
-    Ok(Some(ReceivedClientMessage {
+    Ok(ReceivedClientMessage {
         message_id: frame.message_id,
         message,
-    }))
+    })
 }
 
-/// Read a `ServerMessage` from the stream
-///
-/// Returns `Ok(None)` if the connection was cleanly closed.
-pub async fn read_server_message<R>(
-    reader: &mut FrameReader<R>,
-) -> io::Result<Option<ReceivedServerMessage>>
-where
-    R: AsyncReadExt + Unpin,
-{
-    let frame = match reader.read_frame().await {
-        Ok(Some(frame)) => frame,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(e.into()),
-    };
-
+/// Parse a raw frame into a `ReceivedServerMessage`
+fn parse_server_frame(frame: RawFrame) -> io::Result<ReceivedServerMessage> {
     // Parse the JSON payload
     let message: ServerMessage = serde_json::from_slice(&frame.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {e}")))?;
@@ -262,10 +252,26 @@ where
         ));
     }
 
-    Ok(Some(ReceivedServerMessage {
+    Ok(ReceivedServerMessage {
         message_id: frame.message_id,
         message,
-    }))
+    })
+}
+
+/// Read a `ServerMessage` from the stream
+///
+/// Returns `Ok(None)` if the connection was cleanly closed.
+pub async fn read_server_message<R>(
+    reader: &mut FrameReader<R>,
+) -> io::Result<Option<ReceivedServerMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader.read_frame().await? else {
+        return Ok(None);
+    };
+
+    parse_server_frame(frame).map(Some)
 }
 
 // =============================================================================
