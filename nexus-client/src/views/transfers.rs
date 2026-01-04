@@ -44,12 +44,12 @@ use iced::{Center, Element, Fill};
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    DETAIL_TEXT_SIZE, ELEMENT_SPACING, FORM_PADDING, ICON_BUTTON_PADDING, NEWS_ACTION_BUTTON_SIZE,
-    NEWS_ACTION_ICON_SIZE, SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING,
-    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TRANSFER_ICON_SIZE, TRANSFER_INFO_SPACING,
-    TRANSFER_ITEM_SPACING, TRANSFER_LIST_MAX_WIDTH, TRANSFER_PROGRESS_BAR_HEIGHT,
-    TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING, TRANSFER_TITLE_BOTTOM_PADDING,
+    DETAIL_TEXT_SIZE, ELEMENT_SPACING, FORM_PADDING, ICON_BUTTON_PADDING, SCROLLBAR_PADDING,
+    SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    TRANSFER_ACTION_BUTTON_SIZE, TRANSFER_ACTION_ICON_SIZE, TRANSFER_ICON_SIZE,
+    TRANSFER_INFO_SPACING, TRANSFER_ITEM_SPACING, TRANSFER_LIST_MAX_WIDTH,
+    TRANSFER_PROGRESS_BAR_HEIGHT, TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING,
     alternating_row_style, content_background_style, danger_icon_button_style,
     disabled_icon_button_style, error_text_style, muted_text_style, shaped_text,
     tooltip_container_style, transparent_icon_button_style,
@@ -128,10 +128,10 @@ fn action_button_with_tooltip<'a>(
     message: Message,
     tooltip_key: &str,
 ) -> Element<'a, Message> {
-    let btn = button(icon.size(NEWS_ACTION_ICON_SIZE))
+    let btn = button(icon.size(TRANSFER_ACTION_ICON_SIZE))
         .on_press(message)
-        .width(NEWS_ACTION_BUTTON_SIZE)
-        .height(NEWS_ACTION_BUTTON_SIZE)
+        .width(TRANSFER_ACTION_BUTTON_SIZE)
+        .height(TRANSFER_ACTION_BUTTON_SIZE)
         .style(transparent_icon_button_style);
 
     tooltip(
@@ -152,10 +152,10 @@ fn danger_action_button_with_tooltip<'a>(
     message: Message,
     tooltip_key: &str,
 ) -> Element<'a, Message> {
-    let btn = button(icon.size(NEWS_ACTION_ICON_SIZE))
+    let btn = button(icon.size(TRANSFER_ACTION_ICON_SIZE))
         .on_press(message)
-        .width(NEWS_ACTION_BUTTON_SIZE)
-        .height(NEWS_ACTION_BUTTON_SIZE)
+        .width(TRANSFER_ACTION_BUTTON_SIZE)
+        .height(TRANSFER_ACTION_BUTTON_SIZE)
         .style(danger_icon_button_style);
 
     tooltip(
@@ -266,16 +266,13 @@ fn build_transfer_row<'a>(transfer: &Transfer, index: usize) -> Element<'a, Mess
 
     // First row: icon, name, spacer, action buttons
     // Name uses Fill to take available space, actions use Shrink to stay visible
-    let title_row = column![
-        row![
-            direction_icon.size(TRANSFER_ICON_SIZE),
-            container(name).width(Fill),
-            actions,
-        ]
-        .spacing(ELEMENT_SPACING)
-        .align_y(Center),
-        Space::new().height(TRANSFER_TITLE_BOTTOM_PADDING),
-    ];
+    let title_row = row![
+        direction_icon.size(TRANSFER_ICON_SIZE),
+        container(name).width(Fill),
+        actions,
+    ]
+    .spacing(ELEMENT_SPACING)
+    .align_y(Center);
 
     // Build size text for transfers with known size
     let size_text = if transfer.total_bytes > 0 {
@@ -364,10 +361,11 @@ fn build_transfer_row<'a>(transfer: &Transfer, index: usize) -> Element<'a, Mess
             .into()
     };
 
-    // Progress bar row (full width)
+    // Progress bar row (full width, with spacing before and after)
     let progress_row: Element<'a, Message> = if transfer.total_bytes > 0 {
         let progress = transfer.progress_percent() / 100.0;
         column![
+            Space::new().height(TRANSFER_PROGRESS_SPACING),
             container(progress_bar(0.0..=1.0, progress).girth(TRANSFER_PROGRESS_BAR_HEIGHT))
                 .width(Fill),
             Space::new().height(TRANSFER_PROGRESS_SPACING),

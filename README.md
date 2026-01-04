@@ -18,8 +18,9 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - IRC-style commands (`/msg`, `/kick`, `/topic`, `/list`, etc.)
 
 ### Files
-- Multi-tab file browser with downloads
-- Resume support for interrupted transfers
+- Multi-tab file browser with sortable columns
+- Downloads with pause, resume, and cancel
+- Queue management with concurrency limits
 - Create, rename, move, copy, and delete
 - Upload folders and drop boxes (coming soon)
 

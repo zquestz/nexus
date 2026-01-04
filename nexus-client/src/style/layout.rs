@@ -279,11 +279,14 @@ pub const TRANSFER_ROW_PADDING: [f32; 2] = [4.0, 8.0];
 /// Spacing between info lines within a transfer row (name, server, status)
 pub const TRANSFER_INFO_SPACING: f32 = 2.0;
 
-/// Transfer direction icon size (matches action button icons)
-pub const TRANSFER_ICON_SIZE: f32 = NEWS_ACTION_ICON_SIZE;
+/// Transfer action button size (clickable area for pause/resume/cancel/remove)
+pub const TRANSFER_ACTION_BUTTON_SIZE: f32 = 32.0;
 
-/// Bottom padding for transfer title row (ensures separation when filename wraps)
-pub const TRANSFER_TITLE_BOTTOM_PADDING: f32 = 4.0;
+/// Transfer action icon size (icon inside the button)
+pub const TRANSFER_ACTION_ICON_SIZE: f32 = 18.0;
+
+/// Transfer direction icon size (download/upload indicator, matches action icons)
+pub const TRANSFER_ICON_SIZE: f32 = TRANSFER_ACTION_ICON_SIZE;
 
 /// Height of the transfer progress bar
 pub const TRANSFER_PROGRESS_BAR_HEIGHT: f32 = 16.0;
