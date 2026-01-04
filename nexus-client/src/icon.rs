@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 68ca6929c66b1444a718dc3e80936d551a00ba429debc7fb0e2738cf89f3e845
+// 5c312805e4d0d016b2b3c27124b0fb95e07c7e38a693c7daa3323e6d6f07bab2
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -172,6 +172,10 @@ pub fn trash<'a>() -> Text<'a> {
 
 pub fn up_dir<'a>() -> Text<'a> {
     icon("\u{25B4}")
+}
+
+pub fn upload<'a>() -> Text<'a> {
+    icon("\u{1F4E4}")
 }
 
 pub fn user_plus<'a>() -> Text<'a> {

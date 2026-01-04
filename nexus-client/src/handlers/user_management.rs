@@ -949,7 +949,7 @@ impl NexusApp {
         }
 
         // Get username for the request
-        let username = conn.username.clone();
+        let username = conn.connection_info.username.clone();
 
         // Send UserUpdate with current_password for self-edit
         let msg = ClientMessage::UserUpdate {

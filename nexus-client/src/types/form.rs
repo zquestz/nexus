@@ -682,7 +682,7 @@ pub enum UserManagementMode {
 }
 
 /// Connection form state (not persisted)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectionFormState {
     /// Optional display name for connection
     pub server_name: String,
@@ -720,6 +720,22 @@ impl Default for ConnectionFormState {
     }
 }
 
+impl std::fmt::Debug for ConnectionFormState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionFormState")
+            .field("server_name", &self.server_name)
+            .field("server_address", &self.server_address)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("nickname", &self.nickname)
+            .field("error", &self.error)
+            .field("is_connecting", &self.is_connecting)
+            .field("add_bookmark", &self.add_bookmark)
+            .finish()
+    }
+}
+
 impl ConnectionFormState {
     /// Clear all form fields
     pub fn clear(&mut self) {
@@ -733,7 +749,7 @@ impl ConnectionFormState {
 }
 
 /// User management panel state (per-connection)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UserManagementState {
     /// Current mode (list, create, edit, confirm delete)
     pub mode: UserManagementMode,
@@ -783,6 +799,26 @@ impl Default for UserManagementState {
             list_error: None,
             delete_error: None,
         }
+    }
+}
+
+impl std::fmt::Debug for UserManagementState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserManagementState")
+            .field("mode", &self.mode)
+            .field("all_users", &self.all_users)
+            .field("return_to_panel", &self.return_to_panel)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("is_admin", &self.is_admin)
+            .field("is_shared", &self.is_shared)
+            .field("enabled", &self.enabled)
+            .field("permissions", &self.permissions)
+            .field("create_error", &self.create_error)
+            .field("edit_error", &self.edit_error)
+            .field("list_error", &self.list_error)
+            .field("delete_error", &self.delete_error)
+            .finish()
     }
 }
 

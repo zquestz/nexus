@@ -5,6 +5,7 @@ mod autostart;
 mod avatar;
 mod commands;
 mod config;
+mod constants;
 mod fonts;
 mod handlers;
 mod i18n;
@@ -209,6 +210,10 @@ impl NexusApp {
                 self.config.settings.window_x = x;
                 self.config.settings.window_y = y;
                 let _ = self.config.save();
+
+                // Save any pending transfer progress
+                let _ = self.transfer_manager.save();
+
                 iced::window::close(id)
             }
 
@@ -521,14 +526,12 @@ impl NexusApp {
 
             // Transfer management
             Message::TransferProgress(event) => self.handle_transfer_progress(event),
-            Message::TransferStartNext => self.handle_transfer_start_next(),
             Message::TransferPause(id) => self.handle_transfer_pause(id),
             Message::TransferResume(id) => self.handle_transfer_resume(id),
             Message::TransferCancel(id) => self.handle_transfer_cancel(id),
             Message::TransferRemove(id) => self.handle_transfer_remove(id),
             Message::TransferOpenFolder(id) => self.handle_transfer_open_folder(id),
-            Message::TransferClearCompleted => self.handle_transfer_clear_completed(),
-            Message::TransferClearFailed => self.handle_transfer_clear_failed(),
+            Message::TransferClearInactive => self.handle_transfer_clear_inactive(),
         }
     }
 
@@ -557,7 +560,7 @@ impl NexusApp {
         // stable even as the transfer status changes from Queued -> Connecting -> Transferring
         for transfer in self.transfer_manager.queued_or_active() {
             subscriptions.push(transfers::transfer_subscription(
-                transfer.clone(),
+                transfer,
                 &self.config.settings.proxy,
             ));
         }

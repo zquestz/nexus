@@ -8,45 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// =============================================================================
-// Transfer Connection Info
-// =============================================================================
-
-/// Connection information needed to reconnect for resume
-///
-/// This contains everything needed to establish a new connection to the transfer
-/// port (7501) without requiring access to the original bookmark.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransferConnectionInfo {
-    /// Display name for the server (from bookmark or server info)
-    pub server_name: String,
-
-    /// Server address (IPv4, IPv6, or hostname)
-    pub server_address: String,
-
-    /// Transfer port (typically 7501)
-    pub transfer_port: u16,
-
-    /// TLS certificate fingerprint (SHA-256) for verification
-    ///
-    /// Client MUST verify that port 7501 presents the same certificate
-    /// fingerprint as port 7500. If fingerprints differ, connection must
-    /// be rejected.
-    pub certificate_fingerprint: String,
-
-    /// Username for authentication
-    pub username: String,
-
-    /// Password for authentication
-    ///
-    /// Note: This is stored to allow resume without prompting.
-    /// The transfers.json file has 0o600 permissions on Unix.
-    pub password: String,
-
-    /// Nickname for shared account logins (optional)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub nickname: Option<String>,
-}
+pub use crate::types::ConnectionInfo;
 
 // =============================================================================
 // Transfer Direction
@@ -61,15 +23,6 @@ pub enum TransferDirection {
     /// Uploading from local to server
     #[allow(dead_code)] // For future upload support
     Upload,
-}
-
-impl std::fmt::Display for TransferDirection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TransferDirection::Download => write!(f, "download"),
-            TransferDirection::Upload => write!(f, "upload"),
-        }
-    }
 }
 
 // =============================================================================
@@ -119,19 +72,6 @@ impl TransferStatus {
     }
 }
 
-impl std::fmt::Display for TransferStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TransferStatus::Queued => write!(f, "queued"),
-            TransferStatus::Connecting => write!(f, "connecting"),
-            TransferStatus::Transferring => write!(f, "transferring"),
-            TransferStatus::Paused => write!(f, "paused"),
-            TransferStatus::Completed => write!(f, "completed"),
-            TransferStatus::Failed => write!(f, "failed"),
-        }
-    }
-}
-
 // =============================================================================
 // Transfer Error
 // =============================================================================
@@ -148,8 +88,6 @@ pub enum TransferError {
     Invalid,
     /// Protocol version not supported
     UnsupportedVersion,
-    /// Local disk full
-    DiskFull,
     /// SHA-256 verification failed
     HashMismatch,
     /// File I/O error
@@ -173,31 +111,26 @@ impl TransferError {
             "not_found" => TransferError::NotFound,
             "permission" => TransferError::Permission,
             "invalid" => TransferError::Invalid,
-            "unsupported_version" => TransferError::UnsupportedVersion,
-            "disk_full" => TransferError::DiskFull,
-            "hash_mismatch" => TransferError::HashMismatch,
             "io_error" => TransferError::IoError,
             "protocol_error" => TransferError::ProtocolError,
             _ => TransferError::Unknown,
         }
     }
-}
 
-impl std::fmt::Display for TransferError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    /// Get the i18n translation key for this error
+    pub fn to_i18n_key(&self) -> &'static str {
         match self {
-            TransferError::NotFound => write!(f, "Path not found"),
-            TransferError::Permission => write!(f, "Permission denied"),
-            TransferError::Invalid => write!(f, "Invalid path"),
-            TransferError::UnsupportedVersion => write!(f, "Protocol version not supported"),
-            TransferError::DiskFull => write!(f, "Disk full"),
-            TransferError::HashMismatch => write!(f, "File verification failed"),
-            TransferError::IoError => write!(f, "File I/O error"),
-            TransferError::ProtocolError => write!(f, "Protocol error"),
-            TransferError::ConnectionError => write!(f, "Connection error"),
-            TransferError::CertificateMismatch => write!(f, "Certificate fingerprint mismatch"),
-            TransferError::AuthenticationFailed => write!(f, "Authentication failed"),
-            TransferError::Unknown => write!(f, "Unknown error"),
+            TransferError::NotFound => "transfer-error-not-found",
+            TransferError::Permission => "transfer-error-permission",
+            TransferError::Invalid => "transfer-error-invalid",
+            TransferError::UnsupportedVersion => "transfer-error-unsupported-version",
+            TransferError::HashMismatch => "transfer-error-hash-mismatch",
+            TransferError::IoError => "transfer-error-io",
+            TransferError::ProtocolError => "transfer-error-protocol",
+            TransferError::ConnectionError => "transfer-error-connection",
+            TransferError::CertificateMismatch => "transfer-error-certificate-mismatch",
+            TransferError::AuthenticationFailed => "transfer-error-auth-failed",
+            TransferError::Unknown => "transfer-error-unknown",
         }
     }
 }
@@ -223,8 +156,8 @@ pub struct Transfer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bookmark_id: Option<Uuid>,
 
-    /// Connection information for reconnecting
-    pub connection: TransferConnectionInfo,
+    /// Connection info for reconnecting
+    pub connection_info: ConnectionInfo,
 
     /// Direction of transfer (download or upload)
     pub direction: TransferDirection,
@@ -292,7 +225,7 @@ pub struct Transfer {
 impl Transfer {
     /// Create a new download transfer
     pub fn new_download(
-        connection: TransferConnectionInfo,
+        connection_info: ConnectionInfo,
         remote_path: String,
         remote_root: bool,
         is_directory: bool,
@@ -302,7 +235,7 @@ impl Transfer {
         Self {
             id: Uuid::new_v4(),
             bookmark_id,
-            connection,
+            connection_info,
             direction: TransferDirection::Download,
             remote_path,
             remote_root,
@@ -326,7 +259,7 @@ impl Transfer {
     /// Create a new upload transfer
     #[allow(dead_code)] // For future upload support
     pub fn new_upload(
-        connection: TransferConnectionInfo,
+        connection_info: ConnectionInfo,
         remote_path: String,
         remote_root: bool,
         is_directory: bool,
@@ -336,7 +269,7 @@ impl Transfer {
         Self {
             id: Uuid::new_v4(),
             bookmark_id,
-            connection,
+            connection_info,
             direction: TransferDirection::Upload,
             remote_path,
             remote_root,
@@ -382,7 +315,7 @@ impl Transfer {
         // For root directory downloads ("/"), use server name instead
         match name {
             Some(n) => n,
-            None => &self.connection.server_name,
+            None => &self.connection_info.server_name,
         }
     }
 
@@ -454,15 +387,16 @@ impl Transfer {
 mod tests {
     use super::*;
 
-    fn test_connection_info() -> TransferConnectionInfo {
-        TransferConnectionInfo {
+    fn test_connection_info() -> ConnectionInfo {
+        ConnectionInfo {
             server_name: "Test Server".to_string(),
-            server_address: "192.168.1.100".to_string(),
+            address: "192.168.1.1".to_string(),
+            port: 7500,
             transfer_port: 7501,
-            certificate_fingerprint: "AA:BB:CC:DD".to_string(),
+            certificate_fingerprint: "AA:BB:CC".to_string(),
             username: "alice".to_string(),
             password: "secret".to_string(),
-            nickname: None,
+            nickname: String::new(),
         }
     }
 
@@ -646,6 +580,7 @@ mod tests {
 
     #[test]
     fn test_transfer_error_from_server() {
+        // These are the error_kind values the server actually sends
         assert_eq!(
             TransferError::from_server_error_kind("not_found"),
             TransferError::NotFound
@@ -655,9 +590,18 @@ mod tests {
             TransferError::Permission
         );
         assert_eq!(
-            TransferError::from_server_error_kind("hash_mismatch"),
-            TransferError::HashMismatch
+            TransferError::from_server_error_kind("invalid"),
+            TransferError::Invalid
         );
+        assert_eq!(
+            TransferError::from_server_error_kind("io_error"),
+            TransferError::IoError
+        );
+        assert_eq!(
+            TransferError::from_server_error_kind("protocol_error"),
+            TransferError::ProtocolError
+        );
+        // Unknown values fall back to Unknown
         assert_eq!(
             TransferError::from_server_error_kind("unknown_thing"),
             TransferError::Unknown
@@ -688,22 +632,22 @@ mod tests {
     #[test]
     fn test_connection_info_with_nickname() {
         let mut conn = test_connection_info();
-        conn.nickname = Some("Bob".to_string());
+        conn.nickname = "Bob".to_string();
 
         let json = serde_json::to_string(&conn).expect("serialize");
         assert!(json.contains("Bob"));
 
-        let deserialized: TransferConnectionInfo =
-            serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(deserialized.nickname, Some("Bob".to_string()));
+        let deserialized: ConnectionInfo = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.nickname, "Bob");
     }
 
     #[test]
-    fn test_connection_info_without_nickname_not_serialized() {
+    fn test_connection_info_with_empty_nickname() {
         let conn = test_connection_info();
+        assert!(conn.nickname.is_empty());
         let json = serde_json::to_string(&conn).expect("serialize");
-        // nickname should be skipped when None
-        assert!(!json.contains("nickname"));
+        // Empty nickname is still serialized (as empty string)
+        assert!(json.contains(r#""nickname":""#));
     }
 
     #[test]

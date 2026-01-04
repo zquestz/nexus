@@ -177,6 +177,7 @@ tooltip-server-info = Server Info
 tooltip-about = Over
 tooltip-transfers = Overdrachten
 tooltip-download-all = Alles Downloaden
+tooltip-clear-inactive = Inactieve wissen
 tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen
@@ -575,15 +576,12 @@ transfer-action-remove = Verwijderen
 transfer-action-open-folder = Map openen
 transfer-action-retry = Opnieuw proberen
 
-# Toolbar actions
-transfer-clear-completed = Voltooide wissen
-transfer-clear-failed = Mislukte wissen
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } bestanden
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } verstreken
 transfer-eta = { $time } resterend
+transfer-completed-in = Voltooid in { $time }
 transfer-from-server = Van: { $server }
 
 # Transfer errors
@@ -591,7 +589,6 @@ transfer-error-not-found = Pad niet gevonden
 transfer-error-permission = Toegang geweigerd
 transfer-error-invalid = Ongeldig pad
 transfer-error-unsupported-version = Protocolversie niet ondersteund
-transfer-error-disk-full = Schijf vol
 transfer-error-hash-mismatch = Bestandsverificatie mislukt
 transfer-error-io = Bestand I/O-fout
 transfer-error-protocol = Protocolfout
@@ -599,3 +596,11 @@ transfer-error-connection = Verbindingsfout
 transfer-error-certificate-mismatch = Certificaatvingerafdruk komt niet overeen
 transfer-error-auth-failed = Authenticatie mislukt
 transfer-error-unknown = Onbekende fout
+transfer-cancelled = Geannuleerd door gebruiker
+transfer-task-failed = Overdrachtstaak mislukt: { $error }
+transfer-save-no-config-dir = Kon configuratiemap niet bepalen
+transfer-save-create-dir-failed = Kon configuratiemap niet aanmaken: { $error }
+transfer-save-serialize-failed = Kon overdrachten niet serialiseren: { $error }
+transfer-save-write-failed = Kon overdrachtsbestand niet schrijven: { $error }
+transfer-save-metadata-failed = Kon bestandsmetadata niet lezen: { $error }
+transfer-save-permissions-failed = Kon bestandsrechten niet instellen: { $error }

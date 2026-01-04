@@ -177,7 +177,7 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         .iter()
         .find(|u| u.session_ids.contains(&conn.session_id))
         .map(|u| u.nickname.as_str())
-        .unwrap_or(&conn.username);
+        .unwrap_or(&conn.connection_info.username);
 
     let title = shaped_text(t("title-users"))
         .size(USER_LIST_TITLE_SIZE)

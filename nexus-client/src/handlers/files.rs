@@ -661,53 +661,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        let Some(clipboard) = conn.files_management.clipboard.clone() else {
-            return Task::none();
-        };
-
-        let tab = conn.files_management.active_tab();
-        let destination_dir = tab.current_path.clone();
-        let source_root = clipboard.root;
-        let destination_root = tab.viewing_root;
-        let tab_id = conn.files_management.active_tab_id();
-        let is_move = matches!(clipboard.operation, ClipboardOperation::Cut);
-
-        let message = if is_move {
-            ClientMessage::FileMove {
-                source_path: clipboard.path,
-                destination_dir: destination_dir.clone(),
-                overwrite: false,
-                source_root,
-                destination_root,
-            }
-        } else {
-            ClientMessage::FileCopy {
-                source_path: clipboard.path,
-                destination_dir: destination_dir.clone(),
-                overwrite: false,
-                source_root,
-                destination_root,
-            }
-        };
-
-        let Ok(message_id) = conn.send(message) else {
-            return Task::none();
-        };
-
-        let routing = if is_move {
-            ResponseRouting::FileMoveResult {
-                tab_id,
-                destination_dir,
-            }
-        } else {
-            ResponseRouting::FileCopyResult {
-                tab_id,
-                destination_dir,
-            }
-        };
-        conn.pending_requests.track(message_id, routing);
-
-        Task::none()
+        let destination_dir = conn.files_management.active_tab().current_path.clone();
+        self.send_paste_request(conn_id, destination_dir)
     }
 
     /// Handle paste into specific directory (from context menu on folder)
@@ -717,6 +672,14 @@ impl NexusApp {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
+
+        self.send_paste_request(conn_id, destination_dir)
+    }
+
+    /// Send a paste (move/copy) request to the server
+    ///
+    /// Helper for handle_file_paste and handle_file_paste_into.
+    fn send_paste_request(&mut self, conn_id: usize, destination_dir: String) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
@@ -962,19 +925,6 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get connection info for the transfer
-        let server_name = conn.server_name.clone().unwrap_or_default();
-        let server_address = conn.address.clone();
-        let transfer_port = conn.transfer_port.unwrap_or(7501);
-        let certificate_fingerprint = conn.certificate_fingerprint.clone();
-        let username = conn.username.clone();
-        let password = conn.password.clone();
-        let nickname = if conn.nickname != conn.username {
-            Some(conn.nickname.clone())
-        } else {
-            None
-        };
-
         // Get the current viewing mode (root or user area)
         let remote_root = conn.files_management.active_tab().viewing_root;
 
@@ -995,7 +945,10 @@ impl NexusApp {
         let local_path = if is_directory && trimmed_path.is_empty() {
             // Root directory download - use server name as folder
             // Sanitize server name to be filesystem-safe, fall back to address
-            let safe_name = sanitize_filename(&server_name, &server_address);
+            let safe_name = sanitize_filename(
+                &conn.connection_info.server_name,
+                &conn.connection_info.address,
+            );
             std::path::PathBuf::from(&download_dir).join(safe_name)
         } else {
             // Extract last path component for the local filename/folder
@@ -1004,20 +957,9 @@ impl NexusApp {
             std::path::PathBuf::from(&download_dir).join(filename)
         };
 
-        // Create connection info for the transfer
-        let connection_info = crate::transfers::TransferConnectionInfo {
-            server_name,
-            server_address,
-            transfer_port,
-            certificate_fingerprint,
-            username,
-            password,
-            nickname,
-        };
-
         // Create the transfer
         let transfer = crate::transfers::Transfer::new_download(
-            connection_info,
+            conn.connection_info.clone(),
             remote_path,
             remote_root,
             is_directory,
@@ -1029,9 +971,7 @@ impl NexusApp {
         self.transfer_manager.add(transfer);
 
         // Save transfers to disk
-        if let Err(e) = self.transfer_manager.save() {
-            eprintln!("Failed to save transfers: {e}");
-        }
+        let _ = self.transfer_manager.save();
 
         Task::none()
     }
@@ -1095,5 +1035,84 @@ fn sanitize_filename(name: &str, fallback: &str) -> String {
         format!("_{trimmed}")
     } else {
         trimmed.to_string()
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_filename_normal() {
+        assert_eq!(sanitize_filename("My Server", "fallback"), "My Server");
+        assert_eq!(sanitize_filename("test", "fallback"), "test");
+        assert_eq!(sanitize_filename("server123", "fallback"), "server123");
+    }
+
+    #[test]
+    fn test_sanitize_filename_invalid_chars() {
+        assert_eq!(sanitize_filename("foo/bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo\\bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo:bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo*bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo?bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo\"bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo<bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo>bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo|bar", "fallback"), "foo_bar");
+        // Multiple invalid chars
+        assert_eq!(sanitize_filename("a/b\\c:d", "fallback"), "a_b_c_d");
+    }
+
+    #[test]
+    fn test_sanitize_filename_control_chars() {
+        assert_eq!(sanitize_filename("foo\x00bar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo\nbar", "fallback"), "foo_bar");
+        assert_eq!(sanitize_filename("foo\tbar", "fallback"), "foo_bar");
+    }
+
+    #[test]
+    fn test_sanitize_filename_trailing_dots_spaces() {
+        assert_eq!(sanitize_filename("test.", "fallback"), "test");
+        assert_eq!(sanitize_filename("test...", "fallback"), "test");
+        assert_eq!(sanitize_filename("test ", "fallback"), "test");
+        assert_eq!(sanitize_filename(" test ", "fallback"), "test");
+        assert_eq!(sanitize_filename("test. ", "fallback"), "test");
+    }
+
+    #[test]
+    fn test_sanitize_filename_empty_fallback() {
+        assert_eq!(sanitize_filename("", "fallback"), "fallback");
+        assert_eq!(sanitize_filename("   ", "fallback"), "fallback");
+        assert_eq!(sanitize_filename("...", "fallback"), "fallback");
+        // Note: "///" becomes "___" (slashes replaced), not fallback
+        assert_eq!(sanitize_filename("///", "192.168.1.1"), "___");
+    }
+
+    #[test]
+    fn test_sanitize_filename_windows_reserved() {
+        // Reserved names should be prefixed with underscore
+        assert_eq!(sanitize_filename("CON", "fallback"), "_CON");
+        assert_eq!(sanitize_filename("con", "fallback"), "_con");
+        assert_eq!(sanitize_filename("Con", "fallback"), "_Con");
+        assert_eq!(sanitize_filename("PRN", "fallback"), "_PRN");
+        assert_eq!(sanitize_filename("AUX", "fallback"), "_AUX");
+        assert_eq!(sanitize_filename("NUL", "fallback"), "_NUL");
+        assert_eq!(sanitize_filename("COM1", "fallback"), "_COM1");
+        assert_eq!(sanitize_filename("COM9", "fallback"), "_COM9");
+        assert_eq!(sanitize_filename("LPT1", "fallback"), "_LPT1");
+        assert_eq!(sanitize_filename("LPT9", "fallback"), "_LPT9");
+    }
+
+    #[test]
+    fn test_sanitize_filename_unicode() {
+        // Unicode should pass through unchanged
+        assert_eq!(sanitize_filename("服务器", "fallback"), "服务器");
+        assert_eq!(sanitize_filename("サーバー", "fallback"), "サーバー");
+        assert_eq!(sanitize_filename("Сервер", "fallback"), "Сервер");
     }
 }

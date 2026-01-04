@@ -43,12 +43,13 @@ impl NexusApp {
         }
         // Update server image and cached version if provided
         if let Some(image) = server_info.image {
-            conn.server_image = image.clone();
+            // Decode first using reference, then move (avoids clone)
             conn.cached_server_image = if image.is_empty() {
                 None
             } else {
                 decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
             };
+            conn.server_image = image;
         }
 
         self.add_chat_message(connection_id, ChatMessage::system(system_message))

@@ -214,7 +214,7 @@ impl UserManager {
                     max_connections_per_ip: Some(params.max_connections_per_ip),
                     max_transfers_per_ip: Some(params.max_transfers_per_ip),
                     image: Some(params.image.clone()),
-                    transfer_port: Some(params.transfer_port),
+                    transfer_port: params.transfer_port,
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

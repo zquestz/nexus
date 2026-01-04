@@ -15,7 +15,7 @@ pub const DEFAULT_PROXY_ADDRESS: &str = "127.0.0.1";
 pub const DEFAULT_PROXY_PORT: u16 = 9050;
 
 /// SOCKS5 proxy configuration
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProxySettings {
     /// Whether to use a proxy
     #[serde(default)]
@@ -36,6 +36,18 @@ pub struct ProxySettings {
     /// Optional password for authentication
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+}
+
+impl std::fmt::Debug for ProxySettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxySettings")
+            .field("enabled", &self.enabled)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl Default for ProxySettings {

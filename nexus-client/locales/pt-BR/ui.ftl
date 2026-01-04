@@ -176,6 +176,7 @@ tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
 tooltip-transfers = Transferências
 tooltip-download-all = Baixar Tudo
+tooltip-clear-inactive = Limpar Inativos
 tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos
@@ -574,15 +575,12 @@ transfer-action-remove = Remover
 transfer-action-open-folder = Abrir pasta
 transfer-action-retry = Tentar novamente
 
-# Toolbar actions
-transfer-clear-completed = Limpar concluídos
-transfer-clear-failed = Limpar falhos
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } arquivos
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } decorrido
 transfer-eta = { $time } restante
+transfer-completed-in = Concluído em { $time }
 transfer-from-server = De: { $server }
 
 # Transfer errors
@@ -590,7 +588,6 @@ transfer-error-not-found = Caminho não encontrado
 transfer-error-permission = Permissão negada
 transfer-error-invalid = Caminho inválido
 transfer-error-unsupported-version = Versão do protocolo não suportada
-transfer-error-disk-full = Disco cheio
 transfer-error-hash-mismatch = Falha na verificação do arquivo
 transfer-error-io = Erro de E/S de arquivo
 transfer-error-protocol = Erro de protocolo
@@ -598,3 +595,11 @@ transfer-error-connection = Erro de conexão
 transfer-error-certificate-mismatch = Impressão digital do certificado não corresponde
 transfer-error-auth-failed = Falha na autenticação
 transfer-error-unknown = Erro desconhecido
+transfer-cancelled = Cancelado pelo usuário
+transfer-task-failed = Tarefa de transferência falhou: { $error }
+transfer-save-no-config-dir = Não foi possível determinar o diretório de configuração
+transfer-save-create-dir-failed = Falha ao criar o diretório de configuração: { $error }
+transfer-save-serialize-failed = Falha ao serializar as transferências: { $error }
+transfer-save-write-failed = Falha ao escrever o arquivo de transferências: { $error }
+transfer-save-metadata-failed = Falha ao ler os metadados do arquivo: { $error }
+transfer-save-permissions-failed = Falha ao definir as permissões do arquivo: { $error }

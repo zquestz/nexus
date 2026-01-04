@@ -753,7 +753,9 @@ pub fn users_view<'a>(
     theme: &Theme,
 ) -> Element<'a, Message> {
     match &user_management.mode {
-        UserManagementMode::List => list_view(conn, user_management, theme, &conn.username),
+        UserManagementMode::List => {
+            list_view(conn, user_management, theme, &conn.connection_info.username)
+        }
         UserManagementMode::Create => create_view(conn, user_management),
         UserManagementMode::Edit {
             original_username,

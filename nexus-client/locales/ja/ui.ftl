@@ -176,6 +176,7 @@ tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
 tooltip-transfers = 転送
 tooltip-download-all = すべてダウンロード
+tooltip-clear-inactive = 非アクティブを消去
 tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示
@@ -553,15 +554,12 @@ transfer-action-remove = 削除
 transfer-action-open-folder = フォルダを開く
 transfer-action-retry = 再試行
 
-# Toolbar actions
-transfer-clear-completed = 完了した転送を消去
-transfer-clear-failed = 失敗した転送を消去
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } ファイル
 transfer-speed = { $speed }/秒
 transfer-elapsed = { $time } 経過
 transfer-eta = 残り { $time }
+transfer-completed-in = { $time }で完了
 transfer-from-server = 送信元: { $server }
 
 # Transfer errors
@@ -569,7 +567,6 @@ transfer-error-not-found = パスが見つかりません
 transfer-error-permission = アクセスが拒否されました
 transfer-error-invalid = 無効なパス
 transfer-error-unsupported-version = プロトコルバージョンがサポートされていません
-transfer-error-disk-full = ディスクがいっぱいです
 transfer-error-hash-mismatch = ファイルの検証に失敗しました
 transfer-error-io = ファイルI/Oエラー
 transfer-error-protocol = プロトコルエラー
@@ -577,3 +574,11 @@ transfer-error-connection = 接続エラー
 transfer-error-certificate-mismatch = 証明書のフィンガープリントが一致しません
 transfer-error-auth-failed = 認証に失敗しました
 transfer-error-unknown = 不明なエラー
+transfer-cancelled = ユーザーによってキャンセルされました
+transfer-task-failed = 転送タスクが失敗しました: { $error }
+transfer-save-no-config-dir = 設定ディレクトリを特定できませんでした
+transfer-save-create-dir-failed = 設定ディレクトリの作成に失敗しました: { $error }
+transfer-save-serialize-failed = 転送のシリアライズに失敗しました: { $error }
+transfer-save-write-failed = 転送ファイルの書き込みに失敗しました: { $error }
+transfer-save-metadata-failed = ファイルメタデータの読み取りに失敗しました: { $error }
+transfer-save-permissions-failed = ファイル権限の設定に失敗しました: { $error }

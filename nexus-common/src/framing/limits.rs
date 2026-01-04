@@ -493,7 +493,7 @@ mod tests {
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
-                transfer_port: Some(u16::MAX),
+                transfer_port: u16::MAX,
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -521,7 +521,7 @@ mod tests {
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
-                transfer_port: Some(u16::MAX),
+                transfer_port: u16::MAX,
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -544,7 +544,7 @@ mod tests {
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
-                transfer_port: Some(u16::MAX),
+                transfer_port: u16::MAX,
             },
         };
         assert_eq!(

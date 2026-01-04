@@ -22,6 +22,23 @@ struct ConnectionRegistration {
     should_request_userlist: bool,
 }
 
+/// Context for connection success handling
+struct ConnectionContext {
+    bookmark_id: Option<Uuid>,
+    display_name: String,
+    certificate_fingerprint: String,
+    connection_id: usize,
+}
+
+/// Source of the connection attempt
+#[derive(Clone, Copy)]
+enum ConnectionSource {
+    /// Manual connection from the connection form
+    Form,
+    /// Connection from clicking a bookmark
+    Bookmark,
+}
+
 impl NexusApp {
     // =========================================================================
     // Public Handlers
@@ -53,49 +70,16 @@ impl NexusApp {
                     })
                     .map(|b| b.id);
 
-                // Verify and save certificate fingerprint
-                if let Err(mismatch_details) =
-                    self.verify_and_save_fingerprint(bookmark_id, &conn.certificate_fingerprint)
-                {
-                    let display_name = self.get_display_name(bookmark_id);
-                    return self.handle_fingerprint_mismatch(*mismatch_details, conn, display_name);
-                }
-
-                let connection_id = conn.connection_id;
                 let display_name = self.get_display_name(bookmark_id);
-                let username = self.connection_form.username.clone();
-                let certificate_fingerprint = conn.certificate_fingerprint.clone();
 
-                // Create and register connection
-                let Some(reg) =
-                    self.create_and_register_connection(conn, bookmark_id, username, display_name)
-                else {
-                    self.connection_form.error = Some(t("err-no-shutdown-handle"));
-                    return Task::none();
+                let ctx = ConnectionContext {
+                    bookmark_id,
+                    display_name,
+                    certificate_fingerprint: conn.connection_info.certificate_fingerprint.clone(),
+                    connection_id: conn.connection_id,
                 };
 
-                // Request user list if we have permission
-                if let Err(error_msg) =
-                    self.request_initial_userlist(connection_id, reg.should_request_userlist)
-                {
-                    self.connection_form.error = Some(error_msg);
-                    self.connections.remove(&connection_id);
-                    self.active_connection = None;
-                    return Task::none();
-                }
-
-                // Add chat topic message if present
-                self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
-
-                // Save as bookmark if checkbox was enabled (and not already a bookmark)
-                if self.connection_form.add_bookmark && bookmark_id.is_none() {
-                    self.save_new_bookmark(connection_id, certificate_fingerprint);
-                }
-
-                // Clear connection form
-                self.connection_form.clear();
-
-                operation::focus(Id::from(InputId::ChatInput))
+                self.handle_successful_connection(conn, ctx, ConnectionSource::Form)
             }
             Err(error) => {
                 self.connection_form.error = Some(error);
@@ -116,53 +100,20 @@ impl NexusApp {
     ) -> Task<Message> {
         match result {
             Ok(conn) => {
-                let connection_id = conn.connection_id;
-
                 // Clear the connecting lock and any previous error for this bookmark
                 if let Some(id) = bookmark_id {
                     self.connecting_bookmarks.remove(&id);
                     self.bookmark_errors.remove(&id);
                 }
 
-                // Verify and save certificate fingerprint
-                if let Err(mismatch_details) =
-                    self.verify_and_save_fingerprint(bookmark_id, &conn.certificate_fingerprint)
-                {
-                    return self.handle_fingerprint_mismatch(*mismatch_details, conn, display_name);
-                }
-
-                // Extract username from bookmark
-                let username = bookmark_id
-                    .and_then(|id| self.config.get_bookmark(id))
-                    .map(|b| b.username.clone())
-                    .unwrap_or_default();
-
-                // Create and register connection
-                let Some(reg) =
-                    self.create_and_register_connection(conn, bookmark_id, username, display_name)
-                else {
-                    if let Some(id) = bookmark_id {
-                        self.bookmark_errors.insert(id, t("err-no-shutdown-handle"));
-                    }
-                    return Task::none();
+                let ctx = ConnectionContext {
+                    bookmark_id,
+                    display_name,
+                    certificate_fingerprint: conn.connection_info.certificate_fingerprint.clone(),
+                    connection_id: conn.connection_id,
                 };
 
-                // Request initial user list
-                if let Err(error_msg) =
-                    self.request_initial_userlist(connection_id, reg.should_request_userlist)
-                {
-                    self.connections.remove(&connection_id);
-                    self.active_connection = None;
-                    if let Some(id) = bookmark_id {
-                        self.bookmark_errors.insert(id, error_msg);
-                    }
-                    return Task::none();
-                }
-
-                // Add chat topic message if present
-                self.add_topic_message(connection_id, reg.chat_topic, reg.chat_topic_set_by);
-
-                operation::focus(Id::from(InputId::ChatInput))
+                self.handle_successful_connection(conn, ctx, ConnectionSource::Bookmark)
             }
             Err(error) => {
                 if let Some(id) = bookmark_id {
@@ -177,16 +128,15 @@ impl NexusApp {
     /// Handle network error or connection closure
     pub fn handle_network_error(&mut self, connection_id: usize, error: String) -> Task<Message> {
         if let Some(conn) = self.connections.remove(&connection_id) {
-            // Clean up the receiver from the global registry
+            // Clean up receiver and signal shutdown in a single spawn
             let registry = crate::network::NETWORK_RECEIVERS.clone();
-            tokio::spawn(async move {
-                let mut receivers = registry.lock().await;
-                receivers.remove(&connection_id);
-            });
-
-            // Signal the network task to shutdown
             let shutdown_arc = conn.shutdown_handle.clone();
             tokio::spawn(async move {
+                // Clean up the receiver from the global registry
+                let mut receivers = registry.lock().await;
+                receivers.remove(&connection_id);
+
+                // Signal the network task to shutdown
                 let mut guard = shutdown_arc.lock().await;
                 if let Some(shutdown) = guard.take() {
                     shutdown.shutdown();
@@ -209,6 +159,80 @@ impl NexusApp {
     // Helpers
     // =========================================================================
 
+    /// Common handler for successful connections from any source
+    fn handle_successful_connection(
+        &mut self,
+        conn: NetworkConnection,
+        ctx: ConnectionContext,
+        source: ConnectionSource,
+    ) -> Task<Message> {
+        // Verify and save certificate fingerprint
+        if let Err(mismatch_details) =
+            self.verify_and_save_fingerprint(ctx.bookmark_id, &ctx.certificate_fingerprint)
+        {
+            // Clear bookmark connecting lock on fingerprint mismatch
+            if let Some(id) = ctx.bookmark_id {
+                self.connecting_bookmarks.remove(&id);
+            }
+            return self.handle_fingerprint_mismatch(*mismatch_details, conn, ctx.display_name);
+        }
+
+        // Create and register connection
+        let Some(reg) =
+            self.create_and_register_connection(conn, ctx.bookmark_id, ctx.display_name)
+        else {
+            self.report_connection_error(source, ctx.bookmark_id, t("err-no-shutdown-handle"));
+            return Task::none();
+        };
+
+        // Request user list if we have permission
+        if let Err(error_msg) =
+            self.request_initial_userlist(ctx.connection_id, reg.should_request_userlist)
+        {
+            self.connections.remove(&ctx.connection_id);
+            self.active_connection = None;
+            self.report_connection_error(source, ctx.bookmark_id, error_msg);
+            return Task::none();
+        }
+
+        // Add chat topic message if present
+        self.add_topic_message(ctx.connection_id, reg.chat_topic, reg.chat_topic_set_by);
+
+        // Save as bookmark if checkbox was enabled (form connections only, not already a bookmark)
+        if matches!(source, ConnectionSource::Form)
+            && self.connection_form.add_bookmark
+            && ctx.bookmark_id.is_none()
+        {
+            self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint);
+        }
+
+        // Clear connection form for form connections
+        if matches!(source, ConnectionSource::Form) {
+            self.connection_form.clear();
+        }
+
+        operation::focus(Id::from(InputId::ChatInput))
+    }
+
+    /// Report a connection error to the appropriate place based on source
+    fn report_connection_error(
+        &mut self,
+        source: ConnectionSource,
+        bookmark_id: Option<Uuid>,
+        error: String,
+    ) {
+        match source {
+            ConnectionSource::Form => {
+                self.connection_form.error = Some(error);
+            }
+            ConnectionSource::Bookmark => {
+                if let Some(id) = bookmark_id {
+                    self.bookmark_errors.insert(id, error);
+                }
+            }
+        }
+    }
+
     /// Create a ServerConnection from NetworkConnection and register it
     ///
     /// Returns `Some(ConnectionRegistration)` on success, or `None` if the
@@ -217,30 +241,23 @@ impl NexusApp {
         &mut self,
         conn: NetworkConnection,
         bookmark_id: Option<Uuid>,
-        username: String,
         display_name: String,
     ) -> Option<ConnectionRegistration> {
         let should_request_userlist = conn.has_permission(PERMISSION_USER_LIST);
         let shutdown_handle = conn.shutdown?;
-        let chat_topic = conn.chat_topic.clone();
-        let chat_topic_set_by = conn.chat_topic_set_by.clone();
 
-        let cached_server_image = if conn.server_image.is_empty() {
+        // Clone server_image once for both uses
+        let server_image = conn.server_image.clone();
+        let cached_server_image = if server_image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(&conn.server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(&server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
         };
 
         let server_conn = ServerConnection::new(ServerConnectionParams {
             bookmark_id,
             session_id: conn.session_id,
-            username,
-            password: conn.password,
-            nickname: conn.nickname,
-            address: conn.address,
-            port: conn.port,
-            transfer_port: conn.transfer_port,
-            certificate_fingerprint: conn.certificate_fingerprint,
+            connection_info: conn.connection_info,
             display_name,
             connection_id: conn.connection_id,
             is_admin: conn.is_admin,
@@ -249,10 +266,10 @@ impl NexusApp {
             server_name: conn.server_name,
             server_description: conn.server_description,
             server_version: conn.server_version,
-            server_image: conn.server_image.clone(),
+            server_image,
             cached_server_image,
-            chat_topic: chat_topic.clone(),
-            chat_topic_set_by: chat_topic_set_by.clone(),
+            chat_topic: conn.chat_topic.clone(),
+            chat_topic_set_by: conn.chat_topic_set_by.clone(),
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
             tx: conn.tx,
@@ -266,8 +283,8 @@ impl NexusApp {
         self.ui_state.active_panel = ActivePanel::None;
 
         Some(ConnectionRegistration {
-            chat_topic,
-            chat_topic_set_by,
+            chat_topic: conn.chat_topic,
+            chat_topic_set_by: conn.chat_topic_set_by,
             should_request_userlist,
         })
     }
@@ -319,6 +336,7 @@ impl NexusApp {
         };
         let bookmark_id = new_bookmark.id;
         self.config.add_bookmark(new_bookmark);
+
         let _ = self.config.save();
 
         // Update the connection's bookmark_id to point to the new bookmark

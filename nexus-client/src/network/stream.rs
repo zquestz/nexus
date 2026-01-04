@@ -16,10 +16,10 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::i18n::t;
 use crate::types::connection::CommandSender;
-use crate::types::{Message, NetworkConnection};
+use crate::types::{ConnectionInfo, Message, NetworkConnection};
 
 use super::constants::STREAM_CHANNEL_SIZE;
-use super::types::{LoginInfo, Reader, TransferParams, Writer};
+use super::types::{LoginInfo, Reader, Writer};
 
 /// Type alias for the connection registry
 type ConnectionRegistry =
@@ -55,9 +55,8 @@ pub(super) async fn setup_communication_channels(
     reader: Reader,
     writer: Writer,
     login_info: LoginInfo,
-    transfer_params: TransferParams,
+    connection_info: ConnectionInfo,
     connection_id: usize,
-    fingerprint: String,
 ) -> Result<NetworkConnection, String> {
     // Create channels for bidirectional communication
     // Command channel includes MessageId for request-response correlation
@@ -88,14 +87,8 @@ pub(super) async fn setup_communication_channels(
         chat_topic_set_by: login_info.chat_topic_set_by,
         max_connections_per_ip: login_info.max_connections_per_ip,
         max_transfers_per_ip: login_info.max_transfers_per_ip,
-        transfer_port: login_info.transfer_port,
-        certificate_fingerprint: fingerprint,
         locale: login_info.locale,
-        // Transfer params (client-side values needed for reconnection)
-        address: transfer_params.address,
-        port: transfer_params.port,
-        password: transfer_params.password,
-        nickname: transfer_params.nickname,
+        connection_info,
     })
 }
 
@@ -208,10 +201,8 @@ async fn spawn_writer_task(
                 let _ = writer.get_mut().shutdown().await;
                 break;
             }
-            // Also check the stop flag periodically
-            // This ensures we exit if the reader stopped but cmd_rx is empty
+            // Channel closed (UI dropped the command sender)
             else => {
-                // cmd_rx closed (UI dropped the sender)
                 stop_flag.store(true, Ordering::Relaxed);
                 let _ = writer.get_mut().shutdown().await;
                 break;

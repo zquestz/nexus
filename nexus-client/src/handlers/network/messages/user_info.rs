@@ -386,9 +386,9 @@ impl NexusApp {
         // will return None and this becomes a no-op, which is correct behavior since
         // the shared user's nickname (and thus PM tab key) hasn't changed.
         if username_changed {
-            // If this is our own username changing, update conn.username
-            if conn.username == previous_username {
-                conn.username = new_username.clone();
+            // If this is our own username changing, update conn.connection_info.username
+            if conn.connection_info.username == previous_username {
+                conn.connection_info.username = new_username.clone();
             }
 
             // Rename the user_messages entry (only affects regular accounts, see note above)

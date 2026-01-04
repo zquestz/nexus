@@ -37,6 +37,9 @@ pub const SUBHEADING_SIZE: f32 = 16.0;
 /// Standard text and input field size
 pub const TEXT_SIZE: f32 = 14.0;
 
+/// Detail/secondary text size (smaller, for metadata and status lines)
+pub const DETAIL_TEXT_SIZE: f32 = 12.0;
+
 /// Chat message text size
 pub const CHAT_MESSAGE_SIZE: f32 = 14.0;
 

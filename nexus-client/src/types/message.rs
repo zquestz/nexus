@@ -398,8 +398,6 @@ pub enum Message {
     // ==================== Transfers ====================
     /// Transfer: Progress event from executor
     TransferProgress(TransferEvent),
-    /// Transfer: Start next queued transfer
-    TransferStartNext,
     /// Transfer: Pause a transfer
     TransferPause(Uuid),
     /// Transfer: Resume a paused transfer
@@ -408,10 +406,8 @@ pub enum Message {
     TransferCancel(Uuid),
     /// Transfer: Remove a completed/failed transfer from the list
     TransferRemove(Uuid),
-    /// Transfer: Open the folder containing a completed transfer
+    /// Transfer: Open the folder containing a transfer's local path
     TransferOpenFolder(Uuid),
-    /// Transfer: Clear all completed transfers
-    TransferClearCompleted,
-    /// Transfer: Clear all failed transfers
-    TransferClearFailed,
+    /// Transfer: Clear all inactive (completed and failed) transfers
+    TransferClearInactive,
 }

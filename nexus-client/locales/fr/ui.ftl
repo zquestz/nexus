@@ -177,6 +177,7 @@ tooltip-server-info = Infos Serveur
 tooltip-about = À propos
 tooltip-transfers = Transferts
 tooltip-download-all = Tout Télécharger
+tooltip-clear-inactive = Effacer Inactifs
 tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets
@@ -575,15 +576,12 @@ transfer-action-remove = Supprimer
 transfer-action-open-folder = Ouvrir le dossier
 transfer-action-retry = Réessayer
 
-# Toolbar actions
-transfer-clear-completed = Effacer terminés
-transfer-clear-failed = Effacer échoués
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } fichiers
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } écoulé
 transfer-eta = { $time } restant
+transfer-completed-in = Terminé en { $time }
 transfer-from-server = De: { $server }
 
 # Transfer errors
@@ -591,7 +589,6 @@ transfer-error-not-found = Chemin introuvable
 transfer-error-permission = Permission refusée
 transfer-error-invalid = Chemin invalide
 transfer-error-unsupported-version = Version du protocole non prise en charge
-transfer-error-disk-full = Disque plein
 transfer-error-hash-mismatch = Échec de la vérification du fichier
 transfer-error-io = Erreur d'E/S fichier
 transfer-error-protocol = Erreur de protocole
@@ -599,3 +596,11 @@ transfer-error-connection = Erreur de connexion
 transfer-error-certificate-mismatch = Empreinte du certificat non concordante
 transfer-error-auth-failed = Échec de l'authentification
 transfer-error-unknown = Erreur inconnue
+transfer-cancelled = Annulé par l'utilisateur
+transfer-task-failed = Échec de la tâche de transfert : { $error }
+transfer-save-no-config-dir = Impossible de déterminer le répertoire de configuration
+transfer-save-create-dir-failed = Échec de la création du répertoire de configuration : { $error }
+transfer-save-serialize-failed = Échec de la sérialisation des transferts : { $error }
+transfer-save-write-failed = Échec de l'écriture du fichier de transferts : { $error }
+transfer-save-metadata-failed = Échec de la lecture des métadonnées du fichier : { $error }
+transfer-save-permissions-failed = Échec de la définition des permissions du fichier : { $error }

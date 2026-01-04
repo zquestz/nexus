@@ -2,18 +2,18 @@
 
 use tokio::io::BufReader;
 
-use nexus_common::PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::{DEFAULT_TRANSFER_PORT, PROTOCOL_VERSION};
 
 use crate::i18n::{DEFAULT_LOCALE, t, t_args};
-use crate::types::NetworkConnection;
+use crate::types::{ConnectionInfo, NetworkConnection};
 
 use super::constants::DEFAULT_FEATURES;
 use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
-use super::types::{ConnectionParams, LoginInfo, Reader, TransferParams, Writer};
+use super::types::{ConnectionParams, LoginInfo, Reader, Writer};
 
 /// Connect to server, perform handshake and login
 ///
@@ -44,10 +44,20 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
     )
     .await?;
 
-    // Build transfer params from connection params (client-side values not returned by server)
-    let transfer_params = TransferParams {
+    // Build connection info from connection params and login response
+    // Resolve server_name: prefer server-provided name, fall back to address
+    let server_name = login_info
+        .server_name
+        .clone()
+        .unwrap_or_else(|| params.server_address.clone());
+
+    let connection_info = ConnectionInfo {
+        server_name,
         address: params.server_address,
         port: params.port,
+        transfer_port: login_info.transfer_port,
+        certificate_fingerprint: fingerprint,
+        username: params.username,
         password: params.password,
         nickname: params.nickname.unwrap_or_default(),
     };
@@ -57,9 +67,8 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
         frame_reader,
         frame_writer,
         login_info,
-        transfer_params,
+        connection_info,
         params.connection_id,
-        fingerprint,
     )
     .await
 }
@@ -150,7 +159,9 @@ async fn perform_login(
             max_transfers_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_transfers_per_ip),
-            transfer_port: server_info.and_then(|info| info.transfer_port),
+            transfer_port: server_info
+                .map(|info| info.transfer_port)
+                .unwrap_or(DEFAULT_TRANSFER_PORT),
             locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         ServerMessage::LoginResponse {

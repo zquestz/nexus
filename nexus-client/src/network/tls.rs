@@ -106,6 +106,24 @@ pub fn create_tls_config() -> ClientConfig {
     config
 }
 
+/// Format a certificate's raw bytes as a SHA-256 fingerprint string
+///
+/// Returns a colon-separated uppercase hex string (e.g., "AA:BB:CC:...").
+fn format_certificate_fingerprint(cert_bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(cert_bytes);
+    let fingerprint = hasher.finalize();
+
+    // Format as colon-separated hex string (uppercase)
+    let hex_str = hex::encode_upper(fingerprint);
+    hex_str
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).expect("hex encoding produces valid ASCII"))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
 /// Get the certificate fingerprint from a TLS session
 ///
 /// Returns the SHA-256 fingerprint of the server's certificate as a colon-separated
@@ -116,21 +134,7 @@ pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String>
         return None;
     }
 
-    // Calculate SHA-256 fingerprint of the first certificate (end entity)
-    let mut hasher = Sha256::new();
-    hasher.update(certs[0].as_ref());
-    let fingerprint = hasher.finalize();
-
-    // Format as colon-separated hex string (uppercase)
-    let hex_str = hex::encode_upper(fingerprint);
-    let fingerprint_str = hex_str
-        .as_bytes()
-        .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
-        .collect::<Vec<_>>()
-        .join(":");
-
-    Some(fingerprint_str)
+    Some(format_certificate_fingerprint(certs[0].as_ref()))
 }
 
 /// Establish TLS connection to the server and return certificate fingerprint
@@ -311,21 +315,7 @@ fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, S
         return Err(t("err-no-certificates-in-chain"));
     }
 
-    // Calculate SHA-256 fingerprint of the first certificate (end entity)
-    let mut hasher = Sha256::new();
-    hasher.update(certs[0].as_ref());
-    let fingerprint = hasher.finalize();
-
-    // Format as colon-separated hex string (uppercase)
-    let hex_str = hex::encode_upper(fingerprint);
-    let fingerprint_str = hex_str
-        .as_bytes()
-        .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
-        .collect::<Vec<_>>()
-        .join(":");
-
-    Ok(fingerprint_str)
+    Ok(format_certificate_fingerprint(certs[0].as_ref()))
 }
 
 #[cfg(test)]

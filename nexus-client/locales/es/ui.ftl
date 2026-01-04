@@ -177,6 +177,7 @@ tooltip-server-info = Info del Servidor
 tooltip-about = Acerca de
 tooltip-transfers = Transferencias
 tooltip-download-all = Descargar Todo
+tooltip-clear-inactive = Limpiar Inactivos
 tooltip-settings = Configuración
 tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
@@ -577,23 +578,19 @@ transfer-action-remove = Eliminar
 transfer-action-open-folder = Abrir carpeta
 transfer-action-retry = Reintentar
 
-# Toolbar actions
-transfer-clear-completed = Limpiar completados
-transfer-clear-failed = Limpiar fallidos
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } archivos
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } transcurrido
 transfer-eta = { $time } restante
-transfer-from-server = De: { $server }
+transfer-completed-in = Completado en { $time }
+transfer-from-server = Desde: { $server }
 
 # Transfer errors
 transfer-error-not-found = Ruta no encontrada
 transfer-error-permission = Permiso denegado
 transfer-error-invalid = Ruta inválida
 transfer-error-unsupported-version = Versión de protocolo no compatible
-transfer-error-disk-full = Disco lleno
 transfer-error-hash-mismatch = Verificación de archivo fallida
 transfer-error-io = Error de E/S de archivo
 transfer-error-protocol = Error de protocolo
@@ -601,3 +598,11 @@ transfer-error-connection = Error de conexión
 transfer-error-certificate-mismatch = Huella digital del certificado no coincide
 transfer-error-auth-failed = Autenticación fallida
 transfer-error-unknown = Error desconocido
+transfer-cancelled = Cancelado por el usuario
+transfer-task-failed = Tarea de transferencia fallida: { $error }
+transfer-save-no-config-dir = No se pudo determinar el directorio de configuración
+transfer-save-create-dir-failed = Error al crear el directorio de configuración: { $error }
+transfer-save-serialize-failed = Error al serializar las transferencias: { $error }
+transfer-save-write-failed = Error al escribir el archivo de transferencias: { $error }
+transfer-save-metadata-failed = Error al leer los metadatos del archivo: { $error }
+transfer-save-permissions-failed = Error al establecer los permisos del archivo: { $error }

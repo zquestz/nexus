@@ -1,12 +1,82 @@
 //! Server connection types
 
-use uuid::Uuid;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
-use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc;
+use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex, mpsc};
+use uuid::Uuid;
+
+use super::{
+    ActivePanel, ChatMessage, ChatTab, FilesManagementState, NewsManagementState,
+    PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
+    UserManagementState,
+};
+use crate::image::CachedImage;
+
+// =============================================================================
+// Connection Credentials
+// =============================================================================
+
+/// Credentials and connection info needed for authentication
+///
+/// This struct consolidates all the information needed to connect to a server,
+/// both for the main BBS connection and for file transfers. It avoids
+/// duplicating these fields across multiple structs.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ConnectionInfo {
+    /// Server name for display (resolved: server-provided name or address fallback)
+    pub server_name: String,
+    /// Server address (IP or hostname)
+    pub address: String,
+    /// Main BBS port (typically 7500)
+    #[serde(default)]
+    pub port: u16,
+    /// Transfer port (typically 7501)
+    pub transfer_port: u16,
+    /// TLS certificate fingerprint (SHA-256)
+    pub certificate_fingerprint: String,
+    /// Username for authentication
+    pub username: String,
+    /// Password for authentication
+    pub password: String,
+    /// Nickname for shared accounts (empty string if not used)
+    pub nickname: String,
+}
+
+impl std::fmt::Debug for ConnectionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionInfo")
+            .field("server_name", &self.server_name)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("transfer_port", &self.transfer_port)
+            .field("certificate_fingerprint", &self.certificate_fingerprint)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("nickname", &self.nickname)
+            .finish()
+    }
+}
+
+impl ConnectionInfo {
+    /// Get the display name (nickname if non-empty, otherwise username)
+    #[allow(dead_code)]
+    pub fn display_nickname(&self) -> &str {
+        if self.nickname.is_empty() {
+            &self.username
+        } else {
+            &self.nickname
+        }
+    }
+}
+
+// =============================================================================
+// Tab Completion State
+// =============================================================================
 
 /// State for tab completion in chat input
 #[derive(Debug, Clone)]
@@ -30,12 +100,9 @@ impl TabCompletionState {
     }
 }
 
-use super::{
-    ActivePanel, ChatMessage, ChatTab, FilesManagementState, NewsManagementState,
-    PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
-    UserManagementState,
-};
-use crate::image::CachedImage;
+// =============================================================================
+// Server Connection Parameters
+// =============================================================================
 
 /// Parameters for creating a new ServerConnection
 pub struct ServerConnectionParams {
@@ -43,20 +110,8 @@ pub struct ServerConnectionParams {
     pub bookmark_id: Option<Uuid>,
     /// Session ID assigned by server
     pub session_id: u32,
-    /// Authenticated username
-    pub username: String,
-    /// Password (stored for transfer reconnection)
-    pub password: String,
-    /// Nickname for shared accounts (if different from username)
-    pub nickname: String,
-    /// Server address (IP or hostname)
-    pub address: String,
-    /// Server port
-    pub port: u16,
-    /// Transfer port (from ServerInfo, typically 7501)
-    pub transfer_port: Option<u16>,
-    /// TLS certificate fingerprint (SHA-256)
-    pub certificate_fingerprint: String,
+    /// Connection info (address, port, auth info)
+    pub connection_info: ConnectionInfo,
     /// Display name (bookmark name or address:port)
     pub display_name: String,
     /// Unique connection identifier
@@ -91,12 +146,15 @@ pub struct ServerConnectionParams {
     pub shutdown_handle: WrappedShutdownHandle,
 }
 
-/// Type alias for the wrapped shutdown handle (Arc<Mutex<Option<...>>>)
-type WrappedShutdownHandle =
-    std::sync::Arc<tokio::sync::Mutex<Option<crate::network::ShutdownHandle>>>;
+/// Type alias for the wrapped shutdown handle
+pub type WrappedShutdownHandle = Arc<Mutex<Option<crate::network::ShutdownHandle>>>;
 
-/// Type alias for the command channel sender (includes message ID)
+/// Type alias for the command sender channel
 pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
+
+// =============================================================================
+// Server Connection
+// =============================================================================
 
 /// Active connection to a server
 ///
@@ -107,21 +165,8 @@ pub struct ServerConnection {
     pub bookmark_id: Option<Uuid>,
     /// Session ID assigned by server (used to identify our user in online_users list)
     pub session_id: u32,
-    /// Authenticated username (used for PM routing)
-    pub username: String,
-    /// Password (stored for transfer reconnection)
-    pub password: String,
-    /// Nickname for shared accounts (display name, may differ from username)
-    pub nickname: String,
-    /// Server address (IP or hostname)
-    pub address: String,
-    /// Server port (stored for future display use, e.g., status bar)
-    #[allow(dead_code)]
-    pub port: u16,
-    /// Transfer port (from ServerInfo, typically 7501)
-    pub transfer_port: Option<u16>,
-    /// TLS certificate fingerprint (SHA-256)
-    pub certificate_fingerprint: String,
+    /// Connection info (address, port, auth info)
+    pub connection_info: ConnectionInfo,
     /// Display name (bookmark name or address:port)
     pub display_name: String,
     /// Unique connection identifier
@@ -245,13 +290,7 @@ impl ServerConnection {
         Self {
             bookmark_id: params.bookmark_id,
             session_id: params.session_id,
-            username: params.username,
-            password: params.password,
-            nickname: params.nickname,
-            address: params.address,
-            port: params.port,
-            transfer_port: params.transfer_port,
-            certificate_fingerprint: params.certificate_fingerprint,
+            connection_info: params.connection_info,
             display_name: params.display_name,
             connection_id: params.connection_id,
             is_admin: params.is_admin,
@@ -294,7 +333,14 @@ impl ServerConnection {
     }
 }
 
-/// Network connection handle returned by connect_to_server()
+// =============================================================================
+// Network Connection
+// =============================================================================
+
+/// Network connection state returned from connection setup
+///
+/// This is an intermediate type created after successful TLS + login,
+/// before the UI creates a full ServerConnection.
 #[derive(Debug, Clone)]
 pub struct NetworkConnection {
     /// Channel for sending messages to server
@@ -325,20 +371,10 @@ pub struct NetworkConnection {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
-    /// Transfer port (from ServerInfo, typically 7501)
-    pub transfer_port: Option<u16>,
-    /// Certificate fingerprint (SHA-256) for TOFU verification
-    pub certificate_fingerprint: String,
     /// Locale accepted by the server
     pub locale: String,
-    /// Server address (IP or hostname) - stored for transfer reconnection
-    pub address: String,
-    /// Server port - stored for transfer reconnection
-    pub port: u16,
-    /// Password - stored for transfer reconnection
-    pub password: String,
-    /// Nickname for shared accounts - stored for transfer reconnection
-    pub nickname: String,
+    /// Connection info (address, port, auth info)
+    pub connection_info: ConnectionInfo,
 }
 
 impl NetworkConnection {

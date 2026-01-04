@@ -123,6 +123,7 @@ impl UpnpGateway {
     ///
     /// ```no_run
     /// # use std::net::IpAddr;
+    /// # use nexus_server::upnp::UpnpGateway;
     /// # async fn example() -> Result<(), String> {
     /// let bind_addr: IpAddr = "0.0.0.0".parse().expect("valid IP address");
     /// let gateway = UpnpGateway::setup(bind_addr, 7500, 7501).await?;
@@ -388,11 +389,6 @@ mod tests {
         // Should be long enough for firewall dialogs but not too long
         assert!(SEARCH_TIMEOUT.as_secs() >= 10);
         assert!(SEARCH_TIMEOUT.as_secs() <= 30);
-    }
-
-    #[test]
-    fn test_protocol_description_not_empty() {
-        assert!(!PROTOCOL_DESCRIPTION.is_empty());
     }
 
     // ==========================================================================

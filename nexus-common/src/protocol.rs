@@ -515,9 +515,8 @@ pub struct ServerInfo {
     pub max_transfers_per_ip: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// Port for file transfers (typically 7501), None if transfers not available
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transfer_port: Option<u16>,
+    /// Port for file transfers (typically 7501)
+    pub transfer_port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1743,7 +1742,7 @@ mod tests {
             max_connections_per_ip: Some(5),
             max_transfers_per_ip: Some(3),
             image: None,
-            transfer_port: Some(7501),
+            transfer_port: 7501,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"max_transfers_per_ip\":3"));
@@ -1752,16 +1751,17 @@ mod tests {
         // Test deserialization
         let parsed: ServerInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.max_transfers_per_ip, Some(3));
-        assert_eq!(parsed.transfer_port, Some(7501));
+        assert_eq!(parsed.transfer_port, 7501);
     }
 
     #[test]
-    fn test_server_info_without_transfer_fields() {
-        // Ensure backward compatibility - missing fields default to None
-        let json = r#"{"name":"Old Server","version":"0.4.0"}"#;
+    fn test_server_info_without_optional_fields() {
+        // Ensure backward compatibility - missing optional fields default to None
+        // transfer_port is required, so must be present
+        let json = r#"{"name":"Old Server","version":"0.4.0","transfer_port":7501}"#;
         let info: ServerInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.name, Some("Old Server".to_string()));
         assert_eq!(info.max_transfers_per_ip, None);
-        assert_eq!(info.transfer_port, None);
+        assert_eq!(info.transfer_port, 7501);
     }
 }

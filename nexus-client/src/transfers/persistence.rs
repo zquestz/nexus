@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use super::types::{Transfer, TransferError, TransferStatus};
+use crate::constants::{APP_DIR_NAME, TRANSFERS_FILE_NAME};
+use crate::i18n::{t, t_args};
 
 /// File permissions for transfers file on Unix (owner read/write only)
 #[cfg(unix)]
@@ -54,7 +56,7 @@ impl TransferManager {
     ///
     /// Returns None if the config directory cannot be determined.
     pub fn transfers_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join("nexus").join("transfers.json"))
+        dirs::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(TRANSFERS_FILE_NAME))
     }
 
     /// Load transfers from disk, or return empty manager if not found
@@ -106,13 +108,16 @@ impl TransferManager {
             return Ok(());
         }
 
-        let path = Self::transfers_path()
-            .ok_or_else(|| "Could not determine config directory".to_string())?;
+        let path = Self::transfers_path().ok_or_else(|| t("transfer-save-no-config-dir"))?;
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create config directory: {e}"))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                t_args(
+                    "transfer-save-create-dir-failed",
+                    &[("error", &e.to_string())],
+                )
+            })?;
         }
 
         // Build the file structure
@@ -121,11 +126,16 @@ impl TransferManager {
         };
 
         // Serialize to pretty JSON
-        let json = serde_json::to_string_pretty(&file)
-            .map_err(|e| format!("Failed to serialize transfers: {e}"))?;
+        let json = serde_json::to_string_pretty(&file).map_err(|e| {
+            t_args(
+                "transfer-save-serialize-failed",
+                &[("error", &e.to_string())],
+            )
+        })?;
 
         // Write to disk
-        fs::write(&path, json).map_err(|e| format!("Failed to write transfers file: {e}"))?;
+        fs::write(&path, json)
+            .map_err(|e| t_args("transfer-save-write-failed", &[("error", &e.to_string())]))?;
 
         // Set restrictive permissions on Unix (owner read/write only)
         #[cfg(unix)]
@@ -140,13 +150,21 @@ impl TransferManager {
     fn set_transfers_permissions(path: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
 
-        let metadata =
-            fs::metadata(path).map_err(|e| format!("Failed to read file metadata: {e}"))?;
+        let metadata = fs::metadata(path).map_err(|e| {
+            t_args(
+                "transfer-save-metadata-failed",
+                &[("error", &e.to_string())],
+            )
+        })?;
         let mut perms = metadata.permissions();
         perms.set_mode(TRANSFERS_FILE_MODE);
 
-        fs::set_permissions(path, perms)
-            .map_err(|e| format!("Failed to set file permissions: {e}"))?;
+        fs::set_permissions(path, perms).map_err(|e| {
+            t_args(
+                "transfer-save-permissions-failed",
+                &[("error", &e.to_string())],
+            )
+        })?;
 
         Ok(())
     }
@@ -177,25 +195,9 @@ impl TransferManager {
         self.transfers.get(&id)
     }
 
-    /// Get a mutable reference to a transfer by ID
-    #[allow(dead_code)] // Useful for future direct mutation needs
-    pub fn get_mut(&mut self, id: Uuid) -> Option<&mut Transfer> {
-        let transfer = self.transfers.get_mut(&id);
-        if transfer.is_some() {
-            self.dirty = true;
-        }
-        transfer
-    }
-
     /// Get all transfers
     pub fn all(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers.values()
-    }
-
-    /// Get all active transfers (connecting or transferring)
-    #[allow(dead_code)] // Used by active_count(), kept for direct access
-    pub fn active(&self) -> impl Iterator<Item = &Transfer> {
-        self.transfers.values().filter(|t| t.status.is_active())
     }
 
     /// Get all queued or active transfers (for subscription creation)
@@ -206,40 +208,6 @@ impl TransferManager {
         self.transfers
             .values()
             .filter(|t| t.status == TransferStatus::Queued || t.status.is_active())
-    }
-
-    /// Get all queued transfers
-    #[allow(dead_code)] // Kept for future queue management UI
-    pub fn queued(&self) -> impl Iterator<Item = &Transfer> {
-        self.transfers
-            .values()
-            .filter(|t| t.status == TransferStatus::Queued)
-    }
-
-    /// Get the next queued transfer (first one in queue order)
-    ///
-    /// Returns None if there are no queued transfers or if there's already
-    /// an active transfer (Connecting or Transferring status).
-    #[allow(dead_code)] // Alternative queue selection strategy
-    pub fn next_queued(&self) -> Option<&Transfer> {
-        // Don't start a new transfer if one is already active
-        if self.active_count() > 0 {
-            return None;
-        }
-
-        // Get the oldest queued transfer (by created_at timestamp)
-        self.transfers
-            .values()
-            .filter(|t| t.status == TransferStatus::Queued)
-            .min_by_key(|t| t.created_at)
-    }
-
-    /// Get all paused transfers
-    #[allow(dead_code)] // Kept for future pause management UI
-    pub fn paused(&self) -> impl Iterator<Item = &Transfer> {
-        self.transfers
-            .values()
-            .filter(|t| t.status == TransferStatus::Paused)
     }
 
     /// Get all completed transfers
@@ -254,18 +222,6 @@ impl TransferManager {
         self.transfers
             .values()
             .filter(|t| t.status == TransferStatus::Failed)
-    }
-
-    /// Count of all transfers
-    #[allow(dead_code)] // Useful for UI badge/counter
-    pub fn count(&self) -> usize {
-        self.transfers.len()
-    }
-
-    /// Count of active transfers
-    #[allow(dead_code)] // Used by next_queued(), useful for UI
-    pub fn active_count(&self) -> usize {
-        self.active().count()
     }
 
     /// Update transfer progress
@@ -314,19 +270,6 @@ impl TransferManager {
             transfer.total_bytes = total_bytes;
             transfer.file_count = file_count;
             transfer.server_transfer_id = server_transfer_id;
-            self.dirty = true;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Mark a file as completed within a transfer
-    #[allow(dead_code)] // Progress tracking via files_completed field
-    pub fn complete_file(&mut self, id: Uuid) -> bool {
-        if let Some(transfer) = self.transfers.get_mut(&id) {
-            transfer.files_completed += 1;
-            transfer.current_file = None;
             self.dirty = true;
             true
         } else {
@@ -412,16 +355,42 @@ impl TransferManager {
         }
     }
 
+    // =========================================================================
+    // Test-only helpers
+    // =========================================================================
+
+    /// Get the number of transfers
+    #[cfg(test)]
+    pub fn count(&self) -> usize {
+        self.transfers.len()
+    }
+
     /// Check if there are unsaved changes
-    #[allow(dead_code)] // Useful for optimized save strategies
+    #[cfg(test)]
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
-    /// Mark the manager as having unsaved changes
-    #[allow(dead_code)] // Useful for external state tracking
-    pub fn mark_dirty(&mut self) {
-        self.dirty = true;
+    /// Get all queued transfers
+    #[cfg(test)]
+    pub fn queued(&self) -> impl Iterator<Item = &Transfer> {
+        self.transfers
+            .values()
+            .filter(|t| t.status == TransferStatus::Queued)
+    }
+
+    /// Get all active transfers (connecting or transferring)
+    #[cfg(test)]
+    pub fn active(&self) -> impl Iterator<Item = &Transfer> {
+        self.transfers.values().filter(|t| t.status.is_active())
+    }
+
+    /// Get all paused transfers
+    #[cfg(test)]
+    pub fn paused(&self) -> impl Iterator<Item = &Transfer> {
+        self.transfers
+            .values()
+            .filter(|t| t.status == TransferStatus::Paused)
     }
 }
 
@@ -440,17 +409,18 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::transfers::TransferConnectionInfo;
+    use crate::types::ConnectionInfo;
 
-    fn test_connection_info() -> TransferConnectionInfo {
-        TransferConnectionInfo {
+    fn test_connection_info() -> ConnectionInfo {
+        ConnectionInfo {
             server_name: "Test Server".to_string(),
-            server_address: "192.168.1.100".to_string(),
+            address: "192.168.1.100".to_string(),
+            port: 7500,
             transfer_port: 7501,
             certificate_fingerprint: "AA:BB:CC:DD".to_string(),
             username: "alice".to_string(),
             password: "secret".to_string(),
-            nickname: None,
+            nickname: String::new(),
         }
     }
 
@@ -583,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn test_transfer_manager_complete_file() {
+    fn test_transfer_manager_file_progress() {
         let mut manager = TransferManager::new();
         let mut transfer = test_transfer();
         transfer.status = TransferStatus::Transferring;
@@ -591,7 +561,8 @@ mod tests {
         let id = transfer.id;
         manager.add(transfer);
 
-        assert!(manager.complete_file(id));
+        // Simulate completing a file by updating progress
+        assert!(manager.update_progress(id, 1000, 1, None));
 
         let t = manager.get(id).unwrap();
         assert_eq!(t.files_completed, 1);
@@ -629,7 +600,6 @@ mod tests {
         assert_eq!(manager.completed().count(), 1);
         assert_eq!(manager.failed().count(), 1);
         assert_eq!(manager.paused().count(), 1);
-        assert_eq!(manager.active_count(), 1);
     }
 
     #[test]
@@ -719,8 +689,8 @@ mod tests {
         manager.dirty = false;
         assert!(!manager.is_dirty());
 
-        // Getting mutable reference marks dirty
-        let _ = manager.get_mut(id);
+        // Updating progress marks dirty
+        manager.update_progress(id, 100, 0, None);
         assert!(manager.is_dirty());
     }
 

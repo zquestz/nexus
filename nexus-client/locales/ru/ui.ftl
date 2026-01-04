@@ -176,6 +176,7 @@ tooltip-server-info = Информация о сервере
 tooltip-about = О программе
 tooltip-transfers = Передачи
 tooltip-download-all = Скачать всё
+tooltip-clear-inactive = Очистить неактивные
 tooltip-settings = Настройки
 tooltip-hide-bookmarks = Скрыть закладки
 tooltip-show-bookmarks = Показать закладки
@@ -581,15 +582,12 @@ transfer-action-remove = Удалить
 transfer-action-open-folder = Открыть папку
 transfer-action-retry = Повторить
 
-# Toolbar actions
-transfer-clear-completed = Очистить завершённые
-transfer-clear-failed = Очистить неудачные
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } файлов
 transfer-speed = { $speed }/с
 transfer-elapsed = { $time } прошло
 transfer-eta = { $time } осталось
+transfer-completed-in = Завершено за { $time }
 transfer-from-server = От: { $server }
 
 # Transfer errors
@@ -597,7 +595,6 @@ transfer-error-not-found = Путь не найден
 transfer-error-permission = Доступ запрещён
 transfer-error-invalid = Недопустимый путь
 transfer-error-unsupported-version = Версия протокола не поддерживается
-transfer-error-disk-full = Диск заполнен
 transfer-error-hash-mismatch = Ошибка проверки файла
 transfer-error-io = Ошибка ввода-вывода файла
 transfer-error-protocol = Ошибка протокола
@@ -605,3 +602,11 @@ transfer-error-connection = Ошибка соединения
 transfer-error-certificate-mismatch = Отпечаток сертификата не совпадает
 transfer-error-auth-failed = Ошибка аутентификации
 transfer-error-unknown = Неизвестная ошибка
+transfer-cancelled = Отменено пользователем
+transfer-task-failed = Ошибка задачи передачи: { $error }
+transfer-save-no-config-dir = Не удалось определить каталог конфигурации
+transfer-save-create-dir-failed = Не удалось создать каталог конфигурации: { $error }
+transfer-save-serialize-failed = Не удалось сериализовать передачи: { $error }
+transfer-save-write-failed = Не удалось записать файл передач: { $error }
+transfer-save-metadata-failed = Не удалось прочитать метаданные файла: { $error }
+transfer-save-permissions-failed = Не удалось установить права доступа к файлу: { $error }

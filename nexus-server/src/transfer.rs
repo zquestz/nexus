@@ -779,22 +779,12 @@ fn scan_directory_recursive<'a>(
             // Note: Hidden files (dotfiles) are included in downloads.
             // The show_hidden setting only affects the file browser UI, not transfers.
 
-            // Canonicalize the path before dropbox check to handle symlinks correctly.
-            // If a symlink points to a dropbox folder, the canonical path will reveal it.
-            // Skip broken symlinks (canonicalize fails) silently.
-            let canonical_path = match std::fs::canonicalize(&path) {
-                Ok(p) => p,
-                Err(e) => {
-                    if debug {
-                        eprintln!("  Skipping {} - canonicalize failed: {}", file_name, e);
-                    }
-                    continue;
-                }
-            };
-
-            // Check dropbox access on canonical path (security: prevents leaking dropbox contents
-            // even through symlinks that point to dropbox folders)
-            if !can_access_for_download(&canonical_path, username, is_admin) {
+            // Check dropbox access on the symlink's location, NOT its target.
+            // Symlinks are trusted because only admins can create them (users can't create
+            // symlinks through the BBS protocol). If an admin creates a symlink in a public
+            // folder pointing into a dropbox, that's intentional - they're choosing to expose
+            // that content.
+            if !can_access_for_download(&path, username, is_admin) {
                 if debug {
                     eprintln!("  Skipping {} - dropbox access denied", file_name);
                 }
@@ -1100,6 +1090,116 @@ mod tests {
         let path = Path::new("/files/shared/Submissions [NEXUS-DB]/subfolder/file.txt");
         assert!(!can_access_for_download(path, "alice", false));
         assert!(can_access_for_download(path, "admin", true));
+    }
+
+    // ==========================================================================
+    // scan_directory_recursive symlink tests (Unix only)
+    //
+    // Symlinks are trusted because only admins can create them (users can't
+    // create symlinks through the BBS protocol). If an admin creates a symlink
+    // in a public folder pointing into a dropbox, that's intentional.
+    // ==========================================================================
+
+    /// Test that a symlink pointing into a dropbox folder IS accessible
+    /// when the symlink itself is in a public folder (admin-created symlinks are trusted)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_into_dropbox_allowed_from_public() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create dropbox folder with a secret file
+        let dropbox_dir = temp_dir.path().join("Dropbox [NEXUS-DB]");
+        fs::create_dir(&dropbox_dir).await.unwrap();
+        let secret_file = dropbox_dir.join("secret.txt");
+        fs::write(&secret_file, b"secret content").await.unwrap();
+
+        // Create public folder with a symlink pointing into the dropbox
+        // This simulates an admin intentionally exposing the file
+        let public_dir = temp_dir.path().join("public");
+        fs::create_dir(&public_dir).await.unwrap();
+        let symlink_path = public_dir.join("exposed_secret");
+        std::os::unix::fs::symlink(&secret_file, &symlink_path).unwrap();
+
+        // Non-admin should be able to access via the symlink (it's in public/)
+        let mut files = Vec::new();
+        scan_directory_recursive(&public_dir, "", &mut files, "alice", false, false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            files.len(),
+            1,
+            "Symlink in public folder should be accessible"
+        );
+        assert_eq!(files[0].relative_path, "exposed_secret");
+    }
+
+    /// Test that files directly IN a dropbox are still blocked
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_file_directly_in_dropbox_blocked() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create dropbox folder with a file
+        let dropbox_dir = temp_dir.path().join("Submissions [NEXUS-DB]");
+        fs::create_dir(&dropbox_dir).await.unwrap();
+        fs::write(dropbox_dir.join("secret.txt"), b"secret")
+            .await
+            .unwrap();
+
+        // Scanning the dropbox directly should block the file for non-admins
+        let mut files = Vec::new();
+        scan_directory_recursive(&dropbox_dir, "", &mut files, "alice", false, false)
+            .await
+            .unwrap();
+
+        assert!(
+            files.is_empty(),
+            "Files directly in dropbox should be blocked"
+        );
+
+        // But admin can access
+        let mut files = Vec::new();
+        scan_directory_recursive(&dropbox_dir, "", &mut files, "admin", true, false)
+            .await
+            .unwrap();
+
+        assert_eq!(files.len(), 1, "Admin should access dropbox contents");
+    }
+
+    /// Test that a symlink to a directory inside a dropbox is accessible from public
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_to_dropbox_directory_allowed_from_public() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create dropbox folder with a subdirectory containing files
+        let dropbox_dir = temp_dir.path().join("Submissions [NEXUS-DB]");
+        fs::create_dir(&dropbox_dir).await.unwrap();
+        let sub_dir = dropbox_dir.join("project");
+        fs::create_dir(&sub_dir).await.unwrap();
+        fs::write(sub_dir.join("code.rs"), b"fn main() {}")
+            .await
+            .unwrap();
+
+        // Create public folder with a symlink to the subdirectory
+        let public_dir = temp_dir.path().join("public");
+        fs::create_dir(&public_dir).await.unwrap();
+        let symlink_path = public_dir.join("shared_project");
+        std::os::unix::fs::symlink(&sub_dir, &symlink_path).unwrap();
+
+        // Non-admin should be able to access via the symlink
+        let mut files = Vec::new();
+        scan_directory_recursive(&public_dir, "", &mut files, "alice", false, false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            files.len(),
+            1,
+            "Symlink to dropbox subdir should be accessible"
+        );
+        assert_eq!(files[0].relative_path, "shared_project/code.rs");
     }
 
     // ==========================================================================

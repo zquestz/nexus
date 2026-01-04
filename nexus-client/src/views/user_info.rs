@@ -28,7 +28,7 @@ use crate::types::{InputId, Message, PasswordChangeState, ServerConnection};
 pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'a, Message> {
     let has_edit_permission = conn.has_permission(PERMISSION_USER_EDIT);
     let data = &conn.user_info_data;
-    let current_username = &conn.username;
+    let current_username = &conn.connection_info.username;
     let avatar_cache = &conn.avatar_cache;
 
     let mut content = column![].spacing(ELEMENT_SPACING);

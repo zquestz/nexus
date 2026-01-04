@@ -3,19 +3,58 @@
 //! A global panel showing all file transfers across all connections.
 //! Transfers persist across application restarts for resume support.
 
-use iced::widget::{Column, Row, Space, button, column, container, progress_bar, row, scrollable};
-use iced::{Center, Element, Fill, Length};
+// ============================================================================
+// Constants
+// ============================================================================
 
-use crate::i18n::t;
+/// Bullet separator for status line (e.g., "Server • Status • Speed")
+const BULLET_SEPARATOR: &str = " • ";
+
+/// Em dash separator for error messages (e.g., "Status — Error message")
+const EM_DASH_SEPARATOR: &str = " — ";
+
+/// Seconds per minute (for duration formatting)
+const SECONDS_PER_MINUTE: i64 = 60;
+
+/// Seconds per hour (for duration formatting)
+const SECONDS_PER_HOUR: i64 = 3600;
+
+/// Bytes per kilobyte
+const BYTES_PER_KB: u64 = 1024;
+
+/// Bytes per megabyte
+const BYTES_PER_MB: u64 = BYTES_PER_KB * 1024;
+
+/// Bytes per gigabyte
+const BYTES_PER_GB: u64 = BYTES_PER_MB * 1024;
+
+/// Minimum speed threshold for ETA calculation (bytes/second)
+const MIN_SPEED_FOR_ETA: f64 = 1.0;
+
+// ============================================================================
+// Imports
+// ============================================================================
+
+use iced::alignment;
+use iced::widget::{
+    Column, Space, button, column, container, progress_bar, row, scrollable, tooltip,
+};
+use iced::{Center, Element, Fill};
+
+use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE,
-    SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TRANSFER_ITEM_SPACING, TRANSFER_LIST_MAX_WIDTH, TRANSFER_ROW_PADDING, alternating_row_style,
-    content_background_style, danger_icon_button_style, error_text_style, muted_text_style,
-    panel_title, shaped_text, transparent_icon_button_style,
+    DETAIL_TEXT_SIZE, ELEMENT_SPACING, FORM_PADDING, ICON_BUTTON_PADDING, NEWS_ACTION_BUTTON_SIZE,
+    NEWS_ACTION_ICON_SIZE, SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING,
+    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, TRANSFER_ICON_SIZE, TRANSFER_INFO_SPACING,
+    TRANSFER_ITEM_SPACING, TRANSFER_LIST_MAX_WIDTH, TRANSFER_PROGRESS_BAR_HEIGHT,
+    TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING, TRANSFER_TITLE_BOTTOM_PADDING,
+    alternating_row_style, content_background_style, danger_icon_button_style,
+    disabled_icon_button_style, error_text_style, muted_text_style, shaped_text,
+    tooltip_container_style, transparent_icon_button_style,
 };
-use crate::transfers::{Transfer, TransferManager, TransferStatus};
+use crate::transfers::{Transfer, TransferDirection, TransferManager, TransferStatus};
 use crate::types::Message;
 
 // ============================================================================
@@ -36,16 +75,12 @@ fn status_text(status: TransferStatus) -> String {
 
 /// Format bytes as human-readable string (e.g., "1.5 MB")
 fn format_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
+    if bytes >= BYTES_PER_GB {
+        format!("{:.1} GB", bytes as f64 / BYTES_PER_GB as f64)
+    } else if bytes >= BYTES_PER_MB {
+        format!("{:.1} MB", bytes as f64 / BYTES_PER_MB as f64)
+    } else if bytes >= BYTES_PER_KB {
+        format!("{:.1} KB", bytes as f64 / BYTES_PER_KB as f64)
     } else {
         format!("{} B", bytes)
     }
@@ -53,19 +88,19 @@ fn format_bytes(bytes: u64) -> String {
 
 /// Format duration in seconds as human-readable string (e.g., "5m 30s")
 fn format_duration(seconds: i64) -> String {
-    if seconds < 60 {
+    if seconds < SECONDS_PER_MINUTE {
         format!("{}s", seconds)
-    } else if seconds < 3600 {
-        let mins = seconds / 60;
-        let secs = seconds % 60;
+    } else if seconds < SECONDS_PER_HOUR {
+        let mins = seconds / SECONDS_PER_MINUTE;
+        let secs = seconds % SECONDS_PER_MINUTE;
         if secs > 0 {
             format!("{}m {}s", mins, secs)
         } else {
             format!("{}m", mins)
         }
     } else {
-        let hours = seconds / 3600;
-        let mins = (seconds % 3600) / 60;
+        let hours = seconds / SECONDS_PER_HOUR;
+        let mins = (seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
         if mins > 0 {
             format!("{}h {}m", hours, mins)
         } else {
@@ -77,7 +112,7 @@ fn format_duration(seconds: i64) -> String {
 /// Calculate estimated time remaining based on speed and remaining bytes
 fn estimate_remaining(transfer: &Transfer) -> Option<String> {
     let speed = transfer.bytes_per_second()?;
-    if speed < 1.0 {
+    if speed < MIN_SPEED_FOR_ETA {
         return None;
     }
     let remaining_bytes = transfer
@@ -112,215 +147,186 @@ fn danger_action_button<'a>(
 }
 
 /// Build a single transfer row
+///
+/// Layout:
+/// ```text
+/// ┌─────────────────────────────────────────────────────────────────────┐
+/// │ ↓  Transfer Name                                           ▶  ✕    │
+/// │    [████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] │
+/// │    Server • Status • 1.5 MB/s • ~2m • 192.0 KB / 1.0 GB            │
+/// └─────────────────────────────────────────────────────────────────────┘
+/// ```
 fn build_transfer_row<'a>(transfer: &Transfer, index: usize) -> Element<'a, Message> {
     let id = transfer.id;
 
-    // Left side: name, server, and status info
+    // Direction icon (download or upload)
+    let direction_icon = match transfer.direction {
+        TransferDirection::Download => icon::download(),
+        TransferDirection::Upload => icon::upload(),
+    };
+
+    // Transfer name (title)
     let name = shaped_text(transfer.display_name()).size(TEXT_SIZE);
 
-    let server_info = shaped_text(&transfer.connection.server_name)
-        .size(TEXT_SIZE - 2.0)
-        .style(muted_text_style);
-
-    // Status line with speed/progress for active transfers
-    let status_line: Element<'a, Message> = match transfer.status {
-        TransferStatus::Transferring => {
-            let mut parts = vec![status_text(transfer.status)];
-
-            // Add speed if available
-            if let Some(speed) = transfer.bytes_per_second() {
-                parts.push(format!(" • {}/s", format_bytes(speed as u64)));
-            }
-
-            // Add ETA if available
-            if let Some(eta) = estimate_remaining(transfer) {
-                parts.push(format!(" • ~{}", eta));
-            }
-
-            shaped_text(parts.join(""))
-                .size(TEXT_SIZE - 2.0)
-                .style(muted_text_style)
-                .into()
-        }
-        TransferStatus::Failed => {
-            let error_msg = transfer.error.as_deref().unwrap_or_default();
-            shaped_text(format!("{}: {}", status_text(transfer.status), error_msg))
-                .size(TEXT_SIZE - 2.0)
-                .style(error_text_style)
-                .into()
-        }
-        TransferStatus::Completed => {
-            let mut parts = vec![status_text(transfer.status)];
-
-            // Show elapsed time for completed transfers
-            if let Some(elapsed) = transfer.elapsed_seconds() {
-                parts.push(format!(" in {}", format_duration(elapsed)));
-            }
-
-            shaped_text(parts.join(""))
-                .size(TEXT_SIZE - 2.0)
-                .style(muted_text_style)
-                .into()
-        }
-        _ => shaped_text(status_text(transfer.status))
-            .size(TEXT_SIZE - 2.0)
-            .style(muted_text_style)
-            .into(),
+    // Action buttons based on status (top-right corner)
+    let actions: Element<'a, Message> = match transfer.status {
+        TransferStatus::Queued => row![danger_action_button(
+            icon::close(),
+            Message::TransferCancel(id)
+        )]
+        .spacing(SMALL_SPACING)
+        .into(),
+        TransferStatus::Connecting | TransferStatus::Transferring => row![
+            action_button(icon::pause(), Message::TransferPause(id)),
+            danger_action_button(icon::close(), Message::TransferCancel(id)),
+        ]
+        .spacing(SMALL_SPACING)
+        .into(),
+        TransferStatus::Paused => row![
+            action_button(icon::play(), Message::TransferResume(id)),
+            danger_action_button(icon::close(), Message::TransferCancel(id)),
+        ]
+        .spacing(SMALL_SPACING)
+        .into(),
+        TransferStatus::Completed => row![
+            action_button(icon::folder(), Message::TransferOpenFolder(id)),
+            danger_action_button(icon::close(), Message::TransferRemove(id)),
+        ]
+        .spacing(SMALL_SPACING)
+        .into(),
+        TransferStatus::Failed => row![
+            action_button(icon::play(), Message::TransferResume(id)),
+            action_button(icon::folder(), Message::TransferOpenFolder(id)),
+            danger_action_button(icon::close(), Message::TransferRemove(id)),
+        ]
+        .spacing(SMALL_SPACING)
+        .into(),
     };
 
-    // Progress info (bytes transferred / total)
-    let progress_text = if transfer.total_bytes > 0 {
-        format!(
-            "{} / {} ({:.0}%)",
+    // First row: icon, name, spacer, action buttons
+    // Name uses Fill to take available space, actions use Shrink to stay visible
+    let title_row = column![
+        row![
+            direction_icon.size(TRANSFER_ICON_SIZE),
+            container(name).width(Fill),
+            actions,
+        ]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center),
+        Space::new().height(TRANSFER_TITLE_BOTTOM_PADDING),
+    ];
+
+    // Build size text for transfers with known size
+    let size_text = if transfer.total_bytes > 0 {
+        Some(format!(
+            "{} / {}",
             format_bytes(transfer.transferred_bytes),
             format_bytes(transfer.total_bytes),
-            transfer.progress_percent()
-        )
-    } else if transfer.status == TransferStatus::Completed {
-        format_bytes(transfer.transferred_bytes)
+        ))
+    } else if transfer.status == TransferStatus::Completed && transfer.transferred_bytes > 0 {
+        // Completed but no total_bytes known - just show what was transferred
+        Some(format_bytes(transfer.transferred_bytes))
     } else {
-        String::new()
+        None
     };
 
-    let left_info = column![name, server_info, status_line]
-        .spacing(2.0)
-        .width(Fill);
-
-    // Progress bar (only show for active transfers with known size)
-    let progress_section: Element<'a, Message> = if transfer.total_bytes > 0
-        && (transfer.status == TransferStatus::Transferring
-            || transfer.status == TransferStatus::Connecting
-            || transfer.status == TransferStatus::Paused)
-    {
-        let progress = transfer.progress_percent() / 100.0;
-        column![
-            progress_bar(0.0..=1.0, progress),
-            shaped_text(progress_text)
-                .size(TEXT_SIZE - 2.0)
-                .style(muted_text_style),
-        ]
-        .spacing(2.0)
-        .width(Length::Fixed(150.0))
-        .into()
-    } else if !progress_text.is_empty() {
-        shaped_text(progress_text)
-            .size(TEXT_SIZE - 2.0)
-            .style(muted_text_style)
-            .width(Length::Fixed(150.0))
-            .into()
-    } else {
-        Space::new().into()
-    };
-
-    // Action buttons based on status
-    let actions: Element<'a, Message> = match transfer.status {
-        TransferStatus::Queued => {
-            // Can cancel queued transfers
-            row![danger_action_button(
-                icon::close(),
-                Message::TransferCancel(id)
-            )]
-            .spacing(SMALL_SPACING)
-            .into()
-        }
-        TransferStatus::Connecting | TransferStatus::Transferring => {
-            // Can pause or cancel active transfers
-            row![
-                action_button(icon::pause(), Message::TransferPause(id)),
-                danger_action_button(icon::close(), Message::TransferCancel(id)),
+    // Server + status line (e.g., "The Lag • Paused" or "The Lag • Transferring • 1.5 MB/s • ~2m • 72.9 / 521.0 MB")
+    let status_line: String = match transfer.status {
+        TransferStatus::Transferring => {
+            let mut line = [
+                transfer.connection_info.server_name.as_str(),
+                &status_text(transfer.status),
             ]
-            .spacing(SMALL_SPACING)
-            .into()
-        }
-        TransferStatus::Paused => {
-            // Can resume or cancel paused transfers
-            row![
-                action_button(icon::play(), Message::TransferResume(id)),
-                danger_action_button(icon::close(), Message::TransferCancel(id)),
-            ]
-            .spacing(SMALL_SPACING)
-            .into()
+            .join(BULLET_SEPARATOR);
+            if let Some(speed) = transfer.bytes_per_second() {
+                line.push_str(BULLET_SEPARATOR);
+                line.push_str(&format!("{}/s", format_bytes(speed as u64)));
+            }
+            if let Some(eta) = estimate_remaining(transfer) {
+                line.push_str(BULLET_SEPARATOR);
+                line.push_str(&format!("~{}", eta));
+            }
+            if let Some(ref size) = size_text {
+                line.push_str(BULLET_SEPARATOR);
+                line.push_str(size);
+            }
+            line
         }
         TransferStatus::Completed => {
-            // Can open folder or remove completed transfers
-            row![
-                action_button(icon::folder(), Message::TransferOpenFolder(id)),
-                danger_action_button(icon::close(), Message::TransferRemove(id)),
-            ]
-            .spacing(SMALL_SPACING)
-            .into()
+            let mut line = transfer.connection_info.server_name.clone();
+            let status = if let Some(elapsed) = transfer.elapsed_seconds() {
+                t_args(
+                    "transfer-completed-in",
+                    &[("time", &format_duration(elapsed))],
+                )
+            } else {
+                status_text(transfer.status)
+            };
+            line.push_str(BULLET_SEPARATOR);
+            line.push_str(&status);
+            if let Some(ref size) = size_text {
+                line.push_str(BULLET_SEPARATOR);
+                line.push_str(size);
+            }
+            line
         }
-        TransferStatus::Failed => {
-            // Can retry or remove failed transfers
-            row![
-                action_button(icon::play(), Message::TransferResume(id)),
-                danger_action_button(icon::close(), Message::TransferRemove(id)),
+        _ => {
+            let mut line = [
+                transfer.connection_info.server_name.as_str(),
+                &status_text(transfer.status),
             ]
-            .spacing(SMALL_SPACING)
-            .into()
+            .join(BULLET_SEPARATOR);
+            if let Some(ref size) = size_text {
+                line.push_str(BULLET_SEPARATOR);
+                line.push_str(size);
+            }
+            line
         }
     };
 
-    let row_content: Row<'_, Message> = row![left_info, progress_section, actions]
-        .spacing(ELEMENT_SPACING)
-        .padding(TRANSFER_ROW_PADDING)
-        .align_y(Center);
+    let status_row: Element<'a, Message> = if transfer.status == TransferStatus::Failed {
+        // For failed transfers, show error in red
+        let error_msg = transfer.error.as_deref().unwrap_or_default();
+        let text = if error_msg.is_empty() {
+            status_line
+        } else {
+            format!("{}{}{}", status_line, EM_DASH_SEPARATOR, error_msg)
+        };
+        shaped_text(text)
+            .size(DETAIL_TEXT_SIZE)
+            .style(error_text_style)
+            .into()
+    } else {
+        shaped_text(status_line)
+            .size(DETAIL_TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
 
-    container(row_content)
+    // Progress bar row (full width)
+    let progress_row: Element<'a, Message> = if transfer.total_bytes > 0 {
+        let progress = transfer.progress_percent() / 100.0;
+        column![
+            container(progress_bar(0.0..=1.0, progress).girth(TRANSFER_PROGRESS_BAR_HEIGHT))
+                .width(Fill),
+            Space::new().height(TRANSFER_PROGRESS_SPACING),
+        ]
+        .into()
+    } else {
+        // No progress info available (queued, connecting, etc.)
+        Space::new().height(0).into()
+    };
+
+    // Combine all rows into a column: Item → Bar → Stats
+    let content = column![title_row, progress_row, status_row,]
+        .spacing(TRANSFER_INFO_SPACING)
+        .padding(TRANSFER_ROW_PADDING)
+        .width(Fill);
+
+    container(content)
         .width(Fill)
         .style(alternating_row_style(index.is_multiple_of(2)))
         .into()
-}
-
-/// Build the toolbar with clear buttons
-fn build_toolbar<'a>(manager: &TransferManager) -> Element<'a, Message> {
-    let has_completed = manager.completed().next().is_some();
-    let has_failed = manager.failed().next().is_some();
-
-    let mut toolbar_items: Vec<Element<'a, Message>> = Vec::new();
-
-    // Clear Completed button
-    if has_completed {
-        let clear_completed = button(
-            row![
-                icon::trash().size(SIDEBAR_ACTION_ICON_SIZE),
-                Space::new().width(SMALL_SPACING),
-                shaped_text(t("transfer-clear-completed")).size(TEXT_SIZE),
-            ]
-            .align_y(Center),
-        )
-        .on_press(Message::TransferClearCompleted)
-        .padding(BUTTON_PADDING)
-        .style(transparent_icon_button_style);
-
-        toolbar_items.push(clear_completed.into());
-    }
-
-    // Clear Failed button
-    if has_failed {
-        let clear_failed = button(
-            row![
-                icon::trash().size(SIDEBAR_ACTION_ICON_SIZE),
-                Space::new().width(SMALL_SPACING),
-                shaped_text(t("transfer-clear-failed")).size(TEXT_SIZE),
-            ]
-            .align_y(Center),
-        )
-        .on_press(Message::TransferClearFailed)
-        .padding(BUTTON_PADDING)
-        .style(danger_icon_button_style);
-
-        toolbar_items.push(clear_failed.into());
-    }
-
-    if toolbar_items.is_empty() {
-        Space::new().into()
-    } else {
-        row(toolbar_items)
-            .spacing(ELEMENT_SPACING)
-            .align_y(Center)
-            .into()
-    }
 }
 
 // ============================================================================
@@ -332,11 +338,54 @@ fn build_toolbar<'a>(manager: &TransferManager) -> Element<'a, Message> {
 /// Shows a list of all transfers (active, queued, paused, completed, failed).
 /// Provides action buttons for pause/resume/cancel/remove operations.
 pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> {
-    // Title row (centered, using panel_title helper for consistent sizing)
-    let title_row = panel_title(t("title-transfers"));
+    // Check if there are any inactive (completed or failed) transfers to clear
+    let has_inactive = manager.completed().next().is_some() || manager.failed().next().is_some();
 
-    // Build toolbar
-    let toolbar = build_toolbar(manager);
+    // Clear Inactive button (in title row) - always visible, disabled when no inactive transfers
+    let clear_inactive_btn: Element<'a, Message> = {
+        let trash_icon = container(icon::trash().size(SIDEBAR_ACTION_ICON_SIZE))
+            .width(SIDEBAR_ACTION_ICON_SIZE)
+            .height(SIDEBAR_ACTION_ICON_SIZE)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center);
+
+        let btn = button(trash_icon).padding(ICON_BUTTON_PADDING);
+
+        let btn = if has_inactive {
+            btn.on_press(Message::TransferClearInactive)
+                .style(danger_icon_button_style)
+        } else {
+            btn.style(disabled_icon_button_style)
+        };
+
+        tooltip(
+            btn,
+            container(shaped_text(t("tooltip-clear-inactive")).size(TOOLTIP_TEXT_SIZE))
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+            tooltip::Position::Top,
+        )
+        .gap(TOOLTIP_GAP)
+        .padding(TOOLTIP_PADDING)
+        .into()
+    };
+
+    // Title row with clear inactive button on the right
+    // We add an invisible spacer on the left to balance the button width for proper centering
+    let button_width =
+        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let title_row: Element<'a, Message> = row![
+        Space::new().width(SCROLLBAR_PADDING),
+        Space::new().width(button_width), // Balance the button on the right
+        shaped_text(t("title-transfers"))
+            .size(TITLE_SIZE)
+            .width(Fill)
+            .align_x(Center),
+        clear_inactive_btn,
+        Space::new().width(SCROLLBAR_PADDING),
+    ]
+    .align_y(Center)
+    .into();
 
     // Build transfer list
     let transfers: Vec<&Transfer> = manager.all().collect();
@@ -394,8 +443,6 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
     let form = column![
         title_row,
         Space::new().height(SPACER_SIZE_SMALL),
-        toolbar,
-        Space::new().height(SPACER_SIZE_SMALL),
         container(scrollable(padded_scroll_content)).height(Fill),
     ]
     .spacing(ELEMENT_SPACING)
@@ -418,4 +465,84 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
         .height(Fill)
         .style(content_background_style)
         .into()
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== format_bytes tests ====================
+
+    #[test]
+    fn test_format_bytes_bytes() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1), "1 B");
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+    }
+
+    #[test]
+    fn test_format_bytes_kilobytes() {
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(10 * 1024), "10.0 KB");
+        assert_eq!(format_bytes(1024 * 1024 - 1), "1024.0 KB");
+    }
+
+    #[test]
+    fn test_format_bytes_megabytes() {
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+        assert_eq!(format_bytes(1024 * 1024 + 512 * 1024), "1.5 MB");
+        assert_eq!(format_bytes(100 * 1024 * 1024), "100.0 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024 - 1), "1024.0 MB");
+    }
+
+    #[test]
+    fn test_format_bytes_gigabytes() {
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0 GB");
+        assert_eq!(
+            format_bytes(1024 * 1024 * 1024 + 512 * 1024 * 1024),
+            "1.5 GB"
+        );
+        assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10.0 GB");
+    }
+
+    // ==================== format_duration tests ====================
+
+    #[test]
+    fn test_format_duration_seconds() {
+        assert_eq!(format_duration(0), "0s");
+        assert_eq!(format_duration(1), "1s");
+        assert_eq!(format_duration(30), "30s");
+        assert_eq!(format_duration(59), "59s");
+    }
+
+    #[test]
+    fn test_format_duration_minutes() {
+        assert_eq!(format_duration(60), "1m");
+        assert_eq!(format_duration(61), "1m 1s");
+        assert_eq!(format_duration(90), "1m 30s");
+        assert_eq!(format_duration(120), "2m");
+        assert_eq!(format_duration(3599), "59m 59s");
+    }
+
+    #[test]
+    fn test_format_duration_hours() {
+        assert_eq!(format_duration(3600), "1h");
+        assert_eq!(format_duration(3660), "1h 1m");
+        assert_eq!(format_duration(5400), "1h 30m");
+        assert_eq!(format_duration(7200), "2h");
+        assert_eq!(format_duration(36000), "10h");
+    }
+
+    #[test]
+    fn test_format_duration_hours_ignores_seconds() {
+        // When hours are shown, seconds are not displayed
+        assert_eq!(format_duration(3661), "1h 1m"); // 1h 1m 1s -> 1h 1m
+        assert_eq!(format_duration(3659), "1h"); // 59m 59s rounds to 1h (no minutes)
+    }
 }

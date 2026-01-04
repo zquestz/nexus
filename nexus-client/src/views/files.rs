@@ -12,19 +12,20 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH,
-    CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN,
-    ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING,
-    FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH,
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING,
-    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    chat_tab_active_style, close_button_on_primary_style, content_background_style,
-    context_menu_button_style, context_menu_container_style, context_menu_item_danger_style,
-    disabled_icon_button_style, error_text_style, muted_text_style, panel_title, separator_style,
-    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
-    upload_folder_style,
+    BREADCRUMB_MAX_SEGMENT_LENGTH, BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING,
+    CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_INFO_ICON_SIZE,
+    FILE_INFO_ICON_SPACING, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
+    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING,
+    ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
+    SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
+    SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
+    TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat_tab_active_style, close_button_on_primary_style,
+    content_background_style, context_menu_button_style, context_menu_container_style,
+    context_menu_item_danger_style, disabled_icon_button_style, error_text_style, muted_text_style,
+    panel_title, separator_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
+    transparent_icon_button_style, upload_folder_style,
 };
 use crate::types::{
     ClipboardOperation, FileSortColumn, FileTab, FilesManagementState, InputId, Message,
@@ -61,9 +62,6 @@ pub struct ToolbarState<'a> {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Maximum length for breadcrumb segment display names
-const BREADCRUMB_MAX_SEGMENT_LENGTH: usize = 32;
 
 /// Get the appropriate icon for a file based on its extension
 fn file_icon_for_extension(filename: &str) -> iced::widget::Text<'static> {
@@ -158,8 +156,7 @@ fn truncate_segment(name: &str, max_len: usize) -> String {
     }
 }
 
-/// Build the path for navigating into a directory
-/// Build a navigation path by appending a segment to the current path
+/// Build a navigation path by appending a segment to the current path.
 ///
 /// This is public so the file info handler can use it to build full paths.
 pub fn build_navigate_path(current_path: &str, segment: &str) -> String {
@@ -224,7 +221,7 @@ fn breadcrumb_bar<'a>(current_path: &str, viewing_root: bool) -> Element<'a, Mes
         // Strip any folder type suffix for display
         let full_name = FilesManagementState::display_name(display_name);
         let truncated_name = truncate_segment(&full_name, BREADCRUMB_MAX_SEGMENT_LENGTH);
-        let is_truncated = truncated_name.len() < full_name.len();
+        let is_truncated = truncated_name.chars().count() < full_name.chars().count();
 
         // All segments are clickable (last one acts as refresh)
         // Use Wrapping::None to prevent mid-word breaks
@@ -403,7 +400,7 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         .padding(TOOLTIP_PADDING)
         .into()
     } else {
-        // Disabled download button
+        // Disabled download button (shown but not clickable)
         button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
             .padding(FILE_TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
@@ -570,18 +567,6 @@ fn overwrite_confirm_dialog<'a>(name: &str, has_file_delete: bool) -> Element<'a
 
     scrollable_panel(form)
 }
-
-/// Icon size for file info dialog
-const FILE_INFO_ICON_SIZE: f32 = 64.0;
-
-/// Spacing between icon and name in file info header
-const FILE_INFO_ICON_SPACING: f32 = 12.0;
-
-/// Size for sort indicator icons in column headers
-const SORT_ICON_SIZE: f32 = 12.0;
-
-/// Right margin for sort icons (prevents scrollbar overlap on rightmost column)
-const SORT_ICON_RIGHT_MARGIN: f32 = 12.0;
 
 /// Build the file info dialog
 fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
@@ -761,7 +746,6 @@ fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, M
     scrollable_panel(form)
 }
 
-/// Build the file table
 /// Rename dialog for files and directories
 fn rename_dialog<'a>(path: &str, name: &str, error: Option<&String>) -> Element<'a, Message> {
     // Extract filename from path for display
@@ -872,8 +856,10 @@ fn file_table<'a>(
         let is_directory = entry.dir_type.is_some();
         let display_name = FilesManagementState::display_name(&entry.name);
 
-        // Check if this entry is cut (pending move) - show muted
+        // Build path for this entry (used for cut check, click actions, and context menu)
         let entry_path = build_navigate_path(current_path, &entry.name);
+
+        // Check if this entry is cut (pending move) - show muted
         let is_cut = clipboard
             .as_ref()
             .is_some_and(|c| c.operation == ClipboardOperation::Cut && c.path == entry_path);
@@ -916,7 +902,6 @@ fn file_table<'a>(
         .into();
 
         // Make rows clickable - directories navigate, files download
-        let entry_path = build_navigate_path(current_path, &entry.name);
         let row_element: Element<'_, Message> = if is_directory {
             button(name_content)
                 .padding(NO_SPACING)
@@ -1526,12 +1511,11 @@ mod tests {
 
     #[test]
     fn test_format_timestamp_negative() {
-        // Negative timestamps (before 1970) should return empty
-        // chrono's timestamp_opt returns None for out-of-range values
+        // Negative timestamps (before 1970) are valid - they represent dates before Unix epoch
+        // -1 = Dec 31, 1969 23:59:59 UTC
         let result = format_timestamp(-1);
-        // This may or may not work depending on chrono's handling
-        // Just verify it doesn't panic
-        let _ = result;
+        assert!(!result.is_empty());
+        assert!(result.contains("1969"));
     }
 
     // =========================================================================

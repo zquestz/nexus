@@ -11,7 +11,7 @@ use tokio_socks::tcp::Socks5Stream;
 use nexus_common::framing::{FrameReader, FrameWriter};
 
 /// SOCKS5 proxy configuration for connections
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProxyConfig {
     /// Proxy server address (hostname or IP)
     pub address: String,
@@ -24,6 +24,33 @@ pub struct ProxyConfig {
 
     /// Optional password for authentication
     pub password: Option<String>,
+}
+
+impl std::fmt::Debug for ProxyConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxyConfig")
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
+}
+
+impl ProxyConfig {
+    /// Create from app proxy settings if enabled
+    pub fn from_settings(settings: &crate::config::settings::ProxySettings) -> Option<Self> {
+        if settings.enabled {
+            Some(ProxyConfig {
+                address: settings.address.clone(),
+                port: settings.port,
+                username: settings.username.clone(),
+                password: settings.password.clone(),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 /// Parameters for connecting to a server
@@ -137,21 +164,6 @@ pub struct LoginInfo {
     pub chat_topic_set_by: Option<String>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
-    pub transfer_port: Option<u16>,
+    pub transfer_port: u16,
     pub locale: String,
-}
-
-/// Connection parameters needed for transfer reconnection
-///
-/// These are client-side values that aren't returned from the server
-/// but are needed to reconnect for file transfers.
-pub struct TransferParams {
-    /// Server address (IP or hostname)
-    pub address: String,
-    /// Server port
-    pub port: u16,
-    /// Password for authentication
-    pub password: String,
-    /// Nickname for shared accounts (empty string if not used)
-    pub nickname: String,
 }

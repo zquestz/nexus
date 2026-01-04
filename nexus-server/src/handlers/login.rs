@@ -393,7 +393,7 @@ where
         max_connections_per_ip,
         max_transfers_per_ip,
         image: Some(image),
-        transfer_port: Some(ctx.transfer_port),
+        transfer_port: ctx.transfer_port,
     });
 
     // Fetch chat info only if user has ChatTopic permission

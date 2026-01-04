@@ -176,6 +176,7 @@ tooltip-server-info = 서버 정보
 tooltip-about = 정보
 tooltip-transfers = 전송
 tooltip-download-all = 전체 다운로드
+tooltip-clear-inactive = 비활성 항목 지우기
 tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
@@ -553,15 +554,12 @@ transfer-action-remove = 제거
 transfer-action-open-folder = 폴더 열기
 transfer-action-retry = 재시도
 
-# Toolbar actions
-transfer-clear-completed = 완료된 항목 지우기
-transfer-clear-failed = 실패한 항목 지우기
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } 파일
 transfer-speed = { $speed }/초
 transfer-elapsed = { $time } 경과
 transfer-eta = { $time } 남음
+transfer-completed-in = { $time }에 완료
 transfer-from-server = 출처: { $server }
 
 # Transfer errors
@@ -569,7 +567,6 @@ transfer-error-not-found = 경로를 찾을 수 없습니다
 transfer-error-permission = 권한이 거부되었습니다
 transfer-error-invalid = 잘못된 경로
 transfer-error-unsupported-version = 지원되지 않는 프로토콜 버전
-transfer-error-disk-full = 디스크가 가득 찼습니다
 transfer-error-hash-mismatch = 파일 확인 실패
 transfer-error-io = 파일 I/O 오류
 transfer-error-protocol = 프로토콜 오류
@@ -577,3 +574,11 @@ transfer-error-connection = 연결 오류
 transfer-error-certificate-mismatch = 인증서 지문이 일치하지 않습니다
 transfer-error-auth-failed = 인증 실패
 transfer-error-unknown = 알 수 없는 오류
+transfer-cancelled = 사용자가 취소함
+transfer-task-failed = 전송 작업 실패: { $error }
+transfer-save-no-config-dir = 설정 디렉토리를 확인할 수 없습니다
+transfer-save-create-dir-failed = 설정 디렉토리 생성 실패: { $error }
+transfer-save-serialize-failed = 전송 직렬화 실패: { $error }
+transfer-save-write-failed = 전송 파일 쓰기 실패: { $error }
+transfer-save-metadata-failed = 파일 메타데이터 읽기 실패: { $error }
+transfer-save-permissions-failed = 파일 권한 설정 실패: { $error }

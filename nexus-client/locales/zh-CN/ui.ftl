@@ -176,6 +176,7 @@ tooltip-server-info = 服务器信息
 tooltip-about = 关于
 tooltip-transfers = 传输
 tooltip-download-all = 全部下载
+tooltip-clear-inactive = 清除非活动项
 tooltip-settings = 设置
 tooltip-hide-bookmarks = 隐藏书签
 tooltip-show-bookmarks = 显示书签
@@ -553,15 +554,12 @@ transfer-action-remove = 移除
 transfer-action-open-folder = 打开文件夹
 transfer-action-retry = 重试
 
-# Toolbar actions
-transfer-clear-completed = 清除已完成
-transfer-clear-failed = 清除失败项
-
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } 个文件
 transfer-speed = { $speed }/秒
 transfer-elapsed = 已用时 { $time }
 transfer-eta = 剩余 { $time }
+transfer-completed-in = { $time }内完成
 transfer-from-server = 来源: { $server }
 
 # Transfer errors
@@ -569,7 +567,6 @@ transfer-error-not-found = 路径未找到
 transfer-error-permission = 权限被拒绝
 transfer-error-invalid = 无效路径
 transfer-error-unsupported-version = 不支持的协议版本
-transfer-error-disk-full = 磁盘已满
 transfer-error-hash-mismatch = 文件验证失败
 transfer-error-io = 文件I/O错误
 transfer-error-protocol = 协议错误
@@ -577,3 +574,11 @@ transfer-error-connection = 连接错误
 transfer-error-certificate-mismatch = 证书指纹不匹配
 transfer-error-auth-failed = 认证失败
 transfer-error-unknown = 未知错误
+transfer-cancelled = 已被用户取消
+transfer-task-failed = 传输任务失败: { $error }
+transfer-save-no-config-dir = 无法确定配置目录
+transfer-save-create-dir-failed = 创建配置目录失败: { $error }
+transfer-save-serialize-failed = 序列化传输失败: { $error }
+transfer-save-write-failed = 写入传输文件失败: { $error }
+transfer-save-metadata-failed = 读取文件元数据失败: { $error }
+transfer-save-permissions-failed = 设置文件权限失败: { $error }

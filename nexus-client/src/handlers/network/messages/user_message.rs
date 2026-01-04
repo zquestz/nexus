@@ -30,7 +30,7 @@ impl NexusApp {
             .iter()
             .find(|u| u.session_ids.contains(&conn.session_id))
             .map(|u| u.nickname.as_str())
-            .unwrap_or(&conn.username);
+            .unwrap_or(&conn.connection_info.username);
 
         // Determine which user we're chatting with (the other person)
         // Compare against nickname since from_nickname is the sender's nickname

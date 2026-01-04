@@ -45,7 +45,7 @@ where
 ///
 /// Stores connection details for a server that can be saved and reused.
 /// Supports optional username/password for quick connect and auto-connect flag.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ServerBookmark {
     /// Unique identifier for this bookmark
     #[serde(default = "Uuid::new_v4")]
@@ -85,6 +85,22 @@ impl Default for ServerBookmark {
             auto_connect: false,
             certificate_fingerprint: None,
         }
+    }
+}
+
+impl std::fmt::Debug for ServerBookmark {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerBookmark")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("nickname", &self.nickname)
+            .field("auto_connect", &self.auto_connect)
+            .field("certificate_fingerprint", &self.certificate_fingerprint)
+            .finish()
     }
 }
 

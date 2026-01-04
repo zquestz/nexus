@@ -176,6 +176,7 @@ tooltip-server-info = Server-Info
 tooltip-about = Über
 tooltip-transfers = Übertragungen
 tooltip-download-all = Alles herunterladen
+tooltip-clear-inactive = Inaktive löschen
 tooltip-settings = Einstellungen
 tooltip-hide-bookmarks = Lesezeichen ausblenden
 tooltip-show-bookmarks = Lesezeichen anzeigen
@@ -575,15 +576,13 @@ transfer-action-remove = Entfernen
 transfer-action-open-folder = Ordner öffnen
 transfer-action-retry = Wiederholen
 
-# Toolbar actions
-transfer-clear-completed = Abgeschlossene löschen
-transfer-clear-failed = Fehlgeschlagene löschen
 
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } Dateien
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } vergangen
 transfer-eta = { $time } verbleibend
+transfer-completed-in = Abgeschlossen in { $time }
 transfer-from-server = Von: { $server }
 
 # Transfer errors
@@ -591,7 +590,6 @@ transfer-error-not-found = Pfad nicht gefunden
 transfer-error-permission = Zugriff verweigert
 transfer-error-invalid = Ungültiger Pfad
 transfer-error-unsupported-version = Protokollversion nicht unterstützt
-transfer-error-disk-full = Festplatte voll
 transfer-error-hash-mismatch = Dateiüberprüfung fehlgeschlagen
 transfer-error-io = Datei-E/A-Fehler
 transfer-error-protocol = Protokollfehler
@@ -599,3 +597,11 @@ transfer-error-connection = Verbindungsfehler
 transfer-error-certificate-mismatch = Zertifikats-Fingerabdruck stimmt nicht überein
 transfer-error-auth-failed = Authentifizierung fehlgeschlagen
 transfer-error-unknown = Unbekannter Fehler
+transfer-cancelled = Vom Benutzer abgebrochen
+transfer-task-failed = Übertragungsaufgabe fehlgeschlagen: { $error }
+transfer-save-no-config-dir = Konfigurationsverzeichnis konnte nicht ermittelt werden
+transfer-save-create-dir-failed = Konfigurationsverzeichnis konnte nicht erstellt werden: { $error }
+transfer-save-serialize-failed = Übertragungen konnten nicht serialisiert werden: { $error }
+transfer-save-write-failed = Übertragungsdatei konnte nicht geschrieben werden: { $error }
+transfer-save-metadata-failed = Dateimetadaten konnten nicht gelesen werden: { $error }
+transfer-save-permissions-failed = Dateiberechtigungen konnten nicht gesetzt werden: { $error }

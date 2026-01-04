@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::constants::{APP_DIR_NAME, CONFIG_FILE_NAME};
 use crate::i18n::{t, t_args};
 
 use super::Config;
@@ -18,7 +19,7 @@ impl Config {
     ///
     /// Returns None if the config directory cannot be determined.
     pub fn config_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join("nexus").join("config.json"))
+        dirs::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(CONFIG_FILE_NAME))
     }
 
     /// Load config from disk, or return default if not found

@@ -4,6 +4,7 @@ use iced::Task;
 use uuid::Uuid;
 
 use crate::NexusApp;
+use crate::i18n::t;
 use crate::transfers::{TransferEvent, TransferStatus, request_cancel};
 use crate::types::Message;
 
@@ -78,16 +79,6 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle request to start next queued transfer
-    ///
-    /// This is called after a transfer completes to check for more queued transfers.
-    /// The subscription will pick up the next queued transfer automatically.
-    pub fn handle_transfer_start_next(&mut self) -> Task<Message> {
-        // Nothing to do here - the subscription automatically picks up
-        // the next queued transfer via next_queued()
-        Task::none()
-    }
-
     /// Handle request to pause a transfer
     ///
     /// Requests cancellation of the executor task via the cancellation flag.
@@ -120,18 +111,24 @@ impl NexusApp {
 
     /// Handle request to cancel a transfer
     ///
-    /// Requests cancellation of the executor task via the cancellation flag.
-    /// The executor will check this flag and abort. We mark it as failed
-    /// with a "Cancelled by user" message.
+    /// For active transfers: requests cancellation via the flag and marks as failed.
+    /// For paused transfers: just marks as failed (no executor running).
     pub fn handle_transfer_cancel(&mut self, id: Uuid) -> Task<Message> {
-        if let Some(transfer) = self.transfer_manager.get(id)
-            && transfer.status.is_active()
-        {
-            // Request the executor to stop
-            request_cancel(id);
-            // Mark as failed immediately (executor will also send Paused, but we want Failed)
+        let Some(transfer) = self.transfer_manager.get(id) else {
+            return Task::none();
+        };
+
+        let is_active = transfer.status.is_active();
+        let is_paused = transfer.status == TransferStatus::Paused;
+
+        if is_active || is_paused {
+            if is_active {
+                // Request the executor to stop
+                request_cancel(id);
+            }
+            // Mark as failed
             self.transfer_manager
-                .fail(id, "Cancelled by user".to_string(), None);
+                .fail(id, t("transfer-cancelled"), None);
             self.save_transfers();
         }
         Task::none()
@@ -149,39 +146,20 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle request to open the folder containing a completed transfer
+    /// Handle request to open the folder containing a transfer's local path
     pub fn handle_transfer_open_folder(&mut self, id: Uuid) -> Task<Message> {
         if let Some(transfer) = self.transfer_manager.get(id) {
-            // Get the parent directory of the local path
-            let folder = if transfer.is_directory {
-                // For directory downloads, the local_path is the directory itself
-                transfer.local_path.clone()
-            } else {
-                // For file downloads, get the parent directory
-                transfer
-                    .local_path
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| transfer.local_path.clone())
-            };
-
-            // Open the folder in the system file manager
-            if let Err(e) = open::that(&folder) {
-                eprintln!("Failed to open folder {:?}: {e}", folder);
+            // Get the parent directory of the transfer's local path
+            if let Some(parent) = transfer.local_path.parent() {
+                let _ = open::that(parent);
             }
         }
         Task::none()
     }
 
-    /// Handle request to clear all completed transfers
-    pub fn handle_transfer_clear_completed(&mut self) -> Task<Message> {
+    /// Handle request to clear all inactive (completed and failed) transfers
+    pub fn handle_transfer_clear_inactive(&mut self) -> Task<Message> {
         self.transfer_manager.clear_completed();
-        self.save_transfers();
-        Task::none()
-    }
-
-    /// Handle request to clear all failed transfers
-    pub fn handle_transfer_clear_failed(&mut self) -> Task<Message> {
         self.transfer_manager.clear_failed();
         self.save_transfers();
         Task::none()
@@ -189,8 +167,6 @@ impl NexusApp {
 
     /// Save transfers to disk (helper to reduce repetition)
     fn save_transfers(&mut self) {
-        if let Err(e) = self.transfer_manager.save() {
-            eprintln!("Failed to save transfers: {e}");
-        }
+        let _ = self.transfer_manager.save();
     }
 }

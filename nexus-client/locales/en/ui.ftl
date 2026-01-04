@@ -181,6 +181,7 @@ tooltip-server-info = Server Info
 tooltip-about = About
 tooltip-transfers = Transfers
 tooltip-download-all = Download All
+tooltip-clear-inactive = Clear Inactive
 tooltip-settings = Settings
 tooltip-hide-bookmarks = Hide Bookmarks
 tooltip-show-bookmarks = Show Bookmarks
@@ -582,15 +583,14 @@ transfer-action-remove = Remove
 transfer-action-open-folder = Open Folder
 transfer-action-retry = Retry
 
-# Toolbar actions
-transfer-clear-completed = Clear Completed
-transfer-clear-failed = Clear Failed
+
 
 # Transfer info
 transfer-files-progress = { $completed }/{ $total } files
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } elapsed
 transfer-eta = { $time } remaining
+transfer-completed-in = Completed in { $time }
 transfer-from-server = From: { $server }
 
 # Transfer errors
@@ -598,7 +598,6 @@ transfer-error-not-found = Path not found
 transfer-error-permission = Permission denied
 transfer-error-invalid = Invalid path
 transfer-error-unsupported-version = Protocol version not supported
-transfer-error-disk-full = Disk full
 transfer-error-hash-mismatch = File verification failed
 transfer-error-io = File I/O error
 transfer-error-protocol = Protocol error
@@ -606,3 +605,11 @@ transfer-error-connection = Connection error
 transfer-error-certificate-mismatch = Certificate fingerprint mismatch
 transfer-error-auth-failed = Authentication failed
 transfer-error-unknown = Unknown error
+transfer-cancelled = Cancelled by user
+transfer-task-failed = Transfer task failed: { $error }
+transfer-save-no-config-dir = Could not determine config directory
+transfer-save-create-dir-failed = Failed to create config directory: { $error }
+transfer-save-serialize-failed = Failed to serialize transfers: { $error }
+transfer-save-write-failed = Failed to write transfers file: { $error }
+transfer-save-metadata-failed = Failed to read file metadata: { $error }
+transfer-save-permissions-failed = Failed to set file permissions: { $error }

@@ -33,23 +33,11 @@ impl NexusApp {
         topic: String,
         username: String,
     ) -> Task<Message> {
-        // Store the topic and who set it
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
-        conn.chat_topic = if topic.is_empty() {
-            None
-        } else {
-            Some(topic.clone())
-        };
-        conn.chat_topic_set_by = if username.is_empty() {
-            None
-        } else {
-            Some(username.clone())
-        };
-
-        // Build message after releasing mutable borrow
+        // Build message first using references (before moving values)
         let message = if topic.is_empty() {
             t_args("msg-topic-cleared", &[("username", &username)])
         } else {
@@ -58,6 +46,15 @@ impl NexusApp {
                 &[("username", &username), ("topic", &topic)],
             )
         };
+
+        // Store values by moving (no clones needed)
+        conn.chat_topic = if topic.is_empty() { None } else { Some(topic) };
+        conn.chat_topic_set_by = if username.is_empty() {
+            None
+        } else {
+            Some(username)
+        };
+
         self.add_chat_message(connection_id, ChatMessage::system(message))
     }
 

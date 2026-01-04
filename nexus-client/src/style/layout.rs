@@ -276,6 +276,21 @@ pub const TRANSFER_ITEM_SPACING: f32 = 3.0;
 /// Padding inside each transfer row (vertical, horizontal)
 pub const TRANSFER_ROW_PADDING: [f32; 2] = [4.0, 8.0];
 
+/// Spacing between info lines within a transfer row (name, server, status)
+pub const TRANSFER_INFO_SPACING: f32 = 2.0;
+
+/// Transfer direction icon size (matches action button icons)
+pub const TRANSFER_ICON_SIZE: f32 = NEWS_ACTION_ICON_SIZE;
+
+/// Bottom padding for transfer title row (ensures separation when filename wraps)
+pub const TRANSFER_TITLE_BOTTOM_PADDING: f32 = 4.0;
+
+/// Height of the transfer progress bar
+pub const TRANSFER_PROGRESS_BAR_HEIGHT: f32 = 16.0;
+
+/// Spacing below progress bar (before stats line)
+pub const TRANSFER_PROGRESS_SPACING: f32 = 4.0;
+
 // ============================================================================
 // File Browser
 // ============================================================================
@@ -297,6 +312,21 @@ pub const FILE_SIZE_COLUMN_WIDTH: f32 = 80.0;
 
 /// Width of the modified date column in the file list
 pub const FILE_DATE_COLUMN_WIDTH: f32 = 140.0;
+
+/// Icon size for file info dialog (large icon next to filename)
+pub const FILE_INFO_ICON_SIZE: f32 = 64.0;
+
+/// Spacing between icon and name in file info header
+pub const FILE_INFO_ICON_SPACING: f32 = 12.0;
+
+/// Size for sort indicator icons in column headers
+pub const SORT_ICON_SIZE: f32 = 12.0;
+
+/// Right margin for sort icons (prevents scrollbar overlap on rightmost column)
+pub const SORT_ICON_RIGHT_MARGIN: f32 = 12.0;
+
+/// Maximum length for breadcrumb segment display names (in characters)
+pub const BREADCRUMB_MAX_SEGMENT_LENGTH: usize = 32;
 
 // ============================================================================
 // Fingerprint Dialog Spacing
