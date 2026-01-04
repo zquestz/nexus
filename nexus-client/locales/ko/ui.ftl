@@ -122,6 +122,8 @@ label-proxy-port = 포트:
 label-proxy-username = 사용자 이름:
 label-proxy-password = 비밀번호:
 label-download-location = 다운로드 위치:
+label-queue-downloads = 다운로드 대기열 사용
+label-queue-limit = 제한:
 
 # =============================================================================
 # Permission Display Names
@@ -177,6 +179,11 @@ tooltip-about = 정보
 tooltip-transfers = 전송
 tooltip-download-all = 전체 다운로드
 tooltip-clear-inactive = 비활성 항목 지우기
+tooltip-transfer-pause = 일시 정지
+tooltip-transfer-resume = 재개
+tooltip-transfer-cancel = 취소
+tooltip-transfer-remove = 제거
+tooltip-transfer-open-folder = 폴더 열기
 tooltip-settings = 설정
 tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시

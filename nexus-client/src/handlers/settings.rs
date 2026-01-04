@@ -6,7 +6,8 @@ use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
 use crate::config::settings::{
-    AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
+    AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, MIN_CONCURRENT_TRANSFERS,
+    default_download_path,
 };
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
@@ -420,6 +421,20 @@ impl NexusApp {
             self.config.settings.download_path = Some(path);
         }
         // If None, user cancelled - no change needed
+        Task::none()
+    }
+
+    // ==================== Transfer Queue ====================
+
+    /// Handle queue downloads checkbox toggle
+    pub fn handle_queue_downloads_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.queue_downloads = enabled;
+        Task::none()
+    }
+
+    /// Handle max concurrent transfers change
+    pub fn handle_max_concurrent_transfers_changed(&mut self, max: u8) -> Task<Message> {
+        self.config.settings.max_concurrent_transfers = max.max(MIN_CONCURRENT_TRANSFERS);
         Task::none()
     }
 }

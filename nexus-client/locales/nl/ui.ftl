@@ -123,6 +123,8 @@ label-proxy-port = Poort:
 label-proxy-username = Gebruikersnaam:
 label-proxy-password = Wachtwoord:
 label-download-location = Downloadlocatie:
+label-queue-downloads = Downloads in wachtrij plaatsen
+label-queue-limit = Limiet:
 
 # =============================================================================
 # Permission Display Names
@@ -178,6 +180,11 @@ tooltip-about = Over
 tooltip-transfers = Overdrachten
 tooltip-download-all = Alles Downloaden
 tooltip-clear-inactive = Inactieve wissen
+tooltip-transfer-pause = Pauzeren
+tooltip-transfer-resume = Hervatten
+tooltip-transfer-cancel = Annuleren
+tooltip-transfer-remove = Verwijderen
+tooltip-transfer-open-folder = Map Openen
 tooltip-settings = Instellingen
 tooltip-hide-bookmarks = Bladwijzers verbergen
 tooltip-show-bookmarks = Bladwijzers tonen

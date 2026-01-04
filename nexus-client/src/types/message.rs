@@ -382,6 +382,10 @@ pub enum Message {
     BrowseDownloadPathPressed,
     /// Settings panel: Download path selected from folder picker
     DownloadPathSelected(Option<String>),
+    /// Settings panel: Queue downloads checkbox toggled
+    QueueDownloadsToggled(bool),
+    /// Settings panel: Max concurrent transfers changed
+    MaxConcurrentTransfersChanged(u8),
 
     // ==================== Proxy Settings ====================
     /// Settings panel: Proxy enabled checkbox toggled

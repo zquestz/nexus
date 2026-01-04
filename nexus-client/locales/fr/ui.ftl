@@ -123,6 +123,8 @@ label-proxy-port = Port:
 label-proxy-username = Nom d'utilisateur:
 label-proxy-password = Mot de passe:
 label-download-location = Emplacement de téléchargement:
+label-queue-downloads = Mettre les téléchargements en file d'attente
+label-queue-limit = Limite:
 
 # =============================================================================
 # Permission Display Names
@@ -178,6 +180,11 @@ tooltip-about = À propos
 tooltip-transfers = Transferts
 tooltip-download-all = Tout Télécharger
 tooltip-clear-inactive = Effacer Inactifs
+tooltip-transfer-pause = Pause
+tooltip-transfer-resume = Reprendre
+tooltip-transfer-cancel = Annuler
+tooltip-transfer-remove = Supprimer
+tooltip-transfer-open-folder = Ouvrir le Dossier
 tooltip-settings = Paramètres
 tooltip-hide-bookmarks = Masquer les signets
 tooltip-show-bookmarks = Afficher les signets

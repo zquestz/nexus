@@ -122,6 +122,8 @@ label-proxy-port = 連接埠:
 label-proxy-username = 使用者名稱:
 label-proxy-password = 密碼:
 label-download-location = 下載位置:
+label-queue-downloads = 排隊下載
+label-queue-limit = 限制:
 
 # =============================================================================
 # Permission Display Names
@@ -177,6 +179,11 @@ tooltip-about = 關於
 tooltip-transfers = 傳輸
 tooltip-download-all = 全部下載
 tooltip-clear-inactive = 清除非活動項
+tooltip-transfer-pause = 暫停
+tooltip-transfer-resume = 繼續
+tooltip-transfer-cancel = 取消
+tooltip-transfer-remove = 移除
+tooltip-transfer-open-folder = 開啟資料夾
 tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤

@@ -397,6 +397,10 @@ impl NexusApp {
             }
             Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),
             Message::DownloadPathSelected(path) => self.handle_download_path_selected(path),
+            Message::QueueDownloadsToggled(enabled) => self.handle_queue_downloads_toggled(enabled),
+            Message::MaxConcurrentTransfersChanged(max) => {
+                self.handle_max_concurrent_transfers_changed(max)
+            }
 
             // About
             Message::CloseAbout => self.handle_close_about(),
@@ -558,11 +562,44 @@ impl NexusApp {
         // Subscribe to transfer execution - one subscription per queued/active transfer
         // Each subscription is keyed by the transfer's stable UUID, so it remains
         // stable even as the transfer status changes from Queued -> Connecting -> Transferring
-        for transfer in self.transfer_manager.queued_or_active() {
+        //
+        // If queue_downloads is enabled, we limit the number of concurrent transfers.
+        // Active transfers always get subscriptions; queued transfers only get subscriptions
+        // if we haven't reached the limit.
+        let active_transfers: Vec<_> = self.transfer_manager.active().collect();
+        let mut queued_transfers: Vec<_> = self.transfer_manager.queued().collect();
+
+        // Sort queued transfers by created_at for FIFO ordering
+        queued_transfers.sort_by_key(|t| t.created_at);
+
+        // Active transfers always get subscriptions
+        for transfer in &active_transfers {
             subscriptions.push(transfers::transfer_subscription(
                 transfer,
                 &self.config.settings.proxy,
             ));
+        }
+
+        // Queued transfers: respect concurrency limit if queue_downloads is enabled
+        if self.config.settings.queue_downloads {
+            let active_count = active_transfers.len();
+            let max_concurrent = self.config.settings.max_concurrent_transfers as usize;
+            let slots_available = max_concurrent.saturating_sub(active_count);
+
+            for transfer in queued_transfers.iter().take(slots_available) {
+                subscriptions.push(transfers::transfer_subscription(
+                    transfer,
+                    &self.config.settings.proxy,
+                ));
+            }
+        } else {
+            // No queuing - start all queued transfers immediately
+            for transfer in &queued_transfers {
+                subscriptions.push(transfers::transfer_subscription(
+                    transfer,
+                    &self.config.settings.proxy,
+                ));
+            }
         }
 
         Subscription::batch(subscriptions)
@@ -609,6 +646,8 @@ impl NexusApp {
             download_path: self.config.settings.download_path.as_deref(),
             show_hidden: self.config.settings.show_hidden_files,
             transfer_manager: &self.transfer_manager,
+            queue_downloads: self.config.settings.queue_downloads,
+            max_concurrent_transfers: self.config.settings.max_concurrent_transfers,
         };
 
         let main_view = views::main_layout(config);

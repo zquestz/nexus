@@ -122,6 +122,8 @@ label-proxy-port = Porta:
 label-proxy-username = Usuário:
 label-proxy-password = Senha:
 label-download-location = Local de Download:
+label-queue-downloads = Enfileirar downloads
+label-queue-limit = Limite:
 
 # =============================================================================
 # Permission Display Names
@@ -177,6 +179,11 @@ tooltip-about = Sobre
 tooltip-transfers = Transferências
 tooltip-download-all = Baixar Tudo
 tooltip-clear-inactive = Limpar Inativos
+tooltip-transfer-pause = Pausar
+tooltip-transfer-resume = Retomar
+tooltip-transfer-cancel = Cancelar
+tooltip-transfer-remove = Remover
+tooltip-transfer-open-folder = Abrir Pasta
 tooltip-settings = Configurações
 tooltip-hide-bookmarks = Ocultar Favoritos
 tooltip-show-bookmarks = Mostrar Favoritos

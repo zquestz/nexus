@@ -73,6 +73,15 @@ fn default_proxy_port() -> u16 {
 /// Maximum avatar size in bytes (128KB)
 pub const AVATAR_MAX_SIZE: usize = 128 * 1024;
 
+/// Default value for queue_downloads setting
+pub const DEFAULT_QUEUE_DOWNLOADS: bool = false;
+
+/// Default maximum concurrent transfers
+pub const DEFAULT_MAX_CONCURRENT_TRANSFERS: u8 = 2;
+
+/// Minimum concurrent transfers (1 = sequential)
+pub const MIN_CONCURRENT_TRANSFERS: u8 = 1;
+
 /// Minimum allowed chat font size
 pub const CHAT_FONT_SIZE_MIN: u8 = 9;
 
@@ -155,6 +164,14 @@ pub struct Settings {
     /// SOCKS5 proxy settings
     #[serde(default)]
     pub proxy: ProxySettings,
+
+    /// Whether to queue downloads (limit concurrent transfers)
+    #[serde(default = "default_queue_downloads")]
+    pub queue_downloads: bool,
+
+    /// Maximum number of concurrent transfers (when queue_downloads is true)
+    #[serde(default = "default_max_concurrent_transfers")]
+    pub max_concurrent_transfers: u8,
 }
 
 impl Default for Settings {
@@ -175,6 +192,8 @@ impl Default for Settings {
             window_x: None,
             window_y: None,
             proxy: ProxySettings::default(),
+            queue_downloads: default_queue_downloads(),
+            max_concurrent_transfers: default_max_concurrent_transfers(),
         }
     }
 }
@@ -231,6 +250,14 @@ fn default_window_height() -> f32 {
     WINDOW_HEIGHT
 }
 
+fn default_queue_downloads() -> bool {
+    DEFAULT_QUEUE_DOWNLOADS
+}
+
+fn default_max_concurrent_transfers() -> u8 {
+    DEFAULT_MAX_CONCURRENT_TRANSFERS
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -255,6 +282,11 @@ mod tests {
         assert_eq!(settings.window_height, WINDOW_HEIGHT);
         assert!(settings.window_x.is_none());
         assert!(settings.window_y.is_none());
+        assert!(!settings.queue_downloads);
+        assert_eq!(
+            settings.max_concurrent_transfers,
+            DEFAULT_MAX_CONCURRENT_TRANSFERS
+        );
     }
 
     #[test]

@@ -200,16 +200,6 @@ impl TransferManager {
         self.transfers.values()
     }
 
-    /// Get all queued or active transfers (for subscription creation)
-    ///
-    /// Returns transfers that need a subscription running - either waiting to start
-    /// (Queued) or currently executing (Connecting/Transferring).
-    pub fn queued_or_active(&self) -> impl Iterator<Item = &Transfer> {
-        self.transfers
-            .values()
-            .filter(|t| t.status == TransferStatus::Queued || t.status.is_active())
-    }
-
     /// Get all completed transfers
     pub fn completed(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers
@@ -372,7 +362,6 @@ impl TransferManager {
     }
 
     /// Get all queued transfers
-    #[cfg(test)]
     pub fn queued(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers
             .values()
@@ -380,7 +369,6 @@ impl TransferManager {
     }
 
     /// Get all active transfers (connecting or transferring)
-    #[cfg(test)]
     pub fn active(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers.values().filter(|t| t.status.is_active())
     }

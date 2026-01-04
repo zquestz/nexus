@@ -122,6 +122,8 @@ label-proxy-port = ポート:
 label-proxy-username = ユーザー名:
 label-proxy-password = パスワード:
 label-download-location = ダウンロード場所:
+label-queue-downloads = ダウンロードをキューに入れる
+label-queue-limit = 制限:
 
 # =============================================================================
 # Permission Display Names
@@ -177,6 +179,11 @@ tooltip-about = アプリについて
 tooltip-transfers = 転送
 tooltip-download-all = すべてダウンロード
 tooltip-clear-inactive = 非アクティブを消去
+tooltip-transfer-pause = 一時停止
+tooltip-transfer-resume = 再開
+tooltip-transfer-cancel = キャンセル
+tooltip-transfer-remove = 削除
+tooltip-transfer-open-folder = フォルダを開く
 tooltip-settings = 設定
 tooltip-hide-bookmarks = ブックマークを隠す
 tooltip-show-bookmarks = ブックマークを表示

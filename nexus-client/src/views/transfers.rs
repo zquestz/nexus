@@ -122,28 +122,52 @@ fn estimate_remaining(transfer: &Transfer) -> Option<String> {
     Some(format_duration(remaining_seconds))
 }
 
-/// Build a transparent icon button for transfer actions
-fn action_button<'a>(
+/// Build a transparent icon button with tooltip for transfer actions
+fn action_button_with_tooltip<'a>(
     icon: iced::widget::Text<'a>,
     message: Message,
-) -> button::Button<'a, Message> {
-    button(icon.size(NEWS_ACTION_ICON_SIZE))
+    tooltip_key: &str,
+) -> Element<'a, Message> {
+    let btn = button(icon.size(NEWS_ACTION_ICON_SIZE))
         .on_press(message)
         .width(NEWS_ACTION_BUTTON_SIZE)
         .height(NEWS_ACTION_BUTTON_SIZE)
-        .style(transparent_icon_button_style)
+        .style(transparent_icon_button_style);
+
+    tooltip(
+        btn,
+        container(shaped_text(t(tooltip_key)).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Top,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING)
+    .into()
 }
 
-/// Build a danger icon button for transfer actions (cancel/remove)
-fn danger_action_button<'a>(
+/// Build a danger icon button with tooltip for transfer actions (cancel/remove)
+fn danger_action_button_with_tooltip<'a>(
     icon: iced::widget::Text<'a>,
     message: Message,
-) -> button::Button<'a, Message> {
-    button(icon.size(NEWS_ACTION_ICON_SIZE))
+    tooltip_key: &str,
+) -> Element<'a, Message> {
+    let btn = button(icon.size(NEWS_ACTION_ICON_SIZE))
         .on_press(message)
         .width(NEWS_ACTION_BUTTON_SIZE)
         .height(NEWS_ACTION_BUTTON_SIZE)
-        .style(danger_icon_button_style)
+        .style(danger_icon_button_style);
+
+    tooltip(
+        btn,
+        container(shaped_text(t(tooltip_key)).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Top,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING)
+    .into()
 }
 
 /// Build a single transfer row
@@ -170,34 +194,71 @@ fn build_transfer_row<'a>(transfer: &Transfer, index: usize) -> Element<'a, Mess
 
     // Action buttons based on status (top-right corner)
     let actions: Element<'a, Message> = match transfer.status {
-        TransferStatus::Queued => row![danger_action_button(
+        TransferStatus::Queued => row![danger_action_button_with_tooltip(
             icon::close(),
-            Message::TransferCancel(id)
+            Message::TransferCancel(id),
+            "tooltip-transfer-cancel"
         )]
         .spacing(SMALL_SPACING)
         .into(),
         TransferStatus::Connecting | TransferStatus::Transferring => row![
-            action_button(icon::pause(), Message::TransferPause(id)),
-            danger_action_button(icon::close(), Message::TransferCancel(id)),
+            action_button_with_tooltip(
+                icon::pause(),
+                Message::TransferPause(id),
+                "tooltip-transfer-pause"
+            ),
+            danger_action_button_with_tooltip(
+                icon::close(),
+                Message::TransferCancel(id),
+                "tooltip-transfer-cancel"
+            ),
         ]
         .spacing(SMALL_SPACING)
         .into(),
         TransferStatus::Paused => row![
-            action_button(icon::play(), Message::TransferResume(id)),
-            danger_action_button(icon::close(), Message::TransferCancel(id)),
+            action_button_with_tooltip(
+                icon::play(),
+                Message::TransferResume(id),
+                "tooltip-transfer-resume"
+            ),
+            danger_action_button_with_tooltip(
+                icon::close(),
+                Message::TransferCancel(id),
+                "tooltip-transfer-cancel"
+            ),
         ]
         .spacing(SMALL_SPACING)
         .into(),
         TransferStatus::Completed => row![
-            action_button(icon::folder(), Message::TransferOpenFolder(id)),
-            danger_action_button(icon::close(), Message::TransferRemove(id)),
+            action_button_with_tooltip(
+                icon::folder(),
+                Message::TransferOpenFolder(id),
+                "tooltip-transfer-open-folder"
+            ),
+            danger_action_button_with_tooltip(
+                icon::close(),
+                Message::TransferRemove(id),
+                "tooltip-transfer-remove"
+            ),
         ]
         .spacing(SMALL_SPACING)
         .into(),
         TransferStatus::Failed => row![
-            action_button(icon::play(), Message::TransferResume(id)),
-            action_button(icon::folder(), Message::TransferOpenFolder(id)),
-            danger_action_button(icon::close(), Message::TransferRemove(id)),
+            action_button_with_tooltip(
+                icon::play(),
+                Message::TransferResume(id),
+                "tooltip-transfer-resume"
+            ),
+            action_button_with_tooltip(
+                icon::folder(),
+                Message::TransferOpenFolder(id),
+                "tooltip-transfer-open-folder"
+            ),
+            danger_action_button_with_tooltip(
+                icon::close(),
+                Message::TransferRemove(id),
+                "tooltip-transfer-remove"
+            ),
         ]
         .spacing(SMALL_SPACING)
         .into(),

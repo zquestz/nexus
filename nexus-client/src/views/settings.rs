@@ -10,7 +10,9 @@ use iced_aw::TabLabel;
 use iced_aw::Tabs;
 
 use super::chat::TimestampSettings;
-use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings, default_download_path};
+use crate::config::settings::{
+    CHAT_FONT_SIZES, MIN_CONCURRENT_TRANSFERS, ProxySettings, default_download_path,
+};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::image::CachedImage;
@@ -44,6 +46,10 @@ pub struct SettingsViewData<'a> {
     pub proxy: &'a ProxySettings,
     /// Download path for file transfers
     pub download_path: Option<&'a str>,
+    /// Whether to queue downloads (limit concurrent transfers)
+    pub queue_downloads: bool,
+    /// Maximum number of concurrent transfers
+    pub max_concurrent_transfers: u8,
 }
 
 // ============================================================================
@@ -88,7 +94,11 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
     );
     let network_content = network_tab_content(data.proxy);
 
-    let files_content = files_tab_content(data.download_path);
+    let files_content = files_tab_content(
+        data.download_path,
+        data.queue_downloads,
+        data.max_concurrent_transfers,
+    );
 
     // Create tabs widget with compact styling
     let tabs = Tabs::new(Message::SettingsTabSelected)
@@ -316,7 +326,11 @@ fn chat_tab_content(
 }
 
 /// Build the Files tab content (download location)
-fn files_tab_content(download_path: Option<&str>) -> Element<'static, Message> {
+fn files_tab_content(
+    download_path: Option<&str>,
+    queue_downloads: bool,
+    max_concurrent_transfers: u8,
+) -> Element<'static, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
 
     // Space between tab bar and first content
@@ -348,6 +362,43 @@ fn files_tab_content(download_path: Option<&str>) -> Element<'static, Message> {
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
     items.push(path_row.into());
+
+    // Spacer before queue settings
+    items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+
+    // Queue downloads checkbox
+    let queue_checkbox = checkbox(queue_downloads)
+        .label(t("label-queue-downloads"))
+        .on_toggle(Message::QueueDownloadsToggled)
+        .text_size(TEXT_SIZE);
+    items.push(queue_checkbox.into());
+
+    // Max concurrent transfers (indented, disabled when queue_downloads is off)
+    let max_concurrent_label = shaped_text(t("label-queue-limit")).size(TEXT_SIZE);
+    let max_concurrent_input: Element<'_, Message> = if queue_downloads {
+        NumberInput::new(
+            &max_concurrent_transfers,
+            MIN_CONCURRENT_TRANSFERS..=u8::MAX,
+            Message::MaxConcurrentTransfersChanged,
+        )
+        .padding(INPUT_PADDING)
+        .into()
+    } else {
+        NumberInput::new(
+            &max_concurrent_transfers,
+            MIN_CONCURRENT_TRANSFERS..=u8::MAX,
+            Message::MaxConcurrentTransfersChanged,
+        )
+        .on_input_maybe(None::<fn(u8) -> Message>)
+        .padding(INPUT_PADDING)
+        .into()
+    };
+    let max_concurrent_row = row![max_concurrent_label, max_concurrent_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    // Indent the max concurrent row when queue_downloads is enabled
+    let max_concurrent_indented = row![Space::new().width(CHECKBOX_INDENT), max_concurrent_row,];
+    items.push(max_concurrent_indented.into());
 
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)

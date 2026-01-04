@@ -68,6 +68,10 @@ struct ServerContentContext<'a> {
     show_hidden: bool,
     /// Transfer manager for file downloads/uploads
     transfer_manager: &'a crate::transfers::TransferManager,
+    /// Whether to queue downloads (limit concurrent transfers)
+    queue_downloads: bool,
+    /// Maximum number of concurrent transfers
+    max_concurrent_transfers: u8,
 }
 
 // ============================================================================
@@ -222,6 +226,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 download_path: config.download_path,
                 show_hidden: config.show_hidden,
                 transfer_manager: config.transfer_manager,
+                queue_downloads: config.queue_downloads,
+                max_concurrent_transfers: config.max_concurrent_transfers,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -245,6 +251,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         nickname: config.nickname,
                         proxy: config.proxy,
                         download_path: config.download_path,
+                        queue_downloads: config.queue_downloads,
+                        max_concurrent_transfers: config.max_concurrent_transfers,
                     })
                 ]
                 .width(Fill)
@@ -636,6 +644,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 nickname: ctx.nickname,
                 proxy: ctx.proxy,
                 download_path: ctx.download_path,
+                queue_downloads: ctx.queue_downloads,
+                max_concurrent_transfers: ctx.max_concurrent_transfers,
             })
         ]
         .width(Fill)
