@@ -376,16 +376,24 @@ pub enum Message {
     FileDownload(String),
     /// Files: Download directory (from context menu or toolbar)
     FileDownloadAll(String),
+    /// Files: Upload file(s) to a path (opens file picker)
+    FileUpload(String),
+    /// Files: File picker was cancelled (no-op, keeps panel open)
+    FileUploadCancelled,
+    /// Files: File picker returned selected files for upload
+    FileUploadSelected(String, Vec<std::path::PathBuf>),
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed
     BrowseDownloadPathPressed,
     /// Settings panel: Download path selected from folder picker
     DownloadPathSelected(Option<String>),
-    /// Settings panel: Queue downloads checkbox toggled
-    QueueDownloadsToggled(bool),
-    /// Settings panel: Max concurrent transfers changed
-    MaxConcurrentTransfersChanged(u8),
+    /// Settings panel: Queue transfers checkbox toggled
+    QueueTransfersToggled(bool),
+    /// Settings panel: Download limit changed
+    DownloadLimitChanged(u8),
+    /// Settings panel: Upload limit changed
+    UploadLimitChanged(u8),
 
     // ==================== Proxy Settings ====================
     /// Settings panel: Proxy enabled checkbox toggled

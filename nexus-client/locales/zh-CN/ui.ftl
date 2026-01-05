@@ -122,8 +122,9 @@ label-proxy-port = 端口:
 label-proxy-username = 用户名:
 label-proxy-password = 密码:
 label-download-location = 下载位置:
-label-queue-downloads = 排队下载
-label-queue-limit = 限制:
+label-queue-transfers = 排队传输
+label-download-limit = 下载限制:
+label-upload-limit = 上传限制:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = 文件列表
 permission-file_move = 文件移动
 permission-file_rename = 重命名文件
 permission-file_root = 文件根目录
+permission-file_upload = 文件上传
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = 服务器信息
 tooltip-about = 关于
 tooltip-transfers = 传输
 tooltip-download-all = 全部下载
+tooltip-upload = 上传
+file-picker-upload-title = 选择要上传的文件
 tooltip-clear-inactive = 清除非活动项
 tooltip-transfer-pause = 暂停
 tooltip-transfer-resume = 继续
@@ -202,6 +206,7 @@ tooltip-create-user = 创建用户
 tooltip-create-news = 创建帖子
 tooltip-delete = 删除
 context-menu-download = 下载
+context-menu-upload = 上传
 
 # =============================================================================
 # Empty States
@@ -580,6 +585,8 @@ transfer-error-protocol = 协议错误
 transfer-error-connection = 连接错误
 transfer-error-certificate-mismatch = 证书指纹不匹配
 transfer-error-auth-failed = 认证失败
+transfer-error-exists = 文件已存在且内容不同
+transfer-error-conflict = 另一个上传正在进行中
 transfer-error-unknown = 未知错误
 transfer-cancelled = 已被用户取消
 transfer-task-failed = 传输任务失败: { $error }

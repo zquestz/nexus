@@ -90,3 +90,6 @@ pub(crate) const PERMISSION_FILE_COPY: &str = "file_copy";
 
 /// Permission to download files
 pub(crate) const PERMISSION_FILE_DOWNLOAD: &str = "file_download";
+
+/// Permission to upload files
+pub(crate) const PERMISSION_FILE_UPLOAD: &str = "file_upload";

@@ -19,10 +19,10 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 
 ### Files
 - Multi-tab file browser with sortable columns
-- Downloads with pause, resume, and cancel
-- Queue management with concurrency limits
+- Downloads and uploads with pause, resume, and cancel
+- Per-server queue management with separate download/upload limits
 - Create, rename, move, copy, and delete
-- Upload folders and drop boxes (coming soon)
+- Upload folders (`[NEXUS-UL]`) and drop boxes (`[NEXUS-DB]`)
 
 ### Users
 - 25 granular permissions with admin override

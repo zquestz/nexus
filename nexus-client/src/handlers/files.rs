@@ -975,6 +975,85 @@ impl NexusApp {
 
         Task::none()
     }
+
+    // ==================== Uploads ====================
+
+    /// Handle upload request - opens file picker for multiple files
+    ///
+    /// The destination path is where files will be uploaded to on the server.
+    ///
+    /// Note: The `rfd` crate's `pick_files()` only allows selecting files, not folders.
+    /// There's no cross-platform way to select both files and folders in a single dialog.
+    /// Directory upload is fully supported in the executor - we just need a separate
+    /// folder picker trigger (e.g., "Upload Folder" menu item or drag-and-drop) to use it.
+    pub fn handle_file_upload(&mut self, destination: String) -> Task<Message> {
+        let destination_clone = destination.clone();
+        Task::perform(
+            async move {
+                let handle = rfd::AsyncFileDialog::new()
+                    .set_title(t("file-picker-upload-title"))
+                    .pick_files()
+                    .await;
+
+                match handle {
+                    Some(files) => {
+                        let paths: Vec<std::path::PathBuf> =
+                            files.into_iter().map(|f| f.path().to_path_buf()).collect();
+                        Message::FileUploadSelected(destination_clone, paths)
+                    }
+                    None => {
+                        // User cancelled - no-op, keeps panel open
+                        Message::FileUploadCancelled
+                    }
+                }
+            },
+            |msg| msg,
+        )
+    }
+
+    /// Handle file picker result - queue uploads
+    pub fn handle_file_upload_selected(
+        &mut self,
+        destination: String,
+        paths: Vec<std::path::PathBuf>,
+    ) -> Task<Message> {
+        if paths.is_empty() {
+            return Task::none();
+        }
+
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get the current viewing mode (root or user area)
+        let remote_root = conn.files_management.active_tab().viewing_root;
+
+        // Queue each selected file/directory as a separate upload
+        for local_path in paths {
+            let is_directory = local_path.is_dir();
+
+            // Create the transfer
+            let transfer = crate::transfers::Transfer::new_upload(
+                conn.connection_info.clone(),
+                destination.clone(),
+                remote_root,
+                is_directory,
+                local_path,
+                conn.bookmark_id,
+            );
+
+            // Add to transfer manager
+            self.transfer_manager.add(transfer);
+        }
+
+        // Save transfers to disk
+        let _ = self.transfer_manager.save();
+
+        Task::none()
+    }
 }
 
 /// Sanitize a string to be safe for use as a filename

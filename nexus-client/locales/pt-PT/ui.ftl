@@ -122,8 +122,9 @@ label-proxy-port = Porta:
 label-proxy-username = Utilizador:
 label-proxy-password = Palavra-passe:
 label-download-location = Local de Transferência:
-label-queue-downloads = Enfileirar transferências
-label-queue-limit = Limite:
+label-queue-transfers = Enfileirar Transferências
+label-download-limit = Limite de Downloads:
+label-upload-limit = Limite de Uploads:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = Lista de Ficheiros
 permission-file_move = Mover Ficheiro
 permission-file_rename = Renomear Ficheiro
 permission-file_root = Raiz de Ficheiros
+permission-file_upload = Carregar Ficheiro
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
 tooltip-transfers = Transferências
 tooltip-download-all = Transferir Tudo
+tooltip-upload = Carregar
+file-picker-upload-title = Selecionar ficheiros para carregar
 tooltip-clear-inactive = Limpar Inativos
 tooltip-transfer-pause = Pausar
 tooltip-transfer-resume = Retomar
@@ -202,6 +206,7 @@ tooltip-create-user = Criar Utilizador
 tooltip-create-news = Criar Publicação
 tooltip-delete = Eliminar
 context-menu-download = Transferir
+context-menu-upload = Carregar
 
 # =============================================================================
 # Empty States
@@ -602,6 +607,8 @@ transfer-error-protocol = Erro de protocolo
 transfer-error-connection = Erro de ligação
 transfer-error-certificate-mismatch = Impressão digital do certificado não corresponde
 transfer-error-auth-failed = Falha na autenticação
+transfer-error-exists = Ficheiro já existe com conteúdo diferente
+transfer-error-conflict = Outro carregamento está em curso
 transfer-error-unknown = Erro desconhecido
 transfer-cancelled = Cancelado pelo utilizador
 transfer-task-failed = Tarefa de transferência falhou: { $error }

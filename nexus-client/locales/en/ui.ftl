@@ -122,8 +122,9 @@ label-proxy-port = Port:
 label-proxy-username = Username:
 label-proxy-password = Password:
 label-download-location = Download Location:
-label-queue-downloads = Queue downloads
-label-queue-limit = Limit:
+label-queue-transfers = Queue Transfers
+label-download-limit = Download Limit:
+label-upload-limit = Upload Limit:
 
 # =============================================================================
 # Permission Display Names
@@ -159,6 +160,7 @@ permission-file_list = File List
 permission-file_move = File Move
 permission-file_rename = File Rename
 permission-file_root = File Root
+permission-file_upload = File Upload
 
 # =============================================================================
 # Tooltips
@@ -183,6 +185,8 @@ tooltip-server-info = Server Info
 tooltip-about = About
 tooltip-transfers = Transfers
 tooltip-download-all = Download All
+tooltip-upload = Upload
+file-picker-upload-title = Select files to upload
 tooltip-clear-inactive = Clear Inactive
 tooltip-transfer-pause = Pause
 tooltip-transfer-resume = Resume
@@ -207,6 +211,7 @@ tooltip-create-user = Create User
 tooltip-create-news = Create News Post
 tooltip-delete = Delete
 context-menu-download = Download
+context-menu-upload = Upload
 
 # =============================================================================
 # Empty States
@@ -611,6 +616,8 @@ transfer-error-protocol = Protocol error
 transfer-error-connection = Connection error
 transfer-error-certificate-mismatch = Certificate fingerprint mismatch
 transfer-error-auth-failed = Authentication failed
+transfer-error-exists = File already exists with different content
+transfer-error-conflict = Another upload is in progress
 transfer-error-unknown = Unknown error
 transfer-cancelled = Cancelled by user
 transfer-task-failed = Transfer task failed: { $error }

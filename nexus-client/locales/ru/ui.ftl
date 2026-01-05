@@ -121,9 +121,10 @@ label-proxy-address = Адрес:
 label-proxy-port = Порт:
 label-proxy-username = Имя пользователя:
 label-proxy-password = Пароль:
-label-download-location = Папка загрузки:
-label-queue-downloads = Очередь загрузок
-label-queue-limit = Лимит:
+label-download-location = Папка загрузок:
+label-queue-transfers = Очередь Передач
+label-download-limit = Лимит загрузок:
+label-upload-limit = Лимит отправок:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = Список Файлов
 permission-file_move = Перемещение Файла
 permission-file_rename = Переименовать Файл
 permission-file_root = Корень Файлов
+permission-file_upload = Загрузка Файла
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = Информация о сервере
 tooltip-about = О программе
 tooltip-transfers = Передачи
 tooltip-download-all = Скачать всё
+tooltip-upload = Загрузить
+file-picker-upload-title = Выберите файлы для загрузки
 tooltip-clear-inactive = Очистить неактивные
 tooltip-transfer-pause = Пауза
 tooltip-transfer-resume = Продолжить
@@ -202,6 +206,7 @@ tooltip-create-user = Создать пользователя
 tooltip-create-news = Создать публикацию
 tooltip-delete = Удалить
 context-menu-download = Скачать
+context-menu-upload = Загрузить
 
 # =============================================================================
 # Empty States
@@ -608,6 +613,8 @@ transfer-error-protocol = Ошибка протокола
 transfer-error-connection = Ошибка соединения
 transfer-error-certificate-mismatch = Отпечаток сертификата не совпадает
 transfer-error-auth-failed = Ошибка аутентификации
+transfer-error-exists = Файл уже существует с другим содержимым
+transfer-error-conflict = Выполняется другая загрузка
 transfer-error-unknown = Неизвестная ошибка
 transfer-cancelled = Отменено пользователем
 transfer-task-failed = Ошибка задачи передачи: { $error }

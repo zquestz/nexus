@@ -10,9 +10,7 @@ use iced_aw::TabLabel;
 use iced_aw::Tabs;
 
 use super::chat::TimestampSettings;
-use crate::config::settings::{
-    CHAT_FONT_SIZES, MIN_CONCURRENT_TRANSFERS, ProxySettings, default_download_path,
-};
+use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings, default_download_path};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::image::CachedImage;
@@ -46,10 +44,12 @@ pub struct SettingsViewData<'a> {
     pub proxy: &'a ProxySettings,
     /// Download path for file transfers
     pub download_path: Option<&'a str>,
-    /// Whether to queue downloads (limit concurrent transfers)
-    pub queue_downloads: bool,
-    /// Maximum number of concurrent transfers
-    pub max_concurrent_transfers: u8,
+    /// Whether to queue transfers (limit concurrent transfers per server)
+    pub queue_transfers: bool,
+    /// Maximum concurrent downloads per server (0 = unlimited)
+    pub download_limit: u8,
+    /// Maximum concurrent uploads per server (0 = unlimited)
+    pub upload_limit: u8,
 }
 
 // ============================================================================
@@ -96,8 +96,9 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
 
     let files_content = files_tab_content(
         data.download_path,
-        data.queue_downloads,
-        data.max_concurrent_transfers,
+        data.queue_transfers,
+        data.download_limit,
+        data.upload_limit,
     );
 
     // Create tabs widget with compact styling
@@ -325,11 +326,12 @@ fn chat_tab_content(
         .into()
 }
 
-/// Build the Files tab content (download location)
+/// Build the Files tab content (download location, transfer queue settings)
 fn files_tab_content(
     download_path: Option<&str>,
-    queue_downloads: bool,
-    max_concurrent_transfers: u8,
+    queue_transfers: bool,
+    download_limit: u8,
+    upload_limit: u8,
 ) -> Element<'static, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
 
@@ -366,39 +368,46 @@ fn files_tab_content(
     // Spacer before queue settings
     items.push(Space::new().height(SPACER_SIZE_SMALL).into());
 
-    // Queue downloads checkbox
-    let queue_checkbox = checkbox(queue_downloads)
-        .label(t("label-queue-downloads"))
-        .on_toggle(Message::QueueDownloadsToggled)
+    // Queue transfers checkbox
+    let queue_checkbox = checkbox(queue_transfers)
+        .label(t("label-queue-transfers"))
+        .on_toggle(Message::QueueTransfersToggled)
         .text_size(TEXT_SIZE);
     items.push(queue_checkbox.into());
 
-    // Max concurrent transfers (indented, disabled when queue_downloads is off)
-    let max_concurrent_label = shaped_text(t("label-queue-limit")).size(TEXT_SIZE);
-    let max_concurrent_input: Element<'_, Message> = if queue_downloads {
-        NumberInput::new(
-            &max_concurrent_transfers,
-            MIN_CONCURRENT_TRANSFERS..=u8::MAX,
-            Message::MaxConcurrentTransfersChanged,
-        )
-        .padding(INPUT_PADDING)
-        .into()
+    // Download limit (disabled when queue_transfers is off)
+    let download_limit_label = shaped_text(t("label-download-limit")).size(TEXT_SIZE);
+    let download_limit_input: Element<'_, Message> = if queue_transfers {
+        NumberInput::new(&download_limit, 0..=u8::MAX, Message::DownloadLimitChanged)
+            .padding(INPUT_PADDING)
+            .into()
     } else {
-        NumberInput::new(
-            &max_concurrent_transfers,
-            MIN_CONCURRENT_TRANSFERS..=u8::MAX,
-            Message::MaxConcurrentTransfersChanged,
-        )
-        .on_input_maybe(None::<fn(u8) -> Message>)
-        .padding(INPUT_PADDING)
-        .into()
+        NumberInput::new(&download_limit, 0..=u8::MAX, Message::DownloadLimitChanged)
+            .on_input_maybe(None::<fn(u8) -> Message>)
+            .padding(INPUT_PADDING)
+            .into()
     };
-    let max_concurrent_row = row![max_concurrent_label, max_concurrent_input]
+    let download_limit_row = row![download_limit_label, download_limit_input]
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
-    // Indent the max concurrent row when queue_downloads is enabled
-    let max_concurrent_indented = row![Space::new().width(CHECKBOX_INDENT), max_concurrent_row,];
-    items.push(max_concurrent_indented.into());
+    items.push(download_limit_row.into());
+
+    // Upload limit (disabled when queue_transfers is off)
+    let upload_limit_label = shaped_text(t("label-upload-limit")).size(TEXT_SIZE);
+    let upload_limit_input: Element<'_, Message> = if queue_transfers {
+        NumberInput::new(&upload_limit, 0..=u8::MAX, Message::UploadLimitChanged)
+            .padding(INPUT_PADDING)
+            .into()
+    } else {
+        NumberInput::new(&upload_limit, 0..=u8::MAX, Message::UploadLimitChanged)
+            .on_input_maybe(None::<fn(u8) -> Message>)
+            .padding(INPUT_PADDING)
+            .into()
+    };
+    let upload_limit_row = row![upload_limit_label, upload_limit_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    items.push(upload_limit_row.into());
 
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)

@@ -6,8 +6,7 @@ use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
 use crate::config::settings::{
-    AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, MIN_CONCURRENT_TRANSFERS,
-    default_download_path,
+    AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
 };
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
@@ -426,15 +425,21 @@ impl NexusApp {
 
     // ==================== Transfer Queue ====================
 
-    /// Handle queue downloads checkbox toggle
-    pub fn handle_queue_downloads_toggled(&mut self, enabled: bool) -> Task<Message> {
-        self.config.settings.queue_downloads = enabled;
+    /// Handle queue transfers checkbox toggle
+    pub fn handle_queue_transfers_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.queue_transfers = enabled;
         Task::none()
     }
 
-    /// Handle max concurrent transfers change
-    pub fn handle_max_concurrent_transfers_changed(&mut self, max: u8) -> Task<Message> {
-        self.config.settings.max_concurrent_transfers = max.max(MIN_CONCURRENT_TRANSFERS);
+    /// Handle download limit change
+    pub fn handle_download_limit_changed(&mut self, limit: u8) -> Task<Message> {
+        self.config.settings.download_limit = limit;
+        Task::none()
+    }
+
+    /// Handle upload limit change
+    pub fn handle_upload_limit_changed(&mut self, limit: u8) -> Task<Message> {
+        self.config.settings.upload_limit = limit;
         Task::none()
     }
 }

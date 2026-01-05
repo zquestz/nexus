@@ -87,11 +87,14 @@ pub struct ViewConfig<'a> {
     /// Transfer manager for file downloads/uploads (global, not per-connection)
     pub transfer_manager: &'a TransferManager,
 
-    /// Whether to queue downloads (limit concurrent transfers)
-    pub queue_downloads: bool,
+    /// Whether to queue transfers (limit concurrent transfers per server)
+    pub queue_transfers: bool,
 
-    /// Maximum number of concurrent transfers
-    pub max_concurrent_transfers: u8,
+    /// Maximum concurrent downloads per server (0 = unlimited)
+    pub download_limit: u8,
+
+    /// Maximum concurrent uploads per server (0 = unlimited)
+    pub upload_limit: u8,
 }
 
 /// Toolbar state configuration

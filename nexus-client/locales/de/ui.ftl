@@ -122,8 +122,9 @@ label-proxy-port = Port:
 label-proxy-username = Benutzername:
 label-proxy-password = Passwort:
 label-download-location = Download-Ordner:
-label-queue-downloads = Downloads in Warteschlange
-label-queue-limit = Limit:
+label-queue-transfers = Übertragungen in Warteschlange
+label-download-limit = Download-Limit:
+label-upload-limit = Upload-Limit:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = Dateiliste
 permission-file_move = Datei Verschieben
 permission-file_rename = Datei Umbenennen
 permission-file_root = Dateistamm
+permission-file_upload = Datei Hochladen
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = Server-Info
 tooltip-about = Über
 tooltip-transfers = Übertragungen
 tooltip-download-all = Alles herunterladen
+tooltip-upload = Hochladen
+file-picker-upload-title = Dateien zum Hochladen auswählen
 tooltip-clear-inactive = Inaktive löschen
 tooltip-transfer-pause = Pausieren
 tooltip-transfer-resume = Fortsetzen
@@ -202,6 +206,7 @@ tooltip-create-user = Benutzer erstellen
 tooltip-create-news = Beitrag erstellen
 tooltip-delete = Löschen
 context-menu-download = Herunterladen
+context-menu-upload = Hochladen
 
 # =============================================================================
 # Empty States
@@ -603,6 +608,8 @@ transfer-error-protocol = Protokollfehler
 transfer-error-connection = Verbindungsfehler
 transfer-error-certificate-mismatch = Zertifikats-Fingerabdruck stimmt nicht überein
 transfer-error-auth-failed = Authentifizierung fehlgeschlagen
+transfer-error-exists = Datei existiert bereits mit anderem Inhalt
+transfer-error-conflict = Ein anderer Upload läuft bereits
 transfer-error-unknown = Unbekannter Fehler
 transfer-cancelled = Vom Benutzer abgebrochen
 transfer-task-failed = Übertragungsaufgabe fehlgeschlagen: { $error }

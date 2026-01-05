@@ -62,18 +62,6 @@ impl std::fmt::Debug for ConnectionInfo {
     }
 }
 
-impl ConnectionInfo {
-    /// Get the display name (nickname if non-empty, otherwise username)
-    #[allow(dead_code)]
-    pub fn display_nickname(&self) -> &str {
-        if self.nickname.is_empty() {
-            &self.username
-        } else {
-            &self.nickname
-        }
-    }
-}
-
 // =============================================================================
 // Tab Completion State
 // =============================================================================

@@ -123,8 +123,9 @@ label-proxy-port = Port:
 label-proxy-username = Nom d'utilisateur:
 label-proxy-password = Mot de passe:
 label-download-location = Emplacement de téléchargement:
-label-queue-downloads = Mettre les téléchargements en file d'attente
-label-queue-limit = Limite:
+label-queue-transfers = Mettre les Transferts en File d'Attente
+label-download-limit = Limite de Téléchargements:
+label-upload-limit = Limite de Téléversements:
 
 # =============================================================================
 # Permission Display Names
@@ -155,6 +156,7 @@ permission-file_list = Liste des Fichiers
 permission-file_move = Déplacer Fichier
 permission-file_rename = Renommer Fichier
 permission-file_root = Racine Fichiers
+permission-file_upload = Téléverser Fichier
 
 # =============================================================================
 # Tooltips
@@ -179,6 +181,8 @@ tooltip-server-info = Infos Serveur
 tooltip-about = À propos
 tooltip-transfers = Transferts
 tooltip-download-all = Tout Télécharger
+tooltip-upload = Téléverser
+file-picker-upload-title = Sélectionner les fichiers à téléverser
 tooltip-clear-inactive = Effacer Inactifs
 tooltip-transfer-pause = Pause
 tooltip-transfer-resume = Reprendre
@@ -203,6 +207,7 @@ tooltip-create-user = Créer un Utilisateur
 tooltip-create-news = Créer une Publication
 tooltip-delete = Supprimer
 context-menu-download = Télécharger
+context-menu-upload = Téléverser
 
 # =============================================================================
 # Empty States
@@ -602,6 +607,8 @@ transfer-error-protocol = Erreur de protocole
 transfer-error-connection = Erreur de connexion
 transfer-error-certificate-mismatch = Empreinte du certificat non concordante
 transfer-error-auth-failed = Échec de l'authentification
+transfer-error-exists = Le fichier existe déjà avec un contenu différent
+transfer-error-conflict = Un autre téléversement est en cours
 transfer-error-unknown = Erreur inconnue
 transfer-cancelled = Annulé par l'utilisateur
 transfer-task-failed = Échec de la tâche de transfert : { $error }

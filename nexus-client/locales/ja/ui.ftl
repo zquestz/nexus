@@ -122,8 +122,9 @@ label-proxy-port = ポート:
 label-proxy-username = ユーザー名:
 label-proxy-password = パスワード:
 label-download-location = ダウンロード場所:
-label-queue-downloads = ダウンロードをキューに入れる
-label-queue-limit = 制限:
+label-queue-transfers = 転送をキューに入れる
+label-download-limit = ダウンロード制限:
+label-upload-limit = アップロード制限:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = ファイル一覧
 permission-file_move = ファイル移動
 permission-file_rename = ファイル名変更
 permission-file_root = ファイルルート
+permission-file_upload = ファイルアップロード
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
 tooltip-transfers = 転送
 tooltip-download-all = すべてダウンロード
+tooltip-upload = アップロード
+file-picker-upload-title = アップロードするファイルを選択
 tooltip-clear-inactive = 非アクティブを消去
 tooltip-transfer-pause = 一時停止
 tooltip-transfer-resume = 再開
@@ -202,6 +206,7 @@ tooltip-create-user = ユーザーを作成
 tooltip-create-news = 投稿を作成
 tooltip-delete = 削除
 context-menu-download = ダウンロード
+context-menu-upload = アップロード
 
 # =============================================================================
 # Empty States
@@ -580,6 +585,8 @@ transfer-error-protocol = プロトコルエラー
 transfer-error-connection = 接続エラー
 transfer-error-certificate-mismatch = 証明書のフィンガープリントが一致しません
 transfer-error-auth-failed = 認証に失敗しました
+transfer-error-exists = 異なる内容のファイルが既に存在します
+transfer-error-conflict = 別のアップロードが進行中です
 transfer-error-unknown = 不明なエラー
 transfer-cancelled = ユーザーによってキャンセルされました
 transfer-task-failed = 転送タスクが失敗しました: { $error }

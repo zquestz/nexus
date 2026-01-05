@@ -122,8 +122,9 @@ label-proxy-port = 連接埠:
 label-proxy-username = 使用者名稱:
 label-proxy-password = 密碼:
 label-download-location = 下載位置:
-label-queue-downloads = 排隊下載
-label-queue-limit = 限制:
+label-queue-transfers = 排隊傳輸
+label-download-limit = 下載限制:
+label-upload-limit = 上傳限制:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = 檔案列表
 permission-file_move = 檔案移動
 permission-file_rename = 重新命名檔案
 permission-file_root = 檔案根目錄
+permission-file_upload = 檔案上傳
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
 tooltip-transfers = 傳輸
 tooltip-download-all = 全部下載
+tooltip-upload = 上傳
+file-picker-upload-title = 選擇要上傳的檔案
 tooltip-clear-inactive = 清除非活動項
 tooltip-transfer-pause = 暫停
 tooltip-transfer-resume = 繼續
@@ -202,6 +206,7 @@ tooltip-create-user = 建立使用者
 tooltip-create-news = 建立貼文
 tooltip-delete = 刪除
 context-menu-download = 下載
+context-menu-upload = 上傳
 
 # =============================================================================
 # Empty States
@@ -580,6 +585,8 @@ transfer-error-protocol = 協議錯誤
 transfer-error-connection = 連線錯誤
 transfer-error-certificate-mismatch = 憑證指紋不符
 transfer-error-auth-failed = 認證失敗
+transfer-error-exists = 檔案已存在且內容不同
+transfer-error-conflict = 另一個上傳正在進行中
 transfer-error-unknown = 未知錯誤
 transfer-cancelled = 已被使用者取消
 transfer-task-failed = 傳輸任務失敗: { $error }

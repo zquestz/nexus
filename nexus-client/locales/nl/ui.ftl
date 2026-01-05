@@ -123,8 +123,9 @@ label-proxy-port = Poort:
 label-proxy-username = Gebruikersnaam:
 label-proxy-password = Wachtwoord:
 label-download-location = Downloadlocatie:
-label-queue-downloads = Downloads in wachtrij plaatsen
-label-queue-limit = Limiet:
+label-queue-transfers = Overdrachten in Wachtrij Plaatsen
+label-download-limit = Downloadlimiet:
+label-upload-limit = Uploadlimiet:
 
 # =============================================================================
 # Permission Display Names
@@ -155,6 +156,7 @@ permission-file_list = Bestandslijst
 permission-file_move = Bestand Verplaatsen
 permission-file_rename = Bestand Hernoemen
 permission-file_root = Bestandsroot
+permission-file_upload = Bestand Uploaden
 
 # =============================================================================
 # Tooltips
@@ -179,6 +181,8 @@ tooltip-server-info = Server Info
 tooltip-about = Over
 tooltip-transfers = Overdrachten
 tooltip-download-all = Alles Downloaden
+tooltip-upload = Uploaden
+file-picker-upload-title = Selecteer bestanden om te uploaden
 tooltip-clear-inactive = Inactieve wissen
 tooltip-transfer-pause = Pauzeren
 tooltip-transfer-resume = Hervatten
@@ -203,6 +207,7 @@ tooltip-create-user = Gebruiker Aanmaken
 tooltip-create-news = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
 context-menu-download = Downloaden
+context-menu-upload = Uploaden
 
 # =============================================================================
 # Empty States
@@ -602,6 +607,8 @@ transfer-error-protocol = Protocolfout
 transfer-error-connection = Verbindingsfout
 transfer-error-certificate-mismatch = Certificaatvingerafdruk komt niet overeen
 transfer-error-auth-failed = Authenticatie mislukt
+transfer-error-exists = Bestand bestaat al met andere inhoud
+transfer-error-conflict = Een andere upload is bezig
 transfer-error-unknown = Onbekende fout
 transfer-cancelled = Geannuleerd door gebruiker
 transfer-task-failed = Overdrachtstaak mislukt: { $error }

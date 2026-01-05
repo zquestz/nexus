@@ -21,7 +21,6 @@ pub enum TransferDirection {
     /// Downloading from server to local
     Download,
     /// Uploading from local to server
-    #[allow(dead_code)] // For future upload support
     Upload,
 }
 
@@ -100,6 +99,10 @@ pub enum TransferError {
     CertificateMismatch,
     /// Authentication failed
     AuthenticationFailed,
+    /// File already exists on server with different content (upload)
+    Exists,
+    /// Concurrent upload in progress (upload)
+    Conflict,
     /// Unknown error
     Unknown,
 }
@@ -113,6 +116,9 @@ impl TransferError {
             "invalid" => TransferError::Invalid,
             "io_error" => TransferError::IoError,
             "protocol_error" => TransferError::ProtocolError,
+            "hash_mismatch" => TransferError::HashMismatch,
+            "exists" => TransferError::Exists,
+            "conflict" => TransferError::Conflict,
             _ => TransferError::Unknown,
         }
     }
@@ -130,6 +136,8 @@ impl TransferError {
             TransferError::ConnectionError => "transfer-error-connection",
             TransferError::CertificateMismatch => "transfer-error-certificate-mismatch",
             TransferError::AuthenticationFailed => "transfer-error-auth-failed",
+            TransferError::Exists => "transfer-error-exists",
+            TransferError::Conflict => "transfer-error-conflict",
             TransferError::Unknown => "transfer-error-unknown",
         }
     }
@@ -257,7 +265,6 @@ impl Transfer {
     }
 
     /// Create a new upload transfer
-    #[allow(dead_code)] // For future upload support
     pub fn new_upload(
         connection_info: ConnectionInfo,
         remote_path: String,
@@ -304,18 +311,30 @@ impl Transfer {
     }
 
     /// Get a human-readable display name for the transfer
-    pub fn display_name(&self) -> &str {
-        // Use the last component of the remote path
-        let name = self
-            .remote_path
-            .rsplit('/')
-            .next()
-            .filter(|s| !s.is_empty());
+    pub fn display_name(&self) -> String {
+        match self.direction {
+            TransferDirection::Download => {
+                // Use the last component of the remote path
+                let name = self
+                    .remote_path
+                    .rsplit('/')
+                    .next()
+                    .filter(|s| !s.is_empty());
 
-        // For root directory downloads ("/"), use server name instead
-        match name {
-            Some(n) => n,
-            None => &self.connection_info.server_name,
+                // For root directory downloads ("/"), use server name instead
+                match name {
+                    Some(n) => n.to_string(),
+                    None => self.connection_info.server_name.clone(),
+                }
+            }
+            TransferDirection::Upload => {
+                // Use the local file/directory name
+                self.local_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("upload")
+                    .to_string()
+            }
         }
     }
 

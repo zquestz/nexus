@@ -397,10 +397,9 @@ impl NexusApp {
             }
             Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),
             Message::DownloadPathSelected(path) => self.handle_download_path_selected(path),
-            Message::QueueDownloadsToggled(enabled) => self.handle_queue_downloads_toggled(enabled),
-            Message::MaxConcurrentTransfersChanged(max) => {
-                self.handle_max_concurrent_transfers_changed(max)
-            }
+            Message::QueueTransfersToggled(enabled) => self.handle_queue_transfers_toggled(enabled),
+            Message::DownloadLimitChanged(limit) => self.handle_download_limit_changed(limit),
+            Message::UploadLimitChanged(limit) => self.handle_upload_limit_changed(limit),
 
             // About
             Message::CloseAbout => self.handle_close_about(),
@@ -527,6 +526,11 @@ impl NexusApp {
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
             Message::FileDownload(path) => self.handle_file_download(path),
             Message::FileDownloadAll(path) => self.handle_file_download_all(path),
+            Message::FileUpload(destination) => self.handle_file_upload(destination),
+            Message::FileUploadCancelled => Task::none(),
+            Message::FileUploadSelected(destination, paths) => {
+                self.handle_file_upload_selected(destination, paths)
+            }
 
             // Transfer management
             Message::TransferProgress(event) => self.handle_transfer_progress(event),
@@ -563,9 +567,8 @@ impl NexusApp {
         // Each subscription is keyed by the transfer's stable UUID, so it remains
         // stable even as the transfer status changes from Queued -> Connecting -> Transferring
         //
-        // If queue_downloads is enabled, we limit the number of concurrent transfers.
-        // Active transfers always get subscriptions; queued transfers only get subscriptions
-        // if we haven't reached the limit.
+        // If queue_transfers is enabled, we limit concurrent transfers PER SERVER.
+        // Limits are separate for downloads and uploads (0 = unlimited).
         let active_transfers: Vec<_> = self.transfer_manager.active().collect();
         let mut queued_transfers: Vec<_> = self.transfer_manager.queued().collect();
 
@@ -580,17 +583,60 @@ impl NexusApp {
             ));
         }
 
-        // Queued transfers: respect concurrency limit if queue_downloads is enabled
-        if self.config.settings.queue_downloads {
-            let active_count = active_transfers.len();
-            let max_concurrent = self.config.settings.max_concurrent_transfers as usize;
-            let slots_available = max_concurrent.saturating_sub(active_count);
+        // Queued transfers: respect per-server limits if queue_transfers is enabled
+        if self.config.settings.queue_transfers {
+            use std::collections::HashMap;
 
-            for transfer in queued_transfers.iter().take(slots_available) {
-                subscriptions.push(transfers::transfer_subscription(
-                    transfer,
-                    &self.config.settings.proxy,
-                ));
+            // Server key: address:port
+            fn server_key(t: &transfers::Transfer) -> String {
+                format!("{}:{}", t.connection_info.address, t.connection_info.port)
+            }
+
+            // Count active transfers per server per direction
+            let mut active_downloads_per_server: HashMap<String, usize> = HashMap::new();
+            let mut active_uploads_per_server: HashMap<String, usize> = HashMap::new();
+
+            for t in &active_transfers {
+                let key = server_key(t);
+                match t.direction {
+                    transfers::TransferDirection::Download => {
+                        *active_downloads_per_server.entry(key).or_insert(0) += 1;
+                    }
+                    transfers::TransferDirection::Upload => {
+                        *active_uploads_per_server.entry(key).or_insert(0) += 1;
+                    }
+                }
+            }
+
+            let download_limit = self.config.settings.download_limit as usize;
+            let upload_limit = self.config.settings.upload_limit as usize;
+
+            // Process queued transfers, respecting per-server limits
+            for transfer in &queued_transfers {
+                let key = server_key(transfer);
+
+                let (active_count, limit, active_map) = match transfer.direction {
+                    transfers::TransferDirection::Download => (
+                        *active_downloads_per_server.get(&key).unwrap_or(&0),
+                        download_limit,
+                        &mut active_downloads_per_server,
+                    ),
+                    transfers::TransferDirection::Upload => (
+                        *active_uploads_per_server.get(&key).unwrap_or(&0),
+                        upload_limit,
+                        &mut active_uploads_per_server,
+                    ),
+                };
+
+                // 0 = unlimited, otherwise check limit
+                if limit == 0 || active_count < limit {
+                    subscriptions.push(transfers::transfer_subscription(
+                        transfer,
+                        &self.config.settings.proxy,
+                    ));
+                    // Track this transfer as "will be active" for subsequent checks
+                    *active_map.entry(key).or_insert(0) += 1;
+                }
             }
         } else {
             // No queuing - start all queued transfers immediately
@@ -646,8 +692,9 @@ impl NexusApp {
             download_path: self.config.settings.download_path.as_deref(),
             show_hidden: self.config.settings.show_hidden_files,
             transfer_manager: &self.transfer_manager,
-            queue_downloads: self.config.settings.queue_downloads,
-            max_concurrent_transfers: self.config.settings.max_concurrent_transfers,
+            queue_transfers: self.config.settings.queue_transfers,
+            download_limit: self.config.settings.download_limit,
+            upload_limit: self.config.settings.upload_limit,
         };
 
         let main_view = views::main_layout(config);

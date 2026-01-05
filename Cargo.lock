@@ -3408,6 +3408,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sys-locale",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tokio-socks",

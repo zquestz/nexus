@@ -73,14 +73,14 @@ fn default_proxy_port() -> u16 {
 /// Maximum avatar size in bytes (128KB)
 pub const AVATAR_MAX_SIZE: usize = 128 * 1024;
 
-/// Default value for queue_downloads setting
-pub const DEFAULT_QUEUE_DOWNLOADS: bool = false;
+/// Default value for queue_transfers setting
+pub const DEFAULT_QUEUE_TRANSFERS: bool = false;
 
-/// Default maximum concurrent transfers
-pub const DEFAULT_MAX_CONCURRENT_TRANSFERS: u8 = 2;
+/// Default download limit per server (0 = unlimited)
+pub const DEFAULT_DOWNLOAD_LIMIT: u8 = 2;
 
-/// Minimum concurrent transfers (1 = sequential)
-pub const MIN_CONCURRENT_TRANSFERS: u8 = 1;
+/// Default upload limit per server (0 = unlimited)
+pub const DEFAULT_UPLOAD_LIMIT: u8 = 2;
 
 /// Minimum allowed chat font size
 pub const CHAT_FONT_SIZE_MIN: u8 = 9;
@@ -165,13 +165,17 @@ pub struct Settings {
     #[serde(default)]
     pub proxy: ProxySettings,
 
-    /// Whether to queue downloads (limit concurrent transfers)
-    #[serde(default = "default_queue_downloads")]
-    pub queue_downloads: bool,
+    /// Whether to queue transfers (limit concurrent transfers per server)
+    #[serde(default = "default_queue_transfers", alias = "queue_downloads")]
+    pub queue_transfers: bool,
 
-    /// Maximum number of concurrent transfers (when queue_downloads is true)
-    #[serde(default = "default_max_concurrent_transfers")]
-    pub max_concurrent_transfers: u8,
+    /// Maximum concurrent downloads per server (0 = unlimited)
+    #[serde(default = "default_download_limit", alias = "max_concurrent_transfers")]
+    pub download_limit: u8,
+
+    /// Maximum concurrent uploads per server (0 = unlimited)
+    #[serde(default = "default_upload_limit")]
+    pub upload_limit: u8,
 }
 
 impl Default for Settings {
@@ -192,8 +196,9 @@ impl Default for Settings {
             window_x: None,
             window_y: None,
             proxy: ProxySettings::default(),
-            queue_downloads: default_queue_downloads(),
-            max_concurrent_transfers: default_max_concurrent_transfers(),
+            queue_transfers: default_queue_transfers(),
+            download_limit: default_download_limit(),
+            upload_limit: default_upload_limit(),
         }
     }
 }
@@ -250,12 +255,16 @@ fn default_window_height() -> f32 {
     WINDOW_HEIGHT
 }
 
-fn default_queue_downloads() -> bool {
-    DEFAULT_QUEUE_DOWNLOADS
+fn default_queue_transfers() -> bool {
+    DEFAULT_QUEUE_TRANSFERS
 }
 
-fn default_max_concurrent_transfers() -> u8 {
-    DEFAULT_MAX_CONCURRENT_TRANSFERS
+fn default_download_limit() -> u8 {
+    DEFAULT_DOWNLOAD_LIMIT
+}
+
+fn default_upload_limit() -> u8 {
+    DEFAULT_UPLOAD_LIMIT
 }
 
 // =============================================================================
@@ -282,11 +291,9 @@ mod tests {
         assert_eq!(settings.window_height, WINDOW_HEIGHT);
         assert!(settings.window_x.is_none());
         assert!(settings.window_y.is_none());
-        assert!(!settings.queue_downloads);
-        assert_eq!(
-            settings.max_concurrent_transfers,
-            DEFAULT_MAX_CONCURRENT_TRANSFERS
-        );
+        assert!(!settings.queue_transfers);
+        assert_eq!(settings.download_limit, DEFAULT_DOWNLOAD_LIMIT);
+        assert_eq!(settings.upload_limit, DEFAULT_UPLOAD_LIMIT);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! File utility functions for the transfer executor
 //!
 //! Provides helpers for checking local files, generating unique paths,
-//! computing SHA-256 hashes, and validating server-provided paths.
+//! computing SHA-256 hashes, scanning directories, and validating paths.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,9 +9,24 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use sha2::{Digest, Sha256};
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader, SeekFrom};
 
 use super::{BUFFER_SIZE, PART_SUFFIX, TransferError};
+
+// =============================================================================
+// Local File Info (for uploads)
+// =============================================================================
+
+/// Information about a local file to upload
+#[derive(Debug, Clone)]
+pub struct LocalFileInfo {
+    /// Relative path (e.g., "subdir/file.txt")
+    pub relative_path: String,
+    /// File size in bytes
+    pub size: u64,
+    /// SHA-256 hash of complete file
+    pub sha256: String,
+}
 
 /// Check for existing local file (complete or .part)
 ///
@@ -112,6 +127,153 @@ pub async fn compute_file_sha256(path: &Path) -> Result<String, TransferError> {
 
     let hash = hasher.finalize();
     Ok(hex::encode(hash))
+}
+
+/// Compute SHA-256 hash of the first N bytes of a file
+///
+/// Used for resume verification - the server sends the hash of its partial file,
+/// and we verify by hashing the same number of bytes from our local file.
+pub async fn compute_partial_sha256(path: &Path, byte_count: u64) -> Result<String, TransferError> {
+    if byte_count == 0 {
+        // Hash of empty input
+        let hasher = Sha256::new();
+        return Ok(hex::encode(hasher.finalize()));
+    }
+
+    let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let mut remaining = byte_count;
+
+    while remaining > 0 {
+        let to_read = (remaining as usize).min(buffer.len());
+        let bytes_read = reader
+            .read(&mut buffer[..to_read])
+            .await
+            .map_err(|_| TransferError::IoError)?;
+
+        if bytes_read == 0 {
+            // File is shorter than expected
+            break;
+        }
+
+        hasher.update(&buffer[..bytes_read]);
+        remaining -= bytes_read as u64;
+    }
+
+    let hash = hasher.finalize();
+    Ok(hex::encode(hash))
+}
+
+// =============================================================================
+// File Scanning (for uploads)
+// =============================================================================
+
+/// Scan local files for upload
+///
+/// For a single file, returns one entry with the filename as the relative path.
+/// For a directory, recursively scans and returns all files with relative paths.
+///
+/// Computes SHA-256 hash for each file.
+pub async fn scan_local_files(
+    local_path: &Path,
+    is_directory: bool,
+) -> Result<Vec<LocalFileInfo>, TransferError> {
+    if is_directory {
+        scan_directory(local_path, local_path).await
+    } else {
+        // Single file
+        let metadata = tokio::fs::metadata(local_path)
+            .await
+            .map_err(|_| TransferError::NotFound)?;
+
+        if !metadata.is_file() {
+            return Err(TransferError::Invalid);
+        }
+
+        let sha256 = compute_file_sha256(local_path).await?;
+        let filename = local_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or(TransferError::Invalid)?
+            .to_string();
+
+        Ok(vec![LocalFileInfo {
+            relative_path: filename,
+            size: metadata.len(),
+            sha256,
+        }])
+    }
+}
+
+/// Recursively scan a directory for files
+///
+/// Uses Box::pin to handle the recursive async call.
+fn scan_directory<'a>(
+    base_path: &'a Path,
+    current_path: &'a Path,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Vec<LocalFileInfo>, TransferError>> + Send + 'a>,
+> {
+    Box::pin(async move {
+        let mut files = Vec::new();
+        let mut entries = tokio::fs::read_dir(current_path)
+            .await
+            .map_err(|_| TransferError::IoError)?;
+
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|_| TransferError::IoError)?
+        {
+            let path = entry.path();
+            let metadata = tokio::fs::metadata(&path)
+                .await
+                .map_err(|_| TransferError::IoError)?;
+
+            if metadata.is_dir() {
+                // Recurse into subdirectory
+                let mut subdir_files = scan_directory(base_path, &path).await?;
+                files.append(&mut subdir_files);
+            } else if metadata.is_file() {
+                // Compute relative path from base
+                let relative_path = path
+                    .strip_prefix(base_path)
+                    .map_err(|_| TransferError::Invalid)?
+                    .to_str()
+                    .ok_or(TransferError::Invalid)?
+                    .to_string();
+
+                // Normalize path separators to forward slashes (for cross-platform compatibility)
+                let relative_path = relative_path.replace('\\', "/");
+
+                let sha256 = compute_file_sha256(&path).await?;
+
+                files.push(LocalFileInfo {
+                    relative_path,
+                    size: metadata.len(),
+                    sha256,
+                });
+            }
+            // Skip symlinks and other file types
+        }
+
+        Ok(files)
+    })
+}
+
+/// Open a file and seek to a specific offset for resume
+pub async fn open_file_for_upload(path: &Path, offset: u64) -> Result<File, TransferError> {
+    let mut file = File::open(path).await.map_err(|_| TransferError::IoError)?;
+
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset))
+            .await
+            .map_err(|_| TransferError::IoError)?;
+    }
+
+    Ok(file)
 }
 
 /// Check if the transfer has been cancelled
@@ -244,5 +406,141 @@ mod tests {
         assert!(!is_safe_path("foo/./bar"));
         assert!(!is_safe_path("dir/./subdir/file.txt"));
         assert!(!is_safe_path("."));
+    }
+
+    #[tokio::test]
+    async fn test_compute_partial_sha256_empty() {
+        // Hash of zero bytes should be hash of empty string
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        tokio::fs::write(&file_path, "hello world")
+            .await
+            .expect("write file");
+
+        let hash = compute_partial_sha256(&file_path, 0)
+            .await
+            .expect("compute hash");
+        // SHA-256 of empty string
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compute_partial_sha256_partial() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        tokio::fs::write(&file_path, "hello world")
+            .await
+            .expect("write file");
+
+        // Hash of first 5 bytes ("hello")
+        let hash = compute_partial_sha256(&file_path, 5)
+            .await
+            .expect("compute hash");
+        // SHA-256 of "hello"
+        assert_eq!(
+            hash,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compute_partial_sha256_full() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        let content = "hello world";
+        tokio::fs::write(&file_path, content)
+            .await
+            .expect("write file");
+
+        // Hash of full file should match compute_file_sha256
+        let partial_hash = compute_partial_sha256(&file_path, content.len() as u64)
+            .await
+            .expect("compute partial hash");
+        let full_hash = compute_file_sha256(&file_path)
+            .await
+            .expect("compute full hash");
+        assert_eq!(partial_hash, full_hash);
+    }
+
+    #[tokio::test]
+    async fn test_scan_local_files_single_file() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        let content = "hello world";
+        tokio::fs::write(&file_path, content)
+            .await
+            .expect("write file");
+
+        let files = scan_local_files(&file_path, false)
+            .await
+            .expect("scan files");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].relative_path, "test.txt");
+        assert_eq!(files[0].size, content.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn test_scan_local_files_directory() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+        // Create some files
+        tokio::fs::write(temp_dir.path().join("file1.txt"), "content1")
+            .await
+            .expect("write file1");
+
+        tokio::fs::create_dir(temp_dir.path().join("subdir"))
+            .await
+            .expect("create subdir");
+        tokio::fs::write(temp_dir.path().join("subdir/file2.txt"), "content2")
+            .await
+            .expect("write file2");
+
+        let files = scan_local_files(temp_dir.path(), true)
+            .await
+            .expect("scan files");
+        assert_eq!(files.len(), 2);
+
+        // Sort by path for predictable ordering
+        let mut paths: Vec<_> = files.iter().map(|f| f.relative_path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, vec!["file1.txt", "subdir/file2.txt"]);
+    }
+
+    #[tokio::test]
+    async fn test_scan_local_files_empty_directory() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+        let files = scan_local_files(temp_dir.path(), true)
+            .await
+            .expect("scan files");
+        assert!(files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_open_file_for_upload() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        tokio::fs::write(&file_path, "hello world")
+            .await
+            .expect("write file");
+
+        // Open at offset 0
+        let mut file = open_file_for_upload(&file_path, 0)
+            .await
+            .expect("open file");
+        let mut buf = vec![0u8; 5];
+        file.read_exact(&mut buf).await.expect("read");
+        assert_eq!(&buf, b"hello");
+
+        // Open at offset 6
+        let mut file = open_file_for_upload(&file_path, 6)
+            .await
+            .expect("open file");
+        let mut buf = vec![0u8; 5];
+        file.read_exact(&mut buf).await.expect("read");
+        assert_eq!(&buf, b"world");
     }
 }

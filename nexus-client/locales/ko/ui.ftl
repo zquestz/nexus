@@ -122,8 +122,9 @@ label-proxy-port = 포트:
 label-proxy-username = 사용자 이름:
 label-proxy-password = 비밀번호:
 label-download-location = 다운로드 위치:
-label-queue-downloads = 다운로드 대기열 사용
-label-queue-limit = 제한:
+label-queue-transfers = 전송 대기열 사용
+label-download-limit = 다운로드 제한:
+label-upload-limit = 업로드 제한:
 
 # =============================================================================
 # Permission Display Names
@@ -154,6 +155,7 @@ permission-file_list = 파일 목록
 permission-file_move = 파일 이동
 permission-file_rename = 파일 이름 변경
 permission-file_root = 파일 루트
+permission-file_upload = 파일 업로드
 
 # =============================================================================
 # Tooltips
@@ -178,6 +180,8 @@ tooltip-server-info = 서버 정보
 tooltip-about = 정보
 tooltip-transfers = 전송
 tooltip-download-all = 전체 다운로드
+tooltip-upload = 업로드
+file-picker-upload-title = 업로드할 파일 선택
 tooltip-clear-inactive = 비활성 항목 지우기
 tooltip-transfer-pause = 일시 정지
 tooltip-transfer-resume = 재개
@@ -202,6 +206,7 @@ tooltip-create-user = 사용자 생성
 tooltip-create-news = 게시물 작성
 tooltip-delete = 삭제
 context-menu-download = 다운로드
+context-menu-upload = 업로드
 
 # =============================================================================
 # Empty States
@@ -580,6 +585,8 @@ transfer-error-protocol = 프로토콜 오류
 transfer-error-connection = 연결 오류
 transfer-error-certificate-mismatch = 인증서 지문이 일치하지 않습니다
 transfer-error-auth-failed = 인증 실패
+transfer-error-exists = 다른 내용의 파일이 이미 존재합니다
+transfer-error-conflict = 다른 업로드가 진행 중입니다
 transfer-error-unknown = 알 수 없는 오류
 transfer-cancelled = 사용자가 취소함
 transfer-task-failed = 전송 작업 실패: { $error }

@@ -43,6 +43,7 @@ pub struct FilePermissions {
     pub file_move: bool,
     pub file_copy: bool,
     pub file_download: bool,
+    pub file_upload: bool,
 }
 
 /// State needed to render the files toolbar
@@ -55,6 +56,8 @@ pub struct ToolbarState<'a> {
     pub can_create_dir: bool,
     pub has_clipboard: bool,
     pub has_file_download: bool,
+    pub has_file_upload: bool,
+    pub can_upload: bool,
     pub current_path: &'a str,
     pub is_loading: bool,
 }
@@ -408,6 +411,35 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     };
 
     toolbar_row = toolbar_row.push(download_all_button);
+
+    // Upload button - enabled if user has file_upload permission AND current dir allows upload
+    let upload_button: Element<'a, Message> =
+        if state.has_file_upload && state.can_upload && !state.is_loading {
+            tooltip(
+                button(icon::upload().size(FILE_TOOLBAR_ICON_SIZE))
+                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::FileUpload(state.current_path.to_string())),
+                container(shaped_text(t("tooltip-upload")).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        } else if state.has_file_upload {
+            // Disabled upload button (shown but not clickable when not in upload folder)
+            button(icon::upload().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(disabled_icon_button_style)
+                .into()
+        } else {
+            // Hidden if no upload permission
+            Space::new().width(0).into()
+        };
+
+    toolbar_row = toolbar_row.push(upload_button);
 
     // New Directory button - enabled if user has file_create_dir permission OR current dir allows upload
     // Disabled while loading
@@ -924,13 +956,15 @@ fn file_table<'a>(
             || perms.file_rename
             || perms.file_move
             || perms.file_copy
-            || perms.file_download;
+            || perms.file_download
+            || perms.file_upload;
         let has_clipboard = clipboard.is_some();
 
         if has_any_permission {
             // entry_path already built above
             let entry_name = entry.name.clone();
             let entry_is_dir = is_directory;
+            let entry_can_upload = entry.can_upload;
 
             ContextMenu::new(row_element, move || {
                 let mut menu_items: Vec<Element<'_, Message>> = vec![];
@@ -956,6 +990,19 @@ fn file_table<'a>(
                             .into(),
                     );
                     has_download_section = true;
+                }
+
+                // Upload (if permission and directory allows uploads)
+                if perms.file_upload && entry_is_dir && entry_can_upload {
+                    menu_items.push(
+                        button(shaped_text(t("context-menu-upload")).size(TEXT_SIZE))
+                            .padding(CONTEXT_MENU_ITEM_PADDING)
+                            .width(Fill)
+                            .style(context_menu_button_style)
+                            .on_press(Message::FileUpload(entry_path.clone()))
+                            .into(),
+                    );
+                    has_download_section = true; // Group with download section
                 }
 
                 // === Section 2: Clipboard actions ===
@@ -1391,6 +1438,8 @@ pub fn files_view<'a>(
         can_create_dir,
         has_clipboard,
         has_file_download: perms.file_download,
+        has_file_upload: perms.file_upload,
+        can_upload: tab.current_dir_can_upload,
         current_path: &tab.current_path,
         is_loading,
     };
