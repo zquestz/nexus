@@ -182,6 +182,7 @@ tooltip-transfers = Trasferimenti
 tooltip-download-all = Scarica Tutto
 tooltip-upload = Carica
 file-picker-upload-title = Seleziona file da caricare
+drop-to-upload = Rilascia per caricare
 tooltip-clear-inactive = Cancella Inattivi
 tooltip-transfer-pause = Pausa
 tooltip-transfer-resume = Riprendi

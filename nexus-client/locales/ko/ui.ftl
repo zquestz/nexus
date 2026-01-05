@@ -182,6 +182,7 @@ tooltip-transfers = 전송
 tooltip-download-all = 전체 다운로드
 tooltip-upload = 업로드
 file-picker-upload-title = 업로드할 파일 선택
+drop-to-upload = 드롭하여 업로드
 tooltip-clear-inactive = 비활성 항목 지우기
 tooltip-transfer-pause = 일시 정지
 tooltip-transfer-resume = 재개

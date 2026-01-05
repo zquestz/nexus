@@ -3,7 +3,9 @@
 use chrono::{DateTime, Local, TimeZone, Utc};
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, row, scrollable, table, text_input, tooltip};
+use iced::widget::{
+    Space, button, column, container, row, scrollable, stack, table, text_input, tooltip,
+};
 use iced::{Center, Element, Fill, Right, alignment};
 use iced_aw::ContextMenu;
 use nexus_common::protocol::{FileEntry, FileInfoDetails};
@@ -14,18 +16,19 @@ use crate::icon;
 use crate::style::{
     BREADCRUMB_MAX_SEGMENT_LENGTH, BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING,
     CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
-    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_INFO_ICON_SIZE,
-    FILE_INFO_ICON_SPACING, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
-    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH, FORM_PADDING,
-    ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
-    SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
+    CONTEXT_MENU_SEPARATOR_MARGIN, DROP_OVERLAY_ICON_SIZE, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH,
+    FILE_INFO_ICON_SIZE, FILE_INFO_ICON_SPACING, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING,
+    FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH,
+    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING,
+    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
     SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
     TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat_tab_active_style, close_button_on_primary_style,
     content_background_style, context_menu_button_style, context_menu_container_style,
-    context_menu_item_danger_style, disabled_icon_button_style, error_text_style, muted_text_style,
-    panel_title, separator_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style, upload_folder_style,
+    context_menu_item_danger_style, disabled_icon_button_style, drop_overlay_style,
+    error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
+    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    upload_folder_style,
 };
 use crate::types::{
     ClipboardOperation, FileSortColumn, FileTab, FilesManagementState, InputId, Message,
@@ -1342,6 +1345,7 @@ pub fn files_view<'a>(
     files_management: &'a FilesManagementState,
     perms: FilePermissions,
     show_hidden: bool,
+    show_drop_overlay: bool,
 ) -> Element<'a, Message> {
     let tab = files_management.active_tab();
 
@@ -1525,11 +1529,31 @@ pub fn files_view<'a>(
     };
 
     // Wrap everything in content background
-    container(full_content)
+    let main_content = container(full_content)
         .width(Fill)
         .height(Fill)
-        .style(content_background_style)
-        .into()
+        .style(content_background_style);
+
+    // Add drop overlay if dragging files over uploadable folder
+    if show_drop_overlay {
+        let overlay = container(
+            column![
+                icon::upload().size(DROP_OVERLAY_ICON_SIZE),
+                shaped_text(t("drop-to-upload")).size(TITLE_SIZE),
+            ]
+            .spacing(SPACER_SIZE_SMALL)
+            .align_x(Center),
+        )
+        .width(Fill)
+        .height(Fill)
+        .center_x(Fill)
+        .center_y(Fill)
+        .style(drop_overlay_style);
+
+        stack![main_content, overlay].into()
+    } else {
+        main_content.into()
+    }
 }
 
 // ============================================================================

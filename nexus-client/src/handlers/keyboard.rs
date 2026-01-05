@@ -1,7 +1,8 @@
-//! Keyboard navigation
+//! Keyboard and window event handling
 
 use iced::keyboard::{self, key};
 use iced::widget::{Id, operation};
+use iced::window;
 use iced::{Event, Task};
 
 use crate::NexusApp;
@@ -11,8 +12,24 @@ use crate::types::{
 };
 
 impl NexusApp {
-    /// Handle keyboard events (Tab, Enter, Escape, F5)
+    /// Handle keyboard and window events (Tab, Enter, Escape, F5, file drag-and-drop)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
+        // Handle window events (file drag-and-drop)
+        if let Event::Window(window_event) = &event {
+            match window_event {
+                window::Event::FileHovered(_) => {
+                    return self.update(Message::FileDragHovered);
+                }
+                window::Event::FileDropped(path) => {
+                    return self.update(Message::FileDragDropped(path.clone()));
+                }
+                window::Event::FilesHoveredLeft => {
+                    return self.update(Message::FileDragLeft);
+                }
+                _ => {}
+            }
+        }
+
         // Handle F5 for refresh in Files panel
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::F5),

@@ -95,6 +95,9 @@ pub struct ViewConfig<'a> {
 
     /// Maximum concurrent uploads per server (0 = unlimited)
     pub upload_limit: u8,
+
+    /// Whether to show the drag-and-drop overlay (files being dragged over window)
+    pub show_drop_overlay: bool,
 }
 
 /// Toolbar state configuration

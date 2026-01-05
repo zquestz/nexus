@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::transfers::{TransferEvent, TransferStatus, request_cancel};
-use crate::types::Message;
+use crate::transfers::{TransferDirection, TransferEvent, TransferStatus, request_cancel};
+use crate::types::{ActivePanel, Message};
 
 impl NexusApp {
     /// Handle transfer progress event from executor
@@ -52,8 +52,16 @@ impl NexusApp {
             }
 
             TransferEvent::Completed { id } => {
+                // Check if we should refresh the file list before marking complete
+                let should_refresh = self.should_refresh_after_upload(id);
+
                 self.transfer_manager.complete(id);
                 self.save_transfers();
+
+                // Refresh file list if upload completed to current directory
+                if should_refresh {
+                    return self.update(Message::FileRefresh);
+                }
             }
 
             TransferEvent::Failed {
@@ -77,6 +85,47 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+
+    /// Check if we should refresh the file list after an upload completes
+    ///
+    /// Returns true if:
+    /// - The transfer is an upload
+    /// - We're connected to the same server (address:port match)
+    /// - Files panel is active
+    /// - Current path matches the upload destination
+    fn should_refresh_after_upload(&self, transfer_id: Uuid) -> bool {
+        let Some(transfer) = self.transfer_manager.get(transfer_id) else {
+            return false;
+        };
+
+        // Only for uploads
+        if transfer.direction != TransferDirection::Upload {
+            return false;
+        }
+
+        let Some(conn_id) = self.active_connection else {
+            return false;
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return false;
+        };
+
+        // Must be viewing Files panel
+        if conn.active_panel != ActivePanel::Files {
+            return false;
+        }
+
+        // Check if connected to the same server
+        if conn.connection_info.address != transfer.connection_info.address
+            || conn.connection_info.port != transfer.connection_info.port
+        {
+            return false;
+        }
+
+        // Check if viewing the upload destination directory
+        let current_path = &conn.files_management.active_tab().current_path;
+        current_path == &transfer.remote_path
     }
 
     /// Handle request to pause a transfer

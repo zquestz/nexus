@@ -382,6 +382,12 @@ pub enum Message {
     FileUploadCancelled,
     /// Files: File picker returned selected files for upload
     FileUploadSelected(String, Vec<std::path::PathBuf>),
+    /// Files: File being dragged over window (drag-and-drop)
+    FileDragHovered,
+    /// Files: File dropped on window (drag-and-drop)
+    FileDragDropped(std::path::PathBuf),
+    /// Files: Drag left window (drag-and-drop cancelled)
+    FileDragLeft,
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

@@ -187,6 +187,7 @@ tooltip-transfers = Transfers
 tooltip-download-all = Download All
 tooltip-upload = Upload
 file-picker-upload-title = Select files to upload
+drop-to-upload = Drop to upload
 tooltip-clear-inactive = Clear Inactive
 tooltip-transfer-pause = Pause
 tooltip-transfer-resume = Resume

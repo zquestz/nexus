@@ -124,6 +124,12 @@ struct NexusApp {
     // -------------------------------------------------------------------------
     /// Transfer manager for file downloads/uploads (global, not per-connection)
     transfer_manager: transfers::TransferManager,
+
+    // -------------------------------------------------------------------------
+    // Drag and Drop
+    // -------------------------------------------------------------------------
+    /// Whether files are currently being dragged over the window
+    dragging_files: bool,
 }
 
 impl Default for NexusApp {
@@ -153,6 +159,8 @@ impl Default for NexusApp {
             news_body_content: HashMap::new(),
             // Transfers
             transfer_manager,
+            // Drag and Drop
+            dragging_files: false,
         }
     }
 }
@@ -531,6 +539,9 @@ impl NexusApp {
             Message::FileUploadSelected(destination, paths) => {
                 self.handle_file_upload_selected(destination, paths)
             }
+            Message::FileDragHovered => self.handle_file_drag_hovered(),
+            Message::FileDragDropped(path) => self.handle_file_drag_dropped(path),
+            Message::FileDragLeft => self.handle_file_drag_left(),
 
             // Transfer management
             Message::TransferProgress(event) => self.handle_transfer_progress(event),
@@ -695,6 +706,7 @@ impl NexusApp {
             queue_transfers: self.config.settings.queue_transfers,
             download_limit: self.config.settings.download_limit,
             upload_limit: self.config.settings.upload_limit,
+            show_drop_overlay: self.dragging_files && self.can_accept_file_drop(),
         };
 
         let main_view = views::main_layout(config);

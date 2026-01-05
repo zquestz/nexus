@@ -325,6 +325,9 @@ pub const FILE_INFO_ICON_SPACING: f32 = 12.0;
 /// Size for sort indicator icons in column headers
 pub const SORT_ICON_SIZE: f32 = 12.0;
 
+/// Icon size for drag-and-drop overlay
+pub const DROP_OVERLAY_ICON_SIZE: f32 = 64.0;
+
 /// Right margin for sort icons (prevents scrollbar overlap on rightmost column)
 pub const SORT_ICON_RIGHT_MARGIN: f32 = 12.0;
 

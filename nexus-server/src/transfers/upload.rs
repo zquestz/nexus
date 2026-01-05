@@ -16,7 +16,7 @@ use nexus_common::validators;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::db::Permission;
-use crate::files::path::{allows_upload, build_and_validate_candidate_path, resolve_new_path};
+use crate::files::path::{allows_upload, build_and_validate_candidate_path};
 use crate::handlers::{
     err_upload_conflict, err_upload_connection_lost, err_upload_destination_not_allowed,
     err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch, err_upload_path_invalid,
@@ -287,21 +287,61 @@ where
     // Build candidate path
     let candidate = build_validated_path(&area_root, destination, ctx.locale)?;
 
-    // Resolve to canonical path
-    let resolved_destination = resolve_path(&area_root, &candidate)
-        .map_err(|e| path_error_to_transfer_error(e, ctx.locale))?;
+    // Try to resolve the destination - it may or may not exist yet
+    let resolved_destination = match resolve_path(&area_root, &candidate) {
+        Ok(path) => {
+            // Destination exists - verify it's a directory
+            if !path.is_dir() {
+                return Err(TransferError::invalid(err_upload_path_invalid(ctx.locale)));
+            }
 
-    // Verify destination is a directory
-    if !resolved_destination.is_dir() {
-        return Err(TransferError::invalid(err_upload_path_invalid(ctx.locale)));
-    }
+            // Check that existing destination allows uploads
+            if !allows_upload(&area_root, &path) {
+                return Err(TransferError::permission(
+                    err_upload_destination_not_allowed(ctx.locale),
+                ));
+            }
 
-    // Check that destination allows uploads
-    if !allows_upload(&area_root, &resolved_destination) {
-        return Err(TransferError::permission(
-            err_upload_destination_not_allowed(ctx.locale),
-        ));
-    }
+            path
+        }
+        Err(crate::files::path::PathError::NotFound) => {
+            // Destination doesn't exist - find nearest existing ancestor and check if it allows uploads
+            let mut ancestor = candidate.as_path();
+            let resolved_ancestor = loop {
+                ancestor = ancestor
+                    .parent()
+                    .ok_or_else(|| TransferError::invalid(err_upload_path_invalid(ctx.locale)))?;
+
+                match resolve_path(&area_root, ancestor) {
+                    Ok(resolved) => break resolved,
+                    Err(crate::files::path::PathError::NotFound) => continue,
+                    Err(e) => return Err(path_error_to_transfer_error(e, ctx.locale)),
+                }
+            };
+
+            // Verify ancestor is a directory
+            if !resolved_ancestor.is_dir() {
+                return Err(TransferError::invalid(err_upload_path_invalid(ctx.locale)));
+            }
+
+            // Check that ancestor allows uploads (new directories inherit this)
+            if !allows_upload(&area_root, &resolved_ancestor) {
+                return Err(TransferError::permission(
+                    err_upload_destination_not_allowed(ctx.locale),
+                ));
+            }
+
+            // Create the destination directory and any intermediate directories
+            std::fs::create_dir_all(&candidate)
+                .map_err(|_| TransferError::io_error(err_upload_write_failed(ctx.locale)))?;
+
+            // Return the candidate path (now exists)
+            candidate
+        }
+        Err(e) => {
+            return Err(path_error_to_transfer_error(e, ctx.locale));
+        }
+    };
 
     Ok((area_root, resolved_destination))
 }
@@ -347,16 +387,11 @@ fn validate_and_build_upload_paths(
     };
 
     // Validate the path doesn't contain traversal attempts
-    let candidate_path =
-        match build_and_validate_candidate_path(area_root, &relative_to_root.to_string_lossy()) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(TransferError::invalid(err_upload_path_invalid(locale)));
-            }
-        };
-
-    // Use resolve_new_path which allows non-existent final component but requires valid parent
-    if resolve_new_path(area_root, &candidate_path).is_err() {
+    // Note: We don't call resolve_new_path here because parent directories may not exist yet
+    // when uploading a directory structure. The security validation in build_and_validate_candidate_path
+    // is sufficient (it rejects ".." traversal), and stream_to_part_file/create_empty_file
+    // will create parent directories as needed.
+    if build_and_validate_candidate_path(area_root, &relative_to_root.to_string_lossy()).is_err() {
         return Err(TransferError::invalid(err_upload_path_invalid(locale)));
     }
 
@@ -701,8 +736,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let area_root = temp_dir.path().canonicalize().unwrap();
         let destination = area_root.join("uploads");
-        // Create the destination AND the parent directories for the nested file
-        std::fs::create_dir_all(destination.join("subdir/nested")).unwrap();
+        // Only create the destination directory - parent directories for nested files
+        // don't need to exist during validation (they're created during streaming)
+        std::fs::create_dir_all(&destination).unwrap();
         // Canonicalize destination after creation
         let destination = destination.canonicalize().unwrap();
 
@@ -712,7 +748,10 @@ mod tests {
             &area_root,
             TEST_LOCALE,
         );
-        assert!(result.is_ok());
+        assert!(
+            result.is_ok(),
+            "Nested paths should validate even if parent dirs don't exist"
+        );
 
         let (target, _) = result.unwrap();
         assert_eq!(target, destination.join("subdir/nested/file.txt"));
@@ -838,25 +877,19 @@ mod tests {
         let (target, _) = result.unwrap();
         assert_eq!(target, destination.join("日本語ファイル.txt"));
 
-        // Emoji filename
+        // Emoji filename in nested directory - parent doesn't need to exist
         let result = validate_and_build_upload_paths(
             "📁folder/🎵music.mp3",
             &destination,
             &area_root,
             TEST_LOCALE,
         );
-        // This should fail because the parent directory doesn't exist
-        assert!(result.is_err());
-
-        // Create the parent and try again
-        std::fs::create_dir_all(destination.join("📁folder")).unwrap();
-        let result = validate_and_build_upload_paths(
-            "📁folder/🎵music.mp3",
-            &destination,
-            &area_root,
-            TEST_LOCALE,
+        assert!(
+            result.is_ok(),
+            "Nested unicode paths should validate even if parent dirs don't exist"
         );
-        assert!(result.is_ok());
+        let (target, _) = result.unwrap();
+        assert_eq!(target, destination.join("📁folder/🎵music.mp3"));
     }
 
     // =========================================================================

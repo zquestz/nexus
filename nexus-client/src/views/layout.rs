@@ -74,7 +74,9 @@ struct ServerContentContext<'a> {
     /// Maximum concurrent downloads per server (0 = unlimited)
     download_limit: u8,
     /// Maximum concurrent uploads per server (0 = unlimited)
-    upload_limit: u8,
+    pub upload_limit: u8,
+    /// Whether to show the drag-and-drop overlay
+    pub show_drop_overlay: bool,
 }
 
 // ============================================================================
@@ -232,6 +234,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 queue_transfers: config.queue_transfers,
                 download_limit: config.download_limit,
                 upload_limit: config.upload_limit,
+                show_drop_overlay: config.show_drop_overlay,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -710,7 +713,12 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             };
             stack![
                 chat,
-                files_view(&ctx.conn.files_management, perms, ctx.show_hidden)
+                files_view(
+                    &ctx.conn.files_management,
+                    perms,
+                    ctx.show_hidden,
+                    ctx.show_drop_overlay
+                )
             ]
             .width(Fill)
             .height(Fill)

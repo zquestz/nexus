@@ -182,6 +182,7 @@ tooltip-transfers = 传输
 tooltip-download-all = 全部下载
 tooltip-upload = 上传
 file-picker-upload-title = 选择要上传的文件
+drop-to-upload = 拖放以上传
 tooltip-clear-inactive = 清除非活动项
 tooltip-transfer-pause = 暂停
 tooltip-transfer-resume = 继续

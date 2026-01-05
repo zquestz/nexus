@@ -1035,10 +1035,26 @@ impl NexusApp {
         for local_path in paths {
             let is_directory = local_path.is_dir();
 
+            // For directory uploads, append the directory name to the destination
+            // so the server creates the directory structure (e.g., "/Uploads/MyFolder/")
+            let remote_path = if is_directory {
+                if let Some(dir_name) = local_path.file_name().and_then(|n| n.to_str()) {
+                    if destination.is_empty() || destination == "/" {
+                        format!("/{dir_name}")
+                    } else {
+                        format!("{}/{}", destination.trim_end_matches('/'), dir_name)
+                    }
+                } else {
+                    destination.clone()
+                }
+            } else {
+                destination.clone()
+            };
+
             // Create the transfer
             let transfer = crate::transfers::Transfer::new_upload(
                 conn.connection_info.clone(),
-                destination.clone(),
+                remote_path,
                 remote_root,
                 is_directory,
                 local_path,
@@ -1053,6 +1069,112 @@ impl NexusApp {
         let _ = self.transfer_manager.save();
 
         Task::none()
+    }
+
+    // ==================== Drag and Drop ====================
+
+    /// Handle file being dragged over window
+    ///
+    /// Just sets the dragging flag - visual feedback is handled in the view.
+    pub fn handle_file_drag_hovered(&mut self) -> Task<Message> {
+        self.dragging_files = true;
+        Task::none()
+    }
+
+    /// Handle file dropped on window
+    ///
+    /// If we're in a valid upload context (Files panel active, uploadable folder,
+    /// file_upload permission), queue the dropped file/folder for upload.
+    pub fn handle_file_drag_dropped(&mut self, path: std::path::PathBuf) -> Task<Message> {
+        // Clear dragging state
+        self.dragging_files = false;
+
+        // Check if we can accept the drop
+        if !self.can_accept_file_drop() {
+            return Task::none();
+        }
+
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get upload destination (current directory)
+        let destination = conn.files_management.active_tab().current_path.clone();
+        let remote_root = conn.files_management.active_tab().viewing_root;
+        let is_directory = path.is_dir();
+
+        // For directory uploads, append the directory name to the destination
+        // so the server creates the directory structure (e.g., "/Uploads/MyFolder/")
+        let remote_path = if is_directory {
+            if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                if destination.is_empty() || destination == "/" {
+                    format!("/{dir_name}")
+                } else {
+                    format!("{}/{}", destination.trim_end_matches('/'), dir_name)
+                }
+            } else {
+                destination.clone()
+            }
+        } else {
+            destination.clone()
+        };
+
+        // Create the transfer
+        let transfer = crate::transfers::Transfer::new_upload(
+            conn.connection_info.clone(),
+            remote_path,
+            remote_root,
+            is_directory,
+            path,
+            conn.bookmark_id,
+        );
+
+        // Add to transfer manager
+        self.transfer_manager.add(transfer);
+
+        // Save transfers to disk
+        let _ = self.transfer_manager.save();
+
+        Task::none()
+    }
+
+    /// Handle drag leaving window
+    pub fn handle_file_drag_left(&mut self) -> Task<Message> {
+        self.dragging_files = false;
+        Task::none()
+    }
+
+    /// Check if we can accept a file drop for upload
+    ///
+    /// Returns true if:
+    /// - Files panel is active
+    /// - Current directory allows uploads
+    /// - User has file_upload permission
+    pub fn can_accept_file_drop(&self) -> bool {
+        use crate::views::constants::PERMISSION_FILE_UPLOAD;
+
+        let Some(conn_id) = self.active_connection else {
+            return false;
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return false;
+        };
+
+        // Must be in Files panel
+        if conn.active_panel != ActivePanel::Files {
+            return false;
+        }
+
+        // Must have file_upload permission
+        if !conn.has_permission(PERMISSION_FILE_UPLOAD) {
+            return false;
+        }
+
+        // Current directory must allow uploads
+        conn.files_management.active_tab().current_dir_can_upload
     }
 }
 

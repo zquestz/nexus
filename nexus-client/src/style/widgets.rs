@@ -337,6 +337,22 @@ pub fn upload_folder_style(theme: &Theme) -> text::Style {
     }
 }
 
+/// Container style for drag-and-drop overlay
+///
+/// Semi-transparent background (normal background at 85% opacity) so the content
+/// is slightly visible underneath while the upload icon and text remain readable.
+pub fn drop_overlay_style(theme: &Theme) -> container::Style {
+    let ext = theme.extended_palette();
+    container::Style {
+        background: Some(Background::Color(Color {
+            a: 0.85,
+            ..ext.background.base.color
+        })),
+        text_color: Some(ext.background.base.text),
+        ..Default::default()
+    }
+}
+
 /// Subheading text style - for section headers within panels
 ///
 /// Uses muted color to create visual hierarchy below the main title.

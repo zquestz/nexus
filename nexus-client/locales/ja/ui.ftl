@@ -182,6 +182,7 @@ tooltip-transfers = 転送
 tooltip-download-all = すべてダウンロード
 tooltip-upload = アップロード
 file-picker-upload-title = アップロードするファイルを選択
+drop-to-upload = ドロップしてアップロード
 tooltip-clear-inactive = 非アクティブを消去
 tooltip-transfer-pause = 一時停止
 tooltip-transfer-resume = 再開
