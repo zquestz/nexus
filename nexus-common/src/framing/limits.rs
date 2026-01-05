@@ -48,6 +48,14 @@ const PERMISSIONS_UPDATED_BASE: usize = 700903;
 /// A limit of `0` means "unlimited" (no per-type limit). This is used for
 /// server-to-client messages where the client has already chosen to trust
 /// the server. The global `MAX_PAYLOAD_LENGTH` sanity check still applies.
+///
+/// ## Shared Message Type Names
+///
+/// Some message type names exist in both `ClientMessage` and `ServerMessage`
+/// (e.g., `FileStart`, `FileStartResponse`, `FileData`, `UserMessage`). These
+/// are **intentional mirrors** - same structure, same payload limit, opposite
+/// direction. The HashMap naturally enforces this constraint: one limit per
+/// type name guarantees both enums use the same limit for shared types.
 static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new(|| {
     let mut m = HashMap::new();
 
@@ -86,7 +94,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
-    m.insert("FileStartResponse", 135); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
+    m.insert("FileUpload", 4200); // destination (4096) + file_count (u64) + total_size (u64) + overwrite + root + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
@@ -142,9 +150,13 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileDownloadResponse", 2186); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileUploadResponse", 2200); // success + error (2048) + error_kind (64) + transfer_id + overhead
+
+    // Transfer messages (shared type names, used in both directions)
     m.insert("FileStart", 4235); // path (4096) + size (u64 max 20 digits) + sha256 (64 hex) + overhead
-    m.insert("TransferComplete", 2200); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileStartResponse", 135); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
     m.insert("FileData", 0); // unlimited - streaming binary data
+    m.insert("TransferComplete", 2200); // success + error (2048) + error_kind (64) + overhead
 
     m
 });
@@ -223,11 +235,11 @@ mod tests {
         // will cause a compile error if you add a variant there, reminding you to
         // also add the limit here.
         //
-        // Note: UserMessage is shared between client and server (same type name),
-        // so it's only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 29; // Added 6 News + 7 File + 2 Transfer client messages
-        const SERVER_MESSAGE_COUNT: usize = 41; // Added 7 News + 7 File + 4 Transfer server messages (FileData has limit too)
-        const SHARED_MESSAGE_COUNT: usize = 1; // UserMessage
+        // Note: Some type names are shared between client and server enums
+        // (UserMessage, FileStart, FileStartResponse, FileData), so they're only counted once in the HashMap.
+        const CLIENT_MESSAGE_COUNT: usize = 32; // Added 6 News + 7 File + 5 Transfer client messages
+        const SERVER_MESSAGE_COUNT: usize = 43; // Added 7 News + 8 File + 6 Transfer server messages
+        const SHARED_MESSAGE_COUNT: usize = 4; // UserMessage, FileStart, FileStartResponse, FileData
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
 
@@ -242,6 +254,37 @@ mod tests {
             CLIENT_MESSAGE_COUNT,
             SERVER_MESSAGE_COUNT,
             SHARED_MESSAGE_COUNT
+        );
+    }
+
+    #[test]
+    fn test_shared_message_type_names_have_limits() {
+        // Message type names that exist in both ClientMessage and ServerMessage.
+        // These share a single limit entry in the HashMap.
+        //
+        // Note: "UserMessage" has the same name but different fields (not a mirror).
+        // The others (FileStart, FileStartResponse, FileData) are true mirrors
+        // with identical structure in both enums.
+        let shared_type_names = [
+            "UserMessage", // Same name, different fields (client: to/message, server: from/to/message)
+            "FileStart",   // True mirror - identical fields
+            "FileStartResponse", // True mirror - identical fields
+            "FileData",    // True mirror - no fields (raw bytes)
+        ];
+
+        for type_name in &shared_type_names {
+            assert!(
+                is_known_message_type(type_name),
+                "Shared type name '{}' must have a limit defined",
+                type_name
+            );
+        }
+
+        // Verify count matches SHARED_MESSAGE_COUNT constant
+        assert_eq!(
+            shared_type_names.len(),
+            4,
+            "Update SHARED_MESSAGE_COUNT if shared type names change"
         );
     }
 

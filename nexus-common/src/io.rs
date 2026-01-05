@@ -311,6 +311,9 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileCopy { .. } => "FileCopy",
         ClientMessage::FileDownload { .. } => "FileDownload",
         ClientMessage::FileStartResponse { .. } => "FileStartResponse",
+        ClientMessage::FileUpload { .. } => "FileUpload",
+        ClientMessage::FileStart { .. } => "FileStart",
+        ClientMessage::FileData => "FileData",
     }
 }
 
@@ -357,6 +360,9 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileCopyResponse { .. } => "FileCopyResponse",
         ServerMessage::FileDownloadResponse { .. } => "FileDownloadResponse",
         ServerMessage::FileStart { .. } => "FileStart",
+        ServerMessage::FileData => "FileData",
+        ServerMessage::FileUploadResponse { .. } => "FileUploadResponse",
+        ServerMessage::FileStartResponse { .. } => "FileStartResponse",
         ServerMessage::TransferComplete { .. } => "TransferComplete",
     }
 }

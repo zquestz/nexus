@@ -199,7 +199,7 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
-    /// Client response to FileStart - reports local file state for resume
+    /// Client response to FileStart - reports local file state for resume (downloads)
     FileStartResponse {
         /// Size of local file (0 if no local file exists)
         size: u64,
@@ -207,6 +207,32 @@ pub enum ClientMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
     },
+    /// Request a file upload (port 7501 only)
+    FileUpload {
+        /// Destination directory on server (e.g., "/Uploads")
+        destination: String,
+        /// Number of files to upload
+        file_count: u64,
+        /// Total size of all files in bytes
+        total_size: u64,
+        /// If true, overwrite existing files
+        #[serde(default)]
+        overwrite: bool,
+        /// If true, destination is relative to file root instead of user's area
+        #[serde(default)]
+        root: bool,
+    },
+    /// Client announces a file to upload (port 7501 only, mirrors ServerMessage::FileStart)
+    FileStart {
+        /// Relative path (e.g., "subdir/file.txt")
+        path: String,
+        /// File size in bytes
+        size: u64,
+        /// SHA-256 hash of complete file
+        sha256: String,
+    },
+    /// Raw file data for upload (port 7501 only, mirrors ServerMessage::FileData)
+    FileData,
 }
 
 /// Server response messages
@@ -482,7 +508,7 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
     },
-    /// Server announces a file to transfer (transfer port only)
+    /// Server announces a file to transfer (download, transfer port only)
     FileStart {
         /// Relative path (e.g., "Games/app.zip")
         path: String,
@@ -490,6 +516,28 @@ pub enum ServerMessage {
         size: u64,
         /// SHA-256 hash of complete file
         sha256: String,
+    },
+    /// Raw file data for download (transfer port only)
+    FileData,
+    /// Response to a FileUpload request (port 7501 only)
+    FileUploadResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind: "not_found", "permission", "invalid", "exists"
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+        /// Transfer ID for logging (8 hex chars)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        transfer_id: Option<String>,
+    },
+    /// Server response to client FileStart - reports server file state for resume (uploads)
+    FileStartResponse {
+        /// Size of file on server (0 if no file exists)
+        size: u64,
+        /// SHA-256 hash of server's partial file (None if size is 0)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
     },
     /// Server signals transfer completion (transfer port only)
     TransferComplete {
@@ -866,6 +914,27 @@ impl std::fmt::Debug for ClientMessage {
                 .field("size", size)
                 .field("sha256", sha256)
                 .finish(),
+            ClientMessage::FileUpload {
+                destination,
+                file_count,
+                total_size,
+                overwrite,
+                root,
+            } => f
+                .debug_struct("FileUpload")
+                .field("destination", destination)
+                .field("file_count", file_count)
+                .field("total_size", total_size)
+                .field("overwrite", overwrite)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileStart { path, size, sha256 } => f
+                .debug_struct("FileStart")
+                .field("path", path)
+                .field("size", size)
+                .field("sha256", sha256)
+                .finish(),
+            ClientMessage::FileData => f.debug_struct("FileData").finish(),
         }
     }
 }
@@ -1763,5 +1832,214 @@ mod tests {
         assert_eq!(info.name, Some("Old Server".to_string()));
         assert_eq!(info.max_transfers_per_ip, None);
         assert_eq!(info.transfer_port, 7501);
+    }
+
+    // =========================================================================
+    // Upload Protocol Tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize_file_upload() {
+        let msg = ClientMessage::FileUpload {
+            destination: "/Uploads".to_string(),
+            file_count: 5,
+            total_size: 1048576,
+            overwrite: false,
+            root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileUpload\""));
+        assert!(json.contains("\"destination\":\"/Uploads\""));
+        assert!(json.contains("\"file_count\":5"));
+        assert!(json.contains("\"total_size\":1048576"));
+        assert!(!json.contains("\"overwrite\":true"));
+        assert!(!json.contains("\"root\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_file_upload() {
+        let json = r#"{"type":"FileUpload","destination":"/My Uploads","file_count":10,"total_size":2097152,"overwrite":true,"root":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileUpload {
+                destination,
+                file_count,
+                total_size,
+                overwrite,
+                root,
+            } => {
+                assert_eq!(destination, "/My Uploads");
+                assert_eq!(file_count, 10);
+                assert_eq!(total_size, 2097152);
+                assert!(overwrite);
+                assert!(root);
+            }
+            _ => panic!("Expected FileUpload"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_file_upload_defaults() {
+        // overwrite and root should default to false
+        let json =
+            r#"{"type":"FileUpload","destination":"/Uploads","file_count":1,"total_size":100}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileUpload {
+                overwrite, root, ..
+            } => {
+                assert!(!overwrite);
+                assert!(!root);
+            }
+            _ => panic!("Expected FileUpload"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_upload_response_success() {
+        let msg = ServerMessage::FileUploadResponse {
+            success: true,
+            error: None,
+            error_kind: None,
+            transfer_id: Some("aabb1122".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileUploadResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"transfer_id\":\"aabb1122\""));
+        assert!(!json.contains("\"error\""));
+        assert!(!json.contains("\"error_kind\""));
+    }
+
+    #[test]
+    fn test_serialize_file_upload_response_error() {
+        let msg = ServerMessage::FileUploadResponse {
+            success: false,
+            error: Some("Permission denied".to_string()),
+            error_kind: Some("permission".to_string()),
+            transfer_id: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Permission denied\""));
+        assert!(json.contains("\"error_kind\":\"permission\""));
+        assert!(!json.contains("\"transfer_id\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_upload_response() {
+        let json = r#"{"type":"FileUploadResponse","success":true,"transfer_id":"ccdd3344"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::FileUploadResponse {
+                success,
+                error,
+                error_kind,
+                transfer_id,
+            } => {
+                assert!(success);
+                assert_eq!(error, None);
+                assert_eq!(error_kind, None);
+                assert_eq!(transfer_id, Some("ccdd3344".to_string()));
+            }
+            _ => panic!("Expected FileUploadResponse"),
+        }
+    }
+
+    // =========================================================================
+    // Mirror Message Type Tests
+    //
+    // These tests verify that message types with the same name in ClientMessage
+    // and ServerMessage are true mirrors - they serialize to identical JSON.
+    // This is a critical protocol invariant.
+    // =========================================================================
+
+    /// Helper macro to test that mirrored message types serialize identically
+    /// and deserialize from the same JSON to both enums.
+    macro_rules! assert_mirror {
+        ($name:literal, $client:expr, $server:expr) => {{
+            let client_json = serde_json::to_string(&$client).unwrap();
+            let server_json = serde_json::to_string(&$server).unwrap();
+            assert_eq!(
+                client_json, server_json,
+                "{} must serialize identically in both enums",
+                $name
+            );
+
+            // Verify the JSON deserializes back to both enum types
+            let _: ClientMessage = serde_json::from_str(&client_json).unwrap();
+            let _: ServerMessage = serde_json::from_str(&server_json).unwrap();
+        }};
+    }
+
+    #[test]
+    fn test_mirror_messages_serialize_identically() {
+        // FileStart
+        assert_mirror!(
+            "FileStart",
+            ClientMessage::FileStart {
+                path: "test/file.txt".to_string(),
+                size: 12345,
+                sha256: "abcdef123456".to_string(),
+            },
+            ServerMessage::FileStart {
+                path: "test/file.txt".to_string(),
+                size: 12345,
+                sha256: "abcdef123456".to_string(),
+            }
+        );
+
+        // FileStartResponse with hash
+        assert_mirror!(
+            "FileStartResponse",
+            ClientMessage::FileStartResponse {
+                size: 5000,
+                sha256: Some("hash123".to_string()),
+            },
+            ServerMessage::FileStartResponse {
+                size: 5000,
+                sha256: Some("hash123".to_string()),
+            }
+        );
+
+        // FileStartResponse without hash
+        assert_mirror!(
+            "FileStartResponse (no hash)",
+            ClientMessage::FileStartResponse {
+                size: 0,
+                sha256: None,
+            },
+            ServerMessage::FileStartResponse {
+                size: 0,
+                sha256: None,
+            }
+        );
+
+        // FileData
+        assert_mirror!("FileData", ClientMessage::FileData, ServerMessage::FileData);
+    }
+
+    #[test]
+    fn test_user_message_shared_type_name_not_mirror() {
+        // UserMessage is a SHARED TYPE NAME but NOT a true mirror.
+        // Client sends (to_nickname, message), server broadcasts (from_nickname, from_admin, to_nickname, message).
+        let client_json = serde_json::to_string(&ClientMessage::UserMessage {
+            to_nickname: "alice".to_string(),
+            message: "Hello!".to_string(),
+        })
+        .unwrap();
+        let server_json = serde_json::to_string(&ServerMessage::UserMessage {
+            from_nickname: "bob".to_string(),
+            from_admin: false,
+            to_nickname: "alice".to_string(),
+            message: "Hello!".to_string(),
+        })
+        .unwrap();
+
+        // Same type name, different structure
+        assert!(client_json.contains("\"type\":\"UserMessage\""));
+        assert!(server_json.contains("\"type\":\"UserMessage\""));
+        assert!(!client_json.contains("from_nickname"));
+        assert!(server_json.contains("from_nickname"));
     }
 }

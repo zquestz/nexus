@@ -400,7 +400,11 @@ where
             )
             .await?;
         }
-        ClientMessage::FileDownload { .. } | ClientMessage::FileStartResponse { .. } => {
+        ClientMessage::FileDownload { .. }
+        | ClientMessage::FileStartResponse { .. }
+        | ClientMessage::FileUpload { .. }
+        | ClientMessage::FileStart { .. }
+        | ClientMessage::FileData => {
             // These messages are only valid on the transfer port (7501), not the main BBS port
             eprintln!(
                 "Transfer message received on main port from {}",
