@@ -63,7 +63,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_file_not_found(ctx.locale)),
-            error_kind: Some("not_found".to_string()),
+            error_kind: Some(FileErrorKind::NotFound.into()),
         };
         return ctx.send_message(&response).await;
     };
@@ -443,7 +443,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("permission".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -580,7 +580,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("not_found".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::NotFound.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -627,7 +627,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("exists".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::Exists.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -734,7 +734,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("permission".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -780,7 +780,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("invalid_path".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -827,7 +827,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("invalid_path".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -874,7 +874,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("permission".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1153,7 +1153,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("permission".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1199,7 +1199,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("invalid_path".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1299,7 +1299,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some("not_found".to_string()));
+                assert_eq!(error_kind, Some(FileErrorKind::NotFound.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }

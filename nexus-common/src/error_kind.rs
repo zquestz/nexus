@@ -6,10 +6,45 @@
 
 use std::fmt;
 
-/// Error kinds for file move/copy operations
+// =============================================================================
+// String Constants
+// =============================================================================
+
+/// Error kind string: destination already exists
+pub const ERROR_KIND_EXISTS: &str = "exists";
+
+/// Error kind string: source not found
+pub const ERROR_KIND_NOT_FOUND: &str = "not_found";
+
+/// Error kind string: permission denied
+pub const ERROR_KIND_PERMISSION: &str = "permission";
+
+/// Error kind string: invalid path
+pub const ERROR_KIND_INVALID_PATH: &str = "invalid_path";
+
+/// Error kind string: invalid input (generic validation failure)
+pub const ERROR_KIND_INVALID: &str = "invalid";
+
+/// Error kind string: I/O error (disk full, read/write failure)
+pub const ERROR_KIND_IO_ERROR: &str = "io_error";
+
+/// Error kind string: protocol error (unexpected message type, malformed data)
+pub const ERROR_KIND_PROTOCOL_ERROR: &str = "protocol_error";
+
+/// Error kind string: hash mismatch (SHA-256 verification failed)
+pub const ERROR_KIND_HASH_MISMATCH: &str = "hash_mismatch";
+
+/// Error kind string: upload conflict (another upload to same file in progress)
+pub const ERROR_KIND_CONFLICT: &str = "conflict";
+
+// =============================================================================
+// Enum
+// =============================================================================
+
+/// Error kinds for file operations
 ///
-/// These are returned in `FileMoveResponse` and `FileCopyResponse`
-/// to help clients decide how to handle the error.
+/// These are returned in file operation responses to help clients
+/// decide how to handle the error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileErrorKind {
     /// Destination file/directory already exists
@@ -33,6 +68,31 @@ pub enum FileErrorKind {
     /// Path contains invalid characters, traversal attempts,
     /// or the operation is not allowed (e.g., copying file to itself).
     InvalidPath,
+
+    /// Invalid input (generic validation failure)
+    ///
+    /// The request contained invalid data that failed validation.
+    Invalid,
+
+    /// I/O error
+    ///
+    /// A filesystem operation failed (disk full, read/write error, etc.).
+    IoError,
+
+    /// Protocol error
+    ///
+    /// The client sent an unexpected message type or malformed data.
+    ProtocolError,
+
+    /// Hash mismatch
+    ///
+    /// SHA-256 verification failed after file transfer.
+    HashMismatch,
+
+    /// Upload conflict
+    ///
+    /// Another upload to the same file is already in progress.
+    Conflict,
 }
 
 impl FileErrorKind {
@@ -40,10 +100,15 @@ impl FileErrorKind {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Exists => "exists",
-            Self::NotFound => "not_found",
-            Self::Permission => "permission",
-            Self::InvalidPath => "invalid_path",
+            Self::Exists => ERROR_KIND_EXISTS,
+            Self::NotFound => ERROR_KIND_NOT_FOUND,
+            Self::Permission => ERROR_KIND_PERMISSION,
+            Self::InvalidPath => ERROR_KIND_INVALID_PATH,
+            Self::Invalid => ERROR_KIND_INVALID,
+            Self::IoError => ERROR_KIND_IO_ERROR,
+            Self::ProtocolError => ERROR_KIND_PROTOCOL_ERROR,
+            Self::HashMismatch => ERROR_KIND_HASH_MISMATCH,
+            Self::Conflict => ERROR_KIND_CONFLICT,
         }
     }
 
@@ -51,10 +116,15 @@ impl FileErrorKind {
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "exists" => Some(Self::Exists),
-            "not_found" => Some(Self::NotFound),
-            "permission" => Some(Self::Permission),
-            "invalid_path" => Some(Self::InvalidPath),
+            ERROR_KIND_EXISTS => Some(Self::Exists),
+            ERROR_KIND_NOT_FOUND => Some(Self::NotFound),
+            ERROR_KIND_PERMISSION => Some(Self::Permission),
+            ERROR_KIND_INVALID_PATH => Some(Self::InvalidPath),
+            ERROR_KIND_INVALID => Some(Self::Invalid),
+            ERROR_KIND_IO_ERROR => Some(Self::IoError),
+            ERROR_KIND_PROTOCOL_ERROR => Some(Self::ProtocolError),
+            ERROR_KIND_HASH_MISMATCH => Some(Self::HashMismatch),
+            ERROR_KIND_CONFLICT => Some(Self::Conflict),
             _ => None,
         }
     }
@@ -82,6 +152,11 @@ mod tests {
         assert_eq!(FileErrorKind::NotFound.as_str(), "not_found");
         assert_eq!(FileErrorKind::Permission.as_str(), "permission");
         assert_eq!(FileErrorKind::InvalidPath.as_str(), "invalid_path");
+        assert_eq!(FileErrorKind::Invalid.as_str(), "invalid");
+        assert_eq!(FileErrorKind::IoError.as_str(), "io_error");
+        assert_eq!(FileErrorKind::ProtocolError.as_str(), "protocol_error");
+        assert_eq!(FileErrorKind::HashMismatch.as_str(), "hash_mismatch");
+        assert_eq!(FileErrorKind::Conflict.as_str(), "conflict");
     }
 
     #[test]
@@ -99,6 +174,26 @@ mod tests {
             FileErrorKind::parse("invalid_path"),
             Some(FileErrorKind::InvalidPath)
         );
+        assert_eq!(
+            FileErrorKind::parse("invalid"),
+            Some(FileErrorKind::Invalid)
+        );
+        assert_eq!(
+            FileErrorKind::parse("io_error"),
+            Some(FileErrorKind::IoError)
+        );
+        assert_eq!(
+            FileErrorKind::parse("protocol_error"),
+            Some(FileErrorKind::ProtocolError)
+        );
+        assert_eq!(
+            FileErrorKind::parse("hash_mismatch"),
+            Some(FileErrorKind::HashMismatch)
+        );
+        assert_eq!(
+            FileErrorKind::parse("conflict"),
+            Some(FileErrorKind::Conflict)
+        );
         assert_eq!(FileErrorKind::parse("unknown"), None);
         assert_eq!(FileErrorKind::parse(""), None);
     }
@@ -107,6 +202,8 @@ mod tests {
     fn test_display() {
         assert_eq!(format!("{}", FileErrorKind::Exists), "exists");
         assert_eq!(format!("{}", FileErrorKind::NotFound), "not_found");
+        assert_eq!(format!("{}", FileErrorKind::IoError), "io_error");
+        assert_eq!(format!("{}", FileErrorKind::HashMismatch), "hash_mismatch");
     }
 
     #[test]
@@ -122,8 +219,33 @@ mod tests {
             FileErrorKind::NotFound,
             FileErrorKind::Permission,
             FileErrorKind::InvalidPath,
+            FileErrorKind::Invalid,
+            FileErrorKind::IoError,
+            FileErrorKind::ProtocolError,
+            FileErrorKind::HashMismatch,
+            FileErrorKind::Conflict,
         ] {
             assert_eq!(FileErrorKind::parse(kind.as_str()), Some(kind));
         }
+    }
+
+    #[test]
+    fn test_constants_match_enum() {
+        // Ensure constants are in sync with enum
+        assert_eq!(ERROR_KIND_EXISTS, FileErrorKind::Exists.as_str());
+        assert_eq!(ERROR_KIND_NOT_FOUND, FileErrorKind::NotFound.as_str());
+        assert_eq!(ERROR_KIND_PERMISSION, FileErrorKind::Permission.as_str());
+        assert_eq!(ERROR_KIND_INVALID_PATH, FileErrorKind::InvalidPath.as_str());
+        assert_eq!(ERROR_KIND_INVALID, FileErrorKind::Invalid.as_str());
+        assert_eq!(ERROR_KIND_IO_ERROR, FileErrorKind::IoError.as_str());
+        assert_eq!(
+            ERROR_KIND_PROTOCOL_ERROR,
+            FileErrorKind::ProtocolError.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_HASH_MISMATCH,
+            FileErrorKind::HashMismatch.as_str()
+        );
+        assert_eq!(ERROR_KIND_CONFLICT, FileErrorKind::Conflict.as_str());
     }
 }

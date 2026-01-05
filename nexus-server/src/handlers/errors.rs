@@ -769,3 +769,48 @@ pub fn err_transfer_file_failed(locale: &str, path: &str, error: &str) -> String
         &[("path", path), ("error", error)],
     )
 }
+
+/// Get translated "upload destination not allowed" error
+pub fn err_upload_destination_not_allowed(locale: &str) -> String {
+    t(locale, "err-upload-destination-not-allowed")
+}
+
+/// Get translated "upload write failed" error
+pub fn err_upload_write_failed(locale: &str) -> String {
+    t(locale, "err-upload-write-failed")
+}
+
+/// Get translated "upload hash mismatch" error
+pub fn err_upload_hash_mismatch(locale: &str) -> String {
+    t(locale, "err-upload-hash-mismatch")
+}
+
+/// Get translated "upload path invalid" error
+pub fn err_upload_path_invalid(locale: &str) -> String {
+    t(locale, "err-upload-path-invalid")
+}
+
+/// Get translated "upload conflict" error (another upload to same filename in progress)
+pub fn err_upload_conflict(locale: &str) -> String {
+    t(locale, "err-upload-conflict")
+}
+
+/// Get translated "upload file exists" error (file already exists with different content)
+pub fn err_upload_file_exists(locale: &str) -> String {
+    t(locale, "err-upload-file-exists")
+}
+
+/// Get translated "upload empty" error (upload must contain at least one file)
+pub fn err_upload_empty(locale: &str) -> String {
+    t(locale, "err-upload-empty")
+}
+
+/// Get translated "upload protocol error" error
+pub fn err_upload_protocol_error(locale: &str) -> String {
+    t(locale, "err-upload-protocol-error")
+}
+
+/// Get translated "upload connection lost" error
+pub fn err_upload_connection_lost(locale: &str) -> String {
+    t(locale, "err-upload-connection-lost")
+}

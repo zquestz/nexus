@@ -178,3 +178,15 @@ err-transfer-access-denied = Доступ запрещён
 err-transfer-read-failed = Не удалось прочитать файлы
 err-transfer-path-not-found = Файл или каталог не найден
 err-transfer-file-failed = Не удалось передать { $path }: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = Папка назначения не разрешает загрузки
+err-upload-write-failed = Не удалось записать файл
+err-upload-hash-mismatch = Проверка файла не удалась - хеш не совпадает
+err-upload-path-invalid = Недопустимый путь к файлу при загрузке
+err-upload-conflict = Другая загрузка с этим именем файла выполняется или была прервана. Пожалуйста, попробуйте другое имя файла.
+err-upload-file-exists = Файл с таким именем уже существует. Пожалуйста, выберите другое имя файла или попросите администратора удалить существующий файл.
+err-upload-empty = Загрузка должна содержать хотя бы один файл
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

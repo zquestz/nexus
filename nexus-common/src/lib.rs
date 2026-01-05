@@ -9,7 +9,11 @@ pub mod protocol;
 pub mod validators;
 pub mod version;
 
-pub use error_kind::FileErrorKind;
+pub use error_kind::{
+    ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH, ERROR_KIND_INVALID,
+    ERROR_KIND_INVALID_PATH, ERROR_KIND_IO_ERROR, ERROR_KIND_NOT_FOUND, ERROR_KIND_PERMISSION,
+    ERROR_KIND_PROTOCOL_ERROR, FileErrorKind,
+};
 
 /// Version information for the Nexus protocol
 pub const PROTOCOL_VERSION: &str = "0.5.0";
@@ -48,6 +52,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `file_move`: Move files and directories
 /// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
+/// - `file_upload`: Upload files to upload/dropbox folders
 /// - `news_create`: Create news posts
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
@@ -74,6 +79,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "file_move",
     "file_rename",
     "file_root",
+    "file_upload",
     "news_create",
     "news_delete",
     "news_edit",
@@ -171,8 +177,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (25)
-        assert_eq!(ALL_PERMISSIONS.len(), 25);
+        // Verify we have the expected number of permissions (26)
+        assert_eq!(ALL_PERMISSIONS.len(), 26);
     }
 
     #[test]
@@ -206,6 +212,7 @@ mod tests {
         assert!(!is_shared_account_permission("news_edit"));
         assert!(!is_shared_account_permission("news_delete"));
         assert!(!is_shared_account_permission("file_root"));
+        assert!(!is_shared_account_permission("file_upload"));
         assert!(!is_shared_account_permission("file_copy"));
         assert!(!is_shared_account_permission("file_move"));
         assert!(!is_shared_account_permission("file_rename"));

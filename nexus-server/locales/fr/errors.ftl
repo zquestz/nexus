@@ -178,3 +178,15 @@ err-transfer-access-denied = Accès refusé
 err-transfer-read-failed = Impossible de lire les fichiers
 err-transfer-path-not-found = Fichier ou répertoire introuvable
 err-transfer-file-failed = Échec du transfert de { $path } : { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = Le dossier de destination n'autorise pas les téléversements
+err-upload-write-failed = Échec de l'écriture du fichier
+err-upload-hash-mismatch = Vérification du fichier échouée - hachage non concordant
+err-upload-path-invalid = Chemin de fichier invalide dans le téléversement
+err-upload-conflict = Un autre téléversement vers ce nom de fichier est en cours ou a été interrompu. Veuillez essayer un autre nom de fichier.
+err-upload-file-exists = Un fichier avec ce nom existe déjà. Veuillez choisir un autre nom de fichier ou demander à un administrateur de supprimer le fichier existant.
+err-upload-empty = Le téléversement doit contenir au moins un fichier
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

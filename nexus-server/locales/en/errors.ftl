@@ -176,3 +176,14 @@ err-transfer-access-denied = Access denied
 err-transfer-read-failed = Failed to read files
 err-transfer-path-not-found = File or directory not found
 err-transfer-file-failed = Failed to transfer { $path }: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = Destination folder does not allow uploads
+err-upload-write-failed = Failed to write file
+err-upload-hash-mismatch = File verification failed - hash mismatch
+err-upload-path-invalid = Invalid file path in upload
+err-upload-conflict = Another upload to this filename is in progress or was interrupted. Please try a different filename.
+err-upload-file-exists = A file with this name already exists. Please choose a different filename or ask an admin to delete the existing file.
+err-upload-empty = Upload must contain at least one file
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

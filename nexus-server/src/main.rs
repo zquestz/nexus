@@ -8,7 +8,7 @@ mod db;
 mod files;
 mod handlers;
 mod i18n;
-mod transfer;
+mod transfers;
 mod upnp;
 mod users;
 
@@ -29,7 +29,7 @@ use args::Args;
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
-use transfer::TransferParams;
+use transfers::TransferParams;
 use users::UserManager;
 
 #[tokio::main]
@@ -158,7 +158,7 @@ async fn main() {
                         tokio::spawn(async move {
                             let _guard = transfer_guard;
                             if let Err(e) =
-                                transfer::handle_transfer_connection(socket, tls_acceptor, params)
+                                transfers::handle_transfer_connection(socket, tls_acceptor, params)
                                     .await
                             {
                                 log_connection_error(&e, peer_addr, debug);

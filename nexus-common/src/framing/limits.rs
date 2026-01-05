@@ -94,7 +94,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
-    m.insert("FileUpload", 4200); // destination (4096) + file_count (u64) + total_size (u64) + overwrite + root + overhead
+    m.insert("FileUpload", 4180); // destination (4096) + file_count (u64) + total_size (u64) + root + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes

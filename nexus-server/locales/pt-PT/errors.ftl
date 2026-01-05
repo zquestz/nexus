@@ -178,3 +178,15 @@ err-transfer-access-denied = Acesso negado
 err-transfer-read-failed = Falha ao ler os ficheiros
 err-transfer-path-not-found = Ficheiro ou diretório não encontrado
 err-transfer-file-failed = Falha ao transferir { $path }: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = A pasta de destino não permite carregamentos
+err-upload-write-failed = Falha ao escrever o ficheiro
+err-upload-hash-mismatch = Verificação do ficheiro falhou - hash não coincide
+err-upload-path-invalid = Caminho de ficheiro inválido no carregamento
+err-upload-conflict = Outro carregamento para este nome de ficheiro está em curso ou foi interrompido. Por favor, tente um nome de ficheiro diferente.
+err-upload-file-exists = Um ficheiro com este nome já existe. Por favor, escolha um nome de ficheiro diferente ou peça a um administrador para eliminar o ficheiro existente.
+err-upload-empty = O carregamento deve conter pelo menos um ficheiro
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

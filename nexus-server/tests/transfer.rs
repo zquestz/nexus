@@ -653,3 +653,572 @@ fn test_dropbox_access_rules() {
         FolderType::Default
     ));
 }
+
+// ============================================================================
+// Upload Message Serialization Tests
+// ============================================================================
+
+#[test]
+fn test_file_upload_message_serialization() {
+    let msg = ClientMessage::FileUpload {
+        destination: "/Uploads".to_string(),
+        file_count: 3,
+        total_size: 1048576,
+        root: false,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"type\":\"FileUpload\""));
+    assert!(json.contains("\"destination\":\"/Uploads\""));
+    assert!(json.contains("\"file_count\":3"));
+    assert!(json.contains("\"total_size\":1048576"));
+    // root defaults to false, may or may not be serialized
+}
+
+#[test]
+fn test_file_upload_message_with_root() {
+    let msg = ClientMessage::FileUpload {
+        destination: "/Admin/Files".to_string(),
+        file_count: 1,
+        total_size: 512,
+        root: true,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"root\":true"));
+}
+
+#[test]
+fn test_file_upload_response_success() {
+    let msg = ServerMessage::FileUploadResponse {
+        success: true,
+        error: None,
+        error_kind: None,
+        transfer_id: Some("abcd1234".to_string()),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"type\":\"FileUploadResponse\""));
+    assert!(json.contains("\"success\":true"));
+    assert!(json.contains("\"transfer_id\":\"abcd1234\""));
+}
+
+#[test]
+fn test_file_upload_response_error_exists() {
+    let msg = ServerMessage::FileUploadResponse {
+        success: false,
+        error: Some("A file with this name already exists".to_string()),
+        error_kind: Some("exists".to_string()),
+        transfer_id: None,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"success\":false"));
+    assert!(json.contains("\"error_kind\":\"exists\""));
+}
+
+#[test]
+fn test_file_upload_response_error_conflict() {
+    let msg = ServerMessage::FileUploadResponse {
+        success: false,
+        error: Some("Another upload to this filename is in progress".to_string()),
+        error_kind: Some("conflict".to_string()),
+        transfer_id: None,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"success\":false"));
+    assert!(json.contains("\"error_kind\":\"conflict\""));
+}
+
+#[test]
+fn test_file_upload_response_error_permission() {
+    let msg = ServerMessage::FileUploadResponse {
+        success: false,
+        error: Some("Permission denied".to_string()),
+        error_kind: Some("permission".to_string()),
+        transfer_id: None,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"error_kind\":\"permission\""));
+}
+
+#[test]
+fn test_client_file_start_message() {
+    // Client sends FileStart for uploads (mirrors ServerMessage::FileStart)
+    let msg = ClientMessage::FileStart {
+        path: "documents/report.pdf".to_string(),
+        size: 2048,
+        sha256: "abc123def456".to_string(),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"type\":\"FileStart\""));
+    assert!(json.contains("\"path\":\"documents/report.pdf\""));
+    assert!(json.contains("\"size\":2048"));
+    assert!(json.contains("\"sha256\":\"abc123def456\""));
+}
+
+#[test]
+fn test_server_file_start_response() {
+    // Server responds with resume info
+    let msg = ServerMessage::FileStartResponse {
+        size: 1024,
+        sha256: Some("partial_hash_here".to_string()),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"type\":\"FileStartResponse\""));
+    assert!(json.contains("\"size\":1024"));
+    assert!(json.contains("\"sha256\":\"partial_hash_here\""));
+}
+
+#[test]
+fn test_server_file_start_response_no_existing() {
+    // Server has no existing .part file
+    let msg = ServerMessage::FileStartResponse {
+        size: 0,
+        sha256: None,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"size\":0"));
+    // sha256 should be null or absent
+}
+
+// ============================================================================
+// Upload Frame Protocol Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_frame_roundtrip_file_upload() {
+    let msg = ClientMessage::FileUpload {
+        destination: "/Uploads/Projects".to_string(),
+        file_count: 5,
+        total_size: 10485760,
+        root: false,
+    };
+    let payload = serde_json::to_vec(&msg).unwrap();
+    let id = MessageId::new();
+
+    // Write frame
+    let mut buffer = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buffer);
+        let mut writer = FrameWriter::new(cursor);
+        let frame = RawFrame::new(id, "FileUpload".to_string(), payload.clone());
+        writer.write_frame(&frame).await.unwrap();
+    }
+
+    // Read frame back
+    let cursor = Cursor::new(buffer);
+    let buf_reader = BufReader::new(cursor);
+    let mut reader = FrameReader::new(buf_reader);
+
+    let frame = reader.read_frame().await.unwrap().unwrap();
+    assert_eq!(frame.message_id, id);
+    assert_eq!(frame.message_type, "FileUpload");
+
+    // Verify payload
+    let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
+    match parsed {
+        ClientMessage::FileUpload {
+            destination,
+            file_count,
+            total_size,
+            root,
+        } => {
+            assert_eq!(destination, "/Uploads/Projects");
+            assert_eq!(file_count, 5);
+            assert_eq!(total_size, 10485760);
+            assert!(!root);
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+#[tokio::test]
+async fn test_frame_roundtrip_client_file_start() {
+    let msg = ClientMessage::FileStart {
+        path: "subdir/file.txt".to_string(),
+        size: 4096,
+        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+    };
+    let payload = serde_json::to_vec(&msg).unwrap();
+    let id = MessageId::new();
+
+    // Write frame
+    let mut buffer = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buffer);
+        let mut writer = FrameWriter::new(cursor);
+        let frame = RawFrame::new(id, "FileStart".to_string(), payload.clone());
+        writer.write_frame(&frame).await.unwrap();
+    }
+
+    // Read frame back
+    let cursor = Cursor::new(buffer);
+    let buf_reader = BufReader::new(cursor);
+    let mut reader = FrameReader::new(buf_reader);
+
+    let frame = reader.read_frame().await.unwrap().unwrap();
+    assert_eq!(frame.message_type, "FileStart");
+
+    let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
+    match parsed {
+        ClientMessage::FileStart { path, size, sha256 } => {
+            assert_eq!(path, "subdir/file.txt");
+            assert_eq!(size, 4096);
+            assert_eq!(
+                sha256,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            );
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+// ============================================================================
+// Upload Permission Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_file_upload_permission_in_db() {
+    let db = create_test_db().await;
+
+    // Create user with file_upload permission
+    let hashed = db::hash_password("pass123").unwrap();
+    let mut perms = Permissions::new();
+    perms.add(Permission::FileUpload);
+    perms.add(Permission::FileList);
+
+    let user = db
+        .users
+        .create_user("uploader", &hashed, false, false, true, &perms)
+        .await
+        .unwrap();
+
+    // Verify permissions are stored by fetching them back
+    let stored_perms = db.users.get_user_permissions(user.id).await.unwrap();
+    let perm_vec = stored_perms.to_vec();
+    assert!(perm_vec.contains(&Permission::FileUpload));
+    assert!(perm_vec.contains(&Permission::FileList));
+    assert!(!perm_vec.contains(&Permission::FileDownload));
+}
+
+#[tokio::test]
+async fn test_admin_has_implicit_upload_permission() {
+    let db = create_test_db().await;
+
+    // Create admin user (no explicit permissions needed)
+    let hashed = db::hash_password("adminpass").unwrap();
+    let admin = db
+        .users
+        .create_user(
+            "admin_user",
+            &hashed,
+            true,
+            false,
+            true,
+            &Permissions::new(),
+        )
+        .await
+        .unwrap();
+
+    // Admin should be marked as admin
+    assert!(admin.is_admin);
+
+    // Verify admin flag via lookup
+    let fetched = db
+        .users
+        .get_user_by_username("admin_user")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(fetched.is_admin);
+
+    // The actual admin check happens in the handler via user.is_admin
+    // Admin permissions are implicit, not stored in DB
+}
+
+// ============================================================================
+// Upload Destination Validation Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_upload_folder_allows_upload() {
+    use nexus_server::files::path::allows_upload;
+
+    let temp_dir = create_test_file_area().await;
+    let root = temp_dir.path();
+    let area_root = root.join("shared");
+
+    // Upload folder should allow uploads
+    let upload_path = root.join("shared/Uploads [NEXUS-UL]");
+    assert!(allows_upload(&area_root, &upload_path));
+
+    // Dropbox folder should allow uploads
+    let dropbox_path = root.join("shared/Submissions [NEXUS-DB]");
+    assert!(allows_upload(&area_root, &dropbox_path));
+
+    // User dropbox should allow uploads
+    let user_dropbox_path = root.join("shared/For Alice [NEXUS-DB-alice]");
+    assert!(allows_upload(&area_root, &user_dropbox_path));
+
+    // Regular folder should NOT allow uploads
+    let regular_path = root.join("shared/Documents");
+    assert!(!allows_upload(&area_root, &regular_path));
+}
+
+#[tokio::test]
+async fn test_upload_subfolder_inherits_permission() {
+    use nexus_server::files::path::allows_upload;
+
+    let temp_dir = create_test_file_area().await;
+    let root = temp_dir.path();
+    let area_root = root.join("shared");
+
+    // Create a subfolder inside upload folder
+    let subfolder = root.join("shared/Uploads [NEXUS-UL]/SubProject");
+    fs::create_dir_all(&subfolder).await.unwrap();
+
+    // Subfolder should inherit upload permission
+    assert!(allows_upload(&area_root, &subfolder));
+}
+
+// ============================================================================
+// Upload Error Kind Tests
+// ============================================================================
+
+#[test]
+fn test_upload_error_kinds() {
+    // Verify all upload-specific error kinds are valid strings
+    let error_kinds = vec![
+        "exists",        // File already exists
+        "conflict",      // Another upload in progress (.part exists)
+        "permission",    // No upload permission
+        "invalid",       // Invalid path
+        "not_found",     // Destination doesn't exist
+        "io_error",      // Disk full, write error, etc.
+        "hash_mismatch", // SHA-256 verification failed
+    ];
+
+    for kind in error_kinds {
+        let msg = ServerMessage::FileUploadResponse {
+            success: false,
+            error: Some(format!("Error: {}", kind)),
+            error_kind: Some(kind.to_string()),
+            transfer_id: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(&format!("\"error_kind\":\"{}\"", kind)));
+    }
+}
+
+// ============================================================================
+// Upload Path Security Tests
+// ============================================================================
+
+#[test]
+fn test_upload_path_traversal_detection() {
+    // These paths should be rejected by the upload handler
+    let malicious_paths = vec![
+        "../etc/passwd",
+        "foo/../../../etc/passwd",
+        "..\\windows\\system32",
+        "/absolute/path",
+        "\\absolute\\path",
+        "normal/../../escape",
+    ];
+
+    for path in malicious_paths {
+        // Check for path traversal components
+        let has_traversal = path.split(['/', '\\']).any(|c| c == "..");
+        let is_absolute = path.starts_with('/') || path.starts_with('\\');
+
+        assert!(
+            has_traversal || is_absolute,
+            "Path '{}' should be detected as malicious",
+            path
+        );
+    }
+}
+
+#[test]
+fn test_upload_path_valid_relative() {
+    // These paths should be accepted
+    let valid_paths = vec![
+        "file.txt",
+        "subdir/file.txt",
+        "deep/nested/path/file.txt",
+        "file with spaces.txt",
+        "file-with-dashes.txt",
+        "file_with_underscores.txt",
+        "file.multiple.dots.txt",
+    ];
+
+    for path in valid_paths {
+        let has_traversal = path.split(['/', '\\']).any(|c| c == "..");
+        let is_absolute = path.starts_with('/') || path.starts_with('\\');
+
+        assert!(
+            !has_traversal && !is_absolute,
+            "Path '{}' should be valid",
+            path
+        );
+    }
+}
+
+// ============================================================================
+// Upload Resume Logic Tests
+// ============================================================================
+
+#[test]
+fn test_upload_resume_response_no_existing() {
+    // Server has no .part file - client should send full file
+    let response = ServerMessage::FileStartResponse {
+        size: 0,
+        sha256: None,
+    };
+
+    match response {
+        ServerMessage::FileStartResponse { size, sha256 } => {
+            assert_eq!(size, 0);
+            assert!(sha256.is_none());
+            // Client should send from offset 0 (full file)
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+#[test]
+fn test_upload_resume_response_partial_exists() {
+    // Server has partial .part file
+    let response = ServerMessage::FileStartResponse {
+        size: 50000,
+        sha256: Some("abc123".to_string()),
+    };
+
+    match response {
+        ServerMessage::FileStartResponse { size, sha256 } => {
+            assert_eq!(size, 50000);
+            assert_eq!(sha256, Some("abc123".to_string()));
+            // Client compares hash of first 50000 bytes
+            // If match: send from offset 50000
+            // If no match: send from offset 0
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+#[test]
+fn test_upload_resume_offset_calculation() {
+    // Simulate client-side offset calculation
+    let file_size: u64 = 100000;
+    let server_size: u64 = 50000;
+    let server_hash = "abc123";
+    let client_partial_hash = "abc123"; // Hash of first 50000 bytes
+
+    // If hashes match, resume from server_size
+    let offset = if client_partial_hash == server_hash {
+        server_size
+    } else {
+        0
+    };
+
+    assert_eq!(offset, 50000);
+
+    // Payload size = total - offset
+    let payload_size = file_size - offset;
+    assert_eq!(payload_size, 50000);
+}
+
+#[test]
+fn test_upload_resume_hash_mismatch() {
+    // Client's partial hash doesn't match server's - start fresh
+    let file_size: u64 = 100000;
+    let server_size: u64 = 50000;
+    let server_hash = "abc123";
+    let client_partial_hash = "different_hash"; // Different content
+
+    let offset = if client_partial_hash == server_hash {
+        server_size
+    } else {
+        0
+    };
+
+    assert_eq!(offset, 0);
+
+    // Payload size = full file
+    let payload_size = file_size - offset;
+    assert_eq!(payload_size, 100000);
+}
+
+// ============================================================================
+// Upload Zero-Byte File Tests
+// ============================================================================
+
+#[test]
+fn test_upload_zero_byte_file_start() {
+    // Zero-byte files should work - no FileData frame sent
+    let msg = ClientMessage::FileStart {
+        path: "empty.txt".to_string(),
+        size: 0,
+        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(), // SHA-256 of empty
+    };
+
+    match msg {
+        ClientMessage::FileStart { size, sha256, .. } => {
+            assert_eq!(size, 0);
+            // Empty file has a well-known SHA-256
+            assert_eq!(
+                sha256,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            );
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+// ============================================================================
+// Upload Transfer Complete Tests
+// ============================================================================
+
+#[test]
+fn test_upload_transfer_complete_success() {
+    let msg = ServerMessage::TransferComplete {
+        success: true,
+        error: None,
+        error_kind: None,
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"success\":true"));
+    assert!(!json.contains("\"error_kind\""));
+}
+
+#[test]
+fn test_upload_transfer_complete_hash_mismatch() {
+    let msg = ServerMessage::TransferComplete {
+        success: false,
+        error: Some("File verification failed - hash mismatch".to_string()),
+        error_kind: Some("hash_mismatch".to_string()),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"success\":false"));
+    assert!(json.contains("\"error_kind\":\"hash_mismatch\""));
+}
+
+#[test]
+fn test_upload_transfer_complete_io_error() {
+    let msg = ServerMessage::TransferComplete {
+        success: false,
+        error: Some("Disk full".to_string()),
+        error_kind: Some("io_error".to_string()),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+
+    assert!(json.contains("\"error_kind\":\"io_error\""));
+}

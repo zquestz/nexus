@@ -178,3 +178,15 @@ err-transfer-access-denied = アクセスが拒否されました
 err-transfer-read-failed = ファイルの読み取りに失敗しました
 err-transfer-path-not-found = ファイルまたはディレクトリが見つかりません
 err-transfer-file-failed = { $path } の転送に失敗しました: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = 宛先フォルダはアップロードを許可していません
+err-upload-write-failed = ファイルの書き込みに失敗しました
+err-upload-hash-mismatch = ファイル検証に失敗しました - ハッシュが一致しません
+err-upload-path-invalid = アップロードのファイルパスが無効です
+err-upload-conflict = このファイル名への別のアップロードが進行中または中断されています。別のファイル名をお試しください。
+err-upload-file-exists = この名前のファイルは既に存在します。別のファイル名を選択するか、管理者に既存のファイルの削除を依頼してください。
+err-upload-empty = アップロードには少なくとも1つのファイルが必要です
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

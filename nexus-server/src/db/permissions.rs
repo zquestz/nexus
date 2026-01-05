@@ -41,6 +41,8 @@ pub enum Permission {
     NewsDelete,
     /// Permission to download files
     FileDownload,
+    /// Permission to upload files to upload/dropbox folders
+    FileUpload,
     /// Permission to list files and directories
     FileList,
     /// Permission to browse entire file area from root
@@ -98,6 +100,7 @@ impl Permission {
             "file_delete" => Some(Permission::FileDelete),
             "file_download" => Some(Permission::FileDownload),
             "file_info" => Some(Permission::FileInfo),
+            "file_upload" => Some(Permission::FileUpload),
             "file_list" => Some(Permission::FileList),
             "file_move" => Some(Permission::FileMove),
             "file_rename" => Some(Permission::FileRename),
@@ -199,6 +202,7 @@ mod tests {
         assert_eq!(Permission::FileDownload.as_str(), "file_download");
         assert_eq!(Permission::FileInfo.as_str(), "file_info");
         assert_eq!(Permission::FileList.as_str(), "file_list");
+        assert_eq!(Permission::FileUpload.as_str(), "file_upload");
         assert_eq!(Permission::FileMove.as_str(), "file_move");
         assert_eq!(Permission::FileRename.as_str(), "file_rename");
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
@@ -262,6 +266,10 @@ mod tests {
         );
         assert_eq!(Permission::parse("file_info"), Some(Permission::FileInfo));
         assert_eq!(Permission::parse("file_list"), Some(Permission::FileList));
+        assert_eq!(
+            Permission::parse("file_upload"),
+            Some(Permission::FileUpload)
+        );
         assert_eq!(Permission::parse("file_move"), Some(Permission::FileMove));
         assert_eq!(
             Permission::parse("file_rename"),
@@ -347,6 +355,7 @@ mod tests {
             Permission::FileInfo,
             Permission::FileList,
             Permission::FileMove,
+            Permission::FileUpload,
             Permission::FileRename,
             Permission::FileRoot,
             Permission::NewsCreate,

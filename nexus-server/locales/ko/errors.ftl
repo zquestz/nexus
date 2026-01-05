@@ -178,3 +178,15 @@ err-transfer-access-denied = 접근이 거부되었습니다
 err-transfer-read-failed = 파일을 읽지 못했습니다
 err-transfer-path-not-found = 파일 또는 디렉터리를 찾을 수 없습니다
 err-transfer-file-failed = { $path } 전송 실패: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = 대상 폴더에서 업로드가 허용되지 않습니다
+err-upload-write-failed = 파일 쓰기에 실패했습니다
+err-upload-hash-mismatch = 파일 확인 실패 - 해시가 일치하지 않습니다
+err-upload-path-invalid = 업로드에 잘못된 파일 경로가 있습니다
+err-upload-conflict = 이 파일 이름에 대한 다른 업로드가 진행 중이거나 중단되었습니다. 다른 파일 이름을 시도해 주세요.
+err-upload-file-exists = 이 이름의 파일이 이미 존재합니다. 다른 파일 이름을 선택하거나 관리자에게 기존 파일 삭제를 요청하세요.
+err-upload-empty = 업로드에는 최소 하나의 파일이 포함되어야 합니다
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

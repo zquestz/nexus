@@ -178,3 +178,15 @@ err-transfer-access-denied = 访问被拒绝
 err-transfer-read-failed = 无法读取文件
 err-transfer-path-not-found = 文件或目录未找到
 err-transfer-file-failed = 传输 { $path } 失败: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = 目标文件夹不允许上传
+err-upload-write-failed = 文件写入失败
+err-upload-hash-mismatch = 文件验证失败 - 哈希值不匹配
+err-upload-path-invalid = 上传中的文件路径无效
+err-upload-conflict = 另一个上传到此文件名的操作正在进行中或已中断。请尝试使用其他文件名。
+err-upload-file-exists = 具有此名称的文件已存在。请选择其他文件名或请求管理员删除现有文件。
+err-upload-empty = 上传必须包含至少一个文件
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

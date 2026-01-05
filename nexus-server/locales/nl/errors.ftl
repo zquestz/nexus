@@ -178,3 +178,15 @@ err-transfer-access-denied = Toegang geweigerd
 err-transfer-read-failed = Kan bestanden niet lezen
 err-transfer-path-not-found = Bestand of map niet gevonden
 err-transfer-file-failed = Overdracht van { $path } mislukt: { $error }
+
+# Upload Errors
+err-upload-destination-not-allowed = Bestemmingsmap staat geen uploads toe
+err-upload-write-failed = Kan bestand niet schrijven
+err-upload-hash-mismatch = Bestandsverificatie mislukt - hash komt niet overeen
+err-upload-path-invalid = Ongeldig bestandspad in upload
+err-upload-conflict = Een andere upload naar deze bestandsnaam is bezig of werd onderbroken. Probeer een andere bestandsnaam.
+err-upload-file-exists = Een bestand met deze naam bestaat al. Kies een andere bestandsnaam of vraag een beheerder om het bestaande bestand te verwijderen.
+err-upload-empty = Upload moet minimaal één bestand bevatten
+
+err-upload-protocol-error = Upload protocol error
+err-upload-connection-lost = Connection lost during upload

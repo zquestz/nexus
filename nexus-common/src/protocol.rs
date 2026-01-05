@@ -215,9 +215,6 @@ pub enum ClientMessage {
         file_count: u64,
         /// Total size of all files in bytes
         total_size: u64,
-        /// If true, overwrite existing files
-        #[serde(default)]
-        overwrite: bool,
         /// If true, destination is relative to file root instead of user's area
         #[serde(default)]
         root: bool,
@@ -918,14 +915,12 @@ impl std::fmt::Debug for ClientMessage {
                 destination,
                 file_count,
                 total_size,
-                overwrite,
                 root,
             } => f
                 .debug_struct("FileUpload")
                 .field("destination", destination)
                 .field("file_count", file_count)
                 .field("total_size", total_size)
-                .field("overwrite", overwrite)
                 .field("root", root)
                 .finish(),
             ClientMessage::FileStart { path, size, sha256 } => f
@@ -1844,7 +1839,6 @@ mod tests {
             destination: "/Uploads".to_string(),
             file_count: 5,
             total_size: 1048576,
-            overwrite: false,
             root: false,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1852,26 +1846,23 @@ mod tests {
         assert!(json.contains("\"destination\":\"/Uploads\""));
         assert!(json.contains("\"file_count\":5"));
         assert!(json.contains("\"total_size\":1048576"));
-        assert!(!json.contains("\"overwrite\":true"));
         assert!(!json.contains("\"root\":true"));
     }
 
     #[test]
     fn test_deserialize_file_upload() {
-        let json = r#"{"type":"FileUpload","destination":"/My Uploads","file_count":10,"total_size":2097152,"overwrite":true,"root":true}"#;
+        let json = r#"{"type":"FileUpload","destination":"/My Uploads","file_count":10,"total_size":2097152,"root":true}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
             ClientMessage::FileUpload {
                 destination,
                 file_count,
                 total_size,
-                overwrite,
                 root,
             } => {
                 assert_eq!(destination, "/My Uploads");
                 assert_eq!(file_count, 10);
                 assert_eq!(total_size, 2097152);
-                assert!(overwrite);
                 assert!(root);
             }
             _ => panic!("Expected FileUpload"),
@@ -1880,15 +1871,12 @@ mod tests {
 
     #[test]
     fn test_deserialize_file_upload_defaults() {
-        // overwrite and root should default to false
+        // root should default to false
         let json =
             r#"{"type":"FileUpload","destination":"/Uploads","file_count":1,"total_size":100}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ClientMessage::FileUpload {
-                overwrite, root, ..
-            } => {
-                assert!(!overwrite);
+            ClientMessage::FileUpload { root, .. } => {
                 assert!(!root);
             }
             _ => panic!("Expected FileUpload"),
