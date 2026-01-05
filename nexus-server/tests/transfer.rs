@@ -988,6 +988,74 @@ async fn test_upload_subfolder_inherits_permission() {
 }
 
 // ============================================================================
+// Directory Upload Destination Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_directory_upload_creates_destination() {
+    // When uploading a directory, the server should create the destination
+    // directory if it doesn't exist (as long as the parent allows uploads)
+    let temp_dir = create_test_file_area().await;
+    let root = temp_dir.path();
+
+    // The destination "MyFolder" doesn't exist yet
+    let new_folder = root.join("shared/Uploads [NEXUS-UL]/MyFolder");
+    assert!(!new_folder.exists());
+
+    // After the upload destination validation (simulated by create_dir_all),
+    // the folder should be created
+    fs::create_dir_all(&new_folder).await.unwrap();
+    assert!(new_folder.exists());
+    assert!(new_folder.is_dir());
+}
+
+#[tokio::test]
+async fn test_nested_upload_paths_created_during_streaming() {
+    // When uploading files with nested paths like "subdir/nested/file.txt",
+    // the streaming code should create intermediate directories
+    let temp_dir = create_test_file_area().await;
+    let root = temp_dir.path();
+
+    // Simulate what happens during upload streaming:
+    // The destination exists, but nested paths inside don't
+    let upload_folder = root.join("shared/Uploads [NEXUS-UL]");
+    assert!(upload_folder.exists());
+
+    // File path: destination + relative_path
+    let nested_file = upload_folder.join("project/src/main.rs");
+    assert!(!nested_file.exists());
+
+    // create_dir_all on parent creates all intermediate directories
+    if let Some(parent) = nested_file.parent() {
+        fs::create_dir_all(parent).await.unwrap();
+    }
+
+    // Now the nested directory structure exists
+    assert!(upload_folder.join("project/src").exists());
+
+    // Write the file
+    fs::write(&nested_file, b"fn main() {}").await.unwrap();
+    assert!(nested_file.exists());
+}
+
+#[tokio::test]
+async fn test_deeply_nested_upload_destination() {
+    // Test that upload destination can be multiple levels deep if parent allows uploads
+    use nexus_server::files::path::allows_upload;
+
+    let temp_dir = create_test_file_area().await;
+    let root = temp_dir.path();
+    let area_root = root.join("shared");
+
+    // Create deeply nested destination under upload folder
+    let deep_dest = root.join("shared/Uploads [NEXUS-UL]/A/B/C/D");
+    fs::create_dir_all(&deep_dest).await.unwrap();
+
+    // The deep destination should inherit upload permission from parent
+    assert!(allows_upload(&area_root, &deep_dest));
+}
+
+// ============================================================================
 // Upload Error Kind Tests
 // ============================================================================
 

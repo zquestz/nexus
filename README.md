@@ -20,6 +20,7 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 ### Files
 - Multi-tab file browser with sortable columns
 - Downloads and uploads with pause, resume, and cancel
+- Drag-and-drop upload support (files and folders)
 - Per-server queue management with separate download/upload limits
 - Create, rename, move, copy, and delete
 - Upload folders (`[NEXUS-UL]`) and drop boxes (`[NEXUS-DB]`)
