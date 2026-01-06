@@ -68,16 +68,12 @@ impl NexusApp {
 
                 // Emit transfer complete notification
                 if let Some((direction, path)) = transfer_info {
-                    let direction_str = match direction {
-                        TransferDirection::Download => "download",
-                        TransferDirection::Upload => "upload",
-                    };
                     emit_event(
                         self,
                         EventType::TransferComplete,
                         EventContext::new()
-                            .with_message(direction_str)
-                            .with_username(&path), // Using username field for path
+                            .with_path(&path)
+                            .with_is_upload(direction == TransferDirection::Upload),
                     );
                 }
 
@@ -103,17 +99,13 @@ impl NexusApp {
 
                 // Emit transfer failed notification
                 if let Some((direction, path)) = transfer_info {
-                    let direction_str = match direction {
-                        TransferDirection::Download => "download",
-                        TransferDirection::Upload => "upload",
-                    };
                     emit_event(
                         self,
                         EventType::TransferFailed,
                         EventContext::new()
-                            .with_message(direction_str)
-                            .with_username(&path) // Using username field for path
-                            .with_server_name(&error), // Using server_name field for error
+                            .with_path(&path)
+                            .with_error(&error)
+                            .with_is_upload(direction == TransferDirection::Upload),
                     );
                 }
             }

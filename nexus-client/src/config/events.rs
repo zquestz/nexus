@@ -34,6 +34,10 @@ pub enum EventType {
     TransferComplete,
     /// File transfer failed
     TransferFailed,
+    /// A user connected to the server
+    UserConnected,
+    /// A user disconnected from the server
+    UserDisconnected,
     /// You were kicked from the server
     UserKicked,
 }
@@ -50,6 +54,8 @@ impl EventType {
             EventType::PermissionsChanged,
             EventType::TransferComplete,
             EventType::TransferFailed,
+            EventType::UserConnected,
+            EventType::UserDisconnected,
             EventType::UserKicked,
             EventType::UserMessage,
         ]
@@ -66,6 +72,8 @@ impl EventType {
             EventType::PermissionsChanged => "event-permissions-changed",
             EventType::TransferComplete => "event-transfer-complete",
             EventType::TransferFailed => "event-transfer-failed",
+            EventType::UserConnected => "event-user-connected",
+            EventType::UserDisconnected => "event-user-disconnected",
             EventType::UserKicked => "event-user-kicked",
             EventType::UserMessage => "event-user-message",
         }
@@ -223,6 +231,12 @@ fn default_event_configs() -> HashMap<EventType, EventConfig> {
     // Transfer failed: enabled by default
     events.insert(EventType::TransferFailed, EventConfig::with_notification());
 
+    // User connected: disabled by default (can be noisy on busy servers)
+    events.insert(EventType::UserConnected, EventConfig::default());
+
+    // User disconnected: disabled by default (can be noisy on busy servers)
+    events.insert(EventType::UserDisconnected, EventConfig::default());
+
     // User kicked: enabled by default
     events.insert(EventType::UserKicked, EventConfig::with_notification());
 
@@ -243,7 +257,7 @@ mod tests {
     #[test]
     fn test_event_type_all() {
         let all = EventType::all();
-        assert_eq!(all.len(), 10);
+        assert_eq!(all.len(), 12);
         assert!(all.contains(&EventType::Broadcast));
         assert!(all.contains(&EventType::ChatMessage));
         assert!(all.contains(&EventType::ChatMention));
@@ -252,6 +266,8 @@ mod tests {
         assert!(all.contains(&EventType::PermissionsChanged));
         assert!(all.contains(&EventType::TransferComplete));
         assert!(all.contains(&EventType::TransferFailed));
+        assert!(all.contains(&EventType::UserConnected));
+        assert!(all.contains(&EventType::UserDisconnected));
         assert!(all.contains(&EventType::UserKicked));
         assert!(all.contains(&EventType::UserMessage));
     }

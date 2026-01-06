@@ -49,7 +49,8 @@ pub enum ResponseRouting {
     /// News delete result (return to list on success)
     NewsDeleteResult,
     /// News show result for refresh (after NewsUpdated broadcast)
-    NewsShowForRefresh(i64),
+    /// `is_new` indicates if this is a newly created post (for notification)
+    NewsShowForRefresh { id: i64, is_new: bool },
     /// Populate file list (from panel open or navigation)
     /// Contains the target tab ID to update when response arrives
     PopulateFileList { tab_id: TabId },
@@ -326,10 +327,19 @@ mod tests {
     fn test_track_news_show_for_refresh() {
         let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
         let id = MessageId::new();
-        pending.track(id, ResponseRouting::NewsShowForRefresh(42));
+        pending.track(
+            id,
+            ResponseRouting::NewsShowForRefresh {
+                id: 42,
+                is_new: true,
+            },
+        );
         assert!(matches!(
             pending.get(&id),
-            Some(ResponseRouting::NewsShowForRefresh(news_id)) if *news_id == 42
+            Some(ResponseRouting::NewsShowForRefresh {
+                id: 42,
+                is_new: true
+            })
         ));
     }
 

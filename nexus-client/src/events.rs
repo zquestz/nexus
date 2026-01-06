@@ -54,6 +54,15 @@ pub struct EventContext {
 
     /// Server name associated with the event
     pub server_name: Option<String>,
+
+    /// File path (for transfer events)
+    pub path: Option<String>,
+
+    /// Error message (for transfer failures)
+    pub error: Option<String>,
+
+    /// Whether this is an upload (true) or download (false) - for transfer events
+    pub is_upload: Option<bool>,
 }
 
 impl EventContext {
@@ -81,9 +90,26 @@ impl EventContext {
     }
 
     /// Set the server name field
-    #[allow(dead_code)]
     pub fn with_server_name(mut self, server_name: impl Into<String>) -> Self {
         self.server_name = Some(server_name.into());
+        self
+    }
+
+    /// Set the file path field (for transfer events)
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    /// Set the error field (for transfer failures)
+    pub fn with_error(mut self, error: impl Into<String>) -> Self {
+        self.error = Some(error.into());
+        self
+    }
+
+    /// Set upload flag (for transfer events)
+    pub fn with_is_upload(mut self, is_upload: bool) -> Self {
+        self.is_upload = Some(is_upload);
         self
     }
 }
@@ -229,6 +255,14 @@ fn should_show_notification(app: &NexusApp, event_type: EventType, context: &Eve
             }
             true
         }
+        EventType::UserConnected => {
+            // Don't notify if window is focused - user will see in the user list
+            !app.window_focused
+        }
+        EventType::UserDisconnected => {
+            // Don't notify if window is focused - user will see in the user list
+            !app.window_focused
+        }
         EventType::UserKicked => {
             // Don't notify if window is focused - user will see the kick message
             !app.window_focused
@@ -253,6 +287,8 @@ fn build_notification_content(
         }
         EventType::TransferComplete => build_transfer_complete_notification(context, content_level),
         EventType::TransferFailed => build_transfer_failed_notification(context, content_level),
+        EventType::UserConnected => build_user_connected_notification(context, content_level),
+        EventType::UserDisconnected => build_user_disconnected_notification(context, content_level),
         EventType::UserKicked => build_user_kicked_notification(context, content_level),
         EventType::UserMessage => build_user_message_notification(context, content_level),
     }
@@ -471,18 +507,15 @@ fn build_transfer_complete_notification(
         }
         NotificationContent::WithContext | NotificationContent::WithPreview => {
             // "Download complete" or "Upload complete"
-            // Use message field to indicate direction, username field for filename
-            let summary = if let Some(ref direction) = context.message {
-                if direction == "upload" {
-                    t("notification-upload-complete")
-                } else {
-                    t("notification-download-complete")
-                }
+            let summary = if context.is_upload == Some(true) {
+                t("notification-upload-complete")
+            } else if context.is_upload == Some(false) {
+                t("notification-download-complete")
             } else {
                 t("notification-transfer-complete")
             };
             // Body contains filename (truncated if needed)
-            let body = context.username.as_ref().map(|path| truncate_path(path));
+            let body = context.path.as_ref().map(|path| truncate_path(path));
             (summary, body)
         }
     }
@@ -500,33 +533,29 @@ fn build_transfer_failed_notification(
         }
         NotificationContent::WithContext => {
             // "Download failed" or "Upload failed"
-            let summary = if let Some(ref direction) = context.message {
-                if direction == "upload" {
-                    t("notification-upload-failed")
-                } else {
-                    t("notification-download-failed")
-                }
+            let summary = if context.is_upload == Some(true) {
+                t("notification-upload-failed")
+            } else if context.is_upload == Some(false) {
+                t("notification-download-failed")
             } else {
                 t("notification-transfer-failed")
             };
             // Body contains filename
-            let body = context.username.as_ref().map(|path| truncate_path(path));
+            let body = context.path.as_ref().map(|path| truncate_path(path));
             (summary, body)
         }
         NotificationContent::WithPreview => {
             // "Download failed" or "Upload failed"
             // Body: "filename: error message"
-            let summary = if let Some(ref direction) = context.message {
-                if direction == "upload" {
-                    t("notification-upload-failed")
-                } else {
-                    t("notification-download-failed")
-                }
+            let summary = if context.is_upload == Some(true) {
+                t("notification-upload-failed")
+            } else if context.is_upload == Some(false) {
+                t("notification-download-failed")
             } else {
                 t("notification-transfer-failed")
             };
-            // Body contains filename and error from server_name field
-            let body = match (&context.username, &context.server_name) {
+            // Body contains filename and error
+            let body = match (&context.path, &context.error) {
                 (Some(path), Some(error)) => Some(format!("{}: {}", truncate_path(path), error)),
                 (Some(path), None) => Some(truncate_path(path)),
                 (None, Some(error)) => Some(error.clone()),
@@ -566,6 +595,56 @@ fn build_permissions_changed_notification(
                 )
             } else {
                 t("notification-permissions-changed")
+            };
+            (summary, None)
+        }
+    }
+}
+
+/// Build notification content for user connected events
+fn build_user_connected_notification(
+    context: &EventContext,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    match content_level {
+        NotificationContent::EventOnly => {
+            // "User connected"
+            (t("notification-user-connected"), None)
+        }
+        NotificationContent::WithContext | NotificationContent::WithPreview => {
+            // "Alice connected"
+            let summary = if let Some(ref username) = context.username {
+                t_args(
+                    "notification-user-connected-name",
+                    &[("username", username)],
+                )
+            } else {
+                t("notification-user-connected")
+            };
+            (summary, None)
+        }
+    }
+}
+
+/// Build notification content for user disconnected events
+fn build_user_disconnected_notification(
+    context: &EventContext,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    match content_level {
+        NotificationContent::EventOnly => {
+            // "User disconnected"
+            (t("notification-user-disconnected"), None)
+        }
+        NotificationContent::WithContext | NotificationContent::WithPreview => {
+            // "Alice disconnected"
+            let summary = if let Some(ref username) = context.username {
+                t_args(
+                    "notification-user-disconnected-name",
+                    &[("username", username)],
+                )
+            } else {
+                t("notification-user-disconnected")
             };
             (summary, None)
         }

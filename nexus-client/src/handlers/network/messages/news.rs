@@ -11,9 +11,7 @@ use crate::events::{EventContext, emit_event};
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
-use crate::types::{
-    ActivePanel, ChatMessage, Message, NewsManagementMode, PendingRequests, ResponseRouting,
-};
+use crate::types::{ChatMessage, Message, NewsManagementMode, PendingRequests, ResponseRouting};
 
 impl NexusApp {
     /// Handle news list response
@@ -91,9 +89,25 @@ impl NexusApp {
         if success {
             if let Some(item) = news {
                 // Handle based on routing
-                if let Some(ResponseRouting::NewsShowForRefresh(id)) = routing
+                if let Some(ResponseRouting::NewsShowForRefresh { id, is_new }) = routing
                     && item.id == id
                 {
+                    // Emit detailed notification for new posts
+                    if is_new {
+                        emit_event(
+                            self,
+                            EventType::NewsPost,
+                            EventContext::new()
+                                .with_connection_id(connection_id)
+                                .with_username(&item.author),
+                        );
+                    }
+
+                    // Re-borrow conn after emit_event
+                    let Some(conn) = self.connections.get_mut(&connection_id) else {
+                        return Task::none();
+                    };
+
                     // Update or add the item in the list
                     if let Some(Ok(items)) = &mut conn.news_management.news_items {
                         let mut found = false;
@@ -411,38 +425,45 @@ impl NexusApp {
     /// Handle news updated broadcast
     ///
     /// Sent when any news item is created, updated, or deleted.
+    /// Keeps the cached news list in sync if it exists.
     pub fn handle_news_updated(
         &mut self,
         connection_id: usize,
         action: NewsAction,
         id: i64,
     ) -> Task<Message> {
-        // Emit notification for new news posts
-        // Note: We only have the ID at this point, not author/body, so notification is minimal
-        if action == NewsAction::Created {
-            emit_event(
-                self,
-                EventType::NewsPost,
-                EventContext::new().with_connection_id(connection_id),
-            );
-        }
-
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
-        // Only update the panel if we're viewing it and have loaded items
-        if conn.active_panel != ActivePanel::News {
+        // Check if we have a cached news list
+        let has_cache = matches!(conn.news_management.news_items, Some(Ok(_)));
+
+        // If no cache, emit simple notification for new posts and return
+        // (we'll get fresh data when user opens the News panel)
+        if !has_cache {
+            if action == NewsAction::Created {
+                emit_event(
+                    self,
+                    EventType::NewsPost,
+                    EventContext::new().with_connection_id(connection_id),
+                );
+            }
             return Task::none();
         }
 
+        // We have a cached list - keep it in sync
         match action {
             NewsAction::Created | NewsAction::Updated => {
-                // Fetch the updated/new item
+                // Fetch the item to update cache
+                // For Created, we'll emit a detailed notification when response arrives
+                let is_new = action == NewsAction::Created;
                 match conn.send(nexus_common::protocol::ClientMessage::NewsShow { id }) {
                     Ok(message_id) => {
-                        conn.pending_requests
-                            .track(message_id, ResponseRouting::NewsShowForRefresh(id));
+                        conn.pending_requests.track(
+                            message_id,
+                            ResponseRouting::NewsShowForRefresh { id, is_new },
+                        );
                     }
                     Err(_) => {
                         // Silently fail - it's just a refresh

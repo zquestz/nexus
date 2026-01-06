@@ -5,6 +5,8 @@ use nexus_common::protocol::UserInfo as ProtocolUserInfo;
 
 use crate::NexusApp;
 use crate::avatar::{compute_avatar_hash, get_or_create_avatar};
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::handlers::network::helpers::sort_user_list;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message, UserInfo as ClientUserInfo};
@@ -112,7 +114,18 @@ impl NexusApp {
             }
         };
 
-        // Only announce if this is their first session (new user) and notifications are enabled
+        // Emit notification for new users
+        if is_new_user {
+            emit_event(
+                self,
+                EventType::UserConnected,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_username(&nickname),
+            );
+        }
+
+        // Only announce in chat if this is their first session (new user) and notifications are enabled
         if is_new_user && self.config.settings.show_connection_notifications {
             self.add_chat_message(
                 connection_id,
@@ -171,7 +184,18 @@ impl NexusApp {
             conn.avatar_cache.remove(nickname);
         }
 
-        // Only announce if this was their last session (fully offline) and notifications are enabled
+        // Emit notification for users going offline
+        if is_last_session {
+            emit_event(
+                self,
+                EventType::UserDisconnected,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_username(&nickname),
+            );
+        }
+
+        // Only announce in chat if this was their last session (fully offline) and notifications are enabled
         if is_last_session && self.config.settings.show_connection_notifications {
             self.add_chat_message(
                 connection_id,
