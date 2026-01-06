@@ -17,6 +17,7 @@ use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
 use super::transfers::transfers_view;
 use super::user_info::{password_change_view, user_info_view};
+use crate::config::events::EventSettings;
 use crate::config::settings::ProxySettings;
 use crate::i18n::t;
 use crate::icon;
@@ -77,6 +78,10 @@ struct ServerContentContext<'a> {
     pub upload_limit: u8,
     /// Whether to show the drag-and-drop overlay
     pub show_drop_overlay: bool,
+    /// Event notification settings
+    pub event_settings: &'a EventSettings,
+    /// Global toggle for desktop notifications
+    pub notifications_enabled: bool,
 }
 
 // ============================================================================
@@ -235,6 +240,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 download_limit: config.download_limit,
                 upload_limit: config.upload_limit,
                 show_drop_overlay: config.show_drop_overlay,
+                event_settings: config.event_settings,
+                notifications_enabled: config.notifications_enabled,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -261,6 +268,12 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         queue_transfers: config.queue_transfers,
                         download_limit: config.download_limit,
                         upload_limit: config.upload_limit,
+                        event_settings: config.event_settings,
+                        selected_event_type: config
+                            .settings_form
+                            .map(|f| f.selected_event_type)
+                            .unwrap_or_default(),
+                        notifications_enabled: config.notifications_enabled,
                     })
                 ]
                 .width(Fill)
@@ -655,6 +668,12 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 queue_transfers: ctx.queue_transfers,
                 download_limit: ctx.download_limit,
                 upload_limit: ctx.upload_limit,
+                event_settings: ctx.event_settings,
+                selected_event_type: ctx
+                    .settings_form
+                    .map(|f| f.selected_event_type)
+                    .unwrap_or_default(),
+                notifications_enabled: ctx.notifications_enabled,
             })
         ]
         .width(Fill)

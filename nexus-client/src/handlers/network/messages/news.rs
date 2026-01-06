@@ -6,6 +6,8 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::{NewsAction, NewsItem};
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
@@ -415,11 +417,21 @@ impl NexusApp {
         action: NewsAction,
         id: i64,
     ) -> Task<Message> {
+        // Emit notification for new news posts
+        // Note: We only have the ID at this point, not author/body, so notification is minimal
+        if action == NewsAction::Created {
+            emit_event(
+                self,
+                EventType::NewsPost,
+                EventContext::new().with_connection_id(connection_id),
+            );
+        }
+
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
-        // Only update if we're in the news panel and have loaded items
+        // Only update the panel if we're viewing it and have loaded items
         if conn.active_panel != ActivePanel::News {
             return Task::none();
         }

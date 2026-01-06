@@ -5,6 +5,7 @@ use iced::widget::{Id, operation};
 use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
+use crate::config::events::{EventType, NotificationContent};
 use crate::config::settings::{
     AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
 };
@@ -50,6 +51,10 @@ impl NexusApp {
             }
             SettingsTab::Files => {
                 // Files tab has no text input fields (only browse button)
+                Task::none()
+            }
+            SettingsTab::Events => {
+                // Events tab has no text input fields (only pickers and checkboxes)
                 Task::none()
             }
         }
@@ -212,6 +217,10 @@ impl NexusApp {
             }
             SettingsTab::Files => {
                 // Files tab has no text input fields, just a browse button
+                Task::none()
+            }
+            SettingsTab::Events => {
+                // Events tab has no text input fields, just pickers and checkboxes
                 Task::none()
             }
             SettingsTab::Network => {
@@ -440,6 +449,47 @@ impl NexusApp {
     /// Handle upload limit change
     pub fn handle_upload_limit_changed(&mut self, limit: u8) -> Task<Message> {
         self.config.settings.upload_limit = limit;
+        Task::none()
+    }
+
+    // =========================================================================
+    // Event Settings Handlers
+    // =========================================================================
+
+    /// Handle event type selection in Events tab
+    pub fn handle_event_type_selected(&mut self, event_type: EventType) -> Task<Message> {
+        if let Some(form) = &mut self.settings_form {
+            form.selected_event_type = event_type;
+        }
+        Task::none()
+    }
+
+    /// Handle show notification checkbox toggle for selected event
+    pub fn handle_event_show_notification_toggled(&mut self, enabled: bool) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            self.config
+                .settings
+                .event_settings
+                .get_mut(event_type)
+                .show_notification = enabled;
+        }
+        Task::none()
+    }
+
+    /// Handle notification content level selection for selected event
+    pub fn handle_event_notification_content_selected(
+        &mut self,
+        content: NotificationContent,
+    ) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            self.config
+                .settings
+                .event_settings
+                .get_mut(event_type)
+                .notification_content = content;
+        }
         Task::none()
     }
 }

@@ -620,3 +620,61 @@ transfer-save-serialize-failed = Échec de la sérialisation des transferts : { 
 transfer-save-write-failed = Échec de l'écriture du fichier de transferts : { $error }
 transfer-save-metadata-failed = Échec de la lecture des métadonnées du fichier : { $error }
 transfer-save-permissions-failed = Échec de la définition des permissions du fichier : { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = Événements
+
+# Event type names
+event-broadcast = Diffusion
+event-chat-message = Message de chat
+event-chat-mention = Mention dans le chat
+event-connection-lost = Connexion perdue
+event-news-post = Publication d'actualité
+event-permissions-changed = Permissions modifiées
+event-transfer-complete = Transfert terminé
+event-transfer-failed = Transfert échoué
+event-user-kicked = Expulsé
+event-user-message = Message utilisateur
+
+# Notification content levels
+notification-content-simple = Simple
+notification-content-compact = Compact
+notification-content-detailed = Détaillé
+
+# Event settings labels
+event-settings-event = Événement :
+event-settings-notification = Notification
+event-settings-show-notification = Afficher la notification
+event-settings-content = Contenu :
+settings-notifications-enabled = Activer les notifications
+
+# Notification messages
+notification-user-message = Nouveau message utilisateur
+notification-user-message-from = Message de {$username}
+notification-chat-message = Nouveau message de chat
+notification-chat-message-from = Chat de {$username}
+notification-broadcast = Diffusion du serveur
+notification-broadcast-from = Diffusion de {$username}
+notification-chat-mention = Vous avez été mentionné
+notification-chat-mention-by = Mentionné par {$username}
+notification-connection-lost = Connexion perdue
+notification-connection-lost-from = Déconnecté de {$server}
+notification-news-post = Nouvelle publication d'actualité
+notification-news-post-by = Publication de {$username}
+notification-transfer-complete = Transfert terminé
+notification-download-complete = Téléchargement terminé
+notification-upload-complete = Téléversement terminé
+notification-transfer-failed = Transfert échoué
+notification-download-failed = Téléchargement échoué
+notification-upload-failed = Téléversement échoué
+notification-permissions-changed = Permissions modifiées
+notification-permissions-changed-on = Permissions modifiées sur {$server}
+notification-user-kicked = Vous avez été expulsé
+notification-user-kicked-from = Expulsé de {$server}
+
+# Fallback values
+unknown-server = Serveur inconnu

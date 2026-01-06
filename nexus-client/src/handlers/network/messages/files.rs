@@ -2,7 +2,7 @@
 
 use iced::widget::{Id, scrollable};
 use iced::{Task, widget::operation};
-use nexus_common::FileErrorKind;
+use nexus_common::ErrorKind;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{FileEntry, FileInfoDetails};
 
@@ -372,10 +372,10 @@ impl NexusApp {
             )
         } else {
             // Parse error_kind for type-safe matching
-            let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
+            let kind = error_kind.as_deref().and_then(ErrorKind::parse);
 
             match kind {
-                Some(FileErrorKind::Exists) => {
+                Some(ErrorKind::Exists) => {
                     // Clone clipboard data first to avoid borrow conflicts
                     let pending = conn.files_management.clipboard.as_ref().map(|clipboard| {
                         let viewing_root = conn
@@ -401,7 +401,7 @@ impl NexusApp {
                     }
                     Task::none()
                 }
-                Some(FileErrorKind::NotFound) => {
+                Some(ErrorKind::NotFound) => {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
@@ -475,10 +475,10 @@ impl NexusApp {
             )
         } else {
             // Parse error_kind for type-safe matching
-            let kind = error_kind.as_deref().and_then(FileErrorKind::parse);
+            let kind = error_kind.as_deref().and_then(ErrorKind::parse);
 
             match kind {
-                Some(FileErrorKind::Exists) => {
+                Some(ErrorKind::Exists) => {
                     // Clone clipboard data first to avoid borrow conflicts
                     let pending = conn.files_management.clipboard.as_ref().map(|clipboard| {
                         let viewing_root = conn
@@ -504,7 +504,7 @@ impl NexusApp {
                     }
                     Task::none()
                 }
-                Some(FileErrorKind::NotFound) => {
+                Some(ErrorKind::NotFound) => {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {

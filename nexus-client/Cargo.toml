@@ -41,6 +41,7 @@ image = "0.25"
 ipnet = "2.11"
 uuid = { version = "1.19", features = ["v4", "serde"] }
 hex = "0.4"
+notify-rust = "4.11"
 
 [dev-dependencies]
 tempfile = "3.20"

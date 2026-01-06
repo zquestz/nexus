@@ -2,6 +2,7 @@
 
 use crate::style::{WINDOW_HEIGHT, WINDOW_WIDTH};
 
+use super::events::EventSettings;
 use super::theme::ThemePreference;
 
 // =============================================================================
@@ -134,6 +135,10 @@ pub struct Settings {
     #[serde(default)]
     pub show_hidden_files: bool,
 
+    /// Global toggle for desktop notifications
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
+
     /// User avatar as data URI (e.g., "data:image/png;base64,...")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
@@ -176,6 +181,10 @@ pub struct Settings {
     /// Maximum concurrent uploads per server (0 = unlimited)
     #[serde(default = "default_upload_limit")]
     pub upload_limit: u8,
+
+    /// Event notification settings
+    #[serde(default)]
+    pub event_settings: EventSettings,
 }
 
 impl Default for Settings {
@@ -189,6 +198,7 @@ impl Default for Settings {
             use_24_hour_time: false,
             show_seconds: default_true(),
             show_hidden_files: false,
+            notifications_enabled: default_true(),
             avatar: None,
             nickname: None,
             window_width: default_window_width(),
@@ -199,6 +209,7 @@ impl Default for Settings {
             queue_transfers: default_queue_transfers(),
             download_limit: default_download_limit(),
             upload_limit: default_upload_limit(),
+            event_settings: EventSettings::default(),
         }
     }
 }

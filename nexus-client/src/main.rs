@@ -6,6 +6,7 @@ mod avatar;
 mod commands;
 mod config;
 mod constants;
+mod events;
 mod fonts;
 mod handlers;
 mod i18n;
@@ -54,6 +55,11 @@ pub fn main() -> iced::Result {
             min_size: Some(iced::Size::new(WINDOW_WIDTH_MIN, WINDOW_HEIGHT_MIN)),
             position: window_position,
             exit_on_close_request: false,
+            #[cfg(target_os = "linux")]
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "nexus".to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .font(fonts::SAUCECODE_PRO_MONO)
@@ -130,6 +136,12 @@ struct NexusApp {
     // -------------------------------------------------------------------------
     /// Whether files are currently being dragged over the window
     dragging_files: bool,
+
+    // -------------------------------------------------------------------------
+    // Window State
+    // -------------------------------------------------------------------------
+    /// Whether the application window is currently focused
+    window_focused: bool,
 }
 
 impl Default for NexusApp {
@@ -161,6 +173,8 @@ impl Default for NexusApp {
             transfer_manager,
             // Drag and Drop
             dragging_files: false,
+            // Window State
+            window_focused: true,
         }
     }
 }
@@ -204,6 +218,14 @@ impl NexusApp {
                         y: point.map(|p| p.y as i32),
                     })
                 })
+            }
+            Message::WindowFocused => {
+                self.window_focused = true;
+                Task::none()
+            }
+            Message::WindowUnfocused => {
+                self.window_focused = false;
+                Task::none()
             }
             Message::WindowSaveAndClose {
                 id,
@@ -388,6 +410,17 @@ impl NexusApp {
             Message::ShowSecondsToggled(enabled) => self.handle_show_seconds_toggled(enabled),
             Message::ShowTimestampsToggled(enabled) => self.handle_show_timestamps_toggled(enabled),
             Message::SettingsTabSelected(tab) => self.handle_settings_tab_selected(tab),
+            Message::EventTypeSelected(event_type) => self.handle_event_type_selected(event_type),
+            Message::ToggleNotificationsEnabled(enabled) => {
+                self.config.settings.notifications_enabled = enabled;
+                Task::none()
+            }
+            Message::EventShowNotificationToggled(enabled) => {
+                self.handle_event_show_notification_toggled(enabled)
+            }
+            Message::EventNotificationContentSelected(content) => {
+                self.handle_event_notification_content_selected(content)
+            }
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
             Message::SettingsNicknameChanged(nickname) => {
                 self.handle_settings_nickname_changed(nickname)
@@ -707,6 +740,8 @@ impl NexusApp {
             download_limit: self.config.settings.download_limit,
             upload_limit: self.config.settings.upload_limit,
             show_drop_overlay: self.dragging_files && self.can_accept_file_drop(),
+            event_settings: &self.config.settings.event_settings,
+            notifications_enabled: self.config.settings.notifications_enabled,
         };
 
         let main_view = views::main_layout(config);

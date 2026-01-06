@@ -8,6 +8,7 @@ use nexus_common::framing::MessageId;
 
 use super::form::{FileSortColumn, SettingsTab, TabId};
 use super::{ChatTab, NetworkConnection, ServerMessage};
+use crate::config::events::{EventType, NotificationContent};
 use crate::image::ImagePickerError;
 use crate::transfers::TransferEvent;
 
@@ -192,6 +193,14 @@ pub enum Message {
     ShowTimestampsToggled(bool),
     /// Settings panel: Tab selected
     SettingsTabSelected(SettingsTab),
+    /// Settings panel (Events tab): Event type selected from picker
+    EventTypeSelected(EventType),
+    /// Settings panel (Events tab): Global notifications toggle
+    ToggleNotificationsEnabled(bool),
+    /// Settings panel (Events tab): Show notification checkbox toggled
+    EventShowNotificationToggled(bool),
+    /// Settings panel (Events tab): Notification content level selected
+    EventNotificationContentSelected(NotificationContent),
     /// Toolbar: Toggle Settings panel
     ToggleSettings,
     /// Settings panel: Theme selected from picker
@@ -272,6 +281,10 @@ pub enum Message {
     ValidateUserManagementEdit,
     /// Window: Close requested - query size and position
     WindowCloseRequested(iced::window::Id),
+    /// Window: Gained focus
+    WindowFocused,
+    /// Window: Lost focus
+    WindowUnfocused,
     /// Window: Save settings and close (internal - after querying size and position)
     WindowSaveAndClose {
         id: iced::window::Id,

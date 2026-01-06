@@ -626,3 +626,61 @@ transfer-save-serialize-failed = Не удалось сериализовать 
 transfer-save-write-failed = Не удалось записать файл передач: { $error }
 transfer-save-metadata-failed = Не удалось прочитать метаданные файла: { $error }
 transfer-save-permissions-failed = Не удалось установить права доступа к файлу: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = События
+
+# Event type names
+event-broadcast = Трансляция
+event-chat-message = Сообщение в чате
+event-chat-mention = Упоминание в чате
+event-connection-lost = Соединение потеряно
+event-news-post = Новость
+event-permissions-changed = Права изменены
+event-transfer-complete = Передача завершена
+event-transfer-failed = Передача не удалась
+event-user-kicked = Кик
+event-user-message = Сообщение пользователя
+
+# Notification content levels
+notification-content-simple = Простой
+notification-content-compact = Компактный
+notification-content-detailed = Подробный
+
+# Event settings labels
+event-settings-event = Событие:
+event-settings-notification = Уведомление
+event-settings-show-notification = Показывать уведомление
+event-settings-content = Содержимое:
+settings-notifications-enabled = Включить уведомления
+
+# Notification messages
+notification-user-message = Новое сообщение пользователя
+notification-user-message-from = Сообщение от {$username}
+notification-chat-message = Новое сообщение в чате
+notification-chat-message-from = Чат от {$username}
+notification-broadcast = Трансляция сервера
+notification-broadcast-from = Трансляция от {$username}
+notification-chat-mention = Вас упомянули
+notification-chat-mention-by = Упомянут пользователем {$username}
+notification-connection-lost = Соединение потеряно
+notification-connection-lost-from = Отключено от {$server}
+notification-news-post = Новая новость
+notification-news-post-by = Новость от {$username}
+notification-transfer-complete = Передача завершена
+notification-download-complete = Загрузка завершена
+notification-upload-complete = Выгрузка завершена
+notification-transfer-failed = Передача не удалась
+notification-download-failed = Загрузка не удалась
+notification-upload-failed = Выгрузка не удалась
+notification-permissions-changed = Права изменены
+notification-permissions-changed-on = Права изменены на {$server}
+notification-user-kicked = Вас кикнули
+notification-user-kicked-from = Кик с {$server}
+
+# Fallback values
+unknown-server = Неизвестный сервер

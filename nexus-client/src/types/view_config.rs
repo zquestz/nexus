@@ -6,6 +6,7 @@ use iced::Theme;
 use iced::widget::text_editor;
 use uuid::Uuid;
 
+use crate::config::events::EventSettings;
 use crate::config::settings::ProxySettings;
 use crate::transfers::TransferManager;
 use crate::types::{
@@ -98,6 +99,12 @@ pub struct ViewConfig<'a> {
 
     /// Whether to show the drag-and-drop overlay (files being dragged over window)
     pub show_drop_overlay: bool,
+
+    /// Event notification settings
+    pub event_settings: &'a EventSettings,
+
+    /// Global toggle for desktop notifications
+    pub notifications_enabled: bool,
 }
 
 /// Toolbar state configuration

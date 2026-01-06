@@ -2,6 +2,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::config::events::EventType;
+
 use nexus_common::protocol::{NewsItem, UserInfo};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT};
 
@@ -906,6 +908,8 @@ pub enum SettingsTab {
     Network,
     /// Files settings (download location)
     Files,
+    /// Event notification settings
+    Events,
 }
 
 /// Settings panel form state
@@ -924,6 +928,8 @@ pub struct SettingsFormState {
     pub cached_avatar: Option<CachedImage>,
     /// Default avatar for settings preview when no custom avatar is set
     pub default_avatar: CachedImage,
+    /// Currently selected event type in Events tab
+    pub selected_event_type: EventType,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -937,6 +943,7 @@ impl std::fmt::Debug for SettingsFormState {
                 &self.cached_avatar.as_ref().map(|_| "<cached>"),
             )
             .field("default_avatar", &"<cached>")
+            .field("selected_event_type", &self.selected_event_type)
             .finish()
     }
 }
@@ -1050,6 +1057,7 @@ impl SettingsFormState {
             error: None,
             cached_avatar,
             default_avatar,
+            selected_event_type: EventType::UserMessage,
         }
     }
 }

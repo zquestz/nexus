@@ -598,3 +598,61 @@ transfer-save-serialize-failed = 전송 직렬화 실패: { $error }
 transfer-save-write-failed = 전송 파일 쓰기 실패: { $error }
 transfer-save-metadata-failed = 파일 메타데이터 읽기 실패: { $error }
 transfer-save-permissions-failed = 파일 권한 설정 실패: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = 이벤트
+
+# Event type names
+event-broadcast = 브로드캐스트
+event-chat-message = 채팅 메시지
+event-chat-mention = 채팅 멘션
+event-connection-lost = 연결 끊김
+event-news-post = 뉴스 게시물
+event-permissions-changed = 권한 변경됨
+event-transfer-complete = 전송 완료
+event-transfer-failed = 전송 실패
+event-user-kicked = 추방됨
+event-user-message = 사용자 메시지
+
+# Notification content levels
+notification-content-simple = 간단
+notification-content-compact = 간략
+notification-content-detailed = 상세
+
+# Event settings labels
+event-settings-event = 이벤트:
+event-settings-notification = 알림
+event-settings-show-notification = 알림 표시
+event-settings-content = 내용:
+settings-notifications-enabled = 알림 활성화
+
+# Notification messages
+notification-user-message = 새 사용자 메시지
+notification-user-message-from = {$username}님의 메시지
+notification-chat-message = 새 채팅 메시지
+notification-chat-message-from = {$username}님의 채팅
+notification-broadcast = 서버 브로드캐스트
+notification-broadcast-from = {$username}님의 브로드캐스트
+notification-chat-mention = 멘션되었습니다
+notification-chat-mention-by = {$username}님이 멘션함
+notification-connection-lost = 연결이 끊어졌습니다
+notification-connection-lost-from = {$server}에서 연결이 끊어졌습니다
+notification-news-post = 새 뉴스 게시물
+notification-news-post-by = {$username}님의 뉴스 게시물
+notification-transfer-complete = 전송 완료
+notification-download-complete = 다운로드 완료
+notification-upload-complete = 업로드 완료
+notification-transfer-failed = 전송 실패
+notification-download-failed = 다운로드 실패
+notification-upload-failed = 업로드 실패
+notification-permissions-changed = 권한이 변경되었습니다
+notification-permissions-changed-on = {$server}에서 권한이 변경되었습니다
+notification-user-kicked = 추방되었습니다
+notification-user-kicked-from = {$server}에서 추방되었습니다
+
+# Fallback values
+unknown-server = 알 수 없는 서버

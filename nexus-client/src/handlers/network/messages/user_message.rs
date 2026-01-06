@@ -5,6 +5,8 @@ use iced::Task;
 use nexus_common::framing::MessageId;
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, ChatTab, Message, ResponseRouting};
 
@@ -18,35 +20,59 @@ impl NexusApp {
         to_nickname: String,
         message: String,
     ) -> Task<Message> {
+        // First pass: get info we need for notification (immutable borrow)
+        let notification_info = {
+            let Some(conn) = self.connections.get(&connection_id) else {
+                return Task::none();
+            };
+
+            // Get current user's nickname for comparison
+            let current_nickname = conn
+                .online_users
+                .iter()
+                .find(|u| u.session_ids.contains(&conn.session_id))
+                .map(|u| u.nickname.clone())
+                .unwrap_or_else(|| conn.connection_info.username.clone());
+
+            // Check if this is a message from someone else
+            let should_notify = from_nickname != current_nickname;
+
+            // Determine which user we're chatting with (the other person)
+            let other_user = if from_nickname == current_nickname {
+                to_nickname.clone()
+            } else {
+                from_nickname.clone()
+            };
+
+            // Look up is_shared status
+            let is_shared = conn
+                .online_users
+                .iter()
+                .find(|u| u.nickname == from_nickname)
+                .map(|u| u.is_shared)
+                .unwrap_or(false);
+
+            (should_notify, other_user, is_shared)
+        };
+
+        let (should_notify, other_user, is_shared) = notification_info;
+
+        // Emit notification event (only for messages from others)
+        if should_notify {
+            emit_event(
+                self,
+                EventType::UserMessage,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_username(&from_nickname)
+                    .with_message(&message),
+            );
+        }
+
+        // Second pass: mutate state
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
-
-        // Get current user's nickname for comparison
-        // Use session_id to find our entry (important for shared accounts where
-        // multiple users may have the same username but different nicknames)
-        let current_nickname = conn
-            .online_users
-            .iter()
-            .find(|u| u.session_ids.contains(&conn.session_id))
-            .map(|u| u.nickname.as_str())
-            .unwrap_or(&conn.connection_info.username);
-
-        // Determine which user we're chatting with (the other person)
-        // Compare against nickname since from_nickname is the sender's nickname
-        let other_user = if from_nickname == current_nickname {
-            to_nickname
-        } else {
-            from_nickname.clone()
-        };
-
-        // Look up is_shared status from online_users (from_nickname is display name)
-        let is_shared = conn
-            .online_users
-            .iter()
-            .find(|u| u.nickname == from_nickname)
-            .map(|u| u.is_shared)
-            .unwrap_or(false);
 
         // Add message to PM tab history (creates entry if doesn't exist)
         let chat_msg = ChatMessage::with_timestamp_and_status(

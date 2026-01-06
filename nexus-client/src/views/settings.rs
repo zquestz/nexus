@@ -10,6 +10,7 @@ use iced_aw::TabLabel;
 use iced_aw::Tabs;
 
 use super::chat::TimestampSettings;
+use crate::config::events::{EventSettings, EventType, NotificationContent};
 use crate::config::settings::{CHAT_FONT_SIZES, ProxySettings, default_download_path};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
@@ -50,6 +51,12 @@ pub struct SettingsViewData<'a> {
     pub download_limit: u8,
     /// Maximum concurrent uploads per server (0 = unlimited)
     pub upload_limit: u8,
+    /// Event notification settings
+    pub event_settings: &'a EventSettings,
+    /// Currently selected event type in the Events tab
+    pub selected_event_type: EventType,
+    /// Global toggle for desktop notifications
+    pub notifications_enabled: bool,
 }
 
 // ============================================================================
@@ -101,6 +108,12 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         data.upload_limit,
     );
 
+    let events_content = events_tab_content(
+        data.event_settings,
+        data.selected_event_type,
+        data.notifications_enabled,
+    );
+
     // Create tabs widget with compact styling
     let tabs = Tabs::new(Message::SettingsTabSelected)
         .push(
@@ -122,6 +135,11 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
             SettingsTab::Network,
             TabLabel::Text(t("tab-network")),
             network_content,
+        )
+        .push(
+            SettingsTab::Events,
+            TabLabel::Text(t("settings-tab-events")),
+            events_content,
         )
         .set_active_tab(&active_tab)
         .tab_bar_position(iced_aw::TabBarPosition::Top)
@@ -499,6 +517,88 @@ fn network_tab_content(proxy: &ProxySettings) -> Element<'_, Message> {
             .secure(true)
     };
     items.push(proxy_password_input.into());
+
+    Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .width(Fill)
+        .into()
+}
+
+// ============================================================================
+// Events Tab
+// ============================================================================
+
+/// Build the events tab content
+fn events_tab_content<'a>(
+    event_settings: &'a EventSettings,
+    selected_event_type: EventType,
+    notifications_enabled: bool,
+) -> Element<'a, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    // Space between tab bar and first content
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // Global notifications toggle
+    let notifications_checkbox = checkbox(notifications_enabled)
+        .label(t("settings-notifications-enabled"))
+        .on_toggle(Message::ToggleNotificationsEnabled)
+        .text_size(TEXT_SIZE)
+        .spacing(ELEMENT_SPACING);
+    items.push(notifications_checkbox.into());
+
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // Event type picker
+    items.push(
+        shaped_text(t("event-settings-event"))
+            .size(TEXT_SIZE)
+            .into(),
+    );
+
+    // Get all event types and their translated names for the picker
+    let event_types: Vec<EventType> = EventType::all().to_vec();
+    let event_picker = pick_list(
+        event_types,
+        Some(selected_event_type),
+        Message::EventTypeSelected,
+    )
+    .text_size(TEXT_SIZE)
+    .padding(INPUT_PADDING)
+    .width(Fill);
+    items.push(event_picker.into());
+
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // Get config for selected event
+    let event_config = event_settings.get(selected_event_type);
+
+    // Show notification checkbox - disabled when global notifications are off
+    let show_notification_checkbox = if notifications_enabled {
+        checkbox(event_config.show_notification)
+            .label(t("event-settings-show-notification"))
+            .on_toggle(Message::EventShowNotificationToggled)
+            .text_size(TEXT_SIZE)
+            .spacing(ELEMENT_SPACING)
+    } else {
+        checkbox(event_config.show_notification)
+            .label(t("event-settings-show-notification"))
+            .text_size(TEXT_SIZE)
+            .spacing(ELEMENT_SPACING)
+    };
+    items.push(show_notification_checkbox.into());
+
+    // Content level picker
+    let content_levels: Vec<NotificationContent> = NotificationContent::all().to_vec();
+    let content_picker = pick_list(
+        content_levels,
+        Some(event_config.notification_content),
+        Message::EventNotificationContentSelected,
+    )
+    .text_size(TEXT_SIZE)
+    .padding(INPUT_PADDING)
+    .width(Fill);
+    items.push(content_picker.into());
 
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)

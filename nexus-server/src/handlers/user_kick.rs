@@ -140,7 +140,7 @@ where
         // Send kick message to the user in their locale before disconnecting
         let kick_msg = ServerMessage::Error {
             message: err_kicked_by(&user.locale, &requesting_user_session.username),
-            command: None,
+            command: Some("UserKick".to_string()),
         };
         let _ = user.tx.send((kick_msg, None));
 

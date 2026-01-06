@@ -1,4 +1,4 @@
-//! Machine-readable error kinds for file operations
+//! Machine-readable error kinds for protocol messages
 //!
 //! These error kinds are serialized to strings in protocol messages,
 //! allowing clients to make decisions based on the error type
@@ -41,12 +41,12 @@ pub const ERROR_KIND_CONFLICT: &str = "conflict";
 // Enum
 // =============================================================================
 
-/// Error kinds for file operations
+/// Error kinds for protocol messages
 ///
-/// These are returned in file operation responses to help clients
+/// These are returned in various responses to help clients
 /// decide how to handle the error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileErrorKind {
+pub enum ErrorKind {
     /// Destination file/directory already exists
     ///
     /// Client may offer to retry with `overwrite: true`
@@ -95,7 +95,7 @@ pub enum FileErrorKind {
     Conflict,
 }
 
-impl FileErrorKind {
+impl ErrorKind {
     /// Convert to the string representation used in protocol messages
     #[must_use]
     pub fn as_str(&self) -> &'static str {
@@ -130,14 +130,14 @@ impl FileErrorKind {
     }
 }
 
-impl fmt::Display for FileErrorKind {
+impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl From<FileErrorKind> for String {
-    fn from(kind: FileErrorKind) -> Self {
+impl From<ErrorKind> for String {
+    fn from(kind: ErrorKind) -> Self {
         kind.as_str().to_string()
     }
 }
@@ -148,104 +148,83 @@ mod tests {
 
     #[test]
     fn test_as_str() {
-        assert_eq!(FileErrorKind::Exists.as_str(), "exists");
-        assert_eq!(FileErrorKind::NotFound.as_str(), "not_found");
-        assert_eq!(FileErrorKind::Permission.as_str(), "permission");
-        assert_eq!(FileErrorKind::InvalidPath.as_str(), "invalid_path");
-        assert_eq!(FileErrorKind::Invalid.as_str(), "invalid");
-        assert_eq!(FileErrorKind::IoError.as_str(), "io_error");
-        assert_eq!(FileErrorKind::ProtocolError.as_str(), "protocol_error");
-        assert_eq!(FileErrorKind::HashMismatch.as_str(), "hash_mismatch");
-        assert_eq!(FileErrorKind::Conflict.as_str(), "conflict");
+        assert_eq!(ErrorKind::Exists.as_str(), "exists");
+        assert_eq!(ErrorKind::NotFound.as_str(), "not_found");
+        assert_eq!(ErrorKind::Permission.as_str(), "permission");
+        assert_eq!(ErrorKind::InvalidPath.as_str(), "invalid_path");
+        assert_eq!(ErrorKind::Invalid.as_str(), "invalid");
+        assert_eq!(ErrorKind::IoError.as_str(), "io_error");
+        assert_eq!(ErrorKind::ProtocolError.as_str(), "protocol_error");
+        assert_eq!(ErrorKind::HashMismatch.as_str(), "hash_mismatch");
+        assert_eq!(ErrorKind::Conflict.as_str(), "conflict");
     }
 
     #[test]
     fn test_parse() {
-        assert_eq!(FileErrorKind::parse("exists"), Some(FileErrorKind::Exists));
+        assert_eq!(ErrorKind::parse("exists"), Some(ErrorKind::Exists));
+        assert_eq!(ErrorKind::parse("not_found"), Some(ErrorKind::NotFound));
+        assert_eq!(ErrorKind::parse("permission"), Some(ErrorKind::Permission));
         assert_eq!(
-            FileErrorKind::parse("not_found"),
-            Some(FileErrorKind::NotFound)
+            ErrorKind::parse("invalid_path"),
+            Some(ErrorKind::InvalidPath)
+        );
+        assert_eq!(ErrorKind::parse("invalid"), Some(ErrorKind::Invalid));
+        assert_eq!(ErrorKind::parse("io_error"), Some(ErrorKind::IoError));
+        assert_eq!(
+            ErrorKind::parse("protocol_error"),
+            Some(ErrorKind::ProtocolError)
         );
         assert_eq!(
-            FileErrorKind::parse("permission"),
-            Some(FileErrorKind::Permission)
+            ErrorKind::parse("hash_mismatch"),
+            Some(ErrorKind::HashMismatch)
         );
-        assert_eq!(
-            FileErrorKind::parse("invalid_path"),
-            Some(FileErrorKind::InvalidPath)
-        );
-        assert_eq!(
-            FileErrorKind::parse("invalid"),
-            Some(FileErrorKind::Invalid)
-        );
-        assert_eq!(
-            FileErrorKind::parse("io_error"),
-            Some(FileErrorKind::IoError)
-        );
-        assert_eq!(
-            FileErrorKind::parse("protocol_error"),
-            Some(FileErrorKind::ProtocolError)
-        );
-        assert_eq!(
-            FileErrorKind::parse("hash_mismatch"),
-            Some(FileErrorKind::HashMismatch)
-        );
-        assert_eq!(
-            FileErrorKind::parse("conflict"),
-            Some(FileErrorKind::Conflict)
-        );
-        assert_eq!(FileErrorKind::parse("unknown"), None);
-        assert_eq!(FileErrorKind::parse(""), None);
+        assert_eq!(ErrorKind::parse("conflict"), Some(ErrorKind::Conflict));
+        assert_eq!(ErrorKind::parse("unknown"), None);
+        assert_eq!(ErrorKind::parse(""), None);
     }
 
     #[test]
     fn test_display() {
-        assert_eq!(format!("{}", FileErrorKind::Exists), "exists");
-        assert_eq!(format!("{}", FileErrorKind::NotFound), "not_found");
-        assert_eq!(format!("{}", FileErrorKind::IoError), "io_error");
-        assert_eq!(format!("{}", FileErrorKind::HashMismatch), "hash_mismatch");
+        assert_eq!(format!("{}", ErrorKind::Exists), "exists");
+        assert_eq!(format!("{}", ErrorKind::NotFound), "not_found");
+        assert_eq!(format!("{}", ErrorKind::IoError), "io_error");
+        assert_eq!(format!("{}", ErrorKind::HashMismatch), "hash_mismatch");
     }
 
     #[test]
     fn test_into_string() {
-        let s: String = FileErrorKind::Exists.into();
+        let s: String = ErrorKind::Exists.into();
         assert_eq!(s, "exists");
     }
 
     #[test]
     fn test_roundtrip() {
         for kind in [
-            FileErrorKind::Exists,
-            FileErrorKind::NotFound,
-            FileErrorKind::Permission,
-            FileErrorKind::InvalidPath,
-            FileErrorKind::Invalid,
-            FileErrorKind::IoError,
-            FileErrorKind::ProtocolError,
-            FileErrorKind::HashMismatch,
-            FileErrorKind::Conflict,
+            ErrorKind::Exists,
+            ErrorKind::NotFound,
+            ErrorKind::Permission,
+            ErrorKind::InvalidPath,
+            ErrorKind::Invalid,
+            ErrorKind::IoError,
+            ErrorKind::ProtocolError,
+            ErrorKind::HashMismatch,
+            ErrorKind::Conflict,
         ] {
-            assert_eq!(FileErrorKind::parse(kind.as_str()), Some(kind));
+            assert_eq!(ErrorKind::parse(kind.as_str()), Some(kind));
         }
     }
 
     #[test]
     fn test_constants_match_enum() {
         // Ensure constants are in sync with enum
-        assert_eq!(ERROR_KIND_EXISTS, FileErrorKind::Exists.as_str());
-        assert_eq!(ERROR_KIND_NOT_FOUND, FileErrorKind::NotFound.as_str());
-        assert_eq!(ERROR_KIND_PERMISSION, FileErrorKind::Permission.as_str());
-        assert_eq!(ERROR_KIND_INVALID_PATH, FileErrorKind::InvalidPath.as_str());
-        assert_eq!(ERROR_KIND_INVALID, FileErrorKind::Invalid.as_str());
-        assert_eq!(ERROR_KIND_IO_ERROR, FileErrorKind::IoError.as_str());
-        assert_eq!(
-            ERROR_KIND_PROTOCOL_ERROR,
-            FileErrorKind::ProtocolError.as_str()
-        );
-        assert_eq!(
-            ERROR_KIND_HASH_MISMATCH,
-            FileErrorKind::HashMismatch.as_str()
-        );
-        assert_eq!(ERROR_KIND_CONFLICT, FileErrorKind::Conflict.as_str());
+        assert_eq!(ERROR_KIND_EXISTS, ErrorKind::Exists.as_str());
+        assert_eq!(ERROR_KIND_NOT_FOUND, ErrorKind::NotFound.as_str());
+        assert_eq!(ERROR_KIND_PERMISSION, ErrorKind::Permission.as_str());
+        assert_eq!(ERROR_KIND_INVALID_PATH, ErrorKind::InvalidPath.as_str());
+        assert_eq!(ERROR_KIND_INVALID, ErrorKind::Invalid.as_str());
+        assert_eq!(ERROR_KIND_IO_ERROR, ErrorKind::IoError.as_str());
+        assert_eq!(ERROR_KIND_PROTOCOL_ERROR, ErrorKind::ProtocolError.as_str());
+        assert_eq!(ERROR_KIND_HASH_MISMATCH, ErrorKind::HashMismatch.as_str());
+        assert_eq!(ERROR_KIND_CONFLICT, ErrorKind::Conflict.as_str());
     }
 }

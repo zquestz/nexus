@@ -598,3 +598,61 @@ transfer-save-serialize-failed = 序列化傳輸失敗: { $error }
 transfer-save-write-failed = 寫入傳輸檔案失敗: { $error }
 transfer-save-metadata-failed = 讀取檔案中繼資料失敗: { $error }
 transfer-save-permissions-failed = 設定檔案權限失敗: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = 事件
+
+# Event type names
+event-broadcast = 廣播
+event-chat-message = 聊天訊息
+event-chat-mention = 聊天提及
+event-connection-lost = 連線中斷
+event-news-post = 新聞貼文
+event-permissions-changed = 權限已變更
+event-transfer-complete = 傳輸完成
+event-transfer-failed = 傳輸失敗
+event-user-kicked = 被踢出
+event-user-message = 使用者訊息
+
+# Notification content levels
+notification-content-simple = 簡單
+notification-content-compact = 精簡
+notification-content-detailed = 詳細
+
+# Event settings labels
+event-settings-event = 事件:
+event-settings-notification = 通知
+event-settings-show-notification = 顯示通知
+event-settings-content = 內容:
+settings-notifications-enabled = 啟用通知
+
+# Notification messages
+notification-user-message = 新使用者訊息
+notification-user-message-from = 來自{$username}的訊息
+notification-chat-message = 新聊天訊息
+notification-chat-message-from = 來自{$username}的聊天
+notification-broadcast = 伺服器廣播
+notification-broadcast-from = 來自{$username}的廣播
+notification-chat-mention = 您被提及了
+notification-chat-mention-by = 被{$username}提及
+notification-connection-lost = 連線中斷
+notification-connection-lost-from = 與{$server}的連線已中斷
+notification-news-post = 新的新聞貼文
+notification-news-post-by = {$username}的新聞貼文
+notification-transfer-complete = 傳輸完成
+notification-download-complete = 下載完成
+notification-upload-complete = 上傳完成
+notification-transfer-failed = 傳輸失敗
+notification-download-failed = 下載失敗
+notification-upload-failed = 上傳失敗
+notification-permissions-changed = 權限已變更
+notification-permissions-changed-on = {$server}上的權限已變更
+notification-user-kicked = 您被踢出了
+notification-user-kicked-from = 被踢出{$server}
+
+# Fallback values
+unknown-server = 未知伺服器

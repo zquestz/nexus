@@ -3,6 +3,8 @@
 use iced::Task;
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::types::{ChatMessage, Message};
 
 impl NexusApp {
@@ -17,6 +19,28 @@ impl NexusApp {
         username: String,
         message: String,
     ) -> Task<Message> {
+        // Check if we sent this broadcast (don't notify for our own broadcasts)
+        let is_from_self = self
+            .connections
+            .get(&connection_id)
+            .map(|conn| {
+                conn.connection_info
+                    .username
+                    .eq_ignore_ascii_case(&username)
+            })
+            .unwrap_or(false);
+
+        if !is_from_self {
+            emit_event(
+                self,
+                EventType::Broadcast,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_username(&username)
+                    .with_message(&message),
+            );
+        }
+
         // username == nickname for broadcasters (shared accounts can't broadcast)
         self.add_chat_message(connection_id, ChatMessage::broadcast(username, message))
     }

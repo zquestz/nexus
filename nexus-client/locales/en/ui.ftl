@@ -629,3 +629,61 @@ transfer-save-serialize-failed = Failed to serialize transfers: { $error }
 transfer-save-write-failed = Failed to write transfers file: { $error }
 transfer-save-metadata-failed = Failed to read file metadata: { $error }
 transfer-save-permissions-failed = Failed to set file permissions: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = Events
+
+# Event type names
+event-broadcast = Broadcast
+event-chat-message = Chat message
+event-chat-mention = Chat mention
+event-connection-lost = Connection lost
+event-news-post = News post
+event-permissions-changed = Permissions changed
+event-transfer-complete = Transfer complete
+event-transfer-failed = Transfer failed
+event-user-kicked = Kicked
+event-user-message = User message
+
+# Notification content levels
+notification-content-simple = Simple
+notification-content-compact = Compact
+notification-content-detailed = Detailed
+
+# Event settings labels
+event-settings-event = Event:
+event-settings-notification = Notification
+event-settings-show-notification = Show notification
+event-settings-content = Content:
+settings-notifications-enabled = Enable Notifications
+
+# Notification messages
+notification-user-message = New user message
+notification-user-message-from = Message from {$username}
+notification-chat-message = New chat message
+notification-chat-message-from = Chat from {$username}
+notification-broadcast = Server broadcast
+notification-broadcast-from = Broadcast from {$username}
+notification-chat-mention = You were mentioned
+notification-chat-mention-by = Mentioned by {$username}
+notification-connection-lost = Connection lost
+notification-connection-lost-from = Disconnected from {$server}
+notification-news-post = New news post
+notification-news-post-by = News post by {$username}
+notification-transfer-complete = Transfer complete
+notification-download-complete = Download complete
+notification-upload-complete = Upload complete
+notification-transfer-failed = Transfer failed
+notification-download-failed = Download failed
+notification-upload-failed = Upload failed
+notification-permissions-changed = Permissions changed
+notification-permissions-changed-on = Permissions changed on {$server}
+notification-user-kicked = You were kicked
+notification-user-kicked-from = Kicked from {$server}
+
+# Fallback values
+unknown-server = Unknown server

@@ -6,6 +6,8 @@ use nexus_common::protocol::ClientMessage;
 use uuid::Uuid;
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
@@ -127,6 +129,44 @@ impl NexusApp {
 
     /// Handle network error or connection closure
     pub fn handle_network_error(&mut self, connection_id: usize, error: String) -> Task<Message> {
+        // Get server name and pending kick message before removing connection
+        let (server_name, pending_kick) = self
+            .connections
+            .get(&connection_id)
+            .map(|c| {
+                (
+                    c.connection_info.server_name.clone(),
+                    c.pending_kick_message.clone(),
+                )
+            })
+            .unwrap_or((String::new(), None));
+
+        // Emit UserKicked if we received a kick error, otherwise ConnectionLost
+        if let Some(kick_message) = pending_kick {
+            emit_event(
+                self,
+                EventType::UserKicked,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_server_name(&server_name)
+                    .with_message(&kick_message),
+            );
+        } else {
+            let display_name = if server_name.is_empty() {
+                t("unknown-server")
+            } else {
+                server_name.clone()
+            };
+            emit_event(
+                self,
+                EventType::ConnectionLost,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_server_name(&display_name)
+                    .with_message(&error),
+            );
+        }
+
         if let Some(conn) = self.connections.remove(&connection_id) {
             // Clean up receiver and signal shutdown in a single spawn
             let registry = crate::network::NETWORK_RECEIVERS.clone();

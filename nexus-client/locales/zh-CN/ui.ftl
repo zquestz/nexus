@@ -598,3 +598,61 @@ transfer-save-serialize-failed = 序列化传输失败: { $error }
 transfer-save-write-failed = 写入传输文件失败: { $error }
 transfer-save-metadata-failed = 读取文件元数据失败: { $error }
 transfer-save-permissions-failed = 设置文件权限失败: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = 事件
+
+# Event type names
+event-broadcast = 广播
+event-chat-message = 聊天消息
+event-chat-mention = 聊天提及
+event-connection-lost = 连接断开
+event-news-post = 新闻帖子
+event-permissions-changed = 权限已更改
+event-transfer-complete = 传输完成
+event-transfer-failed = 传输失败
+event-user-kicked = 被踢出
+event-user-message = 用户消息
+
+# Notification content levels
+notification-content-simple = 简单
+notification-content-compact = 紧凑
+notification-content-detailed = 详细
+
+# Event settings labels
+event-settings-event = 事件:
+event-settings-notification = 通知
+event-settings-show-notification = 显示通知
+event-settings-content = 内容:
+settings-notifications-enabled = 启用通知
+
+# Notification messages
+notification-user-message = 新用户消息
+notification-user-message-from = 来自{$username}的消息
+notification-chat-message = 新聊天消息
+notification-chat-message-from = 来自{$username}的聊天
+notification-broadcast = 服务器广播
+notification-broadcast-from = 来自{$username}的广播
+notification-chat-mention = 您被提及了
+notification-chat-mention-by = 被{$username}提及
+notification-connection-lost = 连接断开
+notification-connection-lost-from = 与{$server}的连接已断开
+notification-news-post = 新的新闻帖子
+notification-news-post-by = {$username}的新闻帖子
+notification-transfer-complete = 传输完成
+notification-download-complete = 下载完成
+notification-upload-complete = 上传完成
+notification-transfer-failed = 传输失败
+notification-download-failed = 下载失败
+notification-upload-failed = 上传失败
+notification-permissions-changed = 权限已更改
+notification-permissions-changed-on = {$server}上的权限已更改
+notification-user-kicked = 您被踢出了
+notification-user-kicked-from = 被踢出{$server}
+
+# Fallback values
+unknown-server = 未知服务器

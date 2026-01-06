@@ -5,6 +5,7 @@
 //! - `bookmarks` - Server bookmarks for quick connect
 
 mod bookmarks;
+pub mod events;
 mod persistence;
 pub mod settings;
 pub mod theme;

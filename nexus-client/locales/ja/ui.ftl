@@ -596,5 +596,63 @@ transfer-save-no-config-dir = 設定ディレクトリを特定できません�
 transfer-save-create-dir-failed = 設定ディレクトリの作成に失敗しました: { $error }
 transfer-save-serialize-failed = 転送のシリアライズに失敗しました: { $error }
 transfer-save-write-failed = 転送ファイルの書き込みに失敗しました: { $error }
-transfer-save-metadata-failed = ファイルメタデータの読み取りに失敗しました: { $error }
-transfer-save-permissions-failed = ファイル権限の設定に失敗しました: { $error }
+transfer-save-metadata-failed = ファイルのメタデータの読み取りに失敗しました: { $error }
+transfer-save-permissions-failed = ファイルの権限の設定に失敗しました: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = イベント
+
+# Event type names
+event-broadcast = ブロードキャスト
+event-chat-message = チャットメッセージ
+event-chat-mention = チャットでのメンション
+event-connection-lost = 接続が切断されました
+event-news-post = ニュース投稿
+event-permissions-changed = 権限が変更されました
+event-transfer-complete = 転送完了
+event-transfer-failed = 転送失敗
+event-user-kicked = キックされました
+event-user-message = ユーザーメッセージ
+
+# Notification content levels
+notification-content-simple = シンプル
+notification-content-compact = コンパクト
+notification-content-detailed = 詳細
+
+# Event settings labels
+event-settings-event = イベント:
+event-settings-notification = 通知
+event-settings-show-notification = 通知を表示
+event-settings-content = 内容:
+settings-notifications-enabled = 通知を有効にする
+
+# Notification messages
+notification-user-message = 新しいユーザーメッセージ
+notification-user-message-from = {$username}からのメッセージ
+notification-chat-message = 新しいチャットメッセージ
+notification-chat-message-from = {$username}からのチャット
+notification-broadcast = サーバーブロードキャスト
+notification-broadcast-from = {$username}からのブロードキャスト
+notification-chat-mention = メンションされました
+notification-chat-mention-by = {$username}からのメンション
+notification-connection-lost = 接続が切断されました
+notification-connection-lost-from = {$server}から切断されました
+notification-news-post = 新しいニュース投稿
+notification-news-post-by = {$username}のニュース投稿
+notification-transfer-complete = 転送完了
+notification-download-complete = ダウンロード完了
+notification-upload-complete = アップロード完了
+notification-transfer-failed = 転送失敗
+notification-download-failed = ダウンロード失敗
+notification-upload-failed = アップロード失敗
+notification-permissions-changed = 権限が変更されました
+notification-permissions-changed-on = {$server}で権限が変更されました
+notification-user-kicked = キックされました
+notification-user-kicked-from = {$server}からキックされました
+
+# Fallback values
+unknown-server = 不明なサーバー

@@ -4,6 +4,8 @@ use iced::Task;
 use nexus_common::protocol::{ChatInfo, ClientMessage, ServerInfo};
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
@@ -20,6 +22,23 @@ impl NexusApp {
         server_info: Option<ServerInfo>,
         chat_info: Option<ChatInfo>,
     ) -> Task<Message> {
+        // Get server name before mutable borrow for notification
+        let server_name = self
+            .connections
+            .get(&connection_id)
+            .map(|c| c.connection_info.server_name.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| t("unknown-server"));
+
+        // Emit permissions changed notification
+        emit_event(
+            self,
+            EventType::PermissionsChanged,
+            EventContext::new()
+                .with_connection_id(connection_id)
+                .with_server_name(&server_name),
+        );
+
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };

@@ -4,6 +4,8 @@ use iced::Task;
 use uuid::Uuid;
 
 use crate::NexusApp;
+use crate::config::events::EventType;
+use crate::events::{EventContext, emit_event};
 use crate::i18n::t;
 use crate::transfers::{TransferDirection, TransferEvent, TransferStatus, request_cancel};
 use crate::types::{ActivePanel, Message};
@@ -52,11 +54,32 @@ impl NexusApp {
             }
 
             TransferEvent::Completed { id } => {
+                // Get transfer info before marking complete for notification
+                let transfer_info = self
+                    .transfer_manager
+                    .get(id)
+                    .map(|t| (t.direction, t.remote_path.clone()));
+
                 // Check if we should refresh the file list before marking complete
                 let should_refresh = self.should_refresh_after_upload(id);
 
                 self.transfer_manager.complete(id);
                 self.save_transfers();
+
+                // Emit transfer complete notification
+                if let Some((direction, path)) = transfer_info {
+                    let direction_str = match direction {
+                        TransferDirection::Download => "download",
+                        TransferDirection::Upload => "upload",
+                    };
+                    emit_event(
+                        self,
+                        EventType::TransferComplete,
+                        EventContext::new()
+                            .with_message(direction_str)
+                            .with_username(&path), // Using username field for path
+                    );
+                }
 
                 // Refresh file list if upload completed to current directory
                 if should_refresh {
@@ -69,8 +92,30 @@ impl NexusApp {
                 error,
                 error_kind,
             } => {
-                self.transfer_manager.fail(id, error, error_kind);
+                // Get transfer info before marking failed for notification
+                let transfer_info = self
+                    .transfer_manager
+                    .get(id)
+                    .map(|t| (t.direction, t.remote_path.clone()));
+
+                self.transfer_manager.fail(id, error.clone(), error_kind);
                 self.save_transfers();
+
+                // Emit transfer failed notification
+                if let Some((direction, path)) = transfer_info {
+                    let direction_str = match direction {
+                        TransferDirection::Download => "download",
+                        TransferDirection::Upload => "upload",
+                    };
+                    emit_event(
+                        self,
+                        EventType::TransferFailed,
+                        EventContext::new()
+                            .with_message(direction_str)
+                            .with_username(&path) // Using username field for path
+                            .with_server_name(&error), // Using server_name field for error
+                    );
+                }
             }
 
             TransferEvent::Paused { id } => {

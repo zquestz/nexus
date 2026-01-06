@@ -14,9 +14,15 @@ use crate::types::{
 impl NexusApp {
     /// Handle keyboard and window events (Tab, Enter, Escape, F5, file drag-and-drop)
     pub fn handle_keyboard_event(&mut self, event: Event) -> Task<Message> {
-        // Handle window events (file drag-and-drop)
+        // Handle window events (focus, file drag-and-drop)
         if let Event::Window(window_event) = &event {
             match window_event {
+                window::Event::Focused => {
+                    return self.update(Message::WindowFocused);
+                }
+                window::Event::Unfocused => {
+                    return self.update(Message::WindowUnfocused);
+                }
                 window::Event::FileHovered(_) => {
                     return self.update(Message::FileDragHovered);
                 }

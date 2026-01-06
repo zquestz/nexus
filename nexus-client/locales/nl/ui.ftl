@@ -617,6 +617,64 @@ transfer-task-failed = Overdrachtstaak mislukt: { $error }
 transfer-save-no-config-dir = Kon configuratiemap niet bepalen
 transfer-save-create-dir-failed = Kon configuratiemap niet aanmaken: { $error }
 transfer-save-serialize-failed = Kon overdrachten niet serialiseren: { $error }
-transfer-save-write-failed = Kon overdrachtsbestand niet schrijven: { $error }
-transfer-save-metadata-failed = Kon bestandsmetadata niet lezen: { $error }
-transfer-save-permissions-failed = Kon bestandsrechten niet instellen: { $error }
+transfer-save-write-failed = Kan overdrachtsbestand niet schrijven: { $error }
+transfer-save-metadata-failed = Kan bestandsmetadata niet lezen: { $error }
+transfer-save-permissions-failed = Kan bestandsrechten niet instellen: { $error }
+
+# =============================================================================
+# Events / Notifications
+# =============================================================================
+
+# Settings tab
+settings-tab-events = Gebeurtenissen
+
+# Event type names
+event-broadcast = Uitzending
+event-chat-message = Chatbericht
+event-chat-mention = Chatvermelding
+event-connection-lost = Verbinding verbroken
+event-news-post = Nieuwsbericht
+event-permissions-changed = Rechten gewijzigd
+event-transfer-complete = Overdracht voltooid
+event-transfer-failed = Overdracht mislukt
+event-user-kicked = Verwijderd
+event-user-message = Gebruikersbericht
+
+# Notification content levels
+notification-content-simple = Eenvoudig
+notification-content-compact = Compact
+notification-content-detailed = Gedetailleerd
+
+# Event settings labels
+event-settings-event = Gebeurtenis:
+event-settings-notification = Melding
+event-settings-show-notification = Melding tonen
+event-settings-content = Inhoud:
+settings-notifications-enabled = Meldingen inschakelen
+
+# Notification messages
+notification-user-message = Nieuw gebruikersbericht
+notification-user-message-from = Bericht van {$username}
+notification-chat-message = Nieuw chatbericht
+notification-chat-message-from = Chat van {$username}
+notification-broadcast = Serveruitzending
+notification-broadcast-from = Uitzending van {$username}
+notification-chat-mention = Je bent vermeld
+notification-chat-mention-by = Vermeld door {$username}
+notification-connection-lost = Verbinding verbroken
+notification-connection-lost-from = Verbinding met {$server} verbroken
+notification-news-post = Nieuw nieuwsbericht
+notification-news-post-by = Nieuwsbericht van {$username}
+notification-transfer-complete = Overdracht voltooid
+notification-download-complete = Download voltooid
+notification-upload-complete = Upload voltooid
+notification-transfer-failed = Overdracht mislukt
+notification-download-failed = Download mislukt
+notification-upload-failed = Upload mislukt
+notification-permissions-changed = Rechten gewijzigd
+notification-permissions-changed-on = Rechten gewijzigd op {$server}
+notification-user-kicked = Je bent verwijderd
+notification-user-kicked-from = Verwijderd van {$server}
+
+# Fallback values
+unknown-server = Onbekende server

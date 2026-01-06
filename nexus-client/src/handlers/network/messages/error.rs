@@ -9,6 +9,7 @@ use crate::types::{ActivePanel, ChatMessage, Message, UserManagementMode};
 const CMD_USER_EDIT: &str = "UserEdit";
 const CMD_USER_UPDATE: &str = "UserUpdate";
 const CMD_SERVER_INFO_UPDATE: &str = "ServerInfoUpdate";
+const CMD_USER_KICK: &str = "UserKick";
 
 impl NexusApp {
     /// Handle error message from server
@@ -36,6 +37,13 @@ impl NexusApp {
                 edit_state.error = Some(message);
                 return Task::none();
             }
+        }
+
+        // Check if this is a kick notification - store for use on disconnect
+        if command.as_deref() == Some(CMD_USER_KICK)
+            && let Some(conn) = self.connections.get_mut(&connection_id)
+        {
+            conn.pending_kick_message = Some(message.clone());
         }
 
         // For other errors (including UserDelete), show in chat

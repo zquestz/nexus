@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::FileErrorKind;
+use nexus_common::ErrorKind;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 
@@ -64,7 +64,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_file_not_found(ctx.locale)),
-            error_kind: Some(FileErrorKind::NotFound.into()),
+            error_kind: Some(ErrorKind::NotFound.into()),
         };
         return ctx.send_message(&response).await;
     };
@@ -78,7 +78,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(FileErrorKind::Permission.into()),
+            error_kind: Some(ErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -92,7 +92,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(FileErrorKind::Permission.into()),
+            error_kind: Some(ErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -106,7 +106,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(FileErrorKind::Permission.into()),
+            error_kind: Some(ErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -124,7 +124,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(error_msg),
-            error_kind: Some(FileErrorKind::InvalidPath.into()),
+            error_kind: Some(ErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -142,7 +142,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(error_msg),
-            error_kind: Some(FileErrorKind::InvalidPath.into()),
+            error_kind: Some(ErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -160,7 +160,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(FileErrorKind::NotFound.into()),
+                error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -179,7 +179,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(FileErrorKind::NotFound.into()),
+                error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -193,7 +193,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(FileErrorKind::InvalidPath.into()),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -207,7 +207,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(FileErrorKind::InvalidPath.into()),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -230,7 +230,7 @@ where
                     let response = ServerMessage::FileMoveResponse {
                         success: false,
                         error: Some(err_file_not_found(ctx.locale)),
-                        error_kind: Some(FileErrorKind::NotFound.into()),
+                        error_kind: Some(ErrorKind::NotFound.into()),
                     };
                     return ctx.send_message(&response).await;
                 }
@@ -240,7 +240,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(FileErrorKind::NotFound.into()),
+                error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -248,7 +248,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(FileErrorKind::InvalidPath.into()),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -259,7 +259,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(FileErrorKind::Permission.into()),
+            error_kind: Some(ErrorKind::Permission.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -271,7 +271,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(FileErrorKind::NotFound.into()),
+                error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -282,7 +282,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_destination_not_directory(ctx.locale)),
-            error_kind: Some(FileErrorKind::InvalidPath.into()),
+            error_kind: Some(ErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -294,7 +294,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(FileErrorKind::InvalidPath.into()),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -308,7 +308,7 @@ where
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_cannot_move_into_itself(ctx.locale)),
-            error_kind: Some(FileErrorKind::InvalidPath.into()),
+            error_kind: Some(ErrorKind::InvalidPath.into()),
         };
         return ctx.send_message(&response).await;
     }
@@ -329,7 +329,7 @@ where
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_destination_exists(ctx.locale)),
-                error_kind: Some(FileErrorKind::Exists.into()),
+                error_kind: Some(ErrorKind::Exists.into()),
             };
             return ctx.send_message(&response).await;
         }
@@ -445,7 +445,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
+                assert_eq!(error_kind, Some(ErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -582,7 +582,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::NotFound.into()));
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -629,7 +629,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::Exists.into()));
+                assert_eq!(error_kind, Some(ErrorKind::Exists.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -736,7 +736,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
+                assert_eq!(error_kind, Some(ErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -782,7 +782,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
+                assert_eq!(error_kind, Some(ErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -829,7 +829,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
+                assert_eq!(error_kind, Some(ErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -876,7 +876,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
+                assert_eq!(error_kind, Some(ErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1155,7 +1155,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::Permission.into()));
+                assert_eq!(error_kind, Some(ErrorKind::Permission.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1201,7 +1201,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::InvalidPath.into()));
+                assert_eq!(error_kind, Some(ErrorKind::InvalidPath.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }
@@ -1301,7 +1301,7 @@ mod tests {
                 ..
             } => {
                 assert!(!success);
-                assert_eq!(error_kind, Some(FileErrorKind::NotFound.into()));
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
             }
             _ => panic!("Expected FileMoveResponse"),
         }

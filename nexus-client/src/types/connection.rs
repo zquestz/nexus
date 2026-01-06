@@ -236,6 +236,8 @@ pub struct ServerConnection {
     pub tab_completion: Option<TabCompletionState>,
     /// Files management panel state
     pub files_management: FilesManagementState,
+    /// Pending kick message (set when we receive a kick error, used on disconnect)
+    pub pending_kick_message: Option<String>,
 }
 
 impl ServerConnection {
@@ -317,6 +319,7 @@ impl ServerConnection {
             news_markdown_cache: HashMap::new(),
             tab_completion: None,
             files_management: FilesManagementState::default(),
+            pending_kick_message: None,
         }
     }
 }
