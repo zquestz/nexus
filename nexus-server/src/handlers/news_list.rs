@@ -161,7 +161,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_news_list_returns_items_oldest_first() {
+    async fn test_news_list_returns_items_newest_first() {
         let mut test_ctx = create_test_context().await;
 
         // Login as user with NewsList permission
@@ -217,10 +217,10 @@ mod tests {
                 assert!(error.is_none());
                 let items = items.unwrap();
                 assert_eq!(items.len(), 3);
-                // Should be ordered oldest first
-                assert_eq!(items[0].body, Some("First post".to_string()));
+                // Should be ordered newest first
+                assert_eq!(items[0].body, Some("Third post".to_string()));
                 assert_eq!(items[1].body, Some("Second post".to_string()));
-                assert_eq!(items[2].body, Some("Third post".to_string()));
+                assert_eq!(items[2].body, Some("First post".to_string()));
             }
             _ => panic!("Expected NewsListResponse"),
         }
@@ -303,13 +303,13 @@ mod tests {
                 let items = items.unwrap();
                 assert_eq!(items.len(), 2);
 
-                // First post from admin
-                assert_eq!(items[0].author, "admin");
-                assert!(items[0].author_is_admin);
+                // Newest first: User post was created second, so it's first
+                assert_eq!(items[0].author, "user");
+                assert!(!items[0].author_is_admin);
 
-                // Second post from user
-                assert_eq!(items[1].author, "user");
-                assert!(!items[1].author_is_admin);
+                // Admin post was created first, so it's second
+                assert_eq!(items[1].author, "admin");
+                assert!(items[1].author_is_admin);
             }
             _ => panic!("Expected NewsListResponse"),
         }

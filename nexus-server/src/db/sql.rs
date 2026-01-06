@@ -244,14 +244,14 @@ pub const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
 // News Query Operations
 // ========================================================================
 
-/// Select all news items ordered by creation time (oldest first)
+/// Select all news items ordered by creation time (newest first)
 ///
 /// **Parameters:** None
 ///
 /// **Returns:** Multiple rows of `(id, body, image, author_id, author_username, author_is_admin, created_at, updated_at)`
 ///
 /// **Note:** Joins with users table to get author information.
-/// Results are sorted by created_at ascending (oldest first).
+/// Results are sorted by created_at descending (newest first).
 pub const SQL_SELECT_ALL_NEWS: &str = "
     SELECT 
         n.id,
@@ -264,7 +264,7 @@ pub const SQL_SELECT_ALL_NEWS: &str = "
         n.updated_at
     FROM news n
     JOIN users u ON n.author_id = u.id
-    ORDER BY n.created_at ASC";
+    ORDER BY n.created_at DESC";
 
 /// Select a single news item by ID
 ///

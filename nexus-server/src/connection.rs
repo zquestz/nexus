@@ -11,7 +11,10 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{read_client_message_with_timeout, send_server_message_with_id};
+use nexus_common::io::{
+    read_client_message_with_full_timeout, read_client_message_with_timeout,
+    send_server_message_with_id,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::connection_tracker::ConnectionTracker;
@@ -94,9 +97,22 @@ where
     // Main loop - handle both incoming messages and outgoing events
     // Uses tokio::select! to handle both reading from client and sending to client concurrently
     loop {
+        // Choose read function based on authentication state:
+        // - Before login: use full timeout (30s idle + 60s frame) to prevent resource exhaustion
+        // - After login: allow idle connections (only 60s frame timeout once data arrives)
+        let is_authenticated = conn_state.session_id.is_some();
+
         tokio::select! {
-            // Handle incoming client messages (with 60s timeout for DoS protection)
-            result = read_client_message_with_timeout(&mut frame_reader) => {
+            // Handle incoming client messages
+            result = async {
+                if is_authenticated {
+                    // Authenticated users can idle indefinitely
+                    read_client_message_with_timeout(&mut frame_reader).await
+                } else {
+                    // Unauthenticated connections must send data within 30 seconds
+                    read_client_message_with_full_timeout(&mut frame_reader, None, None).await
+                }
+            } => {
                 match result {
                     Ok(Some(received)) => {
                         // Handle the message
@@ -135,7 +151,7 @@ where
                         // Only log in debug mode to reduce noise
                         let is_common_error = matches!(
                             e,
-                            FrameError::InvalidMagic | FrameError::FrameTimeout
+                            FrameError::InvalidMagic | FrameError::FrameTimeout | FrameError::IdleTimeout
                         );
 
                         if !is_common_error || debug {

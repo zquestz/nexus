@@ -57,7 +57,7 @@ impl NewsDb {
         Self { pool }
     }
 
-    /// Get all news items ordered by creation time (oldest first)
+    /// Get all news items ordered by creation time (newest first)
     pub async fn get_all_news(&self) -> Result<Vec<NewsRecord>, sqlx::Error> {
         let rows: Vec<NewsRow> = sqlx::query_as(sql::SQL_SELECT_ALL_NEWS)
             .fetch_all(&self.pool)
@@ -256,10 +256,10 @@ mod tests {
         let all_news = news_db.get_all_news().await.unwrap();
 
         assert_eq!(all_news.len(), 3);
-        // Should be ordered oldest first
-        assert_eq!(all_news[0].id, news1.id);
+        // Should be ordered newest first
+        assert_eq!(all_news[0].id, news3.id);
         assert_eq!(all_news[1].id, news2.id);
-        assert_eq!(all_news[2].id, news3.id);
+        assert_eq!(all_news[2].id, news1.id);
     }
 
     #[tokio::test]
