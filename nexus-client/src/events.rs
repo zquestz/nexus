@@ -3,7 +3,9 @@
 //! This module handles emitting desktop notifications for various events
 //! based on user configuration.
 
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::sync::Mutex;
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::time::{Duration, Instant};
 
 use notify_rust::Notification;
