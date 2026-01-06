@@ -2,9 +2,18 @@
 //!
 //! This module provides shared utilities for file manipulation operations
 //! including path relationship checks and recursive operations.
+//!
+//! ## Async vs Sync Operations
+//!
+//! File operations like recursive copy and remove can be slow for large directories.
+//! To avoid blocking the async runtime, use the `_async` variants which run the
+//! blocking operations on a dedicated thread pool via `spawn_blocking`.
+//!
+//! - `copy_path_recursive` / `copy_path_recursive_async`
+//! - `remove_path` / `remove_path_async`
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Check if `child` path is a subpath of (starts with) `parent` path
 ///
@@ -30,7 +39,7 @@ pub fn is_subpath(child: &Path, parent: &Path) -> bool {
     child.starts_with(parent)
 }
 
-/// Remove a path (file, symlink, or directory)
+/// Remove a path (file, symlink, or directory) - synchronous version
 ///
 /// Handles different path types appropriately:
 /// - Files and symlinks: removed with `remove_file`
@@ -49,6 +58,11 @@ pub fn is_subpath(child: &Path, parent: &Path) -> bool {
 /// - The path doesn't exist
 /// - Permission is denied
 /// - The path is a directory and contains files that can't be removed
+///
+/// # Note
+///
+/// This is a synchronous function. For use in async contexts, prefer
+/// `remove_path_async` to avoid blocking the runtime.
 pub fn remove_path(path: &Path) -> io::Result<()> {
     let meta = std::fs::symlink_metadata(path)?;
     if meta.is_dir() && !meta.file_type().is_symlink() {
@@ -58,7 +72,21 @@ pub fn remove_path(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Recursively copy a path (file, symlink, or directory)
+/// Remove a path (file, symlink, or directory) - async version
+///
+/// Runs the removal on a blocking thread pool to avoid blocking the async runtime.
+/// This is the preferred version for use in async handlers, especially for
+/// directories that may contain many files.
+///
+/// See `remove_path` for detailed documentation.
+pub async fn remove_path_async(path: &Path) -> io::Result<()> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || remove_path(&path))
+        .await
+        .map_err(|e| io::Error::other(format!("remove task failed: {e}")))?
+}
+
+/// Recursively copy a path (file, symlink, or directory) - synchronous version
 ///
 /// Handles different path types:
 /// - Files: copied with `std::fs::copy`
@@ -82,6 +110,9 @@ pub fn remove_path(path: &Path) -> io::Result<()> {
 ///
 /// On failure during directory copy, partial results may be left behind.
 /// The caller is responsible for cleanup if needed.
+///
+/// This is a synchronous function. For use in async contexts, prefer
+/// `copy_path_recursive_async` to avoid blocking the runtime.
 pub fn copy_path_recursive(source: &Path, target: &Path) -> io::Result<()> {
     let meta = std::fs::symlink_metadata(source)?;
 
@@ -94,6 +125,46 @@ pub fn copy_path_recursive(source: &Path, target: &Path) -> io::Result<()> {
         std::fs::copy(source, target)?;
     }
     Ok(())
+}
+
+/// Recursively copy a path (file, symlink, or directory) - async version
+///
+/// Runs the copy on a blocking thread pool to avoid blocking the async runtime.
+/// This is the preferred version for use in async handlers, especially for
+/// directories that may contain many files or large files.
+///
+/// See `copy_path_recursive` for detailed documentation.
+pub async fn copy_path_recursive_async(source: &Path, target: &Path) -> io::Result<()> {
+    let source = source.to_path_buf();
+    let target = target.to_path_buf();
+    tokio::task::spawn_blocking(move || copy_path_recursive(&source, &target))
+        .await
+        .map_err(|e| io::Error::other(format!("copy task failed: {e}")))?
+}
+
+/// Rename/move a path - async version
+///
+/// Runs the rename on a blocking thread pool to avoid blocking the async runtime.
+/// While `rename` is typically fast (atomic operation), it can still block briefly
+/// on some filesystems or when crossing mount points fails.
+///
+/// # Arguments
+///
+/// * `source` - The source path to move from
+/// * `target` - The target path to move to
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The source doesn't exist
+/// - Permission is denied
+/// - Cross-filesystem move (use copy+delete instead)
+pub async fn rename_path_async(source: &Path, target: &Path) -> io::Result<()> {
+    let source = source.to_path_buf();
+    let target = target.to_path_buf();
+    tokio::task::spawn_blocking(move || std::fs::rename(&source, &target))
+        .await
+        .map_err(|e| io::Error::other(format!("rename task failed: {e}")))?
 }
 
 /// Copy a symlink without following it
@@ -306,5 +377,92 @@ mod tests {
         let result = copy_path_recursive(&missing, &target);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+    }
+
+    // Async tests
+
+    #[tokio::test]
+    async fn test_remove_path_async_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "content").unwrap();
+
+        assert!(file_path.exists());
+        remove_path_async(&file_path).await.unwrap();
+        assert!(!file_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_remove_path_async_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().join("subdir");
+        fs::create_dir(&dir_path).unwrap();
+        fs::write(dir_path.join("file.txt"), "content").unwrap();
+
+        assert!(dir_path.exists());
+        remove_path_async(&dir_path).await.unwrap();
+        assert!(!dir_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_path_recursive_async_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "content").unwrap();
+        copy_path_recursive_async(&source, &target).await.unwrap();
+
+        assert!(source.exists());
+        assert!(target.exists());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "content");
+    }
+
+    #[tokio::test]
+    async fn test_copy_path_recursive_async_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let target_dir = temp_dir.path().join("target");
+
+        fs::create_dir(&source_dir).unwrap();
+        fs::write(source_dir.join("file1.txt"), "content1").unwrap();
+        fs::create_dir(source_dir.join("subdir")).unwrap();
+        fs::write(source_dir.join("subdir/file2.txt"), "content2").unwrap();
+
+        copy_path_recursive_async(&source_dir, &target_dir)
+            .await
+            .unwrap();
+
+        assert!(source_dir.exists());
+        assert!(target_dir.exists());
+        assert_eq!(
+            fs::read_to_string(target_dir.join("file1.txt")).unwrap(),
+            "content1"
+        );
+        assert!(target_dir.join("subdir").is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_rename_path_async() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "content").unwrap();
+        rename_path_async(&source, &target).await.unwrap();
+
+        assert!(!source.exists());
+        assert!(target.exists());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "content");
+    }
+
+    #[tokio::test]
+    async fn test_rename_path_async_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let missing = temp_dir.path().join("missing.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        let result = rename_path_async(&missing, &target).await;
+        assert!(result.is_err());
     }
 }

@@ -616,6 +616,7 @@ transfer-error-certificate-mismatch = Отпечаток сертификата 
 transfer-error-auth-failed = Ошибка аутентификации
 transfer-error-exists = Файл уже существует с другим содержимым
 transfer-error-conflict = Выполняется другая загрузка
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = Неизвестная ошибка
 transfer-cancelled = Отменено пользователем
 transfer-task-failed = Ошибка задачи передачи: { $error }

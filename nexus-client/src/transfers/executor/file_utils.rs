@@ -2,16 +2,29 @@
 //!
 //! Provides helpers for checking local files, generating unique paths,
 //! computing SHA-256 hashes, scanning directories, and validating paths.
+//!
+//! Hash computation uses the high-performance module from nexus-common,
+//! which uses hardware acceleration and supports keepalive callbacks for
+//! large files.
 
 use std::path::{Path, PathBuf};
+
+/// Fallback file name for keepalive messages when path has no file name
+const FALLBACK_FILE_NAME: &str = "file";
+
+/// Fallback file name for keepalive messages when .part path has no file name
+const FALLBACK_PART_FILE_NAME: &str = "file.part";
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use sha2::{Digest, Sha256};
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader, SeekFrom};
+use tokio::io::{AsyncSeekExt, SeekFrom};
 
-use super::{BUFFER_SIZE, PART_SUFFIX, TransferError};
+use nexus_common::framing::FrameWriter;
+use nexus_common::io::send_client_message;
+use nexus_common::protocol::ClientMessage;
+
+use super::{PART_SUFFIX, TransferError};
 
 // =============================================================================
 // Local File Info (for uploads)
@@ -22,27 +35,50 @@ use super::{BUFFER_SIZE, PART_SUFFIX, TransferError};
 pub struct LocalFileInfo {
     /// Relative path (e.g., "subdir/file.txt")
     pub relative_path: String,
+    /// Absolute path on local filesystem (for reading during upload)
+    pub absolute_path: std::path::PathBuf,
     /// File size in bytes
     pub size: u64,
-    /// SHA-256 hash of complete file
-    pub sha256: String,
 }
 
 /// Check for existing local file (complete or .part)
 ///
-/// Returns (size, Option<sha256_hash>)
-pub async fn check_local_file(complete_path: &Path, part_path: &Path) -> (u64, Option<String>) {
+/// Sends FileHashing keepalive messages to the server while computing hashes
+/// for large local files to prevent server timeout.
+///
+/// Supports cancellation via the optional `cancel_flag`. If the flag is set to true
+/// during hash computation, returns `Err(TransferError::Cancelled)`.
+///
+/// Returns `Ok((size, Option<sha256_hash>))` on success, or `Err` on failure/cancellation.
+pub async fn check_local_file_with_keepalive<W>(
+    complete_path: &Path,
+    part_path: &Path,
+    writer: &mut FrameWriter<W>,
+    cancel_flag: &Option<Arc<AtomicBool>>,
+) -> Result<(u64, Option<String>), TransferError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
     // First check for complete file
     if let Ok(metadata) = tokio::fs::metadata(complete_path).await
         && metadata.is_file()
     {
         let size = metadata.len();
-        if size > 0
-            && let Ok(hash) = compute_file_sha256(complete_path).await
-        {
-            return (size, Some(hash));
+        if size > 0 {
+            let file_name = complete_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(FALLBACK_FILE_NAME)
+                .to_string();
+            match compute_file_sha256_with_keepalive(complete_path, file_name, writer, cancel_flag)
+                .await
+            {
+                Ok(hash) => return Ok((size, Some(hash))),
+                Err(TransferError::Cancelled) => return Err(TransferError::Cancelled),
+                Err(_) => return Ok((size, None)), // Other errors: proceed without hash
+            }
         }
-        return (size, None);
+        return Ok((size, None));
     }
 
     // Check for .part file
@@ -50,15 +86,24 @@ pub async fn check_local_file(complete_path: &Path, part_path: &Path) -> (u64, O
         && metadata.is_file()
     {
         let size = metadata.len();
-        if size > 0
-            && let Ok(hash) = compute_file_sha256(part_path).await
-        {
-            return (size, Some(hash));
+        if size > 0 {
+            let file_name = part_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(FALLBACK_PART_FILE_NAME)
+                .to_string();
+            match compute_file_sha256_with_keepalive(part_path, file_name, writer, cancel_flag)
+                .await
+            {
+                Ok(hash) => return Ok((size, Some(hash))),
+                Err(TransferError::Cancelled) => return Err(TransferError::Cancelled),
+                Err(_) => return Ok((size, None)), // Other errors: proceed without hash
+            }
         }
-        return (size, None);
+        return Ok((size, None));
     }
 
-    (0, None)
+    Ok((0, None))
 }
 
 /// Generate a unique file path by appending (1), (2), etc.
@@ -73,7 +118,7 @@ pub async fn generate_unique_path(original: &Path) -> Result<PathBuf, TransferEr
     let stem = original
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("file");
+        .unwrap_or(FALLBACK_FILE_NAME);
     let extension = original.extension().and_then(|s| s.to_str());
     let parent = original.parent();
 
@@ -105,65 +150,107 @@ pub async fn generate_unique_path(original: &Path) -> Result<PathBuf, TransferEr
 }
 
 /// Compute SHA-256 hash of a file
+///
+/// Uses hardware acceleration and runs on a blocking thread pool.
 pub async fn compute_file_sha256(path: &Path) -> Result<String, TransferError> {
-    let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
-
-    let mut reader = BufReader::new(file);
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; BUFFER_SIZE];
-
-    loop {
-        let bytes_read = reader
-            .read(&mut buffer)
-            .await
-            .map_err(|_| TransferError::IoError)?;
-
-        if bytes_read == 0 {
-            break;
-        }
-
-        hasher.update(&buffer[..bytes_read]);
-    }
-
-    let hash = hasher.finalize();
-    Ok(hex::encode(hash))
+    nexus_common::hash::compute_sha256(path)
+        .await
+        .map_err(|_| TransferError::IoError)
 }
 
-/// Compute SHA-256 hash of the first N bytes of a file
+/// Compute SHA-256 hash of a file, sending FileHashing keepalives periodically
 ///
-/// Used for resume verification - the server sends the hash of its partial file,
-/// and we verify by hashing the same number of bytes from our local file.
-pub async fn compute_partial_sha256(path: &Path, byte_count: u64) -> Result<String, TransferError> {
-    if byte_count == 0 {
-        // Hash of empty input
-        let hasher = Sha256::new();
-        return Ok(hex::encode(hasher.finalize()));
-    }
+/// This prevents server timeouts when hashing large files. Keepalives are sent
+/// periodically during hashing (see `KEEPALIVE_INTERVAL` in nexus-common).
+///
+/// Supports cancellation via the optional `cancel_flag`. If cancelled, returns
+/// `TransferError::IoError`.
+pub async fn compute_file_sha256_with_keepalive<W>(
+    path: &Path,
+    file_name: String,
+    writer: &mut FrameWriter<W>,
+    cancel_flag: &Option<Arc<AtomicBool>>,
+) -> Result<String, TransferError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let (handle, keepalive_rx) =
+        nexus_common::hash::compute_sha256_with_keepalive(path, file_name, cancel_flag.clone())
+            .await;
+    poll_hash_with_keepalives(handle, keepalive_rx, writer).await
+}
 
-    let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
-    let mut reader = BufReader::new(file);
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; BUFFER_SIZE];
-    let mut remaining = byte_count;
+/// Compute SHA-256 hash of the first N bytes of a file, sending FileHashing keepalives periodically
+///
+/// This prevents server timeouts when hashing large partial files for resume verification.
+/// Keepalives are sent periodically during hashing (see `KEEPALIVE_INTERVAL` in nexus-common).
+///
+/// Supports cancellation via the optional `cancel_flag`. If cancelled, returns
+/// `TransferError::IoError`.
+pub async fn compute_partial_sha256_with_keepalive<W>(
+    path: &Path,
+    byte_count: u64,
+    file_name: String,
+    writer: &mut FrameWriter<W>,
+    cancel_flag: &Option<Arc<AtomicBool>>,
+) -> Result<String, TransferError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let (handle, keepalive_rx) = nexus_common::hash::compute_partial_sha256_with_keepalive(
+        path,
+        byte_count,
+        file_name,
+        cancel_flag.clone(),
+    )
+    .await;
+    poll_hash_with_keepalives(handle, keepalive_rx, writer).await
+}
 
-    while remaining > 0 {
-        let to_read = (remaining as usize).min(buffer.len());
-        let bytes_read = reader
-            .read(&mut buffer[..to_read])
-            .await
-            .map_err(|_| TransferError::IoError)?;
+/// Poll a hash computation task while sending keepalive messages to the server
+///
+/// This is the common implementation for both full and partial hash computation.
+/// Sends `ClientMessage::FileHashing` keepalives when notified by the hash task.
+///
+/// If the hash computation is cancelled (via cancel_flag), returns `TransferError::Cancelled`.
+async fn poll_hash_with_keepalives<W>(
+    handle: tokio::task::JoinHandle<std::io::Result<String>>,
+    mut keepalive_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+    writer: &mut FrameWriter<W>,
+) -> Result<String, TransferError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    // Use tokio::pin! to allow polling the handle multiple times
+    tokio::pin!(handle);
 
-        if bytes_read == 0 {
-            // File is shorter than expected
-            break;
+    // Poll for keepalive notifications while waiting for hash to complete
+    loop {
+        tokio::select! {
+            biased;
+            // Send keepalive when notified
+            Some(file) = keepalive_rx.recv() => {
+                let msg = ClientMessage::FileHashing { file };
+                if let Err(e) = send_client_message(writer, &msg).await {
+                    eprintln!("[HASH] Failed to send keepalive: {:?}", e);
+                    // Continue anyway - hash might complete before timeout
+                }
+            }
+            // Check if hash task is done
+            result = &mut handle => {
+                return result
+                    .map_err(|_| TransferError::IoError)?
+                    .map_err(|e| {
+                        // Check if the error was due to cancellation
+                        if e.kind() == std::io::ErrorKind::Interrupted {
+                            TransferError::Cancelled
+                        } else {
+                            TransferError::IoError
+                        }
+                    });
+            }
         }
-
-        hasher.update(&buffer[..bytes_read]);
-        remaining -= bytes_read as u64;
     }
-
-    let hash = hasher.finalize();
-    Ok(hex::encode(hash))
 }
 
 // =============================================================================
@@ -192,7 +279,6 @@ pub async fn scan_local_files(
             return Err(TransferError::Invalid);
         }
 
-        let sha256 = compute_file_sha256(local_path).await?;
         let filename = local_path
             .file_name()
             .and_then(|s| s.to_str())
@@ -201,8 +287,8 @@ pub async fn scan_local_files(
 
         Ok(vec![LocalFileInfo {
             relative_path: filename,
+            absolute_path: local_path.to_path_buf(),
             size: metadata.len(),
-            sha256,
         }])
     }
 }
@@ -248,15 +334,14 @@ fn scan_directory<'a>(
                 // Normalize path separators to forward slashes (for cross-platform compatibility)
                 let relative_path = relative_path.replace('\\', "/");
 
-                let sha256 = compute_file_sha256(&path).await?;
-
                 files.push(LocalFileInfo {
                     relative_path,
+                    absolute_path: path,
                     size: metadata.len(),
-                    sha256,
                 });
             }
-            // Skip symlinks and other file types
+            // Skip special file types (sockets, pipes, etc.)
+            // Note: symlinks are followed automatically by metadata()
         }
 
         Ok(files)
@@ -341,6 +426,7 @@ pub fn is_safe_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncReadExt;
 
     #[test]
     fn test_is_safe_path_valid() {
@@ -406,63 +492,6 @@ mod tests {
         assert!(!is_safe_path("foo/./bar"));
         assert!(!is_safe_path("dir/./subdir/file.txt"));
         assert!(!is_safe_path("."));
-    }
-
-    #[tokio::test]
-    async fn test_compute_partial_sha256_empty() {
-        // Hash of zero bytes should be hash of empty string
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = temp_dir.path().join("test.txt");
-        tokio::fs::write(&file_path, "hello world")
-            .await
-            .expect("write file");
-
-        let hash = compute_partial_sha256(&file_path, 0)
-            .await
-            .expect("compute hash");
-        // SHA-256 of empty string
-        assert_eq!(
-            hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_compute_partial_sha256_partial() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = temp_dir.path().join("test.txt");
-        tokio::fs::write(&file_path, "hello world")
-            .await
-            .expect("write file");
-
-        // Hash of first 5 bytes ("hello")
-        let hash = compute_partial_sha256(&file_path, 5)
-            .await
-            .expect("compute hash");
-        // SHA-256 of "hello"
-        assert_eq!(
-            hash,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_compute_partial_sha256_full() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = temp_dir.path().join("test.txt");
-        let content = "hello world";
-        tokio::fs::write(&file_path, content)
-            .await
-            .expect("write file");
-
-        // Hash of full file should match compute_file_sha256
-        let partial_hash = compute_partial_sha256(&file_path, content.len() as u64)
-            .await
-            .expect("compute partial hash");
-        let full_hash = compute_file_sha256(&file_path)
-            .await
-            .expect("compute full hash");
-        assert_eq!(partial_hash, full_hash);
     }
 
     #[tokio::test]

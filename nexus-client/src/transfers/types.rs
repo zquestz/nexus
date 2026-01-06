@@ -103,6 +103,8 @@ pub enum TransferError {
     Exists,
     /// Concurrent upload in progress (upload)
     Conflict,
+    /// Transfer was cancelled by user (e.g., during hash computation)
+    Cancelled,
     /// Unknown error
     Unknown,
 }
@@ -138,6 +140,7 @@ impl TransferError {
             TransferError::AuthenticationFailed => "transfer-error-auth-failed",
             TransferError::Exists => "transfer-error-exists",
             TransferError::Conflict => "transfer-error-conflict",
+            TransferError::Cancelled => "transfer-error-cancelled",
             TransferError::Unknown => "transfer-error-unknown",
         }
     }

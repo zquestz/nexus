@@ -1,13 +1,10 @@
 //! FileInfo message handler - Returns detailed information about a file or directory
 
 use std::io;
-use std::io::Read;
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
 use tokio::io::AsyncWrite;
 
-use nexus_common::HASH_BUFFER_SIZE;
 use nexus_common::protocol::{FileInfoDetails, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
@@ -18,17 +15,51 @@ use super::{
 use crate::db::Permission;
 use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
 
-/// Detect MIME type from file content using magic bytes
+/// Count items in a directory (non-recursive) - async version
 ///
-/// Falls back to extension-based detection if magic bytes don't match
-fn detect_mime_type(path: &Path) -> Option<String> {
+/// Runs on a blocking thread pool to avoid blocking the async runtime
+/// for directories with many entries.
+async fn count_directory_items_async(path: &Path) -> Option<u64> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let entries = std::fs::read_dir(&path).ok()?;
+        Some(entries.count() as u64)
+    })
+    .await
+    .ok()?
+}
+
+/// Compute SHA-256 hash of a file - async version
+///
+/// Uses the centralized hash module from nexus-common which runs on a
+/// blocking thread pool to avoid blocking the async runtime for large files.
+async fn compute_sha256_async(path: &Path) -> Option<String> {
+    nexus_common::hash::compute_sha256(path).await.ok()
+}
+
+/// Detect MIME type from file content - async version
+///
+/// Runs on a blocking thread pool since it reads file content.
+async fn detect_mime_type_async(path: &Path) -> Option<String> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || detect_mime_type_sync(&path))
+        .await
+        .ok()?
+}
+
+/// Synchronous MIME type detection (called from spawn_blocking)
+fn detect_mime_type_sync(path: &Path) -> Option<String> {
     // Try magic byte detection first
     if let Some(kind) = infer::get_from_path(path).ok().flatten() {
         return Some(kind.mime_type().to_string());
     }
 
-    // Fall back to extension-based detection for text files and others
-    // that infer doesn't detect well
+    // Fall back to extension-based detection
+    detect_mime_from_extension(path)
+}
+
+/// Detect MIME type from file extension only (no I/O)
+fn detect_mime_from_extension(path: &Path) -> Option<String> {
     let extension = path.extension()?.to_str()?.to_lowercase();
     let mime = match extension.as_str() {
         // Text files
@@ -78,30 +109,6 @@ fn detect_mime_type(path: &Path) -> Option<String> {
     };
 
     Some(mime.to_string())
-}
-
-/// Count items in a directory (non-recursive)
-fn count_directory_items(path: &Path) -> Option<u64> {
-    let entries = std::fs::read_dir(path).ok()?;
-    Some(entries.count() as u64)
-}
-
-/// Compute SHA-256 hash of a file
-fn compute_sha256(path: &Path) -> Option<String> {
-    let mut file = std::fs::File::open(path).ok()?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; HASH_BUFFER_SIZE];
-
-    loop {
-        let bytes_read = file.read(&mut buffer).ok()?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-    }
-
-    let result = hasher.finalize();
-    Some(hex::encode(result))
 }
 
 /// Handle a file info request
@@ -288,25 +295,25 @@ where
         .unwrap_or("")
         .to_string();
 
-    // MIME type (only for files)
+    // MIME type (only for files) - async to avoid blocking on magic byte detection
     let mime_type = if is_directory {
         None
     } else {
-        detect_mime_type(&resolved)
+        detect_mime_type_async(&resolved).await
     };
 
-    // Item count (only for directories)
+    // Item count (only for directories) - async for large directories
     let item_count = if is_directory {
-        count_directory_items(&resolved)
+        count_directory_items_async(&resolved).await
     } else {
         None
     };
 
-    // SHA-256 hash (only for files)
+    // SHA-256 hash (only for files) - async for large files
     let sha256 = if is_directory {
         None
     } else {
-        compute_sha256(&resolved)
+        compute_sha256_async(&resolved).await
     };
 
     let info = FileInfoDetails {

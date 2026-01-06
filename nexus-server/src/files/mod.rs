@@ -24,7 +24,10 @@ pub mod path;
 
 pub use area::resolve_user_area;
 pub use folder_type::{FolderType, parse_folder_type};
-pub use operations::{copy_path_recursive, is_subpath, remove_path};
+pub use operations::{
+    copy_path_recursive, copy_path_recursive_async, is_subpath, remove_path, remove_path_async,
+    rename_path_async,
+};
 pub use path::{
     FileError, allows_upload, build_and_validate_candidate_path, build_candidate_path,
     normalize_client_path, resolve_new_path, resolve_path,

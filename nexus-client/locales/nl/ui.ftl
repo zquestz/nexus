@@ -610,6 +610,7 @@ transfer-error-certificate-mismatch = Certificaatvingerafdruk komt niet overeen
 transfer-error-auth-failed = Authenticatie mislukt
 transfer-error-exists = Bestand bestaat al met andere inhoud
 transfer-error-conflict = Een andere upload is bezig
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = Onbekende fout
 transfer-cancelled = Geannuleerd door gebruiker
 transfer-task-failed = Overdrachtstaak mislukt: { $error }

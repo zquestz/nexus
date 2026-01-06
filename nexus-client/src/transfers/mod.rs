@@ -16,5 +16,5 @@ mod types;
 
 pub use executor::TransferEvent;
 pub use persistence::TransferManager;
-pub use subscription::{request_cancel, transfer_subscription};
+pub use subscription::{request_cancel, transfer_subscription, update_registry_fingerprint};
 pub use types::{Transfer, TransferDirection, TransferStatus};

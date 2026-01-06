@@ -157,6 +157,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileStartResponse", 135); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
     m.insert("FileData", 0); // unlimited - streaming binary data
     m.insert("TransferComplete", 2200); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileHashing", 4200); // file name (4096) + overhead - keepalive during hash computation
 
     m
 });
@@ -236,10 +237,10 @@ mod tests {
         // also add the limit here.
         //
         // Note: Some type names are shared between client and server enums
-        // (UserMessage, FileStart, FileStartResponse, FileData), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 32; // Added 6 News + 7 File + 5 Transfer client messages
-        const SERVER_MESSAGE_COUNT: usize = 43; // Added 7 News + 8 File + 6 Transfer server messages
-        const SHARED_MESSAGE_COUNT: usize = 4; // UserMessage, FileStart, FileStartResponse, FileData
+        // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
+        const CLIENT_MESSAGE_COUNT: usize = 33; // Added 6 News + 7 File + 6 Transfer client messages (including FileHashing)
+        const SERVER_MESSAGE_COUNT: usize = 44; // Added 7 News + 8 File + 7 Transfer server messages (including FileHashing)
+        const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
 
@@ -910,5 +911,34 @@ mod tests {
     fn test_limit_file_data_unlimited() {
         // FileData has unlimited payload (streaming binary)
         assert_eq!(max_payload_for_type("FileData"), 0);
+    }
+
+    #[test]
+    fn test_limit_file_hashing() {
+        // FileHashing keepalive message (used during large file hash computation)
+        // Test with ClientMessage variant
+        let client_msg = ClientMessage::FileHashing {
+            file: str_of_len(4096),
+        };
+        let client_size = json_size(&client_msg);
+        let limit = max_payload_for_type("FileHashing") as usize;
+        assert!(
+            client_size <= limit,
+            "ClientMessage::FileHashing size {} exceeds limit {}",
+            client_size,
+            limit
+        );
+
+        // Test with ServerMessage variant
+        let server_msg = ServerMessage::FileHashing {
+            file: str_of_len(4096),
+        };
+        let server_size = json_size(&server_msg);
+        assert!(
+            server_size <= limit,
+            "ServerMessage::FileHashing size {} exceeds limit {}",
+            server_size,
+            limit
+        );
     }
 }

@@ -23,13 +23,19 @@ use crate::handlers::{
     err_upload_protocol_error, err_upload_write_failed,
 };
 
-use super::hash::compute_file_sha256;
+use super::hash::{compute_file_sha256, compute_file_sha256_with_keepalive};
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
     send_upload_transfer_error, validate_transfer_path,
 };
 use super::types::{ReceiveFileParams, TransferContext, UploadParams};
+
+/// Fallback file name for keepalive messages when path has no file name
+const FALLBACK_FILE_NAME: &str = "file";
+
+/// Fallback file name for keepalive messages when .part path has no file name
+const FALLBACK_PART_FILE_NAME: &str = "file.part";
 
 // =============================================================================
 // Main Handler
@@ -180,7 +186,9 @@ where
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
 
     // Check for conflicts and get existing file state
+    // Sends FileHashing keepalives to client while hashing large existing files
     let (existing_size, existing_hash) = check_upload_conflicts_and_get_state(
+        frame_writer,
         &target_path,
         &part_path,
         file_size,
@@ -403,20 +411,36 @@ fn validate_and_build_upload_paths(
 // =============================================================================
 
 /// Check for conflicts with existing files and get current state for resume
-async fn check_upload_conflicts_and_get_state(
+/// Check for upload conflicts and get existing file state
+///
+/// Sends FileHashing keepalive messages to the client while hashing large
+/// existing files to prevent client timeout.
+async fn check_upload_conflicts_and_get_state<W>(
+    frame_writer: &mut FrameWriter<W>,
     target_path: &Path,
     part_path: &Path,
     file_size: u64,
     client_sha256: &str,
     locale: &str,
-) -> Result<(u64, Option<String>), TransferError> {
+) -> Result<(u64, Option<String>), TransferError>
+where
+    W: AsyncWriteExt + Unpin,
+{
     // Check if complete file already exists (no .part)
     if target_path.exists() && !part_path.exists() {
         let existing_metadata = tokio::fs::metadata(target_path).await.ok();
         let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
 
         let same_content = if existing_len == file_size && file_size > 0 {
-            if let Ok(existing_hash) = compute_file_sha256(target_path).await {
+            // Use keepalive version for large files - client is waiting for FileStartResponse
+            let file_name = target_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(FALLBACK_FILE_NAME)
+                .to_string();
+            if let Ok(existing_hash) =
+                compute_file_sha256_with_keepalive(target_path, file_name, frame_writer).await
+            {
                 existing_hash == client_sha256
             } else {
                 false
@@ -437,7 +461,13 @@ async fn check_upload_conflicts_and_get_state(
 
     // Check for existing .part file for resume
     let (existing_size, existing_hash) = if part_path.exists() {
-        match compute_file_sha256(part_path).await {
+        // Use keepalive version for large files - client is waiting for FileStartResponse
+        let file_name = part_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(FALLBACK_PART_FILE_NAME)
+            .to_string();
+        match compute_file_sha256_with_keepalive(part_path, file_name, frame_writer).await {
             Ok(hash) => {
                 let metadata = tokio::fs::metadata(part_path)
                     .await
@@ -494,23 +524,34 @@ async fn read_client_file_start<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-        Ok(Some(msg)) => msg,
-        Ok(None) => {
-            return Err(TransferError::io_error(err_upload_connection_lost(locale)));
-        }
-        Err(_) => {
-            return Err(TransferError::protocol_error(err_upload_protocol_error(
-                locale,
-            )));
-        }
-    };
+    // Loop to skip any FileHashing keepalive messages
+    loop {
+        let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+            }
+            Err(_) => {
+                return Err(TransferError::protocol_error(err_upload_protocol_error(
+                    locale,
+                )));
+            }
+        };
 
-    match received.message {
-        ClientMessage::FileStart { path, size, sha256 } => Ok((path, size, sha256)),
-        _ => Err(TransferError::protocol_error(err_upload_protocol_error(
-            locale,
-        ))),
+        match received.message {
+            ClientMessage::FileStart { path, size, sha256 } => {
+                return Ok((path, size, sha256));
+            }
+            ClientMessage::FileHashing { .. } => {
+                // Keepalive message - ignore and continue waiting for FileStart
+                continue;
+            }
+            _ => {
+                return Err(TransferError::protocol_error(err_upload_protocol_error(
+                    locale,
+                )));
+            }
+        }
     }
 }
 
@@ -707,6 +748,11 @@ mod tests {
     use tokio::fs;
 
     const TEST_LOCALE: &str = "en";
+
+    /// Create a mock writer for tests that discards all output
+    fn mock_writer() -> FrameWriter<Vec<u8>> {
+        FrameWriter::new(Vec::new())
+    }
 
     // =========================================================================
     // validate_and_build_upload_paths tests
@@ -956,12 +1002,19 @@ mod tests {
     #[tokio::test]
     async fn test_conflicts_no_existing_files() {
         let temp_dir = TempDir::new().unwrap();
-        let target = temp_dir.path().join("new_file.txt");
-        let part = temp_dir.path().join("new_file.txt.part");
+        let target = temp_dir.path().join("newfile.txt");
+        let part = temp_dir.path().join("newfile.txt.part");
+        let mut writer = mock_writer();
 
-        let result =
-            check_upload_conflicts_and_get_state(&target, &part, 100, "somehash", TEST_LOCALE)
-                .await;
+        let result = check_upload_conflicts_and_get_state(
+            &mut writer,
+            &target,
+            &part,
+            100,
+            "somehash",
+            TEST_LOCALE,
+        )
+        .await;
 
         assert!(result.is_ok());
         let (size, hash) = result.unwrap();
@@ -974,12 +1027,20 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let target = temp_dir.path().join("existing.txt");
         let part = temp_dir.path().join("existing.txt.part");
+        let mut writer = mock_writer();
 
         // Create an empty file (same content as empty upload)
         fs::write(&target, &[]).await.unwrap();
 
-        let result =
-            check_upload_conflicts_and_get_state(&target, &part, 0, "anyhash", TEST_LOCALE).await;
+        let result = check_upload_conflicts_and_get_state(
+            &mut writer,
+            &target,
+            &part,
+            0,
+            "anyhash",
+            TEST_LOCALE,
+        )
+        .await;
 
         // Empty file uploading empty file = same content, should succeed
         assert!(result.is_ok());
@@ -990,13 +1051,21 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let target = temp_dir.path().join("existing.txt");
         let part = temp_dir.path().join("existing.txt.part");
+        let mut writer = mock_writer();
 
         // Create an existing file with content
         fs::write(&target, b"existing content").await.unwrap();
 
         // Try to upload different content (different size)
-        let result =
-            check_upload_conflicts_and_get_state(&target, &part, 100, "newhash", TEST_LOCALE).await;
+        let result = check_upload_conflicts_and_get_state(
+            &mut writer,
+            &target,
+            &part,
+            100,
+            "newhash",
+            TEST_LOCALE,
+        )
+        .await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1008,13 +1077,20 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let target = temp_dir.path().join("uploading.txt");
         let part = temp_dir.path().join("uploading.txt.part");
+        let mut writer = mock_writer();
 
         // Create a .part file with some content
         fs::write(&part, b"partial data").await.unwrap();
 
-        let result =
-            check_upload_conflicts_and_get_state(&target, &part, 1000, "somehash", TEST_LOCALE)
-                .await;
+        let result = check_upload_conflicts_and_get_state(
+            &mut writer,
+            &target,
+            &part,
+            1000,
+            "somehash",
+            TEST_LOCALE,
+        )
+        .await;
 
         assert!(result.is_ok());
         let (size, hash) = result.unwrap();

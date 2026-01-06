@@ -34,6 +34,9 @@ pub enum StreamError {
 }
 
 /// Read a server message with timeout
+///
+/// Automatically skips FileHashing keepalive messages and continues waiting
+/// for the next message.
 pub async fn read_message_with_timeout<R>(
     reader: &mut FrameReader<R>,
     idle_timeout: Duration,
@@ -41,13 +44,22 @@ pub async fn read_message_with_timeout<R>(
 where
     R: tokio::io::AsyncBufRead + Unpin,
 {
-    let result = timeout(idle_timeout, read_server_message(reader)).await;
+    // Loop to skip any FileHashing keepalive messages
+    loop {
+        let result = timeout(idle_timeout, read_server_message(reader)).await;
 
-    match result {
-        Ok(Ok(Some(received))) => Ok(received.message),
-        Ok(Ok(None)) => Err(TransferError::ConnectionError),
-        Ok(Err(_)) => Err(TransferError::ProtocolError),
-        Err(_) => Err(TransferError::ConnectionError),
+        match result {
+            Ok(Ok(Some(received))) => {
+                // Skip FileHashing keepalives
+                if matches!(received.message, ServerMessage::FileHashing { .. }) {
+                    continue;
+                }
+                return Ok(received.message);
+            }
+            Ok(Ok(None)) => return Err(TransferError::ConnectionError),
+            Ok(Err(_)) => return Err(TransferError::ProtocolError),
+            Err(_) => return Err(TransferError::ConnectionError),
+        }
     }
 }
 

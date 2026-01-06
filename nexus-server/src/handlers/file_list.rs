@@ -1,6 +1,7 @@
 //! FileList message handler - Returns directory listing for file area
 
 use std::io;
+use std::path::Path;
 
 use tokio::io::AsyncWrite;
 
@@ -19,6 +20,98 @@ use crate::files::{
     FolderType, allows_upload, build_and_validate_candidate_path, parse_folder_type, resolve_path,
     resolve_user_area,
 };
+
+/// Read directory entries synchronously (called from spawn_blocking)
+///
+/// Returns None if the directory cannot be read, Some(entries) otherwise.
+/// Entries are sorted with directories first, then by name.
+fn read_directory_entries(
+    resolved: &Path,
+    area_root: &Path,
+    show_hidden: bool,
+) -> Option<Vec<FileEntry>> {
+    let read_dir = std::fs::read_dir(resolved).ok()?;
+
+    let mut entries = Vec::new();
+
+    for entry_result in read_dir {
+        let Ok(entry) = entry_result else {
+            continue;
+        };
+
+        // Use path().metadata() to follow symlinks (entry.metadata() doesn't follow them)
+        let Ok(metadata) = entry.path().metadata() else {
+            continue;
+        };
+
+        let file_name = entry.file_name();
+        let Some(name_str) = file_name.to_str() else {
+            continue; // Skip non-UTF8 filenames
+        };
+
+        // Skip hidden files (dotfiles) unless show_hidden is true
+        if !show_hidden && name_str.starts_with('.') {
+            continue;
+        }
+
+        let is_dir = metadata.is_dir();
+
+        // Parse folder type for directories
+        let folder_type = if is_dir {
+            Some(parse_folder_type(name_str))
+        } else {
+            None
+        };
+
+        // Check if uploads are allowed at this path
+        let entry_path = resolved.join(&file_name);
+        let can_upload = if is_dir {
+            allows_upload(area_root, &entry_path)
+        } else {
+            false
+        };
+
+        // Get file size (0 for directories)
+        let size = if is_dir { 0 } else { metadata.len() };
+
+        // Get modified time
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        // Convert folder type to string
+        let dir_type = folder_type.map(|ft| match ft {
+            FolderType::Default => "default".to_string(),
+            FolderType::Upload => "upload".to_string(),
+            FolderType::DropBox => "dropbox".to_string(),
+            FolderType::UserDropBox(owner) => format!("dropbox:{}", owner),
+        });
+
+        entries.push(FileEntry {
+            name: name_str.to_owned(),
+            size,
+            modified,
+            dir_type,
+            can_upload,
+        });
+    }
+
+    // Sort entries: directories first, then by name
+    entries.sort_by(|a, b| {
+        let a_is_dir = a.dir_type.is_some();
+        let b_is_dir = b.dir_type.is_some();
+        match (a_is_dir, b_is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    Some(entries)
+}
 
 /// Handle a file list request
 pub async fn handle_file_list<W>(
@@ -216,10 +309,18 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Read directory entries
-    let read_dir = match std::fs::read_dir(&resolved) {
-        Ok(rd) => rd,
-        Err(_) => {
+    // Read directory entries on a blocking thread to avoid blocking async runtime
+    // for directories with many entries (each entry requires metadata syscalls)
+    let resolved_clone = resolved.clone();
+    let area_root_clone = area_root.clone();
+    let entries = tokio::task::spawn_blocking(move || {
+        read_directory_entries(&resolved_clone, &area_root_clone, show_hidden)
+    })
+    .await;
+
+    let entries = match entries {
+        Ok(Some(e)) => e,
+        Ok(None) | Err(_) => {
             let response = ServerMessage::FileListResponse {
                 success: false,
                 error: Some(err_file_not_found(ctx.locale)),
@@ -230,84 +331,6 @@ where
             return ctx.send_message(&response).await;
         }
     };
-
-    let mut entries = Vec::new();
-
-    for entry_result in read_dir {
-        let Ok(entry) = entry_result else {
-            continue;
-        };
-
-        // Use path().metadata() to follow symlinks (entry.metadata() doesn't follow them)
-        let Ok(metadata) = entry.path().metadata() else {
-            continue;
-        };
-
-        let file_name = entry.file_name();
-        let Some(name_str) = file_name.to_str() else {
-            continue; // Skip non-UTF8 filenames
-        };
-
-        // Skip hidden files (dotfiles) unless show_hidden is true
-        if !show_hidden && name_str.starts_with('.') {
-            continue;
-        }
-
-        let is_dir = metadata.is_dir();
-
-        // Parse folder type for directories
-        let folder_type = if is_dir {
-            Some(parse_folder_type(name_str))
-        } else {
-            None
-        };
-
-        // Check if uploads are allowed at this path
-        let entry_path = resolved.join(&file_name);
-        let can_upload = if is_dir {
-            allows_upload(&area_root, &entry_path)
-        } else {
-            false
-        };
-
-        // Get file size (0 for directories)
-        let size = if is_dir { 0 } else { metadata.len() };
-
-        // Get modified time
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-
-        // Convert folder type to string
-        let dir_type = folder_type.map(|ft| match ft {
-            FolderType::Default => "default".to_string(),
-            FolderType::Upload => "upload".to_string(),
-            FolderType::DropBox => "dropbox".to_string(),
-            FolderType::UserDropBox(owner) => format!("dropbox:{}", owner),
-        });
-
-        entries.push(FileEntry {
-            name: name_str.to_owned(),
-            size,
-            modified,
-            dir_type,
-            can_upload,
-        });
-    }
-
-    // Sort entries: directories first, then by name
-    entries.sort_by(|a, b| {
-        let a_is_dir = a.dir_type.is_some();
-        let b_is_dir = b.dir_type.is_some();
-        match (a_is_dir, b_is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
-    });
 
     let response = ServerMessage::FileListResponse {
         success: true,

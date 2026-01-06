@@ -15,7 +15,8 @@ use super::{
 };
 use crate::db::Permission;
 use crate::files::{
-    build_and_validate_candidate_path, is_subpath, remove_path, resolve_path, resolve_user_area,
+    build_and_validate_candidate_path, is_subpath, remove_path_async, rename_path_async,
+    resolve_path, resolve_user_area,
 };
 
 /// Handle a file move request
@@ -333,8 +334,8 @@ where
             return ctx.send_message(&response).await;
         }
 
-        // Remove existing target for overwrite
-        if let Err(e) = remove_path(&target_path) {
+        // Remove existing target for overwrite (async to avoid blocking runtime)
+        if let Err(e) = remove_path_async(&target_path).await {
             eprintln!(
                 "FileMove failed to remove existing target for {} (user: {}): {}",
                 ctx.peer_addr, requesting_user.username, e
@@ -349,7 +350,8 @@ where
     }
 
     // Perform the move (atomic rename - fails if cross-filesystem)
-    match std::fs::rename(&resolved_source, &target_path) {
+    // Uses async wrapper to avoid blocking the runtime
+    match rename_path_async(&resolved_source, &target_path).await {
         Ok(()) => {
             let response = ServerMessage::FileMoveResponse {
                 success: true,

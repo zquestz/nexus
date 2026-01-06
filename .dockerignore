@@ -1,0 +1,14 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+
+# GitHub Actions
+.github/
+
+# AI assistant context
+CLAUDE.md
+
+# Jekyll config
+_config.yml

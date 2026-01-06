@@ -4,6 +4,7 @@
 
 mod error_kind;
 pub mod framing;
+pub mod hash;
 pub mod io;
 pub mod protocol;
 pub mod validators;
@@ -24,8 +25,8 @@ pub const DEFAULT_PORT: u16 = 7500;
 /// Default port for file transfers
 pub const DEFAULT_TRANSFER_PORT: u16 = 7501;
 
-/// Buffer size for SHA-256 hashing operations (64KB)
-pub const HASH_BUFFER_SIZE: usize = 65536;
+/// Buffer size for SHA-256 hashing operations (1MB for fewer syscalls)
+pub const HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
 /// Default port as a string for form fields and display.
 ///

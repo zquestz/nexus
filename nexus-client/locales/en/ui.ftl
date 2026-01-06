@@ -619,6 +619,7 @@ transfer-error-certificate-mismatch = Certificate fingerprint mismatch
 transfer-error-auth-failed = Authentication failed
 transfer-error-exists = File already exists with different content
 transfer-error-conflict = Another upload is in progress
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = Unknown error
 transfer-cancelled = Cancelled by user
 transfer-task-failed = Transfer task failed: { $error }

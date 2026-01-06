@@ -67,6 +67,32 @@ Server options:
 - `--port 7500` — Main BBS port (default: 7500)
 - `--transfer-port 7501` — File transfer port (default: 7501)
 
+## Docker
+
+```bash
+# Build and run with Docker Compose
+docker compose up -d
+
+# Or build and run manually
+docker build -t nexus-server .
+docker run -d \
+  -p 7500:7500 \
+  -p 7501:7501 \
+  -v nexus-data:/home/nexus/.local/share/nexusd \
+  --name nexusd \
+  nexus-server
+```
+
+Environment variables:
+- `NEXUS_BIND` — IP to bind (default: `0.0.0.0`, use `::` for IPv6)
+- `NEXUS_PORT` — Main BBS port (default: `7500`)
+- `NEXUS_TRANSFER_PORT` — File transfer port (default: `7501`)
+- `NEXUS_DEBUG` — Enable debug logging (set to any value)
+
+Data is stored in `/home/nexus/.local/share/nexusd` (database, certificates, files).
+
+**Note:** UPnP (`--upnp`) doesn't work with Docker's default bridge network. Forward ports 7500/7501 manually on your router, or use `--network host` on Linux.
+
 ## Proxy Support
 
 Route connections through Tor or SSH tunnels:

@@ -114,6 +114,22 @@ fn remove_transfer_entry(transfer_id: Uuid) {
     registry.remove(&transfer_id);
 }
 
+/// Update certificate fingerprint for transfers belonging to a bookmark in the registry
+///
+/// This is called when a user accepts a new certificate fingerprint. Any transfers
+/// that were registered before the fingerprint change need to be updated so they can
+/// connect successfully.
+pub fn update_registry_fingerprint(bookmark_id: Uuid, new_fingerprint: &str) {
+    let mut registry = TRANSFER_REGISTRY
+        .lock()
+        .expect("transfer registry poisoned");
+    for entry in registry.values_mut() {
+        if entry.transfer.bookmark_id == Some(bookmark_id) {
+            entry.transfer.connection_info.certificate_fingerprint = new_fingerprint.to_string();
+        }
+    }
+}
+
 // =============================================================================
 // Subscription
 // =============================================================================
@@ -136,14 +152,22 @@ pub fn transfer_subscription(
 ) -> iced::Subscription<Message> {
     let transfer_id = transfer.id;
 
-    // Only register and start execution for Queued transfers
-    // Active transfers already have a running stream - just return the same
-    // subscription ID to keep it alive
+    // Register queued transfers for execution
+    // Note: Connecting/Transferring transfers are reset to Queued on app restart (see persistence.rs)
+    //
+    // Only register if not already in registry (prevents duplicate registration
+    // when Iced calls subscription() multiple times for the same transfer)
     if transfer.status == TransferStatus::Queued {
-        // Register the transfer in the global registry with current proxy settings
-        // Clone only for queued transfers that need to be registered
-        let proxy = ProxyConfig::from_settings(proxy_settings);
-        register_transfer(transfer.clone(), proxy);
+        let registry = TRANSFER_REGISTRY
+            .lock()
+            .expect("transfer registry poisoned");
+        let already_registered = registry.contains_key(&transfer.id);
+        drop(registry);
+
+        if !already_registered {
+            let proxy = ProxyConfig::from_settings(proxy_settings);
+            register_transfer(transfer.clone(), proxy);
+        }
     }
 
     // Use run_with with the transfer ID as key

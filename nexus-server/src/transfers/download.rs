@@ -2,9 +2,15 @@
 //!
 //! Contains functions for handling download requests, scanning files,
 //! checking dropbox access, and streaming files to clients.
+//!
+//! For large files, sends FileHashing keepalive messages periodically during
+//! hash computation to prevent client timeouts.
 
 use std::io;
 use std::path::Path;
+
+/// Fallback file name for keepalive messages when path has no file name
+const FALLBACK_FILE_NAME: &str = "file";
 
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, SeekFrom};
@@ -22,7 +28,7 @@ use crate::handlers::{
     err_transfer_access_denied, err_transfer_file_failed, err_transfer_read_failed,
 };
 
-use super::hash::{compute_file_sha256, compute_partial_sha256};
+use super::hash::{compute_file_sha256_with_keepalive, compute_partial_sha256_with_keepalive};
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
@@ -113,10 +119,48 @@ where
     let mut transfer_error_kind: Option<String> = None;
 
     for file_info in &files {
-        match stream_file(
+        // Canonicalize path to handle symlinks
+        let canonical_path = match std::fs::canonicalize(&file_info.absolute_path) {
+            Ok(p) => p,
+            Err(e) => {
+                transfer_success = false;
+                transfer_error = Some(err_transfer_file_failed(
+                    ctx.locale,
+                    &file_info.relative_path,
+                    &e.to_string(),
+                ));
+                transfer_error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+        };
+
+        // Compute SHA-256 for this file, sending keepalives to prevent client timeout
+        let sha256 = match compute_file_sha256_with_keepalive(
+            &canonical_path,
+            file_info.relative_path.clone(),
+            ctx.frame_writer,
+        )
+        .await
+        {
+            Ok(hash) => hash,
+            Err(e) => {
+                transfer_success = false;
+                transfer_error = Some(err_transfer_file_failed(
+                    ctx.locale,
+                    &file_info.relative_path,
+                    &e.to_string(),
+                ));
+                transfer_error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+        };
+
+        match stream_file_with_hash(
             ctx.frame_reader,
             ctx.frame_writer,
             file_info,
+            &sha256,
+            &canonical_path,
             ctx.debug,
             &transfer_id,
         )
@@ -360,11 +404,13 @@ fn scan_directory_recursive<'a>(
     })
 }
 
-/// Stream a single file to the client
-async fn stream_file<R, W>(
+/// Stream a single file to the client (with pre-computed hash)
+async fn stream_file_with_hash<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
     file_info: &FileInfo,
+    sha256: &str,
+    canonical_path: &Path,
     debug: bool,
     transfer_id: &str,
 ) -> io::Result<()>
@@ -372,27 +418,25 @@ where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    // Re-canonicalize to get the current real path (handles symlinks)
-    // Note: Admin-created symlinks pointing outside the file area are allowed
-    // (e.g., shared/Videos -> /mnt/nas/videos). Users cannot create symlinks
-    // through the BBS protocol, so all symlinks are trusted.
-    let canonical_path = std::fs::canonicalize(&file_info.absolute_path)?;
-
-    // Compute SHA-256 of the file
-    let sha256 = compute_file_sha256(&canonical_path).await?;
-
     // Send FileStart
     let file_start = ServerMessage::FileStart {
         path: file_info.relative_path.clone(),
         size: file_info.size,
-        sha256: sha256.clone(),
+        sha256: sha256.to_string(),
     };
     let file_start_id = MessageId::new();
     send_server_message_with_id(frame_writer, &file_start, file_start_id).await?;
 
     // Read FileStartResponse to determine resume offset
-    let offset =
-        read_file_start_response(frame_reader, &sha256, file_info.size, &canonical_path).await?;
+    // Pass frame_writer so we can send keepalives while computing partial hash for resume
+    let offset = read_file_start_response(
+        frame_reader,
+        frame_writer,
+        sha256,
+        file_info.size,
+        canonical_path,
+    )
+    .await?;
 
     if debug {
         if offset > 0 {
@@ -425,7 +469,7 @@ where
     let bytes_to_send = file_info.size - offset;
 
     // Open file and seek to offset (use canonical path for safety)
-    let file = File::open(&canonical_path).await?;
+    let file = File::open(canonical_path).await?;
     let mut reader = BufReader::new(file);
     if offset > 0 {
         reader.seek(SeekFrom::Start(offset)).await?;
@@ -444,69 +488,94 @@ where
 ///
 /// Verifies that the client's reported partial file hash matches the hash of
 /// the first N bytes of the server's file before allowing resume.
-async fn read_file_start_response<R>(
+///
+/// Automatically skips FileHashing keepalive messages that the client sends
+/// while computing hashes for large local files.
+async fn read_file_start_response<R, W>(
     frame_reader: &mut FrameReader<R>,
+    frame_writer: &mut FrameWriter<W>,
     server_sha256: &str,
     server_size: u64,
     file_path: &Path,
 ) -> io::Result<u64>
 where
     R: AsyncReadExt + Unpin,
+    W: AsyncWriteExt + Unpin,
 {
-    // With idle timeout - client must respond promptly to FileStart
-    let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-        Ok(Some(msg)) => msg,
-        Ok(None) => {
-            return Err(io::Error::other(
-                "Connection closed waiting for FileStartResponse",
-            ));
-        }
-        Err(e) => {
-            return Err(io::Error::other(format!(
-                "Failed to read FileStartResponse: {e}"
-            )));
+    // Loop to skip any FileHashing keepalive messages from client
+    let (size, sha256) = loop {
+        let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                return Err(io::Error::other(
+                    "Connection closed waiting for FileStartResponse",
+                ));
+            }
+            Err(e) => {
+                return Err(io::Error::other(format!(
+                    "Failed to read FileStartResponse: {e}"
+                )));
+            }
+        };
+
+        match received.message {
+            ClientMessage::FileStartResponse { size, sha256 } => {
+                break (size, sha256);
+            }
+            ClientMessage::FileHashing { .. } => {
+                // Keepalive message - client is hashing a large local file
+                // Continue waiting for FileStartResponse
+                continue;
+            }
+            _ => {
+                return Err(io::Error::other("Expected FileStartResponse message"));
+            }
         }
     };
 
-    match received.message {
-        ClientMessage::FileStartResponse { size, sha256 } => {
-            // If client has no local file, start from beginning
-            if size == 0 {
-                return Ok(0);
-            }
+    // Process the FileStartResponse
 
-            // If client reports size > server size, start from beginning
-            if size > server_size {
-                return Ok(0);
-            }
+    // If client has no local file, start from beginning
+    if size == 0 {
+        return Ok(0);
+    }
 
-            // Client must provide hash for resume
-            let Some(client_hash) = sha256 else {
-                // No hash provided - start from beginning
-                return Ok(0);
-            };
+    // If client reports size > server size, start from beginning
+    if size > server_size {
+        return Ok(0);
+    }
 
-            // If sizes match, verify against complete file hash
-            if size == server_size {
-                if client_hash == server_sha256 {
-                    // File is already complete
-                    return Ok(server_size);
-                }
-                // Hash mismatch - start from beginning
-                return Ok(0);
-            }
+    // Client must provide hash for resume
+    let Some(client_hash) = sha256 else {
+        // No hash provided - start from beginning
+        return Ok(0);
+    };
 
-            // Client has partial file - verify hash of first N bytes
-            let partial_hash = compute_partial_sha256(file_path, size).await?;
-            if client_hash == partial_hash {
-                // Hash matches - resume from client's position
-                Ok(size)
-            } else {
-                // Hash mismatch - start from beginning
-                Ok(0)
-            }
+    // If sizes match, verify against complete file hash
+    if size == server_size {
+        if client_hash == server_sha256 {
+            // File is already complete
+            return Ok(server_size);
         }
-        _ => Err(io::Error::other("Expected FileStartResponse message")),
+        // Hash mismatch - start from beginning
+        return Ok(0);
+    }
+
+    // Client has partial file - verify hash of first N bytes
+    // Use keepalive version to prevent client timeout during large file hashing
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(FALLBACK_FILE_NAME)
+        .to_string();
+    let partial_hash =
+        compute_partial_sha256_with_keepalive(file_path, size, file_name, frame_writer).await?;
+    if client_hash == partial_hash {
+        // Hash matches - resume from client's position
+        Ok(size)
+    } else {
+        // Hash mismatch - start from beginning
+        Ok(0)
     }
 }
 

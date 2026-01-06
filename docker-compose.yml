@@ -1,0 +1,28 @@
+# Docker Compose for Nexus BBS Server
+#
+# Usage:
+#   docker compose up -d          # Start server
+#   docker compose logs -f        # View logs
+#   docker compose down           # Stop server
+#
+# First user to connect becomes admin.
+
+services:
+  nexusd:
+    build: .
+    image: nexus-server:latest
+    container_name: nexusd
+    restart: unless-stopped
+    ports:
+      - "7500:7500"
+      - "7501:7501"
+    volumes:
+      - nexus-data:/home/nexus/.local/share/nexusd
+    environment:
+      - NEXUS_BIND=0.0.0.0 # Use :: for IPv6
+      - NEXUS_PORT=7500
+      - NEXUS_TRANSFER_PORT=7501
+      - NEXUS_DEBUG=
+
+volumes:
+  nexus-data:

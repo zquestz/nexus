@@ -612,6 +612,7 @@ transfer-error-certificate-mismatch = Huella digital del certificado no coincide
 transfer-error-auth-failed = Autenticación fallida
 transfer-error-exists = El archivo ya existe con contenido diferente
 transfer-error-conflict = Otra subida está en progreso
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = Error desconocido
 transfer-cancelled = Cancelado por el usuario
 transfer-task-failed = Tarea de transferencia fallida: { $error }

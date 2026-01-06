@@ -588,6 +588,7 @@ transfer-error-certificate-mismatch = 証明書のフィンガープリントが
 transfer-error-auth-failed = 認証に失敗しました
 transfer-error-exists = 異なる内容のファイルが既に存在します
 transfer-error-conflict = 別のアップロードが進行中です
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = 不明なエラー
 transfer-cancelled = ユーザーによってキャンセルされました
 transfer-task-failed = 転送タスクが失敗しました: { $error }

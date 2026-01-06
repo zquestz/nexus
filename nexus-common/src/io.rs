@@ -314,6 +314,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileUpload { .. } => "FileUpload",
         ClientMessage::FileStart { .. } => "FileStart",
         ClientMessage::FileData => "FileData",
+        ClientMessage::FileHashing { .. } => "FileHashing",
     }
 }
 
@@ -364,6 +365,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileUploadResponse { .. } => "FileUploadResponse",
         ServerMessage::FileStartResponse { .. } => "FileStartResponse",
         ServerMessage::TransferComplete { .. } => "TransferComplete",
+        ServerMessage::FileHashing { .. } => "FileHashing",
     }
 }
 

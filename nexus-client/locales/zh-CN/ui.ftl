@@ -588,6 +588,7 @@ transfer-error-certificate-mismatch = 证书指纹不匹配
 transfer-error-auth-failed = 认证失败
 transfer-error-exists = 文件已存在且内容不同
 transfer-error-conflict = 另一个上传正在进行中
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = 未知错误
 transfer-cancelled = 已被用户取消
 transfer-task-failed = 传输任务失败: { $error }

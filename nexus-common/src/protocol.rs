@@ -230,6 +230,12 @@ pub enum ClientMessage {
     },
     /// Raw file data for upload (port 7501 only, mirrors ServerMessage::FileData)
     FileData,
+    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
+    },
 }
 
 /// Server response messages
@@ -543,6 +549,12 @@ pub enum ServerMessage {
         error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
+    },
+    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
     },
 }
 
@@ -930,6 +942,9 @@ impl std::fmt::Debug for ClientMessage {
                 .field("sha256", sha256)
                 .finish(),
             ClientMessage::FileData => f.debug_struct("FileData").finish(),
+            ClientMessage::FileHashing { file } => {
+                f.debug_struct("FileHashing").field("file", file).finish()
+            }
         }
     }
 }

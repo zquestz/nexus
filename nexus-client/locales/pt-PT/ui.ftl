@@ -610,6 +610,7 @@ transfer-error-certificate-mismatch = Impressão digital do certificado não cor
 transfer-error-auth-failed = Falha na autenticação
 transfer-error-exists = Ficheiro já existe com conteúdo diferente
 transfer-error-conflict = Outro carregamento está em curso
+transfer-error-cancelled = Cancelled
 transfer-error-unknown = Erro desconhecido
 transfer-cancelled = Cancelado pelo utilizador
 transfer-task-failed = Tarefa de transferência falhou: { $error }

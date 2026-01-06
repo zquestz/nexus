@@ -7,6 +7,13 @@
 //! Supports cancellation via an atomic flag that is checked periodically
 //! during the transfer.
 //!
+//! ## Upload Optimization
+//!
+//! For uploads, SHA-256 hashes are computed lazily (not during initial scan).
+//! Additionally, we use a prefetch strategy: while uploading file N, we compute
+//! the hash for file N+1 in the background. This hides hashing latency for
+//! multi-file uploads.
+//!
 //! ## Module Structure
 //!
 //! - `connection` - TLS connection and authentication
@@ -39,8 +46,9 @@ use crate::network::ProxyConfig;
 
 use connection::connect_and_authenticate;
 use file_utils::{
-    check_local_file, compute_file_sha256, compute_partial_sha256, generate_unique_path,
-    is_cancelled, is_safe_path, open_file_for_upload, scan_local_files,
+    check_local_file_with_keepalive, compute_file_sha256, compute_file_sha256_with_keepalive,
+    compute_partial_sha256_with_keepalive, generate_unique_path, is_cancelled, is_safe_path,
+    open_file_for_upload, scan_local_files,
 };
 use streaming::{
     StreamError, read_message_with_timeout, stream_file_to_server,
@@ -60,7 +68,7 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Progress timeout for FileData (must receive some bytes within this time)
 const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Buffer size for file I/O operations
+/// Buffer size for file I/O operations (streaming)
 const BUFFER_SIZE: usize = 64 * 1024; // 64KB
 
 /// Suffix for incomplete downloads
@@ -128,6 +136,23 @@ fn send_failed_event(
         error_kind: Some(error_kind.clone()),
     });
     error_kind
+}
+
+/// Helper to handle errors that might be cancellations
+///
+/// If the error is `TransferError::Cancelled`, sends a Paused event instead of Failed.
+/// This allows hash computation cancellation to be treated as a pause, not a failure.
+fn handle_possible_cancellation(
+    event_tx: &mpsc::UnboundedSender<TransferEvent>,
+    id: Uuid,
+    error_kind: TransferError,
+) -> TransferError {
+    if error_kind == TransferError::Cancelled {
+        let _ = event_tx.send(TransferEvent::Paused { id });
+        error_kind
+    } else {
+        send_failed_event(event_tx, id, error_kind)
+    }
 }
 
 // =============================================================================
@@ -353,7 +378,21 @@ where
         let part_path = PathBuf::from(format!("{}{}", local_file_path.display(), PART_SUFFIX));
 
         // Check for existing partial/complete file for resume
-        let (local_size, local_hash) = check_local_file(&local_file_path, &part_path).await;
+        // Use keepalive version to prevent server timeout during large file hashing
+        // Pass cancel_flag to allow cancellation during large file hash computation
+        let (local_size, local_hash) = match check_local_file_with_keepalive(
+            &local_file_path,
+            &part_path,
+            writer,
+            cancel_flag,
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(handle_possible_cancellation(event_tx, id, e));
+            }
+        };
 
         // Send FileStartResponse
         let start_response = ClientMessage::FileStartResponse {
@@ -557,9 +596,12 @@ where
 /// Execute an upload transfer
 ///
 /// Handles:
-/// 1. Scan local files and compute SHA-256 hashes
+/// 1. Scan local files (no SHA-256 yet - computed lazily per file)
 /// 2. Send FileUpload request
 /// 3. Send files to server with resume support
+///
+/// For large files, sends FileHashing keepalive messages periodically during
+/// hash computation to prevent server timeouts.
 async fn execute_upload<R, W>(
     transfer: &Transfer,
     reader: &mut nexus_common::framing::FrameReader<tokio::io::BufReader<R>>,
@@ -573,8 +615,7 @@ where
 {
     let id = transfer.id;
 
-    // Scan local files and compute hashes
-    // This must be done before sending FileUpload so we know file_count and total_size
+    // Scan local files (just paths and sizes - SHA-256 computed lazily per file)
     let files = scan_local_files(&transfer.local_path, transfer.is_directory).await?;
 
     if files.is_empty() {
@@ -644,7 +685,6 @@ where
     // Upload each file
     let mut transferred_bytes: u64 = 0;
     let mut files_completed: u64 = 0;
-    let base_path = &transfer.local_path;
 
     for file_info in &files {
         // Check for cancellation before each file
@@ -661,18 +701,27 @@ where
             current_file: Some(file_info.relative_path.clone()),
         });
 
-        // Determine local file path
-        let local_file_path = if transfer.is_directory {
-            base_path.join(&file_info.relative_path)
-        } else {
-            base_path.clone()
+        // Compute SHA-256 for this file, sending keepalives to prevent server timeout
+        // Pass cancel_flag to allow cancellation during large file hash computation
+        let file_sha256 = match compute_file_sha256_with_keepalive(
+            &file_info.absolute_path,
+            file_info.relative_path.clone(),
+            writer,
+            cancel_flag,
+        )
+        .await
+        {
+            Ok(hash) => hash,
+            Err(e) => {
+                return Err(handle_possible_cancellation(event_tx, id, e));
+            }
         };
 
         // Send FileStart
         let file_start = ClientMessage::FileStart {
             path: file_info.relative_path.clone(),
             size: file_info.size,
-            sha256: file_info.sha256.clone(),
+            sha256: file_sha256.clone(),
         };
         send_client_message(writer, &file_start)
             .await
@@ -687,7 +736,7 @@ where
                 // Early completion (error case)
                 return handle_transfer_complete(start_response, id, event_tx);
             }
-            _other => {
+            _ => {
                 return Err(send_failed_event(
                     event_tx,
                     id,
@@ -700,7 +749,7 @@ where
         let offset = if server_size == 0 {
             // Server has no file - upload from beginning
             0
-        } else if server_size == file_info.size && server_hash.as_ref() == Some(&file_info.sha256) {
+        } else if server_size == file_info.size && server_hash.as_ref() == Some(&file_sha256) {
             // File already complete on server - skip upload
             transferred_bytes += file_info.size;
             files_completed += 1;
@@ -720,9 +769,23 @@ where
             continue;
         } else if server_size < file_info.size {
             // Server has partial file - verify hash and resume
+            // Use keepalive version to prevent server timeout during large file hashing
             if let Some(ref server_partial_hash) = server_hash {
-                let local_partial_hash =
-                    compute_partial_sha256(&local_file_path, server_size).await?;
+                // Pass cancel_flag to allow cancellation during large file hash computation
+                let local_partial_hash = match compute_partial_sha256_with_keepalive(
+                    &file_info.absolute_path,
+                    server_size,
+                    file_info.relative_path.clone(),
+                    writer,
+                    cancel_flag,
+                )
+                .await
+                {
+                    Ok(hash) => hash,
+                    Err(e) => {
+                        return Err(handle_possible_cancellation(event_tx, id, e));
+                    }
+                };
                 if &local_partial_hash == server_partial_hash {
                     // Hashes match - resume from server_size
                     server_size
@@ -744,7 +807,7 @@ where
 
         if bytes_to_send > 0 {
             // Open file at the correct offset
-            let mut file = open_file_for_upload(&local_file_path, offset).await?;
+            let mut file = open_file_for_upload(&file_info.absolute_path, offset).await?;
 
             // Account for already-uploaded bytes in progress
             if offset > 0 {

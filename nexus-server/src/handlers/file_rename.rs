@@ -13,7 +13,9 @@ use super::{
     err_permission_denied, err_rename_failed, err_rename_target_exists,
 };
 use crate::db::Permission;
-use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
+use crate::files::{
+    build_and_validate_candidate_path, rename_path_async, resolve_path, resolve_user_area,
+};
 
 /// Handle a file rename request
 pub async fn handle_file_rename<W>(
@@ -224,8 +226,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Perform the rename
-    match std::fs::rename(&source_path, &target_path) {
+    // Perform the rename (async to avoid blocking runtime)
+    match rename_path_async(&source_path, &target_path).await {
         Ok(()) => {
             let response = ServerMessage::FileRenameResponse {
                 success: true,
