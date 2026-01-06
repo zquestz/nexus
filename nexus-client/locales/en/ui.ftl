@@ -92,10 +92,10 @@ label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
 label-theme = Theme:
 label-chat-font-size = Font Size:
-label-show-connection-notifications = Show connect/disconnect notifications
-label-show-timestamps = Show timestamps
-label-use-24-hour-time = Use 24-hour time
-label-show-seconds = Show seconds
+label-show-connection-notifications = Show Connect/Disconnect Notifications
+label-show-timestamps = Show Timestamps
+label-use-24-hour-time = Use 24-Hour Time
+label-show-seconds = Show Seconds
 label-server-name = Name:
 label-server-description = Description:
 label-server-version = Version:
@@ -639,15 +639,15 @@ settings-tab-events = Events
 
 # Event type names
 event-broadcast = Broadcast
-event-chat-message = Chat message
-event-chat-mention = Chat mention
-event-connection-lost = Connection lost
-event-news-post = News post
-event-permissions-changed = Permissions changed
-event-transfer-complete = Transfer complete
-event-transfer-failed = Transfer failed
-event-user-kicked = User kicked
-event-user-message = User message
+event-chat-message = Chat Message
+event-chat-mention = Chat Mention
+event-connection-lost = Connection Lost
+event-news-post = News Post
+event-permissions-changed = Permissions Changed
+event-transfer-complete = Transfer Complete
+event-transfer-failed = Transfer Failed
+event-user-kicked = User Kicked
+event-user-message = User Message
 
 # Notification content levels
 notification-content-simple = Simple
@@ -657,7 +657,7 @@ notification-content-detailed = Detailed
 # Event settings labels
 event-settings-event = Event:
 event-settings-notification = Notification
-event-settings-show-notification = Show notification
+event-settings-show-notification = Show Notification
 event-settings-content = Content:
 settings-notifications-enabled = Enable Notifications
 
