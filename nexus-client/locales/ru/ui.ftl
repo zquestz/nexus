@@ -659,28 +659,28 @@ event-settings-content = Содержимое:
 settings-notifications-enabled = Включить уведомления
 
 # Notification messages
-notification-user-message = Новое сообщение пользователя
-notification-user-message-from = Сообщение от {$username}
-notification-chat-message = Новое сообщение в чате
-notification-chat-message-from = Чат от {$username}
 notification-broadcast = Трансляция сервера
 notification-broadcast-from = Трансляция от {$username}
 notification-chat-mention = Вас упомянули
 notification-chat-mention-by = Упомянут пользователем {$username}
+notification-chat-message = Новое сообщение в чате
+notification-chat-message-from = Чат от {$username}
 notification-connection-lost = Соединение потеряно
 notification-connection-lost-from = Отключено от {$server}
+notification-download-complete = Загрузка завершена
+notification-download-failed = Загрузка не удалась
 notification-news-post = Новая новость
 notification-news-post-by = Новость от {$username}
-notification-transfer-complete = Передача завершена
-notification-download-complete = Загрузка завершена
-notification-upload-complete = Выгрузка завершена
-notification-transfer-failed = Передача не удалась
-notification-download-failed = Загрузка не удалась
-notification-upload-failed = Выгрузка не удалась
 notification-permissions-changed = Права изменены
 notification-permissions-changed-on = Права изменены на {$server}
+notification-transfer-complete = Передача завершена
+notification-transfer-failed = Передача не удалась
+notification-upload-complete = Выгрузка завершена
+notification-upload-failed = Выгрузка не удалась
 notification-user-kicked = Вас кикнули
 notification-user-kicked-from = Кик с {$server}
+notification-user-message = Новое сообщение пользователя
+notification-user-message-from = Сообщение от {$username}
 
 # Fallback values
 unknown-server = Неизвестный сервер

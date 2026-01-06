@@ -654,28 +654,28 @@ event-settings-content = Inhalt:
 settings-notifications-enabled = Benachrichtigungen aktivieren
 
 # Notification messages
-notification-user-message = Neue Benutzernachricht
-notification-user-message-from = Nachricht von {$username}
-notification-chat-message = Neue Chat-Nachricht
-notification-chat-message-from = Chat von {$username}
 notification-broadcast = Server-Broadcast
 notification-broadcast-from = Broadcast von {$username}
 notification-chat-mention = Sie wurden erwähnt
 notification-chat-mention-by = Erwähnt von {$username}
+notification-chat-message = Neue Chat-Nachricht
+notification-chat-message-from = Chat von {$username}
 notification-connection-lost = Verbindung verloren
 notification-connection-lost-from = Verbindung zu {$server} getrennt
+notification-download-complete = Download abgeschlossen
+notification-download-failed = Download fehlgeschlagen
 notification-news-post = Neue Neuigkeit
 notification-news-post-by = Neuigkeit von {$username}
-notification-transfer-complete = Übertragung abgeschlossen
-notification-download-complete = Download abgeschlossen
-notification-upload-complete = Upload abgeschlossen
-notification-transfer-failed = Übertragung fehlgeschlagen
-notification-download-failed = Download fehlgeschlagen
-notification-upload-failed = Upload fehlgeschlagen
 notification-permissions-changed = Berechtigungen geändert
 notification-permissions-changed-on = Berechtigungen auf {$server} geändert
+notification-transfer-complete = Übertragung abgeschlossen
+notification-transfer-failed = Übertragung fehlgeschlagen
+notification-upload-complete = Upload abgeschlossen
+notification-upload-failed = Upload fehlgeschlagen
 notification-user-kicked = Sie wurden gekickt
 notification-user-kicked-from = Von {$server} gekickt
+notification-user-message = Neue Benutzernachricht
+notification-user-message-from = Nachricht von {$username}
 
 # Fallback values
 unknown-server = Unbekannter Server

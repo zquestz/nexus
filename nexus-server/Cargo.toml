@@ -20,7 +20,7 @@ strum = { version = "0.27", features = ["derive"] }
 tokio-rustls = "0.26"
 rustls-pemfile = "2.2"
 rcgen = "0.14"
-sha2 = { version = "0.10", features = ["asm"] }
+sha2 = "0.10"
 pem = "3.0"
 igd-next = "0.16"
 fluent = "0.17"
@@ -29,6 +29,9 @@ hex = "0.4"
 unic-langid = "0.9"
 infer = "0.19"
 rand = "0.9"
+
+[target.'cfg(unix)'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
 
 [dev-dependencies]
 tempfile = "3.20"

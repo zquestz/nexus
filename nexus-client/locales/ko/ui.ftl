@@ -631,28 +631,28 @@ event-settings-content = 내용:
 settings-notifications-enabled = 알림 활성화
 
 # Notification messages
-notification-user-message = 새 사용자 메시지
-notification-user-message-from = {$username}님의 메시지
-notification-chat-message = 새 채팅 메시지
-notification-chat-message-from = {$username}님의 채팅
 notification-broadcast = 서버 브로드캐스트
 notification-broadcast-from = {$username}님의 브로드캐스트
 notification-chat-mention = 멘션되었습니다
 notification-chat-mention-by = {$username}님이 멘션함
+notification-chat-message = 새 채팅 메시지
+notification-chat-message-from = {$username}님의 채팅
 notification-connection-lost = 연결이 끊어졌습니다
 notification-connection-lost-from = {$server}에서 연결이 끊어졌습니다
+notification-download-complete = 다운로드 완료
+notification-download-failed = 다운로드 실패
 notification-news-post = 새 뉴스 게시물
 notification-news-post-by = {$username}님의 뉴스 게시물
-notification-transfer-complete = 전송 완료
-notification-download-complete = 다운로드 완료
-notification-upload-complete = 업로드 완료
-notification-transfer-failed = 전송 실패
-notification-download-failed = 다운로드 실패
-notification-upload-failed = 업로드 실패
 notification-permissions-changed = 권한이 변경되었습니다
 notification-permissions-changed-on = {$server}에서 권한이 변경되었습니다
+notification-transfer-complete = 전송 완료
+notification-transfer-failed = 전송 실패
+notification-upload-complete = 업로드 완료
+notification-upload-failed = 업로드 실패
 notification-user-kicked = 추방되었습니다
 notification-user-kicked-from = {$server}에서 추방되었습니다
+notification-user-message = 새 사용자 메시지
+notification-user-message-from = {$username}님의 메시지
 
 # Fallback values
 unknown-server = 알 수 없는 서버

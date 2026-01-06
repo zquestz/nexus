@@ -653,28 +653,28 @@ event-settings-content = Inhoud:
 settings-notifications-enabled = Meldingen inschakelen
 
 # Notification messages
-notification-user-message = Nieuw gebruikersbericht
-notification-user-message-from = Bericht van {$username}
-notification-chat-message = Nieuw chatbericht
-notification-chat-message-from = Chat van {$username}
 notification-broadcast = Serveruitzending
 notification-broadcast-from = Uitzending van {$username}
 notification-chat-mention = Je bent vermeld
 notification-chat-mention-by = Vermeld door {$username}
+notification-chat-message = Nieuw chatbericht
+notification-chat-message-from = Chat van {$username}
 notification-connection-lost = Verbinding verbroken
 notification-connection-lost-from = Verbinding met {$server} verbroken
+notification-download-complete = Download voltooid
+notification-download-failed = Download mislukt
 notification-news-post = Nieuw nieuwsbericht
 notification-news-post-by = Nieuwsbericht van {$username}
-notification-transfer-complete = Overdracht voltooid
-notification-download-complete = Download voltooid
-notification-upload-complete = Upload voltooid
-notification-transfer-failed = Overdracht mislukt
-notification-download-failed = Download mislukt
-notification-upload-failed = Upload mislukt
 notification-permissions-changed = Rechten gewijzigd
 notification-permissions-changed-on = Rechten gewijzigd op {$server}
+notification-transfer-complete = Overdracht voltooid
+notification-transfer-failed = Overdracht mislukt
+notification-upload-complete = Upload voltooid
+notification-upload-failed = Upload mislukt
 notification-user-kicked = Je bent verwijderd
 notification-user-kicked-from = Verwijderd van {$server}
+notification-user-message = Nieuw gebruikersbericht
+notification-user-message-from = Bericht van {$username}
 
 # Fallback values
 unknown-server = Onbekende server
