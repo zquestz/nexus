@@ -37,6 +37,12 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - Tor and SOCKS5 proxy support
 - Argon2id password hashing
 
+### Notifications
+- Desktop notifications for 12 event types
+- Per-event toggle and detail level (Simple/Compact/Detailed)
+- Smart suppression when already viewing relevant content
+- Cross-platform (Linux, macOS, Windows)
+
 ### Customization
 - 30 themes
 - 13 languages (auto-detected)
