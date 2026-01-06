@@ -646,7 +646,7 @@ event-news-post = News post
 event-permissions-changed = Permissions changed
 event-transfer-complete = Transfer complete
 event-transfer-failed = Transfer failed
-event-user-kicked = Kicked
+event-user-kicked = User kicked
 event-user-message = User message
 
 # Notification content levels

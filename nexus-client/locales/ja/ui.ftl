@@ -615,7 +615,7 @@ event-news-post = ニュース投稿
 event-permissions-changed = 権限が変更されました
 event-transfer-complete = 転送完了
 event-transfer-failed = 転送失敗
-event-user-kicked = キックされました
+event-user-kicked = ユーザーキック
 event-user-message = ユーザーメッセージ
 
 # Notification content levels

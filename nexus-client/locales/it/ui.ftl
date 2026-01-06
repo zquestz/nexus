@@ -638,7 +638,7 @@ event-news-post = Post di notizie
 event-permissions-changed = Permessi modificati
 event-transfer-complete = Trasferimento completato
 event-transfer-failed = Trasferimento fallito
-event-user-kicked = Espulso
+event-user-kicked = Utente espulso
 event-user-message = Messaggio utente
 
 # Notification content levels

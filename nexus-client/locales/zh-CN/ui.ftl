@@ -615,7 +615,7 @@ event-news-post = 新闻帖子
 event-permissions-changed = 权限已更改
 event-transfer-complete = 传输完成
 event-transfer-failed = 传输失败
-event-user-kicked = 被踢出
+event-user-kicked = 用户被踢出
 event-user-message = 用户消息
 
 # Notification content levels

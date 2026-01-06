@@ -643,7 +643,7 @@ event-news-post = Новость
 event-permissions-changed = Права изменены
 event-transfer-complete = Передача завершена
 event-transfer-failed = Передача не удалась
-event-user-kicked = Кик
+event-user-kicked = Пользователь кикнут
 event-user-message = Сообщение пользователя
 
 # Notification content levels
