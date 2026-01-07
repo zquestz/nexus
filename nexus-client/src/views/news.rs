@@ -19,7 +19,7 @@ use crate::i18n::t;
 use crate::icon;
 use crate::image::CachedImage;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
     INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_EDITOR_LINE_HEIGHT,
     NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
@@ -276,10 +276,10 @@ fn list_view<'a>(
     .spacing(ELEMENT_SPACING)
     .align_x(Center)
     .padding(iced::Padding {
-        top: FORM_PADDING,
-        right: FORM_PADDING - SCROLLBAR_PADDING,
-        bottom: FORM_PADDING,
-        left: FORM_PADDING - SCROLLBAR_PADDING,
+        top: CONTENT_PADDING,
+        right: CONTENT_PADDING - SCROLLBAR_PADDING,
+        bottom: CONTENT_PADDING,
+        left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
     .max_width(NEWS_LIST_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
@@ -441,7 +441,7 @@ fn form_view<'a>(
             .id(Id::from(InputId::NewsBody))
             .placeholder(t("placeholder-news-body"))
             .on_action(Message::NewsBodyAction)
-            .padding(FORM_PADDING / 2.0)
+            .padding(CONTENT_PADDING / 2.0)
             .size(TEXT_SIZE)
             .line_height(NEWS_EDITOR_LINE_HEIGHT)
             .height(Length::Fixed(150.0))
@@ -542,7 +542,7 @@ fn form_view<'a>(
 
     let form = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
+        .padding(CONTENT_PADDING)
         .max_width(NEWS_LIST_MAX_WIDTH);
 
     scrollable_panel(form)
@@ -598,8 +598,8 @@ fn confirm_delete_modal<'a>(error: Option<&'a String>) -> Element<'a, Message> {
 
     let form = Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

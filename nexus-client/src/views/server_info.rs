@@ -9,7 +9,7 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::image::CachedImage;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
     SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE,
     error_text_style, panel_title, shaped_text, shaped_text_wrapped, subheading_text_style,
 };
@@ -164,8 +164,8 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
 
     let content = iced::widget::Column::with_children(items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(content)
 }
@@ -326,8 +326,8 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     let form = iced::widget::Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

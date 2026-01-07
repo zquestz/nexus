@@ -7,7 +7,7 @@ use iced_aw::NumberInput;
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
     shaped_text_wrapped,
 };
@@ -129,8 +129,8 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
 
     let content = column(column_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(content)
 }

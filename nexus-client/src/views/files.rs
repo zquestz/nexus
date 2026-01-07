@@ -14,20 +14,20 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BREADCRUMB_MAX_SEGMENT_LENGTH, BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTEXT_MENU_ITEM_PADDING,
-    CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
-    CONTEXT_MENU_SEPARATOR_MARGIN, DROP_OVERLAY_ICON_SIZE, ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH,
-    FILE_INFO_ICON_SIZE, FILE_INFO_ICON_SPACING, FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING,
-    FILE_SIZE_COLUMN_WIDTH, FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, FORM_MAX_WIDTH,
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NEWS_LIST_MAX_WIDTH, NO_SPACING,
-    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SMALL_SPACING,
-    SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
-    TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat_tab_active_style, close_button_on_primary_style,
-    content_background_style, context_menu_button_style, context_menu_container_style,
-    context_menu_item_danger_style, disabled_icon_button_style, drop_overlay_style,
-    error_text_style, muted_text_style, panel_title, separator_style, shaped_text,
-    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    BREADCRUMB_MAX_SEGMENT_LENGTH, BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTENT_MAX_WIDTH,
+    CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING,
+    CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN, DROP_OVERLAY_ICON_SIZE,
+    ELEMENT_SPACING, FILE_DATE_COLUMN_WIDTH, FILE_INFO_ICON_SIZE, FILE_INFO_ICON_SPACING,
+    FILE_LIST_ICON_SIZE, FILE_LIST_ICON_SPACING, FILE_SIZE_COLUMN_WIDTH,
+    FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE, ICON_BUTTON_PADDING, INPUT_PADDING,
+    NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE,
+    SMALL_PADDING, SMALL_SPACING, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TAB_CONTENT_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat_tab_active_style,
+    close_button_on_primary_style, content_background_style, context_menu_button_style,
+    context_menu_container_style, context_menu_item_danger_style, disabled_icon_button_style,
+    drop_overlay_style, error_text_style, muted_text_style, panel_title, separator_style,
+    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
     upload_folder_style,
 };
 use crate::types::{
@@ -553,8 +553,8 @@ fn delete_confirm_dialog<'a>(path: &str, error: Option<&'a String>) -> Element<'
 
     let form = iced::widget::Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -597,8 +597,8 @@ fn overwrite_confirm_dialog<'a>(name: &str, has_file_delete: bool) -> Element<'a
         buttons_row,
     ]
     .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    .padding(CONTENT_PADDING)
+    .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -706,7 +706,9 @@ fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
 
     content = content.push(buttons);
 
-    let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
+    let form = content
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -775,8 +777,8 @@ fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, M
 
     let form = iced::widget::Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -839,8 +841,8 @@ fn rename_dialog<'a>(path: &str, name: &str, error: Option<&String>) -> Element<
 
     let form = iced::widget::Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -1508,7 +1510,7 @@ pub fn files_view<'a>(
     ]
     .spacing(SPACER_SIZE_SMALL)
     .align_x(Center)
-    .padding(FORM_PADDING)
+    .padding(CONTENT_PADDING)
     .max_width(NEWS_LIST_MAX_WIDTH)
     .height(Fill);
 

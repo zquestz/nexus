@@ -13,7 +13,7 @@ use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, ICON_BUTTON_PADDING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
     INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_TEXT_SIZE,
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
@@ -316,7 +316,7 @@ fn list_view<'a>(
             ]
             .align_y(Center),
         )
-        .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+        .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
         .into()
     } else {
         container(
@@ -325,7 +325,7 @@ fn list_view<'a>(
                 .width(Fill)
                 .align_x(Center),
         )
-        .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+        .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
         .into()
     };
 
@@ -339,13 +339,13 @@ fn list_view<'a>(
                     .align_x(Center)
                     .style(error_text_style),
             )
-            .width(FORM_MAX_WIDTH - FORM_PADDING * 2.0)
+            .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
             .into()
         });
 
     // Scrollable content with symmetric padding for scrollbar space
     // Inner content matches footer width, spacers provide scrollbar room
-    let scroll_inner = container(scroll_content).width(FORM_MAX_WIDTH - FORM_PADDING * 2.0);
+    let scroll_inner = container(scroll_content).width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0);
 
     let padded_scroll_content = row![
         Space::new().width(SCROLLBAR_PADDING),
@@ -366,12 +366,12 @@ fn list_view<'a>(
     .spacing(ELEMENT_SPACING)
     .align_x(Center)
     .padding(iced::Padding {
-        top: FORM_PADDING,
-        right: FORM_PADDING - SCROLLBAR_PADDING,
-        bottom: FORM_PADDING,
-        left: FORM_PADDING - SCROLLBAR_PADDING,
+        top: CONTENT_PADDING,
+        right: CONTENT_PADDING - SCROLLBAR_PADDING,
+        bottom: CONTENT_PADDING,
+        left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
-    .max_width(FORM_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
+    .max_width(CONTENT_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
 
     // Center the form horizontally
@@ -517,8 +517,8 @@ fn create_view<'a>(
 
     let form = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -666,8 +666,8 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
 
     let form = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -722,8 +722,8 @@ fn confirm_delete_modal<'a>(username: &'a str, error: Option<&'a String>) -> Ele
 
     let form = Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

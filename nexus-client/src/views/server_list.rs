@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING, SCROLLBAR_PADDING,
-    SECTION_TITLE_SIZE, SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT,
+    CONTENT_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING,
+    SCROLLBAR_PADDING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
     SIDEBAR_ACTION_ICON_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
@@ -121,7 +121,7 @@ fn connected_servers_section<'a>(
 
     column![connected_title, connected_column]
         .spacing(SERVER_LIST_SECTION_SPACING)
-        .padding(FORM_PADDING)
+        .padding(CONTENT_PADDING)
 }
 
 // ============================================================================
@@ -242,10 +242,10 @@ fn bookmarks_section<'a>(
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)
     .padding(iced::Padding {
-        top: FORM_PADDING,
-        right: FORM_PADDING - SCROLLBAR_PADDING,
-        bottom: FORM_PADDING,
-        left: FORM_PADDING,
+        top: CONTENT_PADDING,
+        right: CONTENT_PADDING - SCROLLBAR_PADDING,
+        bottom: CONTENT_PADDING,
+        left: CONTENT_PADDING,
     })
 }
 

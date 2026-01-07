@@ -8,7 +8,7 @@ use crate::avatar::generate_identicon;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    FORM_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
+    CONTENT_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
     SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
@@ -301,10 +301,10 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
     let panel = column![title, scrollable(users_column).height(Fill),]
         .spacing(USER_LIST_SPACING)
         .padding(iced::Padding {
-            top: FORM_PADDING,
-            right: FORM_PADDING - SCROLLBAR_PADDING,
-            bottom: FORM_PADDING,
-            left: FORM_PADDING,
+            top: CONTENT_PADDING,
+            right: CONTENT_PADDING - SCROLLBAR_PADDING,
+            bottom: CONTENT_PADDING,
+            left: CONTENT_PADDING,
         })
         .width(USER_LIST_PANEL_WIDTH);
 

@@ -19,8 +19,8 @@ use crate::i18n::t;
 use crate::image::CachedImage;
 use crate::style::SPACER_SIZE_LARGE;
 use crate::style::{
-    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, ELEMENT_SPACING, FORM_MAX_WIDTH,
-    FORM_PADDING, INPUT_PADDING, PATH_DISPLAY_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
+    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, CONTENT_MAX_WIDTH, CONTENT_PADDING,
+    ELEMENT_SPACING, INPUT_PADDING, PATH_DISPLAY_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
     TAB_LABEL_PADDING, TEXT_SIZE, content_background_style, error_text_style, panel_title,
     shaped_text, shaped_text_wrapped,
 };
@@ -194,8 +194,8 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
 
     let content = Column::with_children(content_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     // Scrollable, top-aligned, with background
     let scrollable_content = scrollable(container(content).width(Fill).center_x(Fill)).width(Fill);

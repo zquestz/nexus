@@ -15,7 +15,7 @@ use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, SPACER_SIZE_MEDIUM,
     SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, USER_INFO_AVATAR_SIZE, USER_INFO_AVATAR_SPACING,
     chat, error_text_style, panel_title, shaped_text, shaped_text_wrapped,
 };
@@ -104,7 +104,9 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
     content = content.push(buttons);
 
-    let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
+    let form = content
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
@@ -194,7 +196,9 @@ pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, 
 
     content = content.push(buttons);
 
-    let form = content.padding(FORM_PADDING).max_width(FORM_MAX_WIDTH);
+    let form = content
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

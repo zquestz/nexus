@@ -39,6 +39,7 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 
 ### Notifications
 - Desktop notifications for 12 event types
+- Sound notifications with 5 built-in sounds (Alert, Bell, Chime, Ding, Pop)
 - Per-event toggle and detail level (Simple/Compact/Detailed)
 - Smart suppression when already viewing relevant content
 - Cross-platform (Linux, macOS, Windows)

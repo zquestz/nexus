@@ -6,8 +6,8 @@ use iced::{Center, Element, Fill, Theme};
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE,
-    TITLE_SIZE, shaped_text,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, SPACER_SIZE_MEDIUM,
+    TEXT_SIZE, TITLE_SIZE, shaped_text,
 };
 use crate::types::Message;
 
@@ -85,8 +85,8 @@ pub fn about_view(theme: Theme) -> Element<'static, Message> {
         buttons,
     ]
     .spacing(ELEMENT_SPACING)
-    .padding(FORM_PADDING)
-    .max_width(FORM_MAX_WIDTH);
+    .padding(CONTENT_PADDING)
+    .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(content)
 }

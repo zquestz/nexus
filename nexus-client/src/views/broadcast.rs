@@ -7,9 +7,9 @@ use iced::{Center, Element, Fill};
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
-    BUTTON_PADDING, ELEMENT_SPACING, FORM_MAX_WIDTH, FORM_PADDING, INPUT_PADDING, MONOSPACE_FONT,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
-    shaped_text_wrapped,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
+    MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style,
+    panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerConnection};
 
@@ -81,8 +81,8 @@ pub fn broadcast_view(conn: &ServerConnection) -> Element<'_, Message> {
 
     let form = iced::widget::Column::with_children(form_items)
         .spacing(ELEMENT_SPACING)
-        .padding(FORM_PADDING)
-        .max_width(FORM_MAX_WIDTH);
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

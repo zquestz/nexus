@@ -14,10 +14,10 @@ pub const INPUT_PADDING: f32 = 8.0;
 /// Button padding
 pub const BUTTON_PADDING: f32 = 10.0;
 
-/// Form container padding
-pub const FORM_PADDING: f32 = 20.0;
+/// Content container padding (used in panels and forms)
+pub const CONTENT_PADDING: f32 = 20.0;
 
-/// Toolbar horizontal padding (matches FORM_PADDING for alignment)
+/// Toolbar horizontal padding (matches CONTENT_PADDING for alignment)
 pub const TOOLBAR_PADDING_HORIZONTAL: f32 = 20.0;
 
 /// Toolbar vertical padding
@@ -178,8 +178,8 @@ pub const USER_LIST_SPACING: f32 = 5.0;
 // Dimensions
 // ============================================================================
 
-/// Maximum width for form dialogs
-pub const FORM_MAX_WIDTH: f32 = 400.0;
+/// Maximum width for main content views (files, news, transfers, etc.)
+pub const CONTENT_MAX_WIDTH: f32 = 800.0;
 
 /// Maximum width for fingerprint dialog (wider to show fingerprints)
 pub const FINGERPRINT_DIALOG_MAX_WIDTH: f32 = 600.0;
@@ -251,27 +251,28 @@ pub const NEWS_ITEM_SPACING: f32 = 3.0;
 /// Maximum news image file size in bytes (512KB)
 pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
 
-/// Maximum width for news list view (double the standard form width)
-pub const NEWS_LIST_MAX_WIDTH: f32 = FORM_MAX_WIDTH * 2.0;
+/// Maximum width for news list view
+pub const NEWS_LIST_MAX_WIDTH: f32 = CONTENT_MAX_WIDTH;
 
 /// Maximum width to cache news images at (news list width minus padding)
 /// NEWS_LIST_MAX_WIDTH (800) - reduced form padding (16) - INPUT_PADDING * 2 (16) = 768
-pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
-    (NEWS_LIST_MAX_WIDTH - (FORM_PADDING - SCROLLBAR_PADDING) * 2.0 - INPUT_PADDING * 2.0) as u32;
+pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = (NEWS_LIST_MAX_WIDTH
+    - (CONTENT_PADDING - SCROLLBAR_PADDING) * 2.0
+    - INPUT_PADDING * 2.0) as u32;
 
-/// Maximum width to cache server images at (matches form width minus padding)
+/// Maximum width to cache server images at (matches content width)
 ///
 /// Server images are resized to this width before caching to save memory.
 /// Height scales proportionally to preserve aspect ratio.
 /// SVGs are not resized (vector graphics scale without quality loss).
-pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = FORM_MAX_WIDTH as u32;
+pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = CONTENT_MAX_WIDTH as u32;
 
 // ============================================================================
 // Transfers Panel Layout
 // ============================================================================
 
-/// Maximum width for transfers list view (double the standard form width)
-pub const TRANSFER_LIST_MAX_WIDTH: f32 = FORM_MAX_WIDTH * 2.0;
+/// Maximum width for transfers list view
+pub const TRANSFER_LIST_MAX_WIDTH: f32 = CONTENT_MAX_WIDTH;
 
 /// Spacing between transfer items in list
 pub const TRANSFER_ITEM_SPACING: f32 = 3.0;

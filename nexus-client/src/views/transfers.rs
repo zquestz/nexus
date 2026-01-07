@@ -44,7 +44,7 @@ use iced::{Center, Element, Fill};
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    DETAIL_TEXT_SIZE, ELEMENT_SPACING, FORM_PADDING, ICON_BUTTON_PADDING, SCROLLBAR_PADDING,
+    CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, ICON_BUTTON_PADDING, SCROLLBAR_PADDING,
     SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     TRANSFER_ACTION_BUTTON_SIZE, TRANSFER_ACTION_ICON_SIZE, TRANSFER_ICON_SIZE,
@@ -507,10 +507,10 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
     .spacing(ELEMENT_SPACING)
     .align_x(Center)
     .padding(iced::Padding {
-        top: FORM_PADDING,
-        right: FORM_PADDING - SCROLLBAR_PADDING,
-        bottom: FORM_PADDING,
-        left: FORM_PADDING - SCROLLBAR_PADDING,
+        top: CONTENT_PADDING,
+        right: CONTENT_PADDING - SCROLLBAR_PADDING,
+        bottom: CONTENT_PADDING,
+        left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
     .max_width(TRANSFER_LIST_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
