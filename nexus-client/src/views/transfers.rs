@@ -44,15 +44,15 @@ use iced::{Center, Element, Fill};
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, ICON_BUTTON_PADDING, SCROLLBAR_PADDING,
-    SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    CONTENT_MAX_WIDTH, CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, ICON_BUTTON_PADDING,
+    SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE,
+    TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     TRANSFER_ACTION_BUTTON_SIZE, TRANSFER_ACTION_ICON_SIZE, TRANSFER_ICON_SIZE,
-    TRANSFER_INFO_SPACING, TRANSFER_ITEM_SPACING, TRANSFER_LIST_MAX_WIDTH,
-    TRANSFER_PROGRESS_BAR_HEIGHT, TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING,
-    alternating_row_style, content_background_style, danger_icon_button_style,
-    disabled_icon_button_style, error_text_style, muted_text_style, shaped_text,
-    tooltip_container_style, transparent_icon_button_style,
+    TRANSFER_INFO_SPACING, TRANSFER_ITEM_SPACING, TRANSFER_PROGRESS_BAR_HEIGHT,
+    TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING, alternating_row_style,
+    content_background_style, danger_icon_button_style, disabled_icon_button_style,
+    error_text_style, muted_text_style, shaped_text, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::transfers::{Transfer, TransferDirection, TransferManager, TransferStatus};
 use crate::types::Message;
@@ -512,7 +512,7 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
         bottom: CONTENT_PADDING,
         left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
-    .max_width(TRANSFER_LIST_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
+    .max_width(CONTENT_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
 
     // Center the form horizontally

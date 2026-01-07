@@ -21,7 +21,7 @@ use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
     INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_EDITOR_LINE_HEIGHT,
-    NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NEWS_LIST_MAX_WIDTH, NO_SPACING, SCROLLBAR_PADDING,
+    NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NO_SPACING, SCROLLBAR_PADDING,
     SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
@@ -281,7 +281,7 @@ fn list_view<'a>(
         bottom: CONTENT_PADDING,
         left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
-    .max_width(NEWS_LIST_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
+    .max_width(CONTENT_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
     .height(Fill);
 
     // Center the form horizontally
@@ -543,7 +543,7 @@ fn form_view<'a>(
     let form = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
         .padding(CONTENT_PADDING)
-        .max_width(NEWS_LIST_MAX_WIDTH);
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }

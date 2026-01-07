@@ -179,10 +179,7 @@ pub const USER_LIST_SPACING: f32 = 5.0;
 // ============================================================================
 
 /// Maximum width for main content views (files, news, transfers, etc.)
-pub const CONTENT_MAX_WIDTH: f32 = 800.0;
-
-/// Maximum width for fingerprint dialog (wider to show fingerprints)
-pub const FINGERPRINT_DIALOG_MAX_WIDTH: f32 = 600.0;
+pub const CONTENT_MAX_WIDTH: f32 = 700.0;
 
 /// Server list panel width
 pub const SERVER_LIST_PANEL_WIDTH: f32 = 220.0;
@@ -251,14 +248,10 @@ pub const NEWS_ITEM_SPACING: f32 = 3.0;
 /// Maximum news image file size in bytes (512KB)
 pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
 
-/// Maximum width for news list view
-pub const NEWS_LIST_MAX_WIDTH: f32 = CONTENT_MAX_WIDTH;
-
-/// Maximum width to cache news images at (news list width minus padding)
-/// NEWS_LIST_MAX_WIDTH (800) - reduced form padding (16) - INPUT_PADDING * 2 (16) = 768
-pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 = (NEWS_LIST_MAX_WIDTH
-    - (CONTENT_PADDING - SCROLLBAR_PADDING) * 2.0
-    - INPUT_PADDING * 2.0) as u32;
+/// Maximum width to cache news images at (content width minus padding)
+/// CONTENT_MAX_WIDTH (700) - reduced padding (16) - INPUT_PADDING * 2 (16) = 668
+pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
+    (CONTENT_MAX_WIDTH - (CONTENT_PADDING - SCROLLBAR_PADDING) * 2.0 - INPUT_PADDING * 2.0) as u32;
 
 /// Maximum width to cache server images at (matches content width)
 ///
@@ -270,9 +263,6 @@ pub const SERVER_IMAGE_MAX_CACHE_WIDTH: u32 = CONTENT_MAX_WIDTH as u32;
 // ============================================================================
 // Transfers Panel Layout
 // ============================================================================
-
-/// Maximum width for transfers list view
-pub const TRANSFER_LIST_MAX_WIDTH: f32 = CONTENT_MAX_WIDTH;
 
 /// Spacing between transfer items in list
 pub const TRANSFER_ITEM_SPACING: f32 = 3.0;

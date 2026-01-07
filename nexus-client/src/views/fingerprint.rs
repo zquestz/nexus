@@ -7,7 +7,7 @@ use iced::{Element, Length};
 use super::layout::scrollable_modal;
 use crate::i18n::t;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_PADDING, ELEMENT_SPACING, FINGERPRINT_DIALOG_MAX_WIDTH,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING,
     FINGERPRINT_SPACE_AFTER_LABEL, FINGERPRINT_SPACE_AFTER_SERVER_INFO,
     FINGERPRINT_SPACE_AFTER_TITLE, FINGERPRINT_SPACE_AFTER_WARNING,
     FINGERPRINT_SPACE_BEFORE_BUTTONS, FINGERPRINT_SPACE_BETWEEN_SECTIONS, MONOSPACE_FONT,
@@ -98,7 +98,7 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     ]
     .spacing(ELEMENT_SPACING)
     .padding(CONTENT_PADDING)
-    .max_width(FINGERPRINT_DIALOG_MAX_WIDTH);
+    .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_modal(dialog)
 }
