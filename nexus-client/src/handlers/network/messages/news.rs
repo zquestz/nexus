@@ -94,12 +94,24 @@ impl NexusApp {
                 {
                     // Emit detailed notification for new posts
                     if is_new {
+                        // Check if this is our own post
+                        let is_from_self = self
+                            .connections
+                            .get(&connection_id)
+                            .map(|c| {
+                                c.connection_info
+                                    .username
+                                    .eq_ignore_ascii_case(&item.author)
+                            })
+                            .unwrap_or(false);
+
                         emit_event(
                             self,
                             EventType::NewsPost,
                             EventContext::new()
                                 .with_connection_id(connection_id)
-                                .with_username(&item.author),
+                                .with_username(&item.author)
+                                .with_is_from_self(is_from_self),
                         );
                     }
 

@@ -34,30 +34,30 @@ impl NexusApp {
             let our_nickname_lower = our_nickname.to_lowercase();
             let is_from_self = nickname.eq_ignore_ascii_case(our_nickname);
 
-            if !is_from_self {
-                // Emit ChatMessage event for all messages from others
+            // Emit ChatMessage event (with is_from_self flag for sound handling)
+            emit_event(
+                self,
+                EventType::ChatMessage,
+                EventContext::new()
+                    .with_connection_id(connection_id)
+                    .with_username(&nickname)
+                    .with_message(&message)
+                    .with_is_from_self(is_from_self),
+            );
+
+            // Also emit ChatMention if our nickname is mentioned (only for others' messages)
+            if !is_from_self
+                && !our_nickname_lower.is_empty()
+                && contains_word(&message.to_lowercase(), &our_nickname_lower)
+            {
                 emit_event(
                     self,
-                    EventType::ChatMessage,
+                    EventType::ChatMention,
                     EventContext::new()
                         .with_connection_id(connection_id)
                         .with_username(&nickname)
                         .with_message(&message),
                 );
-
-                // Also emit ChatMention if our nickname is mentioned
-                if !our_nickname_lower.is_empty()
-                    && contains_word(&message.to_lowercase(), &our_nickname_lower)
-                {
-                    emit_event(
-                        self,
-                        EventType::ChatMention,
-                        EventContext::new()
-                            .with_connection_id(connection_id)
-                            .with_username(&nickname)
-                            .with_message(&message),
-                    );
-                }
             }
         }
 
