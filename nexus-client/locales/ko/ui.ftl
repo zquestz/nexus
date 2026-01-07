@@ -632,6 +632,22 @@ event-settings-show-notification = 알림 표시
 event-settings-content = 내용:
 settings-notifications-enabled = 알림 활성화
 
+# Sound settings
+settings-sound-enabled = 사운드 활성화
+settings-sound-volume = 볼륨
+settings-sound-play = 사운드 재생
+settings-sound-always-play = 항상 재생
+settings-sound-test = 테스트
+settings-notification-test = 테스트
+
+# Sound names
+sound-none = 없음
+sound-alert = 알림음
+sound-bell = 벨
+sound-chime = 차임
+sound-ding = 딩
+sound-pop = 팝
+
 # Notification messages
 notification-broadcast = 서버 브로드캐스트
 notification-broadcast-from = {$username}님의 브로드캐스트

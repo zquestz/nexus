@@ -660,6 +660,22 @@ event-settings-show-notification = Показывать уведомление
 event-settings-content = Содержимое:
 settings-notifications-enabled = Включить уведомления
 
+# Sound settings
+settings-sound-enabled = Включить звук
+settings-sound-volume = Громкость
+settings-sound-play = Воспроизводить звук
+settings-sound-always-play = Всегда воспроизводить
+settings-sound-test = Тест
+settings-notification-test = Тест
+
+# Sound names
+sound-none = Нет
+sound-alert = Сигнал
+sound-bell = Колокол
+sound-chime = Перезвон
+sound-ding = Динь
+sound-pop = Поп
+
 # Notification messages
 notification-broadcast = Трансляция сервера
 notification-broadcast-from = Трансляция от {$username}

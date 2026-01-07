@@ -105,6 +105,12 @@ pub struct ViewConfig<'a> {
 
     /// Global toggle for desktop notifications
     pub notifications_enabled: bool,
+
+    /// Global toggle for sound notifications
+    pub sound_enabled: bool,
+
+    /// Master volume for sounds (0.0 - 1.0)
+    pub sound_volume: f32,
 }
 
 /// Toolbar state configuration

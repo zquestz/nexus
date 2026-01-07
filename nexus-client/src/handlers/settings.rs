@@ -1,11 +1,14 @@
 //! Settings panel handlers
 
+#[cfg(all(unix, not(target_os = "macos")))]
+use std::time::Instant;
+
 use iced::Task;
 use iced::widget::{Id, operation};
 use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
-use crate::config::events::{EventType, NotificationContent};
+use crate::config::events::{EventType, NotificationContent, SoundChoice};
 use crate::config::settings::{
     AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
 };
@@ -27,7 +30,11 @@ impl NexusApp {
         }
 
         // Snapshot current config for potential cancel/restore
-        self.settings_form = Some(SettingsFormState::new(&self.config, self.settings_tab));
+        self.settings_form = Some(SettingsFormState::new(
+            &self.config,
+            self.settings_tab,
+            self.selected_event_type,
+        ));
         self.set_active_panel(ActivePanel::Settings);
 
         // Focus the appropriate field for the active tab
@@ -458,6 +465,9 @@ impl NexusApp {
 
     /// Handle event type selection in Events tab
     pub fn handle_event_type_selected(&mut self, event_type: EventType) -> Task<Message> {
+        // Save to app state and config so it persists across panel opens and restarts
+        self.selected_event_type = event_type;
+        self.config.settings.selected_event_type = event_type;
         if let Some(form) = &mut self.settings_form {
             form.selected_event_type = event_type;
         }
@@ -489,6 +499,98 @@ impl NexusApp {
                 .event_settings
                 .get_mut(event_type)
                 .notification_content = content;
+        }
+        Task::none()
+    }
+
+    /// Handle test notification button press
+    pub fn handle_test_notification(&mut self) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            let config = self.config.settings.event_settings.get(event_type);
+
+            // Build a sample notification with current content level
+            let (summary, body) = crate::events::build_test_notification_content(
+                event_type,
+                config.notification_content,
+            );
+
+            // Show the notification
+            let mut notification = notify_rust::Notification::new();
+            notification
+                .appname("Nexus BBS")
+                .summary(&summary)
+                .body(body.as_deref().unwrap_or(""))
+                .auto_icon()
+                .timeout(notify_rust::Timeout::Milliseconds(5000));
+
+            // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
+            // notifications when the D-Bus connection would otherwise be dropped.
+            #[cfg(all(unix, not(target_os = "macos")))]
+            if let Ok(handle) = notification.show()
+                && let Ok(mut handles) = crate::events::NOTIFICATION_HANDLES.lock()
+            {
+                let now = Instant::now();
+                handles.retain(|(created, _)| {
+                    now.duration_since(*created) < crate::events::HANDLE_LIFETIME
+                });
+                handles.push((now, handle));
+            }
+
+            // On non-Linux platforms, just show and ignore result
+            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            let _ = notification.show();
+        }
+        Task::none()
+    }
+
+    /// Handle play sound checkbox toggle for selected event
+    pub fn handle_event_play_sound_toggled(&mut self, enabled: bool) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            self.config
+                .settings
+                .event_settings
+                .get_mut(event_type)
+                .play_sound = enabled;
+        }
+        Task::none()
+    }
+
+    /// Handle sound selection for selected event
+    pub fn handle_event_sound_selected(&mut self, sound: SoundChoice) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            self.config
+                .settings
+                .event_settings
+                .get_mut(event_type)
+                .sound = sound;
+        }
+        Task::none()
+    }
+
+    /// Handle always play sound checkbox toggle for selected event
+    pub fn handle_event_always_play_sound_toggled(&mut self, enabled: bool) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            self.config
+                .settings
+                .event_settings
+                .get_mut(event_type)
+                .always_play_sound = enabled;
+        }
+        Task::none()
+    }
+
+    /// Handle test sound button press
+    pub fn handle_test_sound(&mut self) -> Task<Message> {
+        if let Some(form) = &self.settings_form {
+            let event_type = form.selected_event_type;
+            let config = self.config.settings.event_settings.get(event_type);
+
+            // Play the selected sound at the current volume
+            crate::sound::play_sound(&config.sound, self.config.settings.sound_volume);
         }
         Task::none()
     }

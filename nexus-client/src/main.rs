@@ -13,6 +13,7 @@ mod i18n;
 mod icon;
 mod image;
 mod network;
+mod sound;
 mod style;
 mod transfers;
 mod types;
@@ -25,6 +26,7 @@ use uuid::Uuid;
 use iced::widget::{Id, operation, text_editor};
 use iced::{Element, Subscription, Task, Theme};
 
+use config::events::EventType;
 use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
 use types::{
     BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
@@ -110,6 +112,8 @@ struct NexusApp {
     settings_form: Option<SettingsFormState>,
     /// Active settings tab (persisted across panel opens)
     settings_tab: SettingsTab,
+    /// Selected event type in Events tab (persisted across panel opens)
+    selected_event_type: EventType,
 
     // -------------------------------------------------------------------------
     // Async / Transient
@@ -148,6 +152,7 @@ impl Default for NexusApp {
     fn default() -> Self {
         let config = config::Config::load();
         let transfer_manager = transfers::TransferManager::load();
+        let selected_event_type = config.settings.selected_event_type;
         Self {
             // Persistence
             config,
@@ -164,6 +169,7 @@ impl Default for NexusApp {
             ui_state: UiState::default(),
             settings_form: None,
             settings_tab: SettingsTab::default(),
+            selected_event_type,
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
             bookmark_errors: HashMap::new(),
@@ -421,6 +427,23 @@ impl NexusApp {
             Message::EventNotificationContentSelected(content) => {
                 self.handle_event_notification_content_selected(content)
             }
+            Message::TestNotification => self.handle_test_notification(),
+            Message::ToggleSoundEnabled(enabled) => {
+                self.config.settings.sound_enabled = enabled;
+                Task::none()
+            }
+            Message::SoundVolumeChanged(volume) => {
+                self.config.settings.sound_volume = volume;
+                Task::none()
+            }
+            Message::EventPlaySoundToggled(enabled) => {
+                self.handle_event_play_sound_toggled(enabled)
+            }
+            Message::EventSoundSelected(sound) => self.handle_event_sound_selected(sound),
+            Message::EventAlwaysPlaySoundToggled(enabled) => {
+                self.handle_event_always_play_sound_toggled(enabled)
+            }
+            Message::TestSound => self.handle_test_sound(),
             Message::ThemeSelected(theme) => self.handle_theme_selected(theme),
             Message::SettingsNicknameChanged(nickname) => {
                 self.handle_settings_nickname_changed(nickname)
@@ -742,6 +765,8 @@ impl NexusApp {
             show_drop_overlay: self.dragging_files && self.can_accept_file_drop(),
             event_settings: &self.config.settings.event_settings,
             notifications_enabled: self.config.settings.notifications_enabled,
+            sound_enabled: self.config.settings.sound_enabled,
+            sound_volume: self.config.settings.sound_volume,
         };
 
         let main_view = views::main_layout(config);

@@ -654,6 +654,22 @@ event-settings-show-notification = Melding tonen
 event-settings-content = Inhoud:
 settings-notifications-enabled = Meldingen inschakelen
 
+# Sound settings
+settings-sound-enabled = Geluid inschakelen
+settings-sound-volume = Volume
+settings-sound-play = Geluid afspelen
+settings-sound-always-play = Altijd afspelen
+settings-sound-test = Test
+settings-notification-test = Test
+
+# Sound names
+sound-none = Geen
+sound-alert = Waarschuwing
+sound-bell = Bel
+sound-chime = Klokkenspel
+sound-ding = Ding
+sound-pop = Pop
+
 # Notification messages
 notification-broadcast = Serveruitzending
 notification-broadcast-from = Uitzending van {$username}

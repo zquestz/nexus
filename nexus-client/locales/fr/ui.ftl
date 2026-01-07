@@ -654,6 +654,22 @@ event-settings-show-notification = Afficher la notification
 event-settings-content = Contenu :
 settings-notifications-enabled = Activer les notifications
 
+# Sound settings
+settings-sound-enabled = Activer le son
+settings-sound-volume = Volume
+settings-sound-play = Jouer un son
+settings-sound-always-play = Toujours jouer
+settings-sound-test = Test
+settings-notification-test = Test
+
+# Sound names
+sound-none = Aucun
+sound-alert = Alerte
+sound-bell = Cloche
+sound-chime = Carillon
+sound-ding = Ding
+sound-pop = Pop
+
 # Notification messages
 notification-broadcast = Diffusion du serveur
 notification-broadcast-from = Diffusion de {$username}

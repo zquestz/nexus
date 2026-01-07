@@ -141,6 +141,9 @@ pub const SMALL_SPACING: f32 = 5.0;
 /// Indentation for nested/child checkboxes (e.g., timestamp sub-options)
 pub const CHECKBOX_INDENT: f32 = 20.0;
 
+/// Large spacer (between major sections or inline elements)
+pub const SPACER_SIZE_LARGE: f32 = 20.0;
+
 /// Medium vertical spacer (between sections)
 pub const SPACER_SIZE_MEDIUM: f32 = 10.0;
 

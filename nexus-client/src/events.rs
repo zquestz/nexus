@@ -17,14 +17,15 @@ use notify_rust::NotificationHandle;
 // so we hold onto handles until they expire naturally.
 // See: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8797
 #[cfg(all(unix, not(target_os = "macos")))]
-static NOTIFICATION_HANDLES: Mutex<Vec<(Instant, NotificationHandle)>> = Mutex::new(Vec::new());
+pub static NOTIFICATION_HANDLES: Mutex<Vec<(Instant, NotificationHandle)>> = Mutex::new(Vec::new());
 
 /// How long to keep notification handles alive (slightly longer than the notification timeout)
 #[cfg(all(unix, not(target_os = "macos")))]
-const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
+pub const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
 
 use crate::NexusApp;
 use crate::config::events::{EventType, NotificationContent};
+use crate::constants::APP_NAME;
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, ChatTab};
 
@@ -65,6 +66,10 @@ pub struct EventContext {
 
     /// Whether this is an upload (true) or download (false) - for transfer events
     pub is_upload: Option<bool>,
+
+    /// Whether this event was triggered by the current user's own action
+    /// When true, notifications are suppressed but sounds can still play
+    pub is_from_self: bool,
 }
 
 impl EventContext {
@@ -114,61 +119,89 @@ impl EventContext {
         self.is_upload = Some(is_upload);
         self
     }
+
+    /// Set whether this event is from the current user
+    pub fn with_is_from_self(mut self, is_from_self: bool) -> Self {
+        self.is_from_self = is_from_self;
+        self
+    }
 }
 
 // =============================================================================
 // Notification Emission
 // =============================================================================
 
-/// Check if a notification should be shown and emit it if so
+/// Emit an event, potentially showing a notification and/or playing a sound
 ///
 /// This function checks the user's event configuration and current application
-/// state to determine whether a notification should be displayed.
+/// state to determine whether a notification should be displayed and/or a
+/// sound should be played. Notifications and sounds are handled independently.
 pub fn emit_event(app: &NexusApp, event_type: EventType, context: EventContext) {
-    // Check global notifications toggle first
-    if !app.config.settings.notifications_enabled {
-        return;
-    }
-
     let config = app.config.settings.event_settings.get(event_type);
+    let suppressed = !should_show_notification(app, event_type, &context);
 
-    // Check if notifications are enabled for this event
-    if !config.show_notification {
-        return;
-    }
-
-    // Check event-specific conditions
-    if !should_show_notification(app, event_type, &context) {
-        return;
-    }
-
-    // Build and show the notification
-    let (summary, body) =
-        build_notification_content(event_type, &context, config.notification_content);
-
-    // Build and show the notification
-    let mut notification = Notification::new();
-    notification
-        .appname("Nexus BBS")
-        .summary(&summary)
-        .body(body.as_deref().unwrap_or(""))
-        .auto_icon()
-        .timeout(notify_rust::Timeout::Milliseconds(5000));
-
-    // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
-    // notifications when the D-Bus connection would otherwise be dropped.
-    #[cfg(all(unix, not(target_os = "macos")))]
-    if let Ok(handle) = notification.show()
-        && let Ok(mut handles) = NOTIFICATION_HANDLES.lock()
+    // Handle desktop notification (skip for self-triggered events)
+    if app.config.settings.notifications_enabled
+        && config.show_notification
+        && !suppressed
+        && !context.is_from_self
     {
-        let now = Instant::now();
-        handles.retain(|(created, _)| now.duration_since(*created) < HANDLE_LIFETIME);
-        handles.push((now, handle));
+        let (summary, body) =
+            build_notification_content(event_type, &context, config.notification_content);
+
+        let mut notification = Notification::new();
+        notification
+            .appname(APP_NAME)
+            .summary(&summary)
+            .body(body.as_deref().unwrap_or(""))
+            .auto_icon()
+            .timeout(notify_rust::Timeout::Milliseconds(5000));
+
+        // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
+        // notifications when the D-Bus connection would otherwise be dropped.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if let Ok(handle) = notification.show()
+            && let Ok(mut handles) = NOTIFICATION_HANDLES.lock()
+        {
+            let now = Instant::now();
+            handles.retain(|(created, _)| now.duration_since(*created) < HANDLE_LIFETIME);
+            handles.push((now, handle));
+        }
+
+        // On non-Linux platforms, just show and ignore result
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        let _ = notification.show();
     }
 
-    // On non-Linux platforms, just show and ignore result
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
-    let _ = notification.show();
+    // Handle sound playback (independent of notification settings)
+    let should_play = app.config.settings.sound_enabled
+        && config.play_sound
+        && (config.always_play_sound || !suppressed);
+    if should_play {
+        crate::sound::play_sound(&config.sound, app.config.settings.sound_volume);
+    }
+}
+
+/// Build notification content for a test notification
+///
+/// Returns (summary, body) with sample content for the given event type.
+pub fn build_test_notification_content(
+    event_type: EventType,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    // Create a sample context with test data
+    let context = EventContext {
+        connection_id: Some(1),
+        username: Some("TestUser".to_string()),
+        message: Some("This is a test message".to_string()),
+        server_name: Some("Test Server".to_string()),
+        path: Some("/Downloads/test-file.txt".to_string()),
+        error: Some("Connection timeout".to_string()),
+        is_upload: Some(false),
+        is_from_self: false,
+    };
+
+    build_notification_content(event_type, &context, content_level)
 }
 
 /// Determine if a notification should be shown based on app state

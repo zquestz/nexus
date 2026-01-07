@@ -8,7 +8,7 @@ use nexus_common::framing::MessageId;
 
 use super::form::{FileSortColumn, SettingsTab, TabId};
 use super::{ChatTab, NetworkConnection, ServerMessage};
-use crate::config::events::{EventType, NotificationContent};
+use crate::config::events::{EventType, NotificationContent, SoundChoice};
 use crate::image::ImagePickerError;
 use crate::transfers::TransferEvent;
 
@@ -201,6 +201,20 @@ pub enum Message {
     EventShowNotificationToggled(bool),
     /// Settings panel (Events tab): Notification content level selected
     EventNotificationContentSelected(NotificationContent),
+    /// Settings panel (Events tab): Test notification button pressed
+    TestNotification,
+    /// Settings panel (Events tab): Global sound toggle
+    ToggleSoundEnabled(bool),
+    /// Settings panel (Events tab): Sound volume slider changed
+    SoundVolumeChanged(f32),
+    /// Settings panel (Events tab): Play sound checkbox toggled
+    EventPlaySoundToggled(bool),
+    /// Settings panel (Events tab): Sound selected from picker
+    EventSoundSelected(SoundChoice),
+    /// Settings panel (Events tab): Always play sound checkbox toggled
+    EventAlwaysPlaySoundToggled(bool),
+    /// Settings panel (Events tab): Test sound button pressed
+    TestSound,
     /// Toolbar: Toggle Settings panel
     ToggleSettings,
     /// Settings panel: Theme selected from picker

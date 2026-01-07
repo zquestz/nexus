@@ -632,6 +632,22 @@ event-settings-show-notification = 显示通知
 event-settings-content = 内容:
 settings-notifications-enabled = 启用通知
 
+# Sound settings
+settings-sound-enabled = 启用声音
+settings-sound-volume = 音量
+settings-sound-play = 播放声音
+settings-sound-always-play = 始终播放
+settings-sound-test = 测试
+settings-notification-test = 测试
+
+# Sound names
+sound-none = 无
+sound-alert = 提示音
+sound-bell = 铃声
+sound-chime = 钟声
+sound-ding = 叮
+sound-pop = 气泡音
+
 # Notification messages
 notification-broadcast = 服务器广播
 notification-broadcast-from = 来自{$username}的广播

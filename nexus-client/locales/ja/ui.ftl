@@ -632,6 +632,22 @@ event-settings-show-notification = 通知を表示
 event-settings-content = 内容:
 settings-notifications-enabled = 通知を有効にする
 
+# Sound settings
+settings-sound-enabled = サウンドを有効にする
+settings-sound-volume = 音量
+settings-sound-play = サウンドを再生
+settings-sound-always-play = 常に再生
+settings-sound-test = テスト
+settings-notification-test = テスト
+
+# Sound names
+sound-none = なし
+sound-alert = アラート
+sound-bell = ベル
+sound-chime = チャイム
+sound-ding = ディン
+sound-pop = ポップ
+
 # Notification messages
 notification-broadcast = サーバーブロードキャスト
 notification-broadcast-from = {$username}からのブロードキャスト

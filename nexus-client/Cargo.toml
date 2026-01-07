@@ -42,6 +42,7 @@ ipnet = "2.11"
 uuid = { version = "1.19", features = ["v4", "serde"] }
 hex = "0.4"
 notify-rust = "4.11"
+rodio = { version = "0.20", default-features = false, features = ["vorbis"] }
 
 [dev-dependencies]
 tempfile = "3.20"

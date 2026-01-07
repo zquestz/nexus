@@ -82,6 +82,10 @@ struct ServerContentContext<'a> {
     pub event_settings: &'a EventSettings,
     /// Global toggle for desktop notifications
     pub notifications_enabled: bool,
+    /// Global toggle for sound notifications
+    pub sound_enabled: bool,
+    /// Master volume for sounds (0.0 - 1.0)
+    pub sound_volume: f32,
 }
 
 // ============================================================================
@@ -242,6 +246,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 show_drop_overlay: config.show_drop_overlay,
                 event_settings: config.event_settings,
                 notifications_enabled: config.notifications_enabled,
+                sound_enabled: config.sound_enabled,
+                sound_volume: config.sound_volume,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -274,6 +280,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                             .map(|f| f.selected_event_type)
                             .unwrap_or_default(),
                         notifications_enabled: config.notifications_enabled,
+                        sound_enabled: config.sound_enabled,
+                        sound_volume: config.sound_volume,
                     })
                 ]
                 .width(Fill)
@@ -674,6 +682,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                     .map(|f| f.selected_event_type)
                     .unwrap_or_default(),
                 notifications_enabled: ctx.notifications_enabled,
+                sound_enabled: ctx.sound_enabled,
+                sound_volume: ctx.sound_volume,
             })
         ]
         .width(Fill)

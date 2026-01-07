@@ -2,8 +2,15 @@
 
 use crate::style::{WINDOW_HEIGHT, WINDOW_WIDTH};
 
-use super::events::EventSettings;
+use super::events::{EventSettings, EventType};
 use super::theme::ThemePreference;
+
+// =============================================================================
+// Sound Settings
+// =============================================================================
+
+/// Default sound volume (0.0 - 1.0)
+pub const DEFAULT_SOUND_VOLUME: f32 = 0.75;
 
 // =============================================================================
 // Proxy Settings
@@ -89,6 +96,12 @@ pub const CHAT_FONT_SIZE_MIN: u8 = 9;
 /// Maximum allowed chat font size
 pub const CHAT_FONT_SIZE_MAX: u8 = 16;
 
+/// Minimum sound volume
+pub const SOUND_VOLUME_MIN: f32 = 0.0;
+
+/// Maximum sound volume
+pub const SOUND_VOLUME_MAX: f32 = 1.0;
+
 /// Default chat font size
 pub const CHAT_FONT_SIZE_DEFAULT: u8 = 13;
 
@@ -139,6 +152,14 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
 
+    /// Global toggle for sound notifications
+    #[serde(default = "default_true")]
+    pub sound_enabled: bool,
+
+    /// Master volume for sounds (0.0 - 1.0)
+    #[serde(default = "default_sound_volume")]
+    pub sound_volume: f32,
+
     /// User avatar as data URI (e.g., "data:image/png;base64,...")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
@@ -185,6 +206,10 @@ pub struct Settings {
     /// Event notification settings
     #[serde(default)]
     pub event_settings: EventSettings,
+
+    /// Last selected event type in Settings > Events tab
+    #[serde(default)]
+    pub selected_event_type: EventType,
 }
 
 impl Default for Settings {
@@ -199,6 +224,8 @@ impl Default for Settings {
             show_seconds: default_true(),
             show_hidden_files: false,
             notifications_enabled: default_true(),
+            sound_enabled: default_true(),
+            sound_volume: default_sound_volume(),
             avatar: None,
             nickname: None,
             window_width: default_window_width(),
@@ -210,6 +237,7 @@ impl Default for Settings {
             download_limit: default_download_limit(),
             upload_limit: default_upload_limit(),
             event_settings: EventSettings::default(),
+            selected_event_type: EventType::default(),
         }
     }
 }
@@ -276,6 +304,10 @@ fn default_download_limit() -> u8 {
 
 fn default_upload_limit() -> u8 {
     DEFAULT_UPLOAD_LIMIT
+}
+
+fn default_sound_volume() -> f32 {
+    DEFAULT_SOUND_VOLUME
 }
 
 // =============================================================================

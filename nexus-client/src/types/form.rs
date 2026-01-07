@@ -1041,7 +1041,8 @@ impl SettingsFormState {
     /// Create a new settings form state with a snapshot of the current config
     ///
     /// The `last_tab` parameter restores the previously selected tab when reopening the panel.
-    pub fn new(config: &Config, last_tab: SettingsTab) -> Self {
+    /// The `last_event_type` parameter restores the previously selected event type in the Events tab.
+    pub fn new(config: &Config, last_tab: SettingsTab, last_event_type: EventType) -> Self {
         // Decode avatar from config if present
         let cached_avatar = config
             .settings
@@ -1057,7 +1058,7 @@ impl SettingsFormState {
             error: None,
             cached_avatar,
             default_avatar,
-            selected_event_type: EventType::UserMessage,
+            selected_event_type: last_event_type,
         }
     }
 }

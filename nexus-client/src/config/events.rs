@@ -15,10 +15,8 @@ use crate::i18n::t;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventType {
-    /// User message received
-    #[default]
-    UserMessage,
     /// Server broadcast received
+    #[default]
     Broadcast,
     /// Chat message received
     ChatMessage,
@@ -40,6 +38,8 @@ pub enum EventType {
     UserDisconnected,
     /// You were kicked from the server
     UserKicked,
+    /// User message received
+    UserMessage,
 }
 
 impl EventType {
@@ -132,6 +132,90 @@ impl fmt::Display for NotificationContent {
 }
 
 // =============================================================================
+// Sound Choice
+// =============================================================================
+
+/// Available sounds for event notifications
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum SoundChoice {
+    /// Alert sound - attention-grabbing two-tone
+    #[default]
+    Alert,
+    /// Bell sound - classic bell with longer decay
+    Bell,
+    /// Chime sound - pleasant melodic chime
+    Chime,
+    /// Ding sound - single clean high ding
+    Ding,
+    /// Pop sound - short soft pop
+    Pop,
+}
+
+impl<'de> serde::Deserialize<'de> for SoundChoice {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "alert" => SoundChoice::Alert,
+            "bell" => SoundChoice::Bell,
+            "chime" => SoundChoice::Chime,
+            "ding" => SoundChoice::Ding,
+            "pop" => SoundChoice::Pop,
+            // Unknown values (including legacy "none") default to Alert
+            _ => SoundChoice::default(),
+        })
+    }
+}
+
+impl serde::Serialize for SoundChoice {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let s = match self {
+            SoundChoice::Alert => "alert",
+            SoundChoice::Bell => "bell",
+            SoundChoice::Chime => "chime",
+            SoundChoice::Ding => "ding",
+            SoundChoice::Pop => "pop",
+        };
+        serializer.serialize_str(s)
+    }
+}
+
+impl SoundChoice {
+    /// Get all sound choices
+    pub fn all() -> &'static [SoundChoice] {
+        &[
+            SoundChoice::Alert,
+            SoundChoice::Bell,
+            SoundChoice::Chime,
+            SoundChoice::Ding,
+            SoundChoice::Pop,
+        ]
+    }
+
+    /// Get the translation key for this sound's display name
+    pub fn translation_key(&self) -> &'static str {
+        match self {
+            SoundChoice::Alert => "sound-alert",
+            SoundChoice::Bell => "sound-bell",
+            SoundChoice::Chime => "sound-chime",
+            SoundChoice::Ding => "sound-ding",
+            SoundChoice::Pop => "sound-pop",
+        }
+    }
+}
+
+impl fmt::Display for SoundChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", t(self.translation_key()))
+    }
+}
+
+// =============================================================================
 // Event Configuration
 // =============================================================================
 
@@ -145,6 +229,18 @@ pub struct EventConfig {
     /// Level of detail in notification content
     #[serde(default)]
     pub notification_content: NotificationContent,
+
+    /// Whether to play a sound for this event
+    #[serde(default)]
+    pub play_sound: bool,
+
+    /// Which sound to play
+    #[serde(default)]
+    pub sound: SoundChoice,
+
+    /// Play sound even when window is focused/viewing relevant content
+    #[serde(default)]
+    pub always_play_sound: bool,
 }
 
 impl EventConfig {
@@ -153,6 +249,9 @@ impl EventConfig {
         Self {
             show_notification: true,
             notification_content: NotificationContent::default(),
+            play_sound: false,
+            sound: SoundChoice::Alert,
+            always_play_sound: false,
         }
     }
 }
@@ -195,6 +294,9 @@ impl EventSettings {
 static DEFAULT_EVENT_CONFIG: EventConfig = EventConfig {
     show_notification: false,
     notification_content: NotificationContent::WithPreview,
+    play_sound: false,
+    sound: SoundChoice::Alert,
+    always_play_sound: false,
 };
 
 /// Create default event configurations with sensible defaults
@@ -279,6 +381,17 @@ mod tests {
     }
 
     #[test]
+    fn test_sound_choice_all() {
+        let all = SoundChoice::all();
+        assert_eq!(all.len(), 5);
+        assert!(all.contains(&SoundChoice::Alert));
+        assert!(all.contains(&SoundChoice::Bell));
+        assert!(all.contains(&SoundChoice::Chime));
+        assert!(all.contains(&SoundChoice::Ding));
+        assert!(all.contains(&SoundChoice::Pop));
+    }
+
+    #[test]
     fn test_default_event_settings() {
         let settings = EventSettings::default();
 
@@ -289,6 +402,10 @@ mod tests {
             user_msg_config.notification_content,
             NotificationContent::WithPreview
         );
+        // Sound should be off by default but set to Alert
+        assert!(!user_msg_config.play_sound);
+        assert_eq!(user_msg_config.sound, SoundChoice::Alert);
+        assert!(!user_msg_config.always_play_sound);
     }
 
     #[test]
@@ -301,6 +418,14 @@ mod tests {
             settings.get(EventType::UserMessage).show_notification,
             deserialized.get(EventType::UserMessage).show_notification
         );
+        assert_eq!(
+            settings.get(EventType::UserMessage).play_sound,
+            deserialized.get(EventType::UserMessage).play_sound
+        );
+        assert_eq!(
+            settings.get(EventType::UserMessage).sound,
+            deserialized.get(EventType::UserMessage).sound
+        );
     }
 
     #[test]
@@ -312,6 +437,7 @@ mod tests {
         // Should return default config for unknown event
         let config = settings.get(EventType::UserMessage);
         assert!(!config.show_notification);
+        assert!(!config.play_sound);
     }
 
     #[test]
@@ -320,7 +446,38 @@ mod tests {
 
         // Modify the config
         settings.get_mut(EventType::UserMessage).show_notification = false;
+        settings.get_mut(EventType::UserMessage).play_sound = true;
 
         assert!(!settings.get(EventType::UserMessage).show_notification);
+        assert!(settings.get(EventType::UserMessage).play_sound);
+    }
+
+    #[test]
+    fn test_sound_choice_serialization() {
+        // Test Alert serialization
+        let alert_json = serde_json::to_string(&SoundChoice::Alert).expect("serialize");
+        assert_eq!(alert_json, "\"alert\"");
+
+        // Test Bell serialization
+        let bell_json = serde_json::to_string(&SoundChoice::Bell).expect("serialize");
+        assert_eq!(bell_json, "\"bell\"");
+
+        // Test deserialization
+        let alert: SoundChoice = serde_json::from_str("\"alert\"").expect("deserialize");
+        assert_eq!(alert, SoundChoice::Alert);
+
+        let bell: SoundChoice = serde_json::from_str("\"bell\"").expect("deserialize");
+        assert_eq!(bell, SoundChoice::Bell);
+    }
+
+    #[test]
+    fn test_sound_choice_unknown_defaults_to_alert() {
+        // Unknown values should default to Alert
+        let sound: SoundChoice = serde_json::from_str("\"unknown\"").expect("deserialize");
+        assert_eq!(sound, SoundChoice::Alert);
+
+        // Legacy "none" value should also default to Alert
+        let none: SoundChoice = serde_json::from_str("\"none\"").expect("deserialize");
+        assert_eq!(none, SoundChoice::Alert);
     }
 }

@@ -2,6 +2,9 @@
 //!
 //! Shared constants used across multiple modules.
 
+/// Application display name (used in window title, notifications, etc.)
+pub const APP_NAME: &str = "Nexus BBS";
+
 /// Application directory name (used in config directory path)
 pub const APP_DIR_NAME: &str = "nexus";
 
