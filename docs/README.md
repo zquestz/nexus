@@ -29,4 +29,4 @@ For operators running Nexus BBS servers.
 ## Additional Resources
 
 - [Main README](../README.md) — Project overview and quick start
-- [Protocol Documentation](../protocol-docs/README.md) — Technical protocol specification
+- [Protocol Documentation](protocol/README.md) — Technical protocol specification

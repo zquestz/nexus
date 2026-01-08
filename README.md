@@ -51,7 +51,7 @@ See [Docker Documentation](docs/server/03-docker.md) for details.
 
 - **[Client Guide](docs/README.md#client-user-guide)** — Connections, chat, files, settings
 - **[Server Guide](docs/README.md#server-admin-guide)** — Setup, configuration, user management
-- **[Protocol Specification](protocol-docs/README.md)** — Technical protocol details
+- **[Protocol Specification](docs/protocol/README.md)** — Technical protocol details
 
 ## Architecture
 

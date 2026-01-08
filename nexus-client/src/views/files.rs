@@ -275,7 +275,7 @@ fn breadcrumb_bar<'a>(current_path: &str, viewing_root: bool) -> Element<'a, Mes
         .into()
 }
 
-/// Build the toolbar with Home, View Root/Home, Refresh, Download All, New Directory, Up buttons
+/// Build the toolbar with Up, Home, View Root/Home, Refresh, Download All, New Directory buttons
 fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     // Home button - tooltip changes based on viewing mode
     let home_tooltip = if state.viewing_root {
@@ -333,8 +333,8 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .into()
     };
 
-    // Start building toolbar row with Home button
-    let mut toolbar_row = row![home_button].spacing(SPACER_SIZE_SMALL);
+    // Start building toolbar row with Up button first, then Home
+    let mut toolbar_row = row![up_button, home_button].spacing(SPACER_SIZE_SMALL);
 
     // Root toggle button - only shown if user has file_root permission
     if state.has_file_root {
@@ -494,9 +494,6 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     };
 
     toolbar_row = toolbar_row.push(paste_button);
-
-    // Up button - last
-    toolbar_row = toolbar_row.push(up_button);
 
     toolbar_row.into()
 }
