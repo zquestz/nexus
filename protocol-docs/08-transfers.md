@@ -20,7 +20,7 @@ Both ports use the same TLS certificate, frame format, and authentication system
 ```
 Client                                        Server
    │                                             │
-   │  ─────── Connect TLS to port 7501 ─────►   │
+   │  ─────── Connect TLS to port 7501 ─────►    │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
@@ -53,7 +53,7 @@ Client                                        Server
    │         TransferComplete { success }        │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │  ─────── Server closes connection ─────    │
+   │  ─────── Server closes connection ─────     │
 ```
 
 ## Upload Flow
@@ -61,7 +61,7 @@ Client                                        Server
 ```
 Client                                        Server
    │                                             │
-   │  ─────── Connect TLS to port 7501 ─────►   │
+   │  ─────── Connect TLS to port 7501 ─────►    │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
@@ -94,7 +94,7 @@ Client                                        Server
    │         TransferComplete { success }        │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │  ─────── Server closes connection ─────    │
+   │  ─────── Server closes connection ─────     │
 ```
 
 ## Messages

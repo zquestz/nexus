@@ -7,7 +7,7 @@ After a successful handshake, the client must authenticate with the server. This
 ```
 Client                                        Server
    │                                             │
-   │  ─────── Handshake Complete ──────────     │
+   │  ─────── Handshake Complete ───────────    │
    │                                             │
    │  Login { username, password, ... }          │
    │ ───────────────────────────────────────►    │
@@ -15,7 +15,7 @@ Client                                        Server
    │         LoginResponse { session_id, ... }   │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │  ─────── Session Established ──────────    │
+   │  ─────── Session Established ──────────     │
    │                                             │
 ```
 

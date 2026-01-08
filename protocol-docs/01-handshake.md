@@ -7,7 +7,7 @@ The handshake is the first message exchange after TLS connection. It establishes
 ```
 Client                                        Server
    │                                             │
-   │  ─────── TLS Connection ──────────────►    │
+   │  ─────── TLS Connection ──────────────►     │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │

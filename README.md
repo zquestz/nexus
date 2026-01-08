@@ -11,49 +11,14 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 
 ## Features
 
-### Communication
-- Real-time chat with topics and broadcast messages
-- Private messaging with tabbed conversations
-- News posts with Markdown and images
-- IRC-style commands (`/msg`, `/kick`, `/topic`, `/list`, etc.)
-
-### Files
-- Multi-tab file browser with sortable columns
-- Downloads and uploads with pause, resume, and cancel
-- Drag-and-drop upload support (files and folders)
-- Per-server queue management with separate download/upload limits
-- Create, rename, move, copy, and delete
-- Upload folders (`[NEXUS-UL]`) and drop boxes (`[NEXUS-DB]`)
-
-### Users
-- 25 granular permissions with admin override
-- Shared accounts with unique nicknames
-- Guest access for casual users
-- Custom avatars or auto-generated identicons
-
-### Security
-- Mandatory TLS with auto-generated certificates
-- TOFU certificate verification
-- Tor and SOCKS5 proxy support
-- Argon2id password hashing
-
-### Notifications
-- Desktop notifications for 12 event types
-- Sound notifications with 5 built-in sounds (Alert, Bell, Chime, Ding, Pop)
-- Per-event toggle and detail level (Simple/Compact/Detailed)
-- Smart suppression when already viewing relevant content
-- Cross-platform (Linux, macOS, Windows)
-
-### Customization
-- 30 themes
-- 13 languages (auto-detected)
-- Configurable font size, timestamps, and notifications
-- Server branding (name, description, logo)
-
-### Connectivity
-- Multi-server bookmarks with auto-connect
-- UPnP port forwarding
-- IPv4, IPv6, and Yggdrasil support
+- **Chat** — Real-time messaging with topics, private messages, and broadcasts
+- **Files** — Multi-tab browser with downloads, uploads, pause/resume, and queue management
+- **News** — Bulletin board with Markdown and image support
+- **Users** — 25 granular permissions, shared accounts, guest access, custom avatars
+- **Security** — Mandatory TLS, TOFU verification, Argon2id passwords, proxy support
+- **Notifications** — Desktop and sound alerts for 12 event types
+- **Customization** — 30 themes, 13 languages, configurable UI
+- **Connectivity** — Multi-server bookmarks, auto-connect, UPnP, IPv4/IPv6/Yggdrasil
 
 ## Quick Start
 
@@ -68,65 +33,27 @@ cargo build --release
 ./target/release/nexus
 ```
 
-Server options:
-- `--upnp` — Enable UPnP port forwarding (both ports)
-- `--bind ::` — Bind to IPv6 (required for Yggdrasil)
-- `--port 7500` — Main BBS port (default: 7500)
-- `--transfer-port 7501` — File transfer port (default: 7501)
+See [Server Documentation](docs/server/01-getting-started.md) for configuration options.
 
 ## Docker
 
 ```bash
-# Build and run with Docker Compose
 docker compose up -d
-
-# Or build and run manually
-docker build -t nexus-server .
-docker run -d \
-  -p 7500:7500 \
-  -p 7501:7501 \
-  -v nexus-data:/home/nexus/.local/share/nexusd \
-  --name nexusd \
-  nexus-server
 ```
 
-Environment variables:
-- `NEXUS_BIND` — IP to bind (default: `0.0.0.0`, use `::` for IPv6)
-- `NEXUS_PORT` — Main BBS port (default: `7500`)
-- `NEXUS_TRANSFER_PORT` — File transfer port (default: `7501`)
-- `NEXUS_DEBUG` — Enable debug logging (set to any value)
-
-Data is stored in `/home/nexus/.local/share/nexusd` (database, certificates, files).
-
-**Note:** UPnP (`--upnp`) doesn't work with Docker's default bridge network. Forward ports 7500/7501 manually on your router, or use `--network host` on Linux.
-
-## Proxy Support
-
-Route connections through Tor or SSH tunnels:
-
-1. Open **Settings** → **Network**
-2. Enable proxy (default: `127.0.0.1:9050` for Tor)
-3. Add username/password if required
-
-Localhost and Yggdrasil addresses bypass the proxy automatically.
-
-## Guest Access
-
-Enable passwordless guest login:
-
-1. Connect as admin
-2. Open **User Management**
-3. Enable the "guest" account
-
-Guests connect with an empty username/password and a nickname.
+See [Docker Documentation](docs/server/03-docker.md) for details.
 
 ## Screenshots
 
 *Coming soon*
 
-## Technical Details
+## Documentation
 
-### Architecture
+- **[Client Guide](docs/README.md#client-user-guide)** — Connections, chat, files, settings
+- **[Server Guide](docs/README.md#server-admin-guide)** — Setup, configuration, user management
+- **[Protocol Specification](protocol-docs/README.md)** — Technical protocol details
+
+## Architecture
 
 | Crate | Description |
 |-------|-------------|
@@ -134,42 +61,17 @@ Guests connect with an empty username/password and a nickname.
 | `nexus-server` | Server daemon (`nexusd`) |
 | `nexus-client` | GUI client (`nexus`) |
 
-### Requirements
+## Requirements
 
 - Rust 2024 edition (1.91+)
+- Linux, macOS, or Windows
 
-### Platforms
-
-| | Server | Client |
-|----------|:------:|:------:|
-| Linux | ✅ | ✅ |
-| macOS | ✅ | ✅ |
-| Windows | ✅ | ✅ |
-
-See `nexus-client/assets/*/README.md` for platform-specific instructions.
-
-### Data Locations
-
-| | Linux | macOS | Windows |
-|---|-------|-------|---------|
-| Server | `~/.local/share/nexusd/` | `~/Library/Application Support/nexusd/` | `%APPDATA%\nexusd\` |
-| Client | `~/.config/nexus/` | `~/Library/Application Support/nexus/` | `%APPDATA%\nexus\` |
-
-### Languages
-
-English, Spanish, French, German, Italian, Dutch, Portuguese (BR/PT), Russian, Japanese, Chinese (Simplified/Traditional), Korean
-
-### Development
+## Development
 
 ```bash
-# Build
-cargo build --release
-
-# Test
-cargo test --workspace
-
-# Lint
-cargo clippy --workspace --all-targets -- -D warnings
+cargo build --release           # Build
+cargo test --workspace          # Test
+cargo clippy --workspace --all-targets -- -D warnings  # Lint
 ```
 
 ## License
