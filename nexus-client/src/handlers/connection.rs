@@ -392,7 +392,7 @@ impl NexusApp {
                 }
                 commands::execute_command(self, conn_id, command)
             }
-            ParseResult::Message(message) => {
+            ParseResult::Message(message, action) => {
                 // Check permission before sending
                 let has_permission = match &conn.active_chat_tab {
                     ChatTab::Server => conn.has_permission(PERMISSION_CHAT_SEND),
@@ -426,11 +426,12 @@ impl NexusApp {
                 };
 
                 let (msg, pm_nickname) = match &conn.active_chat_tab {
-                    ChatTab::Server => (ClientMessage::ChatSend { message }, None),
+                    ChatTab::Server => (ClientMessage::ChatSend { message, action }, None),
                     ChatTab::UserMessage(nickname) => (
                         ClientMessage::UserMessage {
                             to_nickname: nickname.clone(),
                             message,
+                            action,
                         },
                         Some(nickname.clone()),
                     ),

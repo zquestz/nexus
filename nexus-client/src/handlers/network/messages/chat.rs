@@ -1,6 +1,7 @@
 //! Chat message handlers
 
 use iced::Task;
+use nexus_common::protocol::ChatAction;
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -17,6 +18,7 @@ impl NexusApp {
         message: String,
         is_admin: bool,
         is_shared: bool,
+        action: ChatAction,
     ) -> Task<Message> {
         // Check if we were mentioned in this message
         if let Some(conn) = self.connections.get(&connection_id) {
@@ -67,6 +69,7 @@ impl NexusApp {
             chrono::Local::now(),
             is_admin,
             is_shared,
+            action,
         );
         self.add_chat_message(connection_id, chat_message)
     }

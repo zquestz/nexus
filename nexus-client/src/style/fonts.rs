@@ -3,7 +3,7 @@
 //! All font definitions and text sizes are defined here.
 
 use iced::Font;
-use iced::font::{Family, Weight};
+use iced::font::{Family, Style, Weight};
 
 // ============================================================================
 // Font Definitions
@@ -22,6 +22,13 @@ pub const MONOSPACE_FONT: Font = Font {
 pub const BOLD_FONT: Font = Font {
     weight: Weight::Bold,
     ..Font::DEFAULT
+};
+
+/// Monospace italic font for action messages (/me)
+pub const MONOSPACE_ITALIC_FONT: Font = Font {
+    family: Family::Name("SauceCodePro Nerd Font Mono"),
+    style: Style::Italic,
+    ..Font::MONOSPACE
 };
 
 // ============================================================================

@@ -10,6 +10,18 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Action type for chat and private messages
+///
+/// Determines how a message is rendered:
+/// - `Normal`: Standard message with brackets (e.g., `<alice> hello`)
+/// - `Me`: Action format (e.g., `*** alice waves`)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChatAction {
+    #[default]
+    Normal,
+    Me,
+}
+
 fn default_locale() -> String {
     "en".to_string()
 }
@@ -20,6 +32,8 @@ fn default_locale() -> String {
 pub enum ClientMessage {
     ChatSend {
         message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
     },
     ChatTopicUpdate {
         topic: String,
@@ -69,6 +83,8 @@ pub enum ClientMessage {
     UserMessage {
         to_nickname: String,
         message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
     },
     UserUpdate {
         username: String,
@@ -238,6 +254,11 @@ pub enum ClientMessage {
     },
 }
 
+/// Helper for skip_serializing_if on ChatAction
+fn is_normal_action(action: &ChatAction) -> bool {
+    matches!(action, ChatAction::Normal)
+}
+
 /// Server response messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -250,6 +271,8 @@ pub enum ServerMessage {
         #[serde(default)]
         is_shared: bool,
         message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
     },
     ChatTopicUpdated {
         topic: String,
@@ -377,6 +400,8 @@ pub enum ServerMessage {
         from_admin: bool,
         to_nickname: String,
         message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
     },
     UserMessageResponse {
         success: bool,
@@ -684,9 +709,10 @@ pub struct UserInfoDetailed {
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClientMessage::ChatSend { message } => f
+            ClientMessage::ChatSend { message, action } => f
                 .debug_struct("ChatSend")
                 .field("message", message)
+                .field("action", action)
                 .finish(),
             ClientMessage::ChatTopicUpdate { topic } => f
                 .debug_struct("ChatTopicUpdate")
@@ -761,10 +787,12 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::UserMessage {
                 to_nickname,
                 message,
+                action,
             } => f
                 .debug_struct("UserMessage")
                 .field("to_nickname", to_nickname)
                 .field("message", message)
+                .field("action", action)
                 .finish(),
             ClientMessage::UserUpdate {
                 username,
@@ -1274,6 +1302,7 @@ mod tests {
             message: "Hello!".to_string(),
             is_admin: false,
             is_shared: true,
+            action: ChatAction::Normal,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"ChatMessage\""));
@@ -1378,6 +1407,7 @@ mod tests {
             from_admin: false,
             to_nickname: "alice".to_string(),
             message: "Hello!".to_string(),
+            action: ChatAction::Normal,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserMessage\""));
@@ -1433,6 +1463,7 @@ mod tests {
         let msg = ClientMessage::UserMessage {
             to_nickname: "Nick1".to_string(),
             message: "Hello!".to_string(),
+            action: ChatAction::Normal,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserMessage\""));
@@ -2029,6 +2060,7 @@ mod tests {
         let client_json = serde_json::to_string(&ClientMessage::UserMessage {
             to_nickname: "alice".to_string(),
             message: "Hello!".to_string(),
+            action: ChatAction::Normal,
         })
         .unwrap();
         let server_json = serde_json::to_string(&ServerMessage::UserMessage {
@@ -2036,6 +2068,7 @@ mod tests {
             from_admin: false,
             to_nickname: "alice".to_string(),
             message: "Hello!".to_string(),
+            action: ChatAction::Normal,
         })
         .unwrap();
 

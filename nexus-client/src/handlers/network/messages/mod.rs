@@ -59,7 +59,15 @@ impl NexusApp {
                 is_admin,
                 is_shared,
                 message,
-            } => self.handle_chat_message(connection_id, nickname, message, is_admin, is_shared),
+                action,
+            } => self.handle_chat_message(
+                connection_id,
+                nickname,
+                message,
+                is_admin,
+                is_shared,
+                action,
+            ),
 
             ServerMessage::ChatTopicUpdated { topic, username } => {
                 self.handle_chat_topic(connection_id, topic, username)
@@ -174,12 +182,14 @@ impl NexusApp {
                 from_admin,
                 to_nickname,
                 message,
+                action,
             } => self.handle_user_message(
                 connection_id,
                 from_nickname,
                 from_admin,
                 to_nickname,
                 message,
+                action,
             ),
 
             ServerMessage::UserMessageResponse { success, error } => {

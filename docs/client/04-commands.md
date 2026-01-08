@@ -18,6 +18,22 @@ To send a message that starts with `/` without it being treated as a command:
 | `//hello` | Sends `/hello` as a message |
 | ` /hello` | Sends `/hello` as a message (leading space) |
 
+### Action Messages
+
+Use `/me` to send an action message (like IRC). Action messages are displayed in italics with a `***` prefix instead of the normal `nickname:` format.
+
+**Usage:**
+```
+/me waves hello
+```
+
+**Result:**
+```
+*** alice waves hello
+```
+
+Action messages work in both server chat and private messages. The `/me` prefix is case-insensitive.
+
 ## Available Commands
 
 Commands are shown or hidden based on your permissions. If you don't have the required permission, the command won't appear in `/help` and will be treated as unknown.

@@ -8,15 +8,16 @@ use iced::widget::{
 };
 use iced::{Color, Element, Fill, Font, Theme};
 use linkify::{LinkFinder, LinkKind};
+use nexus_common::protocol::ChatAction;
 use once_cell::sync::Lazy;
 
 use crate::i18n::t;
 use crate::style::{
-    BOLD_FONT, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SIZE, CHAT_SPACING, CLOSE_BUTTON_PADDING,
-    INPUT_PADDING, MONOSPACE_FONT, SMALL_PADDING, SMALL_SPACING, TAB_CONTENT_PADDING,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
-    chat_tab_active_style, close_button_on_primary_style, content_background_style, shaped_text,
-    tooltip_container_style,
+    BOLD_FONT, CHAT_ACTION_PREFIX, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SEPARATOR, CHAT_MESSAGE_SIZE,
+    CHAT_SPACING, CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, MONOSPACE_ITALIC_FONT,
+    SMALL_PADDING, SMALL_SPACING, TAB_CONTENT_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, close_button_on_primary_style,
+    content_background_style, shaped_text, tooltip_container_style,
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 
@@ -110,6 +111,8 @@ struct MessageStyle {
     content_color: Color,
     link_color: Color,
     font_size: f32,
+    /// Use italic font for content (action messages)
+    italic: bool,
 }
 
 /// Build a styled rich text message with consistent formatting and clickable links
@@ -122,25 +125,37 @@ fn styled_message<'a>(
     // Build spans dynamically to support clickable links
     let mut spans: Vec<iced::widget::text::Span<'a, String, Font>> = Vec::new();
 
+    // Choose font based on italic flag (for action messages)
+    let text_font = if style.italic {
+        MONOSPACE_ITALIC_FONT
+    } else {
+        MONOSPACE_FONT
+    };
+
     // Add timestamp if present
     if let Some(ts) = time_str {
         spans.push(span(format!("[{}] ", ts)).color(style.timestamp_color));
     }
 
-    // Add prefix (username, [SYS], etc.)
-    spans.push(span(prefix).color(style.prefix_color));
+    // Add prefix (username, [SYS], etc.) - uses italic for action messages
+    spans.push(span(prefix).color(style.prefix_color).font(text_font));
 
     // Add content with link detection
     for segment in split_into_segments(content) {
         match segment {
             TextSegment::Text(text) => {
-                spans.push(span(text.to_string()).color(style.content_color));
+                spans.push(
+                    span(text.to_string())
+                        .color(style.content_color)
+                        .font(text_font),
+                );
             }
             TextSegment::Link(url) => {
                 let openable_url = make_openable_url(url);
                 spans.push(
                     span(url.to_string())
                         .color(style.link_color)
+                        .font(text_font)
                         .link(openable_url),
                 );
             }
@@ -276,6 +291,8 @@ struct MessageRenderContext<'a> {
     is_shared: bool,
     /// Font size for the message
     font_size: f32,
+    /// Action type for chat messages (Normal or Me)
+    action: ChatAction,
 }
 
 /// Build a rich text element for a single message line
@@ -292,6 +309,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
                 content_color: color,
                 link_color,
                 font_size: ctx.font_size,
+                italic: false,
             };
             styled_message(
                 ctx.time_str.as_deref(),
@@ -308,6 +326,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
                 content_color: color,
                 link_color,
                 font_size: ctx.font_size,
+                italic: false,
             };
             styled_message(
                 ctx.time_str.as_deref(),
@@ -324,6 +343,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
                 content_color: color,
                 link_color,
                 font_size: ctx.font_size,
+                italic: false,
             };
             styled_message(
                 ctx.time_str.as_deref(),
@@ -340,6 +360,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
                 content_color: color,
                 link_color,
                 font_size: ctx.font_size,
+                italic: false,
             };
             styled_message(
                 ctx.time_str.as_deref(),
@@ -357,19 +378,24 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
                 chat::text(ctx.theme)
             };
             let text_color = chat::text(ctx.theme);
+
+            // Handle action messages (/me)
+            let (prefix, is_action) = match ctx.action {
+                ChatAction::Normal => {
+                    (format!("{}{}", ctx.nickname, CHAT_MESSAGE_SEPARATOR), false)
+                }
+                ChatAction::Me => (format!("{}{} ", CHAT_ACTION_PREFIX, ctx.nickname), true),
+            };
+
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: username_color,
                 content_color: text_color,
                 link_color,
                 font_size: ctx.font_size,
+                italic: is_action,
             };
-            styled_message(
-                ctx.time_str.as_deref(),
-                format!("{}: ", ctx.nickname),
-                ctx.line,
-                &style,
-            )
+            styled_message(ctx.time_str.as_deref(), prefix, ctx.line, &style)
         }
     }
 }
@@ -423,6 +449,7 @@ fn build_message_list<'a>(
                 is_admin: sender_is_admin,
                 is_shared: sender_is_shared,
                 font_size,
+                action: msg.action,
             });
             chat_column = chat_column.push(display);
         }

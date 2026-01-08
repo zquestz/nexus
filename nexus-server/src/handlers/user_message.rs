@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
@@ -19,6 +19,7 @@ use crate::db::Permission;
 pub async fn handle_user_message<W>(
     to_nickname: String,
     message: String,
+    action: ChatAction,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -125,6 +126,7 @@ where
         from_admin: requesting_user_session.is_admin,
         to_nickname: target_session.nickname.clone(),
         message,
+        action,
     };
 
     // Send to sender's session(s) by nickname
@@ -157,6 +159,7 @@ mod tests {
         let result = handle_user_message(
             "alice".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             None,
             &mut test_ctx.handler_context(),
         )
@@ -186,6 +189,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -221,6 +225,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "   ".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -256,6 +261,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             long_message,
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -289,6 +295,7 @@ mod tests {
         let result = handle_user_message(
             "sender".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -322,6 +329,7 @@ mod tests {
         let result = handle_user_message(
             "nonexistent".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -366,6 +374,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -411,6 +420,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "hello world".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )
@@ -450,6 +460,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "admin message".to_string(),
+            ChatAction::Normal,
             Some(1), // admin's session_id
             &mut test_ctx.handler_context(),
         )
@@ -520,6 +531,7 @@ mod tests {
         let result = handle_user_message(
             "Nick1".to_string(),
             "Hello Nick1!".to_string(),
+            ChatAction::Normal,
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -585,6 +597,7 @@ mod tests {
         let result = handle_user_message(
             "Nick1".to_string(),
             "Message to myself".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -647,6 +660,7 @@ mod tests {
         let result = handle_user_message(
             "target".to_string(),
             "Hello from shared!".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -694,6 +708,7 @@ mod tests {
         let result = handle_user_message(
             "Nick1".to_string(),
             "hello".to_string(),
+            ChatAction::Normal,
             Some(1), // sender's session_id
             &mut test_ctx.handler_context(),
         )

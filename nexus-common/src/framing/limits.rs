@@ -192,7 +192,7 @@ pub fn known_message_types() -> Vec<&'static str> {
 mod tests {
     use super::*;
     use crate::protocol::{
-        ChatInfo, ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed,
+        ChatAction, ChatInfo, ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed,
     };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
@@ -297,6 +297,7 @@ mod tests {
     fn test_limit_chat_send() {
         let msg = ClientMessage::ChatSend {
             message: str_of_len(MAX_MESSAGE_LENGTH),
+            action: ChatAction::Normal,
         };
         assert_eq!(json_size(&msg), max_payload_for_type("ChatSend") as usize);
     }
@@ -405,6 +406,7 @@ mod tests {
         let msg = ClientMessage::UserMessage {
             to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
+            action: ChatAction::Normal,
         };
         // Client variant is smaller than server variant, so it fits within the limit
         assert!(json_size(&msg) <= max_payload_for_type("UserMessage") as usize);
@@ -465,6 +467,7 @@ mod tests {
             is_admin: false,
             is_shared: false,
             message: str_of_len(MAX_MESSAGE_LENGTH),
+            action: ChatAction::Normal,
         };
         assert_eq!(
             json_size(&msg),
@@ -768,6 +771,7 @@ mod tests {
             from_admin: true,
             to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
+            action: ChatAction::Normal,
         };
         // Server variant defines the limit since it's larger
         assert_eq!(

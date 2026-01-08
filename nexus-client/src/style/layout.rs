@@ -349,3 +349,13 @@ pub const FINGERPRINT_SPACE_BETWEEN_SECTIONS: f32 = 8.0;
 
 /// Space before button row in fingerprint dialog
 pub const FINGERPRINT_SPACE_BEFORE_BUTTONS: f32 = 10.0;
+
+// ============================================================================
+// Chat Message Formatting
+// ============================================================================
+
+/// Separator between nickname and message in normal chat (e.g., "alice: hello")
+pub const CHAT_MESSAGE_SEPARATOR: &str = ": ";
+
+/// Prefix for action messages (/me), IRC-style (e.g., "*** alice waves")
+pub const CHAT_ACTION_PREFIX: &str = "*** ";

@@ -5,7 +5,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError};
 
 use super::{
@@ -19,6 +19,7 @@ use crate::db::Permission;
 /// Handle a chat send request from the client
 pub async fn handle_chat_send<W>(
     message: String,
+    action: ChatAction,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -84,6 +85,7 @@ where
                 is_admin: user.is_admin,
                 is_shared: user.is_shared,
                 message,
+                action,
             },
             Permission::ChatReceive,
         )
@@ -106,6 +108,7 @@ mod tests {
         // Try to send chat without login
         let result = handle_chat_send(
             "Hello".to_string(),
+            ChatAction::Normal,
             session_id,
             &mut test_ctx.handler_context(),
         )
@@ -124,8 +127,13 @@ mod tests {
         let long_message = "a".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
         // Try to send too-long message
-        let result =
-            handle_chat_send(long_message, session_id, &mut test_ctx.handler_context()).await;
+        let result = handle_chat_send(
+            long_message,
+            ChatAction::Normal,
+            session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         // Should fail
         assert!(
@@ -155,6 +163,7 @@ mod tests {
         // Should succeed
         let result = handle_chat_send(
             max_message,
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -183,6 +192,7 @@ mod tests {
         // Try to send empty message
         let result = handle_chat_send(
             "".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -194,6 +204,7 @@ mod tests {
         // Try to send whitespace-only message
         let result = handle_chat_send(
             "   ".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -224,6 +235,7 @@ mod tests {
         // Try to send message with \n
         let result = handle_chat_send(
             "Hello\nWorld".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -235,6 +247,7 @@ mod tests {
         // Try to send message with \r
         let result = handle_chat_send(
             "Hello\rWorld".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -249,6 +262,7 @@ mod tests {
         // Try to send message with \r\n
         let result = handle_chat_send(
             "Hello\r\nWorld".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -276,6 +290,7 @@ mod tests {
         // Try to send chat without permission
         let result = handle_chat_send(
             "Hello".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -306,6 +321,7 @@ mod tests {
         // Try to send chat without chat feature
         let result = handle_chat_send(
             "Hello".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -333,6 +349,7 @@ mod tests {
         // Send valid chat message
         let result = handle_chat_send(
             "Hello, world!".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -352,6 +369,7 @@ mod tests {
         // Try to send chat with invalid session
         let result = handle_chat_send(
             "Hello".to_string(),
+            ChatAction::Normal,
             invalid_session_id,
             &mut test_ctx.handler_context(),
         )
@@ -383,6 +401,7 @@ mod tests {
         // Admin should be able to send chat
         let result = handle_chat_send(
             "Admin message!".to_string(),
+            ChatAction::Normal,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )

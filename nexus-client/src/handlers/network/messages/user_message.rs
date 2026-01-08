@@ -3,6 +3,7 @@
 use chrono::Local;
 use iced::Task;
 use nexus_common::framing::MessageId;
+use nexus_common::protocol::ChatAction;
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -19,6 +20,7 @@ impl NexusApp {
         from_admin: bool,
         to_nickname: String,
         message: String,
+        action: ChatAction,
     ) -> Task<Message> {
         // First pass: get info we need for notification (immutable borrow)
         let notification_info = {
@@ -81,6 +83,7 @@ impl NexusApp {
             Local::now(),
             from_admin,
             is_shared,
+            action,
         );
         conn.user_messages
             .entry(other_user.clone())

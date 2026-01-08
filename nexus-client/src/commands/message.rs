@@ -1,7 +1,7 @@
 //! /message command implementation - send messages to users
 
 use iced::Task;
-use nexus_common::protocol::ClientMessage;
+use nexus_common::protocol::{ChatAction, ClientMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use crate::NexusApp;
@@ -65,6 +65,7 @@ pub fn execute(
     let msg = ClientMessage::UserMessage {
         to_nickname: nickname.clone(),
         message,
+        action: ChatAction::Normal,
     };
 
     let message_id = match conn.send(msg) {

@@ -376,6 +376,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ChatAction;
     use std::io::Cursor;
     use tokio::io::BufReader;
 
@@ -383,7 +384,8 @@ mod tests {
     fn test_client_message_type() {
         assert_eq!(
             client_message_type(&ClientMessage::ChatSend {
-                message: "hi".to_string()
+                message: "hi".to_string(),
+                action: ChatAction::Normal,
             }),
             "ChatSend"
         );
@@ -408,6 +410,7 @@ mod tests {
                 is_admin: false,
                 is_shared: false,
                 message: "hi".to_string(),
+                action: ChatAction::Normal,
             }),
             "ChatMessage"
         );
@@ -424,6 +427,7 @@ mod tests {
     async fn test_send_and_receive_client_message() {
         let message = ClientMessage::ChatSend {
             message: "Hello, world!".to_string(),
+            action: ChatAction::Normal,
         };
 
         // Write the message
@@ -441,7 +445,7 @@ mod tests {
 
         let received = read_client_message(&mut reader).await.unwrap().unwrap();
         match received.message {
-            ClientMessage::ChatSend { message } => {
+            ClientMessage::ChatSend { message, .. } => {
                 assert_eq!(message, "Hello, world!");
             }
             _ => panic!("Wrong message type"),
@@ -456,6 +460,7 @@ mod tests {
             is_admin: false,
             is_shared: false,
             message: "Hi there!".to_string(),
+            action: ChatAction::Normal,
         };
 
         // Write the message
@@ -479,6 +484,7 @@ mod tests {
                 is_admin,
                 is_shared,
                 message,
+                ..
             } => {
                 assert_eq!(session_id, 42);
                 assert_eq!(nickname, "alice");

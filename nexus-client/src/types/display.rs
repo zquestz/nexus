@@ -1,6 +1,7 @@
 //! Chat and user display types
 
 use chrono::{DateTime, Local};
+use nexus_common::protocol::ChatAction;
 
 /// Chat tab type - represents different chat windows
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -66,16 +67,19 @@ pub struct ChatMessage {
     pub is_admin: bool,
     /// Whether the sender is a shared account user (for muted coloring)
     pub is_shared: bool,
+    /// Action type for chat messages (Normal or Me)
+    pub action: ChatAction,
 }
 
 impl ChatMessage {
-    /// Create a new chat message with a specific timestamp, admin status, and shared status
+    /// Create a new chat message with a specific timestamp, admin status, shared status, and action
     pub fn with_timestamp_and_status(
         nickname: impl Into<String>,
         message: impl Into<String>,
         timestamp: DateTime<Local>,
         is_admin: bool,
         is_shared: bool,
+        action: ChatAction,
     ) -> Self {
         Self {
             nickname: nickname.into(),
@@ -84,6 +88,7 @@ impl ChatMessage {
             timestamp: Some(timestamp),
             is_admin,
             is_shared,
+            action,
         }
     }
 
@@ -96,6 +101,7 @@ impl ChatMessage {
             timestamp: None,
             is_admin: false,
             is_shared: false,
+            action: ChatAction::Normal,
         }
     }
 
@@ -108,6 +114,7 @@ impl ChatMessage {
             timestamp: None,
             is_admin: false,
             is_shared: false,
+            action: ChatAction::Normal,
         }
     }
 
@@ -120,6 +127,7 @@ impl ChatMessage {
             timestamp: None,
             is_admin: false,
             is_shared: false,
+            action: ChatAction::Normal,
         }
     }
 
@@ -132,6 +140,7 @@ impl ChatMessage {
             timestamp: Some(timestamp),
             is_admin: false,
             is_shared: false,
+            action: ChatAction::Normal,
         }
     }
 
@@ -148,6 +157,7 @@ impl ChatMessage {
             timestamp: None,
             is_admin: false,
             is_shared: false,
+            action: ChatAction::Normal,
         }
     }
 

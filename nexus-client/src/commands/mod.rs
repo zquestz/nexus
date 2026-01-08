@@ -47,6 +47,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use iced::Task;
+use nexus_common::protocol::ChatAction;
 
 use crate::NexusApp;
 use crate::i18n::t_args;
@@ -241,7 +242,8 @@ pub enum ParseResult {
     /// Input is a command that should be executed
     Command(CommandInvocation),
     /// Input is a regular message that should be sent to the server
-    Message(String),
+    /// The ChatAction indicates normal or /me action format
+    Message(String, ChatAction),
     /// Input is empty (should be ignored)
     Empty,
 }
@@ -272,7 +274,19 @@ pub fn parse_input(input: &str) -> ParseResult {
     if let Some(rest) = input.strip_prefix('/') {
         // Check for escape sequence: `//` sends original input without first `/`
         if rest.starts_with('/') {
-            return ParseResult::Message(rest.to_string());
+            return ParseResult::Message(rest.to_string(), ChatAction::Normal);
+        }
+
+        // Check for /me action prefix (case-insensitive)
+        let rest_lower = rest.to_lowercase();
+        if rest_lower == "me" || rest_lower.starts_with("me ") {
+            // /me <message> - action format
+            let message = rest[2..].trim_start().to_string();
+            if message.is_empty() {
+                // "/me" with no message - treat as empty
+                return ParseResult::Empty;
+            }
+            return ParseResult::Message(message, ChatAction::Me);
         }
 
         // Parse as command
@@ -290,7 +304,7 @@ pub fn parse_input(input: &str) -> ParseResult {
         ParseResult::Command(CommandInvocation { name, args })
     } else {
         // Not a command - send as-is (preserving original input)
-        ParseResult::Message(input.to_string())
+        ParseResult::Message(input.to_string(), ChatAction::Normal)
     }
 }
 
@@ -349,9 +363,46 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_me_action() {
+        match parse_input("/me waves hello") {
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "waves hello");
+                assert_eq!(action, ChatAction::Me);
+            }
+            _ => panic!("Expected Message with Me action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_me_case_insensitive() {
+        match parse_input("/ME waves") {
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "waves");
+                assert_eq!(action, ChatAction::Me);
+            }
+            _ => panic!("Expected Message with Me action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_me_empty_is_empty() {
+        match parse_input("/me") {
+            ParseResult::Empty => {}
+            _ => panic!("Expected Empty for /me with no message"),
+        }
+        match parse_input("/me   ") {
+            ParseResult::Empty => {}
+            _ => panic!("Expected Empty for /me with only whitespace"),
+        }
+    }
+
+    #[test]
     fn test_parse_regular_message() {
         match parse_input("hello world") {
-            ParseResult::Message(msg) => assert_eq!(msg, "hello world"),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "hello world");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -360,7 +411,10 @@ mod tests {
     fn test_parse_message_with_leading_space() {
         // Leading space should prevent command parsing
         match parse_input(" /help") {
-            ParseResult::Message(msg) => assert_eq!(msg, " /help"),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, " /help");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -368,7 +422,10 @@ mod tests {
     #[test]
     fn test_parse_message_preserves_whitespace() {
         match parse_input("  hello  world  ") {
-            ParseResult::Message(msg) => assert_eq!(msg, "  hello  world  "),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "  hello  world  ");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -408,7 +465,10 @@ mod tests {
     #[test]
     fn test_parse_escape_sequence() {
         match parse_input("//shrug") {
-            ParseResult::Message(msg) => assert_eq!(msg, "/shrug"),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "/shrug");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -416,7 +476,10 @@ mod tests {
     #[test]
     fn test_parse_escape_with_space() {
         match parse_input("//me does something") {
-            ParseResult::Message(msg) => assert_eq!(msg, "/me does something"),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "/me does something");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -425,7 +488,10 @@ mod tests {
     fn test_parse_escape_preserves_formatting() {
         // Escape should preserve everything after the first /
         match parse_input("//  spaced  out  ") {
-            ParseResult::Message(msg) => assert_eq!(msg, "/  spaced  out  "),
+            ParseResult::Message(msg, action) => {
+                assert_eq!(msg, "/  spaced  out  ");
+                assert_eq!(action, ChatAction::Normal);
+            }
             _ => panic!("Expected Message"),
         }
     }
@@ -444,7 +510,7 @@ mod tests {
                 assert_eq!(
                     COMMAND_MAP.get(alias),
                     Some(&index),
-                    "Missing alias: {} for command {}",
+                    "Missing alias: {} for command: {}",
                     alias,
                     reg.info.name
                 );

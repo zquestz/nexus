@@ -44,12 +44,22 @@ Send a chat message to all connected users.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `message` | string | Yes | Message content (1-1024 characters) |
+| `action` | string | No | Action type: `"Normal"` (default) or `"Me"` |
 
 **Example:**
 
 ```json
 {
   "message": "Hello, everyone!"
+}
+```
+
+**Action message example (`/me waves`):**
+
+```json
+{
+  "message": "waves hello",
+  "action": "Me"
 }
 ```
 
@@ -70,6 +80,7 @@ Broadcast to all users when a chat message is sent.
 | `is_admin` | boolean | Yes | Whether sender is an admin |
 | `is_shared` | boolean | Yes | Whether sender is on a shared account |
 | `message` | string | Yes | Message content |
+| `action` | string | No | Action type: `"Normal"` (default) or `"Me"` |
 
 **Example:**
 
@@ -82,6 +93,32 @@ Broadcast to all users when a chat message is sent.
   "message": "Hello, everyone!"
 }
 ```
+
+**Action message example:**
+
+```json
+{
+  "session_id": 42,
+  "nickname": "alice",
+  "is_admin": false,
+  "is_shared": false,
+  "message": "waves hello",
+  "action": "Me"
+}
+```
+
+## Action Types
+
+Chat messages support action formatting via the `action` field:
+
+| Action | Input | Rendered |
+|--------|-------|----------|
+| `Normal` (default) | `Hello!` | `<alice> Hello!` |
+| `Me` | `/me waves` | `*** alice waves` (italic) |
+
+Action messages are rendered in italic with `***` prefix instead of the usual `<nickname>:` format. The nickname retains its color (admin red, shared muted, or normal).
+
+When `action` is omitted, it defaults to `Normal`.
 
 **Shared account example:**
 

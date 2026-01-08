@@ -227,8 +227,8 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     match msg {
-        ClientMessage::ChatSend { message } => {
-            handlers::handle_chat_send(message, conn_state.session_id, ctx).await?;
+        ClientMessage::ChatSend { message, action } => {
+            handlers::handle_chat_send(message, action, conn_state.session_id, ctx).await?;
         }
         ClientMessage::ChatTopicUpdate { topic } => {
             handlers::handle_chat_topic_update(topic, conn_state.session_id, ctx).await?;
@@ -297,8 +297,10 @@ where
         ClientMessage::UserMessage {
             to_nickname,
             message,
+            action,
         } => {
-            handlers::handle_user_message(to_nickname, message, conn_state.session_id, ctx).await?;
+            handlers::handle_user_message(to_nickname, message, action, conn_state.session_id, ctx)
+                .await?;
         }
         ClientMessage::UserUpdate {
             username,

@@ -48,6 +48,7 @@ Send a private message to another user.
 |-------|------|----------|-------------|
 | `to_nickname` | string | Yes | Display name of the recipient |
 | `message` | string | Yes | Message content (1-1024 characters) |
+| `action` | string | No | Action type: `"Normal"` (default) or `"Me"` |
 
 **Example:**
 
@@ -55,6 +56,16 @@ Send a private message to another user.
 {
   "to_nickname": "bob",
   "message": "Hey, are you there?"
+}
+```
+
+**Action message example (`/me waves`):**
+
+```json
+{
+  "to_nickname": "bob",
+  "message": "waves at you",
+  "action": "Me"
 }
 ```
 
@@ -102,6 +113,7 @@ Delivered to the recipient when a private message is sent.
 | `from_admin` | boolean | Yes | Whether sender is an admin |
 | `to_nickname` | string | Yes | Recipient's display name |
 | `message` | string | Yes | Message content |
+| `action` | string | No | Action type: `"Normal"` (default) or `"Me"` |
 
 **Example:**
 
@@ -111,6 +123,18 @@ Delivered to the recipient when a private message is sent.
   "from_admin": false,
   "to_nickname": "bob",
   "message": "Hey, are you there?"
+}
+```
+
+**Action message example:**
+
+```json
+{
+  "from_nickname": "alice",
+  "from_admin": false,
+  "to_nickname": "bob",
+  "message": "waves at you",
+  "action": "Me"
 }
 ```
 
