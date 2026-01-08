@@ -147,7 +147,11 @@ fn bookmarks_section<'a>(
                 .style(muted_text_style),
         );
     } else {
-        for (index, bookmark) in bookmarks.iter().enumerate() {
+        // Sort bookmarks alphabetically by name (case-insensitive)
+        let mut sorted_bookmarks: Vec<_> = bookmarks.iter().collect();
+        sorted_bookmarks.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        for (index, bookmark) in sorted_bookmarks.into_iter().enumerate() {
             let bookmark_id = bookmark.id;
 
             // Check if this bookmark is currently connected

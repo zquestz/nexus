@@ -61,10 +61,10 @@ Client                                        Server
 ```
 Client                                        Server
    │                                             │
-   │  FileMove { source_path, destination_dir, ...}
+   │  FileMove { source_path, destination_dir, ...} │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         FileMoveResponse { success, error_kind }
+   │         FileMoveResponse { success, error_kind }│
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -74,10 +74,10 @@ Client                                        Server
 ```
 Client                                        Server
    │                                             │
-   │  FileCopy { source_path, destination_dir, ...}
+   │  FileCopy { source_path, destination_dir, ...} │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         FileCopyResponse { success, error_kind }
+   │         FileCopyResponse { success, error_kind }│
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```

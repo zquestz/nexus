@@ -39,13 +39,13 @@ Client                                        Server
    │                                             │
    │  ┌──── For each file: ──────────────────┐   │
    │  │                                      │   │
-   │  │      FileStart { path, size, sha256 }│   │
+   │  │     FileStart { path, size, sha256 } │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  │  FileStartResponse { size, sha256 }  │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
-   │  │      FileData [raw bytes]            │   │
+   │  │     FileData [raw bytes]             │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  └──────────────────────────────────────┘   │
@@ -73,7 +73,7 @@ Client                                        Server
    │         LoginResponse { success }           │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │  FileUpload { destination, file_count, ... }│
+   │  FileUpload { destination, file_count, ...} │
    │ ───────────────────────────────────────►    │
    │         FileUploadResponse { success, ... } │
    │ ◄───────────────────────────────────────    │
@@ -83,7 +83,7 @@ Client                                        Server
    │  │  FileStart { path, size, sha256 }    │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
-   │  │      FileStartResponse { size, sha256 }  │
+   │  │    FileStartResponse { size, sha256 }│   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  │  FileData [raw bytes]                │   │
