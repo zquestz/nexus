@@ -18,22 +18,6 @@ To send a message that starts with `/` without it being treated as a command:
 | `//hello` | Sends `/hello` as a message |
 | ` /hello` | Sends `/hello` as a message (leading space) |
 
-### Action Messages
-
-Use `/me` to send an action message (like IRC). Action messages are displayed in italics with a `***` prefix instead of the normal `nickname:` format.
-
-**Usage:**
-```
-/me waves hello
-```
-
-**Result:**
-```
-*** alice waves hello
-```
-
-Action messages work in both server chat and private messages. The `/me` prefix is case-insensitive.
-
 ## Available Commands
 
 Commands are shown or hidden based on your permissions. If you don't have the required permission, the command won't appear in `/help` and will be treated as unknown.
@@ -145,6 +129,28 @@ The output uses IRC-style formatting with `@` prefix for administrators:
 Users online: @alice bob charlie (3 users)
 ```
 
+### /me
+
+Send an action message (like IRC). Action messages are displayed in italics with a `***` prefix instead of the normal `nickname:` format.
+
+**Aliases:** None
+
+**Permission:** None
+
+**Usage:**
+```
+/me waves hello
+/me is thinking...
+```
+
+**Result:**
+```
+*** alice waves hello
+*** alice is thinking...
+```
+
+Action messages work in both server chat and private message tabs. The message is sent to whichever chat tab is currently active.
+
 ### /message
 
 Send a private message to a user.
@@ -227,6 +233,7 @@ Manage chat tabs (server chat and PM conversations).
 | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
 | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
 | `/list` | `/l`, `/userlist` | `user_list` | Show connected/all users |
+| `/me` | — | None | Send an action message |
 | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 | `/sinfo` | `/s`, `/serverinfo` | None | Show server information |
 | `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |

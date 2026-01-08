@@ -36,6 +36,7 @@ mod clear;
 mod focus;
 mod help;
 mod list;
+mod me;
 mod message;
 mod server_info;
 mod topic;
@@ -152,6 +153,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_USER_LIST],
         },
         handler: list::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "me",
+            aliases: &[],
+            description_key: "cmd-me-desc",
+            usage_key: "cmd-me-usage",
+            permissions: &[],
+        },
+        handler: me::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -277,18 +288,7 @@ pub fn parse_input(input: &str) -> ParseResult {
             return ParseResult::Message(rest.to_string(), ChatAction::Normal);
         }
 
-        // Check for /me action prefix (case-insensitive)
-        let rest_lower = rest.to_lowercase();
-        if rest_lower == "me" || rest_lower.starts_with("me ") {
-            // /me <message> - action format
-            let message = rest[2..].trim_start().to_string();
-            if message.is_empty() {
-                // "/me" with no message - treat as empty
-                return ParseResult::Empty;
-            }
-            return ParseResult::Message(message, ChatAction::Me);
-        }
-
+        // Try to match a command
         // Parse as command
         let parts: Vec<&str> = rest.split_whitespace().collect();
 
@@ -363,36 +363,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_me_action() {
+    fn test_parse_me_command() {
         match parse_input("/me waves hello") {
-            ParseResult::Message(msg, action) => {
-                assert_eq!(msg, "waves hello");
-                assert_eq!(action, ChatAction::Me);
+            ParseResult::Command(cmd) => {
+                assert_eq!(cmd.name, "me");
+                assert_eq!(cmd.args, vec!["waves", "hello"]);
             }
-            _ => panic!("Expected Message with Me action"),
+            _ => panic!("Expected Command"),
         }
     }
 
     #[test]
     fn test_parse_me_case_insensitive() {
         match parse_input("/ME waves") {
-            ParseResult::Message(msg, action) => {
-                assert_eq!(msg, "waves");
-                assert_eq!(action, ChatAction::Me);
+            ParseResult::Command(cmd) => {
+                assert_eq!(cmd.name, "me");
+                assert_eq!(cmd.args, vec!["waves"]);
             }
-            _ => panic!("Expected Message with Me action"),
+            _ => panic!("Expected Command"),
         }
     }
 
     #[test]
-    fn test_parse_me_empty_is_empty() {
+    fn test_parse_me_no_args() {
         match parse_input("/me") {
-            ParseResult::Empty => {}
-            _ => panic!("Expected Empty for /me with no message"),
-        }
-        match parse_input("/me   ") {
-            ParseResult::Empty => {}
-            _ => panic!("Expected Empty for /me with only whitespace"),
+            ParseResult::Command(cmd) => {
+                assert_eq!(cmd.name, "me");
+                assert!(cmd.args.is_empty());
+            }
+            _ => panic!("Expected Command"),
         }
     }
 
