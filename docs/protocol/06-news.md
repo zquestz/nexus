@@ -42,7 +42,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Created }     │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 
@@ -65,7 +65,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Updated }     │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 
@@ -81,7 +81,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Deleted }     │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 

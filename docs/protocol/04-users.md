@@ -36,13 +36,13 @@ Client                                        Server
 Client                                        Server
    │                                             │
    │         UserConnected { user }              │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
    │         UserDisconnected { ... }            │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
    │         UserUpdated { ... }                 │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 

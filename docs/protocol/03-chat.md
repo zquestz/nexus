@@ -13,7 +13,7 @@ Client                                        Server
    │ ───────────────────────────────────────►    │
    │                                             │
    │         ChatMessage { ... }                 │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 
@@ -31,7 +31,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ChatTopicUpdated { ... }            │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 

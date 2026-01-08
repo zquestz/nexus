@@ -32,7 +32,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ServerBroadcast { username, ... }   │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 

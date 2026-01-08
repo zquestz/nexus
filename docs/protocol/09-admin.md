@@ -36,7 +36,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         UserUpdated { ... }                 │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 
@@ -65,7 +65,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         UserDisconnected { ... }            │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 
@@ -81,7 +81,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ServerInfoUpdated { server_info }   │
-   │ ◄─────────── (broadcast to all) ───────    │
+   │ ◄─────────── (broadcast to all) ────────    │
    │                                             │
 ```
 

@@ -85,8 +85,8 @@ Each message type has a maximum payload size to prevent denial-of-service attack
 ```
 Client                                        Server
    │                                             │
-   │  ─────── TLS Handshake ───────────────►    │
-   │  ◄─────────────────────────────────────    │
+   │  ─────── TLS Handshake ───────────────►     │
+   │  ◄─────────────────────────────────────     │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
@@ -100,7 +100,7 @@ Client                                        Server
    │         LoginResponse { session_id, ... }   │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │  ─────── Session Established ──────────    │
+   │  ─────── Session Established ──────────     │
    │                                             │
 ```
 
