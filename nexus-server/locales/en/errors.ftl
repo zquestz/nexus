@@ -192,3 +192,15 @@ err-upload-file-exists = A file with this name already exists. Please choose a d
 err-upload-empty = Upload must contain at least one file
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = Cannot ban yourself
+err-ban-admin-by-nickname = Cannot ban administrators
+err-ban-admin-by-ip = Cannot ban this IP
+err-ban-invalid-target = Invalid IP address or hostname
+err-ban-invalid-duration = Invalid duration format (use 10m, 4h, 7d, or 0 for permanent)
+err-ban-not-found = No ban found for '{ $target }'
+err-reason-too-long = Ban reason is too long (max { $max_length } characters)
+err-reason-invalid = Ban reason contains invalid characters
+err-banned-permanent = You have been banned from this server
+err-banned-with-expiry = You have been banned from this server (expires in { $remaining })

@@ -195,3 +195,15 @@ err-upload-empty = Upload moet minimaal één bestand bevatten
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = U kunt uzelf niet verbannen
+err-ban-admin-by-nickname = Beheerders kunnen niet worden verbannen
+err-ban-admin-by-ip = Dit IP-adres kan niet worden verbannen
+err-ban-invalid-target = Ongeldig IP-adres of hostnaam
+err-ban-invalid-duration = Ongeldig duurformaat (gebruik 10m, 4h, 7d of 0 voor permanent)
+err-ban-not-found = Geen verbanning gevonden voor '{ $target }'
+err-reason-too-long = Verbanningsreden is te lang (max { $max_length } tekens)
+err-reason-invalid = Verbanningsreden bevat ongeldige tekens
+err-banned-permanent = U bent verbannen van deze server
+err-banned-with-expiry = U bent verbannen van deze server (verloopt over { $remaining })

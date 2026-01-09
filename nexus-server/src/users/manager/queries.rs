@@ -1,5 +1,7 @@
 //! Query methods for UserManager
 
+use ipnet::IpNet;
+
 use super::UserManager;
 use crate::users::user::UserSession;
 
@@ -103,6 +105,42 @@ impl UserManager {
             .filter(|u| u.nickname.to_lowercase() == nickname_lower)
             .cloned()
             .collect()
+    }
+
+    /// Check if any admin is connected from a given IP address
+    ///
+    /// Used by the ban system to prevent banning an IP that has an admin connected.
+    pub async fn is_admin_connected_from_ip(&self, ip: &str) -> bool {
+        let users = self.users.read().await;
+        users
+            .values()
+            .any(|u| u.is_admin && u.address.ip().to_string() == ip)
+    }
+
+    /// Check if any admin is connected from an IP within a given CIDR range
+    ///
+    /// Used by the ban system to prevent banning a CIDR range that contains an admin's IP.
+    pub async fn is_admin_connected_in_range(&self, range: &IpNet) -> bool {
+        let users = self.users.read().await;
+        users
+            .values()
+            .any(|u| u.is_admin && range.contains(&u.address.ip()))
+    }
+
+    /// Get all unique IP addresses for sessions with a given nickname
+    ///
+    /// Used by the ban system to get IPs when banning by nickname.
+    pub async fn get_ips_for_nickname(&self, nickname: &str) -> Vec<String> {
+        let users = self.users.read().await;
+        let nickname_lower = nickname.to_lowercase();
+        let mut ips: Vec<String> = users
+            .values()
+            .filter(|u| u.nickname.to_lowercase() == nickname_lower)
+            .map(|u| u.address.ip().to_string())
+            .collect();
+        ips.sort();
+        ips.dedup();
+        ips
     }
 }
 

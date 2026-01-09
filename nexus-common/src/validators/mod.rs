@@ -5,6 +5,7 @@
 //! servers use them for enforcement.
 
 mod avatar;
+mod ban_reason;
 mod chat_topic;
 mod data_uri;
 mod dir_name;
@@ -26,6 +27,7 @@ mod username;
 mod version;
 
 pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
+pub use ban_reason::{BanReasonError, MAX_BAN_REASON_LENGTH, validate_ban_reason};
 pub use chat_topic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
 pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
 pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};

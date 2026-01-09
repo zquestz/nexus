@@ -3,7 +3,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -17,6 +17,7 @@ use nexus_common::io::{
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
@@ -34,6 +35,7 @@ pub struct ConnectionParams {
     pub file_root: Option<&'static Path>,
     pub transfer_port: u16,
     pub connection_tracker: Arc<ConnectionTracker>,
+    pub ban_cache: Arc<RwLock<BanCache>>,
 }
 
 /// Connection state for a single client
@@ -81,6 +83,7 @@ where
         file_root,
         transfer_port,
         connection_tracker,
+        ban_cache,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -131,6 +134,7 @@ where
                             file_root,
                             transfer_port,
                             connection_tracker: connection_tracker.clone(),
+                            ban_cache: ban_cache.clone(),
                         };
 
                         if let Err(e) = handle_client_message(
@@ -441,6 +445,20 @@ where
             return ctx
                 .send_error_and_disconnect(&err_message_not_supported(ctx.locale), None)
                 .await;
+        }
+        ClientMessage::BanCreate {
+            target,
+            duration,
+            reason,
+        } => {
+            handlers::handle_ban_create(target, duration, reason, conn_state.session_id, ctx)
+                .await?;
+        }
+        ClientMessage::BanDelete { target } => {
+            handlers::handle_ban_delete(target, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::BanList => {
+            handlers::handle_ban_list(conn_state.session_id, ctx).await?;
         }
     }
 

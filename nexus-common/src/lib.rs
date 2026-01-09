@@ -40,6 +40,9 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// user access control. The list is maintained in alphabetical order.
 ///
 /// Permission meanings:
+/// - `ban_create`: Create/update IP bans
+/// - `ban_delete`: Remove IP bans
+/// - `ban_list`: View list of active bans
 /// - `chat_receive`: Receive chat messages from #server
 /// - `chat_send`: Send chat messages to #server
 /// - `chat_topic`: View the server topic
@@ -67,6 +70,9 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `user_list`: View the list of connected users
 /// - `user_message`: Send private messages to users
 pub const ALL_PERMISSIONS: &[&str] = &[
+    "ban_create",
+    "ban_delete",
+    "ban_list",
     "chat_receive",
     "chat_send",
     "chat_topic",
@@ -178,8 +184,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (26)
-        assert_eq!(ALL_PERMISSIONS.len(), 26);
+        // Verify we have the expected number of permissions (29)
+        assert_eq!(ALL_PERMISSIONS.len(), 29);
     }
 
     #[test]
@@ -203,6 +209,9 @@ mod tests {
         assert!(is_shared_account_permission("user_message"));
 
         // Forbidden permissions
+        assert!(!is_shared_account_permission("ban_create"));
+        assert!(!is_shared_account_permission("ban_delete"));
+        assert!(!is_shared_account_permission("ban_list"));
         assert!(!is_shared_account_permission("user_create"));
         assert!(!is_shared_account_permission("user_delete"));
         assert!(!is_shared_account_permission("user_edit"));

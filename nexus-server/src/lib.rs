@@ -2,6 +2,7 @@
 //!
 //! This library exposes the server's internal modules for integration testing.
 
+pub mod ban_cache;
 pub mod connection_tracker;
 pub mod constants;
 pub mod db;

@@ -322,3 +322,113 @@ pub const SQL_UPDATE_NEWS: &str = "
 /// **Parameters:**
 /// 1. `id: i64` - News item ID
 pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
+
+// ========================================================================
+// IP Ban Query Operations
+// ========================================================================
+
+/// Insert or update an IP ban (upsert)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to ban
+/// 2. `nickname: Option<&str>` - Nickname annotation (if banned by nickname)
+/// 3. `reason: Option<&str>` - Reason for the ban
+/// 4. `created_by: &str` - Username of admin who created the ban
+/// 5. `created_at: i64` - Unix timestamp when ban was created
+/// 6. `expires_at: Option<i64>` - Unix timestamp when ban expires (None = permanent)
+///
+/// **Note:** Uses `ON CONFLICT` to update all fields if IP already exists.
+pub const SQL_UPSERT_BAN: &str = "
+    INSERT INTO ip_bans (ip_address, nickname, reason, created_by, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(ip_address) DO UPDATE SET
+        nickname = excluded.nickname,
+        reason = excluded.reason,
+        created_by = excluded.created_by,
+        created_at = excluded.created_at,
+        expires_at = excluded.expires_at";
+
+/// Select a ban by IP address (only if not expired)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+/// 2. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+///
+/// **Note:** Only returns bans that are either permanent (expires_at IS NULL)
+/// or not yet expired (expires_at > now).
+/// Used in tests only - production code uses the in-memory BanCache.
+#[cfg(test)]
+pub const SQL_SELECT_BAN_BY_IP: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_bans
+    WHERE ip_address = ?
+    AND (expires_at IS NULL OR expires_at > ?)";
+
+/// Select a ban by IP address (regardless of expiry status)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+///
+/// **Note:** Returns the ban even if expired. Used internally after upsert.
+pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_bans
+    WHERE ip_address = ?";
+
+/// Delete a ban by IP address
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to unban
+pub const SQL_DELETE_BAN_BY_IP: &str = "DELETE FROM ip_bans WHERE ip_address = ?";
+
+/// Select all IP addresses with a given nickname annotation
+///
+/// **Parameters:**
+/// 1. `nickname: &str` - Nickname to search for
+///
+/// **Returns:** Multiple rows of `(ip_address: String)`
+pub const SQL_SELECT_IPS_BY_NICKNAME: &str = "
+    SELECT ip_address FROM ip_bans WHERE nickname = ?";
+
+/// Delete all bans with a given nickname annotation
+///
+/// **Parameters:**
+/// 1. `nickname: &str` - Nickname to delete bans for
+pub const SQL_DELETE_BANS_BY_NICKNAME: &str = "DELETE FROM ip_bans WHERE nickname = ?";
+
+/// Count bans with a given nickname annotation
+///
+/// **Parameters:**
+/// 1. `nickname: &str` - Nickname to count bans for
+///
+/// **Returns:** `(count: i64)`
+pub const SQL_COUNT_BANS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_bans WHERE nickname = ?";
+
+/// Select all active (non-expired) bans
+///
+/// **Parameters:**
+/// 1. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** Multiple rows of `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+///
+/// **Note:** Results are sorted by creation time (newest first).
+pub const SQL_SELECT_ACTIVE_BANS: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_bans
+    WHERE expires_at IS NULL OR expires_at > ?
+    ORDER BY created_at DESC";
+
+/// Delete all expired bans
+///
+/// **Parameters:**
+/// 1. `now: i64` - Current Unix timestamp
+///
+/// **Note:** Only deletes bans with a non-null expires_at that is <= now.
+/// Called on server startup to clean up stale entries.
+pub const SQL_DELETE_EXPIRED_BANS: &str = "
+    DELETE FROM ip_bans
+    WHERE expires_at IS NOT NULL AND expires_at <= ?";

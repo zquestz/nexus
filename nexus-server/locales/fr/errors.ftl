@@ -195,3 +195,15 @@ err-upload-empty = Le téléversement doit contenir au moins un fichier
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = Vous ne pouvez pas vous bannir vous-même
+err-ban-admin-by-nickname = Impossible de bannir les administrateurs
+err-ban-admin-by-ip = Impossible de bannir cette IP
+err-ban-invalid-target = Adresse IP ou nom d'hôte invalide
+err-ban-invalid-duration = Format de durée invalide (utilisez 10m, 4h, 7d ou 0 pour permanent)
+err-ban-not-found = Aucun bannissement trouvé pour '{ $target }'
+err-reason-too-long = Le motif du bannissement est trop long (max { $max_length } caractères)
+err-reason-invalid = Le motif du bannissement contient des caractères invalides
+err-banned-permanent = Vous avez été banni de ce serveur
+err-banned-with-expiry = Vous avez été banni de ce serveur (expire dans { $remaining })

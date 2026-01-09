@@ -195,3 +195,15 @@ err-upload-empty = Upload muss mindestens eine Datei enthalten
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = Sie können sich nicht selbst sperren
+err-ban-admin-by-nickname = Administratoren können nicht gesperrt werden
+err-ban-admin-by-ip = Diese IP kann nicht gesperrt werden
+err-ban-invalid-target = Ungültige IP-Adresse oder Hostname
+err-ban-invalid-duration = Ungültiges Dauerformat (verwenden Sie 10m, 4h, 7d oder 0 für permanent)
+err-ban-not-found = Keine Sperre für '{ $target }' gefunden
+err-reason-too-long = Sperrgrund ist zu lang (maximal { $max_length } Zeichen)
+err-reason-invalid = Sperrgrund enthält ungültige Zeichen
+err-banned-permanent = Sie wurden von diesem Server gesperrt
+err-banned-with-expiry = Sie wurden von diesem Server gesperrt (läuft ab in { $remaining })

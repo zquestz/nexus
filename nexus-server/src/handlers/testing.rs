@@ -5,7 +5,7 @@ pub const DEFAULT_TEST_LOCALE: &str = "en";
 
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
@@ -16,6 +16,7 @@ use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::HandlerContext;
+use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::users::UserManager;
@@ -36,6 +37,7 @@ pub struct TestContext {
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
+    pub ban_cache: Arc<RwLock<BanCache>>,
 }
 
 impl TestContext {
@@ -53,6 +55,7 @@ impl TestContext {
             file_root: self.file_root,
             transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
             connection_tracker: self.connection_tracker.clone(),
+            ban_cache: self.ban_cache.clone(),
         }
     }
 }
@@ -96,6 +99,9 @@ pub async fn create_test_context() -> TestContext {
     // Create connection tracker for tests (unlimited by default)
     let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));
 
+    // Create empty ban cache for tests
+    let ban_cache = Arc::new(RwLock::new(BanCache::new()));
+
     TestContext {
         client,
         frame_writer,
@@ -107,6 +113,7 @@ pub async fn create_test_context() -> TestContext {
         message_id,
         file_root: None,
         connection_tracker,
+        ban_cache,
     }
 }
 
@@ -119,6 +126,63 @@ pub async fn login_user(
     is_admin: bool,
 ) -> u32 {
     login_user_with_features(test_ctx, username, password, permissions, is_admin, vec![]).await
+}
+
+/// Helper to create a user from a specific IP address, returning their session_id
+///
+/// This is useful for testing ban scenarios where users need to be on different IPs.
+pub async fn login_user_from_ip(
+    test_ctx: &mut TestContext,
+    username: &str,
+    password: &str,
+    permissions: &[crate::db::Permission],
+    is_admin: bool,
+    ip: &str,
+) -> u32 {
+    use crate::db::{Permissions, hash_password};
+
+    // Hash password
+    let hashed = hash_password(password).unwrap();
+
+    // Build permissions
+    let mut perms = Permissions::new();
+    for perm in permissions {
+        perms.permissions.insert(*perm);
+    }
+
+    // Create user in database
+    let user = test_ctx
+        .db
+        .users
+        .create_user(username, &hashed, is_admin, false, true, &perms)
+        .await
+        .unwrap();
+
+    // Parse the IP into a SocketAddr
+    let addr: SocketAddr = format!("{}:12345", ip).parse().expect("valid IP address");
+
+    // Add user to UserManager with custom address
+    test_ctx
+        .user_manager
+        .add_user(NewSessionParams {
+            session_id: 0, // Will be assigned by add_user
+            db_user_id: user.id,
+            username: username.to_string(),
+            is_admin,
+            is_shared: false,
+            permissions: perms.permissions.clone(),
+            address: addr,
+            created_at: user.created_at,
+            tx: test_ctx.tx.clone(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: username.to_string(), // Regular account: nickname == username
+            is_away: false,
+            status: None,
+        })
+        .await
+        .expect("Failed to add user to UserManager")
 }
 
 /// Helper to create a user with features and add them to UserManager, returning their session_id

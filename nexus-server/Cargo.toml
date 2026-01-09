@@ -29,6 +29,8 @@ hex = "0.4"
 unic-langid = "0.9"
 infer = "0.19"
 rand = "0.9"
+iprange = "0.6"
+ipnet = "2.11"
 
 [target.'cfg(unix)'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }

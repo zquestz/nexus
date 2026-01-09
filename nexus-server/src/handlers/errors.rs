@@ -837,3 +837,65 @@ pub fn err_upload_protocol_error(locale: &str) -> String {
 pub fn err_upload_connection_lost(locale: &str) -> String {
     t(locale, "err-upload-connection-lost")
 }
+
+// =============================================================================
+// Ban System Errors
+// =============================================================================
+
+/// Get translated "ban self" error (cannot ban yourself)
+pub fn err_ban_self(locale: &str) -> String {
+    t(locale, "err-ban-self")
+}
+
+/// Get translated "ban admin by nickname" error (cannot ban administrators)
+pub fn err_ban_admin_by_nickname(locale: &str) -> String {
+    t(locale, "err-ban-admin-by-nickname")
+}
+
+/// Get translated "ban admin by IP" error (cannot ban this IP - generic to prevent info leak)
+pub fn err_ban_admin_by_ip(locale: &str) -> String {
+    t(locale, "err-ban-admin-by-ip")
+}
+
+/// Get translated "ban invalid target" error (invalid IP address or hostname)
+pub fn err_ban_invalid_target(locale: &str) -> String {
+    t(locale, "err-ban-invalid-target")
+}
+
+/// Get translated "ban invalid duration" error (invalid duration format)
+pub fn err_ban_invalid_duration(locale: &str) -> String {
+    t(locale, "err-ban-invalid-duration")
+}
+
+/// Get translated "ban not found" error (no ban found for target)
+pub fn err_ban_not_found(locale: &str, target: &str) -> String {
+    t_args(locale, "err-ban-not-found", &[("target", target)])
+}
+
+/// Get translated "reason too long" error
+pub fn err_reason_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-reason-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "reason invalid" error (contains control characters)
+pub fn err_reason_invalid(locale: &str) -> String {
+    t(locale, "err-reason-invalid")
+}
+
+/// Get translated "banned permanent" error (sent to user being disconnected)
+pub fn err_banned_permanent(locale: &str) -> String {
+    t(locale, "err-banned-permanent")
+}
+
+/// Get translated "banned with expiry" error (sent to user being disconnected)
+pub fn err_banned_with_expiry(locale: &str, remaining: &str) -> String {
+    t_args(
+        locale,
+        "err-banned-with-expiry",
+        &[("remaining", remaining)],
+    )
+}

@@ -1,5 +1,6 @@
 //! Database module for persistent storage
 
+pub mod bans;
 pub mod chat;
 pub mod config;
 pub mod news;
@@ -11,6 +12,7 @@ pub mod users;
 #[cfg(test)]
 pub mod testing;
 
+pub use bans::BanDb;
 pub use chat::ChatDb;
 pub use config::ConfigDb;
 pub use news::NewsDb;
@@ -31,6 +33,7 @@ pub struct Database {
     pub config: ConfigDb,
     pub chat: ChatDb,
     pub news: NewsDb,
+    pub bans: BanDb,
 }
 
 impl Database {
@@ -40,7 +43,8 @@ impl Database {
             users: UserDb::new(pool.clone()),
             config: ConfigDb::new(pool.clone()),
             chat: ChatDb::new(pool.clone()),
-            news: NewsDb::new(pool),
+            news: NewsDb::new(pool.clone()),
+            bans: BanDb::new(pool),
         }
     }
 }

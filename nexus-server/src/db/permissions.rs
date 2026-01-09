@@ -7,6 +7,12 @@ use strum::AsRefStr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum Permission {
+    /// Permission to create/update IP bans
+    BanCreate,
+    /// Permission to remove IP bans
+    BanDelete,
+    /// Permission to view list of active bans
+    BanList,
     /// Permission to use UserList command
     UserList,
     /// Permission to use UserInfo command
@@ -79,6 +85,9 @@ impl Permission {
     /// Returns Some(Permission) if the string is valid, None otherwise.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
+            "ban_create" => Some(Permission::BanCreate),
+            "ban_delete" => Some(Permission::BanDelete),
+            "ban_list" => Some(Permission::BanList),
             "user_list" => Some(Permission::UserList),
             "user_info" => Some(Permission::UserInfo),
             "chat_send" => Some(Permission::ChatSend),
@@ -180,6 +189,9 @@ mod tests {
     #[test]
     fn test_permission_snake_case_conversion() {
         // Test that strum correctly converts PascalCase to snake_case
+        assert_eq!(Permission::BanCreate.as_str(), "ban_create");
+        assert_eq!(Permission::BanDelete.as_str(), "ban_delete");
+        assert_eq!(Permission::BanList.as_str(), "ban_list");
         assert_eq!(Permission::UserList.as_str(), "user_list");
         assert_eq!(Permission::UserInfo.as_str(), "user_info");
         assert_eq!(Permission::ChatSend.as_str(), "chat_send");
@@ -211,6 +223,9 @@ mod tests {
     #[test]
     fn test_permission_parse_valid() {
         // Test parsing all valid permission strings
+        assert_eq!(Permission::parse("ban_create"), Some(Permission::BanCreate));
+        assert_eq!(Permission::parse("ban_delete"), Some(Permission::BanDelete));
+        assert_eq!(Permission::parse("ban_list"), Some(Permission::BanList));
         assert_eq!(Permission::parse("user_list"), Some(Permission::UserList));
         assert_eq!(Permission::parse("user_info"), Some(Permission::UserInfo));
         assert_eq!(Permission::parse("chat_send"), Some(Permission::ChatSend));
@@ -344,6 +359,9 @@ mod tests {
 
         // Verify that every Permission variant is in ALL_PERMISSIONS
         let all_variants = [
+            Permission::BanCreate,
+            Permission::BanDelete,
+            Permission::BanList,
             Permission::ChatReceive,
             Permission::ChatSend,
             Permission::ChatTopic,

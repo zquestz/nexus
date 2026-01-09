@@ -266,6 +266,24 @@ pub enum ClientMessage {
         /// File being hashed (for logging/debugging)
         file: String,
     },
+    /// Create or update an IP ban
+    BanCreate {
+        /// Target: nickname, IP address, or hostname
+        target: String,
+        /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        duration: Option<String>,
+        /// Reason for the ban (admin notes)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// Delete an IP ban
+    BanDelete {
+        /// Target: nickname (removes all IPs with that annotation) or IP address
+        target: String,
+    },
+    /// Request list of active bans
+    BanList,
 }
 
 /// Helper for skip_serializing_if on ChatAction
@@ -619,6 +637,38 @@ pub enum ServerMessage {
         /// File being hashed (for logging/debugging)
         file: String,
     },
+    /// Response to BanCreate request
+    BanCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were banned (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if banned by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to BanDelete request
+    BanDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were unbanned (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if unbanned by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to BanList request
+    BanListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bans: Option<Vec<BanInfo>>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -683,6 +733,26 @@ pub struct NewsItem {
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+}
+
+/// Information about an active IP ban
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanInfo {
+    /// The banned IP address or CIDR range (e.g., "192.168.1.100" or "192.168.1.0/24")
+    pub ip_address: String,
+    /// Nickname annotation (if banned by nickname)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
+    /// Reason for the ban (admin notes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Username of the admin who created the ban
+    pub created_by: String,
+    /// Unix timestamp when the ban was created
+    pub created_at: i64,
+    /// Unix timestamp when the ban expires (None = permanent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
 }
 
 /// File entry in a directory listing
@@ -1028,6 +1098,20 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::FileHashing { file } => {
                 f.debug_struct("FileHashing").field("file", file).finish()
             }
+            ClientMessage::BanCreate {
+                target,
+                duration,
+                reason,
+            } => f
+                .debug_struct("BanCreate")
+                .field("target", target)
+                .field("duration", duration)
+                .field("reason", reason)
+                .finish(),
+            ClientMessage::BanDelete { target } => {
+                f.debug_struct("BanDelete").field("target", target).finish()
+            }
+            ClientMessage::BanList => f.debug_struct("BanList").finish(),
         }
     }
 }

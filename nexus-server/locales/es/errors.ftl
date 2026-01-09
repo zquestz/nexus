@@ -196,3 +196,15 @@ err-upload-empty = La subida debe contener al menos un archivo
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = No puede banearse a sí mismo
+err-ban-admin-by-nickname = No se puede banear a los administradores
+err-ban-admin-by-ip = No se puede banear esta IP
+err-ban-invalid-target = Dirección IP o nombre de host inválido
+err-ban-invalid-duration = Formato de duración inválido (use 10m, 4h, 7d o 0 para permanente)
+err-ban-not-found = No se encontró ban para '{ $target }'
+err-reason-too-long = El motivo del ban es demasiado largo (máximo { $max_length } caracteres)
+err-reason-invalid = El motivo del ban contiene caracteres inválidos
+err-banned-permanent = Ha sido baneado de este servidor
+err-banned-with-expiry = Ha sido baneado de este servidor (expira en { $remaining })

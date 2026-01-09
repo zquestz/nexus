@@ -318,6 +318,9 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::FileStart { .. } => "FileStart",
         ClientMessage::FileData => "FileData",
         ClientMessage::FileHashing { .. } => "FileHashing",
+        ClientMessage::BanCreate { .. } => "BanCreate",
+        ClientMessage::BanDelete { .. } => "BanDelete",
+        ClientMessage::BanList => "BanList",
     }
 }
 
@@ -372,6 +375,9 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::FileStartResponse { .. } => "FileStartResponse",
         ServerMessage::TransferComplete { .. } => "TransferComplete",
         ServerMessage::FileHashing { .. } => "FileHashing",
+        ServerMessage::BanCreateResponse { .. } => "BanCreateResponse",
+        ServerMessage::BanDeleteResponse { .. } => "BanDeleteResponse",
+        ServerMessage::BanListResponse { .. } => "BanListResponse",
     }
 }
 

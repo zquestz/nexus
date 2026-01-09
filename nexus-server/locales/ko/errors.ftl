@@ -195,3 +195,15 @@ err-upload-empty = 업로드에는 최소 하나의 파일이 포함되어야 �
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = 자기 자신을 차단할 수 없습니다
+err-ban-admin-by-nickname = 관리자를 차단할 수 없습니다
+err-ban-admin-by-ip = 이 IP를 차단할 수 없습니다
+err-ban-invalid-target = 잘못된 IP 주소 또는 호스트명
+err-ban-invalid-duration = 잘못된 기간 형식입니다 (10m, 4h, 7d 또는 영구적으로 0 사용)
+err-ban-not-found = '{ $target }'에 대한 차단을 찾을 수 없습니다
+err-reason-too-long = 차단 사유가 너무 깁니다 (최대 { $max_length }자)
+err-reason-invalid = 차단 사유에 잘못된 문자가 포함되어 있습니다
+err-banned-permanent = 이 서버에서 차단되었습니다
+err-banned-with-expiry = 이 서버에서 차단되었습니다 ({ $remaining } 후 해제)

@@ -195,3 +195,15 @@ err-upload-empty = 上傳必須包含至少一個檔案
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = 您不能封鎖自己
+err-ban-admin-by-nickname = 無法封鎖管理員
+err-ban-admin-by-ip = 無法封鎖此IP
+err-ban-invalid-target = 無效的IP位址或主機名稱
+err-ban-invalid-duration = 無效的時長格式（使用 10m、4h、7d 或 0 表示永久）
+err-ban-not-found = 未找到 '{ $target }' 的封鎖記錄
+err-reason-too-long = 封鎖原因過長（最多 { $max_length } 個字元）
+err-reason-invalid = 封鎖原因包含無效字元
+err-banned-permanent = 您已被此伺服器封鎖
+err-banned-with-expiry = 您已被此伺服器封鎖（{ $remaining } 後解除）

@@ -195,3 +195,15 @@ err-upload-empty = O upload deve conter pelo menos um arquivo
 
 err-upload-protocol-error = Upload protocol error
 err-upload-connection-lost = Connection lost during upload
+
+# Ban System Errors
+err-ban-self = Você não pode banir a si mesmo
+err-ban-admin-by-nickname = Não é possível banir administradores
+err-ban-admin-by-ip = Não é possível banir este IP
+err-ban-invalid-target = Endereço IP ou nome de host inválido
+err-ban-invalid-duration = Formato de duração inválido (use 10m, 4h, 7d ou 0 para permanente)
+err-ban-not-found = Nenhum banimento encontrado para '{ $target }'
+err-reason-too-long = O motivo do banimento é muito longo (máximo { $max_length } caracteres)
+err-reason-invalid = O motivo do banimento contém caracteres inválidos
+err-banned-permanent = Você foi banido deste servidor
+err-banned-with-expiry = Você foi banido deste servidor (expira em { $remaining })

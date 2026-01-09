@@ -1,5 +1,8 @@
 //! Message handlers for client commands
 
+mod ban_create;
+mod ban_delete;
+mod ban_list;
 mod broadcast;
 mod chat;
 mod chat_topic_update;
@@ -35,6 +38,9 @@ mod user_update;
 #[cfg(test)]
 pub mod testing;
 
+pub use ban_create::handle_ban_create;
+pub use ban_delete::handle_ban_delete;
+pub use ban_list::handle_ban_list;
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
 pub use chat_topic_update::handle_chat_topic_update;
@@ -70,7 +76,7 @@ pub use user_update::{UserUpdateRequest, handle_user_update};
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::constants::ERR_CHANNEL_CLOSED;
 
@@ -81,6 +87,7 @@ use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
+use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::users::UserManager;
@@ -102,6 +109,8 @@ pub struct HandlerContext<'a, W> {
     pub transfer_port: u16,
     /// Connection tracker for both main and transfer connections
     pub connection_tracker: Arc<ConnectionTracker>,
+    /// In-memory ban cache for fast lookups and cache updates
+    pub ban_cache: Arc<RwLock<BanCache>>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

@@ -2,6 +2,9 @@
 
 use std::collections::HashSet;
 
+use ipnet::IpNet;
+use nexus_common::protocol::ServerMessage;
+
 use super::UserManager;
 use crate::db::Permission;
 use crate::users::user::{NewSessionParams, UserSession};
@@ -141,5 +144,89 @@ impl UserManager {
         } else {
             None
         }
+    }
+
+    /// Disconnect all sessions from a given IP address
+    ///
+    /// Builds a disconnect message for each session using the provided function,
+    /// which receives the user's locale to generate a properly localized message.
+    /// Used by the ban system to disconnect users when their IP is banned.
+    ///
+    /// Returns the number of sessions disconnected.
+    pub async fn disconnect_sessions_by_ip<F>(&self, ip: &str, build_message: F) -> usize
+    where
+        F: Fn(&str) -> ServerMessage,
+    {
+        // First, collect session IDs to disconnect
+        let session_ids: Vec<u32> = {
+            let users = self.users.read().await;
+            users
+                .values()
+                .filter(|u| u.address.ip().to_string() == ip)
+                .map(|u| u.session_id)
+                .collect()
+        };
+
+        if session_ids.is_empty() {
+            return 0;
+        }
+
+        // Send disconnect message to each session and remove them
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for session_id in session_ids {
+            if let Some(user) = users.remove(&session_id) {
+                // Build message with user's locale and send
+                // (ignore send errors - channel may already be closed)
+                let message = build_message(&user.locale);
+                let _ = user.tx.send((message, None));
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Disconnect all sessions from IPs within a given CIDR range
+    ///
+    /// Builds a disconnect message for each session using the provided function,
+    /// which receives the user's locale to generate a properly localized message.
+    /// Used by the ban system to disconnect users when a CIDR range is banned.
+    ///
+    /// Returns the number of sessions disconnected.
+    pub async fn disconnect_sessions_in_range<F>(&self, range: &IpNet, build_message: F) -> usize
+    where
+        F: Fn(&str) -> ServerMessage,
+    {
+        // First, collect session IDs to disconnect
+        let session_ids: Vec<u32> = {
+            let users = self.users.read().await;
+            users
+                .values()
+                .filter(|u| range.contains(&u.address.ip()))
+                .map(|u| u.session_id)
+                .collect()
+        };
+
+        if session_ids.is_empty() {
+            return 0;
+        }
+
+        // Send disconnect message to each session and remove them
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for session_id in session_ids {
+            if let Some(user) = users.remove(&session_id) {
+                // Build message with user's locale and send
+                // (ignore send errors - channel may already be closed)
+                let message = build_message(&user.locale);
+                let _ = user.tx.send((message, None));
+                count += 1;
+            }
+        }
+
+        count
     }
 }
