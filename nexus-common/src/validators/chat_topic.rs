@@ -2,7 +2,7 @@
 //!
 //! Validates chat topic strings.
 
-/// Maximum length for topics in characters
+/// Maximum length for topics in bytes
 pub const MAX_CHAT_TOPIC_LENGTH: usize = 256;
 
 /// Validation error for topics

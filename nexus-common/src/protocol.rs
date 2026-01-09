@@ -101,6 +101,20 @@ pub enum ClientMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         requested_permissions: Option<Vec<String>>,
     },
+    /// Set away status for all sessions of this user
+    UserAway {
+        /// Optional status message (max 128 bytes)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+    /// Clear away status for all sessions of this user
+    UserBack,
+    /// Set status message without changing away status
+    UserStatus {
+        /// Status message (None to clear)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+    },
     ServerInfoUpdate {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -407,10 +421,34 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        /// Recipient's away status (if away when message sent)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        is_away: Option<bool>,
+        /// Recipient's status message (if any)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
     },
     UserUpdated {
         previous_username: String,
         user: UserInfo,
+    },
+    /// Response to UserAway request
+    UserAwayResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Response to UserBack request
+    UserBackResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Response to UserStatus request
+    UserStatusResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     UserUpdateResponse {
         success: bool,
@@ -620,6 +658,10 @@ pub struct UserInfo {
     pub locale: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    #[serde(default)]
+    pub is_away: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -704,6 +746,10 @@ pub struct UserInfoDetailed {
     pub is_admin: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub addresses: Option<Vec<String>>,
+    #[serde(default)]
+    pub is_away: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -810,6 +856,15 @@ impl std::fmt::Debug for ClientMessage {
                 .field("requested_is_admin", requested_is_admin)
                 .field("requested_enabled", requested_enabled)
                 .field("requested_permissions", requested_permissions)
+                .finish(),
+            ClientMessage::UserAway { message } => f
+                .debug_struct("UserAway")
+                .field("message", message)
+                .finish(),
+            ClientMessage::UserBack => f.debug_struct("UserBack").finish(),
+            ClientMessage::UserStatus { status } => f
+                .debug_struct("UserStatus")
+                .field("status", status)
                 .finish(),
             ClientMessage::ServerInfoUpdate {
                 name,
@@ -1154,6 +1209,8 @@ mod tests {
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: Some(avatar_data.clone()),
+            is_away: false,
+            status: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -1171,6 +1228,8 @@ mod tests {
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: None,
+            is_away: false,
+            status: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(!json.contains("\"avatar\""));
@@ -1191,6 +1250,8 @@ mod tests {
             avatar: Some(avatar_data.clone()),
             is_admin: Some(false),
             addresses: None,
+            is_away: false,
+            status: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -1314,6 +1375,8 @@ mod tests {
     #[test]
     fn test_serialize_user_info_with_nickname_and_is_shared() {
         let user_info = UserInfo {
+            is_away: false,
+            status: None,
             username: "shared_acct".to_string(),
             nickname: "Nick1".to_string(),
             login_time: 1234567890,
@@ -1332,6 +1395,8 @@ mod tests {
     #[test]
     fn test_serialize_user_info_regular_user() {
         let user_info = UserInfo {
+            is_away: false,
+            status: None,
             username: "alice".to_string(),
             nickname: "alice".to_string(),
             login_time: 1234567890,
@@ -1350,6 +1415,8 @@ mod tests {
     #[test]
     fn test_serialize_user_info_detailed_with_shared_fields() {
         let user_info = UserInfoDetailed {
+            is_away: false,
+            status: None,
             username: "shared_acct".to_string(),
             nickname: "Nick1".to_string(),
             login_time: 1234567890,

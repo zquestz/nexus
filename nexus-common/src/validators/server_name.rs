@@ -2,7 +2,7 @@
 //!
 //! Validates server name strings.
 
-/// Maximum length for server name in characters
+/// Maximum length for server name in bytes
 pub const MAX_SERVER_NAME_LENGTH: usize = 64;
 
 /// Validation error for server names

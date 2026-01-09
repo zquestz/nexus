@@ -4,7 +4,7 @@
 //! Nicknames follow the same rules as usernames but are kept separate
 //! for clarity and future flexibility.
 
-/// Maximum length for nicknames in characters
+/// Maximum length for nicknames in bytes
 pub const MAX_NICKNAME_LENGTH: usize = 32;
 
 /// Characters that are not allowed in nicknames (path-sensitive)

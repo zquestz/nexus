@@ -55,6 +55,10 @@ impl NexusApp {
                     get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
                 }
 
+                // Update away/status (latest login wins)
+                existing_user.is_away = user.is_away;
+                existing_user.status = user.status.clone();
+
                 false
             } else {
                 // New shared account session - add as separate entry
@@ -65,6 +69,8 @@ impl NexusApp {
                     is_shared: user.is_shared,
                     session_ids: user.session_ids.clone(),
                     avatar_hash: new_avatar_hash,
+                    is_away: user.is_away,
+                    status: user.status.clone(),
                 });
                 sort_user_list(&mut conn.online_users);
 
@@ -94,6 +100,10 @@ impl NexusApp {
                     get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
                 }
 
+                // Update away/status (latest login wins)
+                existing_user.is_away = user.is_away;
+                existing_user.status = user.status.clone();
+
                 false
             } else {
                 // New user - add to list
@@ -104,6 +114,8 @@ impl NexusApp {
                     is_shared: user.is_shared,
                     session_ids: user.session_ids.clone(),
                     avatar_hash: new_avatar_hash,
+                    is_away: user.is_away,
+                    status: user.status.clone(),
                 });
                 sort_user_list(&mut conn.online_users);
 

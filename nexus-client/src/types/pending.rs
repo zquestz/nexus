@@ -78,6 +78,12 @@ pub enum ResponseRouting {
         tab_id: TabId,
         destination_dir: String,
     },
+    /// Away command result - contains optional status message for display
+    AwayResult(Option<String>),
+    /// Back command result
+    BackResult,
+    /// Status command result - contains optional status message for display
+    StatusResult(Option<String>),
 }
 
 /// Extension trait for tracking pending requests
@@ -395,6 +401,67 @@ mod tests {
         assert!(matches!(
             pending.get(&id),
             Some(ResponseRouting::FileRenameResult { tab_id: 5 })
+        ));
+    }
+
+    #[test]
+    fn test_track_away_result_with_message() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(
+            id,
+            ResponseRouting::AwayResult(Some("grabbing lunch".to_string())),
+        );
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::AwayResult(Some(msg))) if msg == "grabbing lunch"
+        ));
+    }
+
+    #[test]
+    fn test_track_away_result_without_message() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::AwayResult(None));
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::AwayResult(None))
+        ));
+    }
+
+    #[test]
+    fn test_track_back_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::BackResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::BackResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_status_result_with_message() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(
+            id,
+            ResponseRouting::StatusResult(Some("working on project".to_string())),
+        );
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::StatusResult(Some(msg))) if msg == "working on project"
+        ));
+    }
+
+    #[test]
+    fn test_track_status_result_cleared() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::StatusResult(None));
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::StatusResult(None))
         ));
     }
 }

@@ -26,6 +26,10 @@ pub struct NewSessionParams {
     pub avatar: Option<String>,
     /// Display name (always populated; equals username for regular accounts)
     pub nickname: String,
+    /// Whether the user is away
+    pub is_away: bool,
+    /// Optional status message (used for both away messages and general status)
+    pub status: Option<String>,
 }
 
 /// Represents a logged-in user session
@@ -63,6 +67,10 @@ pub struct UserSession {
     pub avatar: Option<String>,
     /// Display name (always populated; equals username for regular accounts)
     pub nickname: String,
+    /// Whether the user is away
+    pub is_away: bool,
+    /// Optional status message (used for both away messages and general status)
+    pub status: Option<String>,
 }
 
 impl UserSession {
@@ -83,6 +91,8 @@ impl UserSession {
             locale: params.locale,
             avatar: params.avatar,
             nickname: params.nickname,
+            is_away: params.is_away,
+            status: params.status,
         }
     }
 

@@ -11,6 +11,11 @@ err-nickname-not-online = 用户"{ $nickname }"不在线
 err-nickname-required = 共享账户需要昵称
 err-nickname-too-long = 昵称太长（最多{ $max_length }个字符）
 
+# 离开消息错误
+err-status-too-long = 离开消息太长（最多{ $max_length }个字符）
+err-status-contains-newlines = 离开消息不能包含换行符
+err-status-invalid-characters = 离开消息包含无效字符
+
 # 共享账户错误
 err-shared-cannot-be-admin = 共享账户不能成为管理员
 err-shared-cannot-change-password = 无法更改共享账户的密码

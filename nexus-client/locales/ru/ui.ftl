@@ -267,7 +267,7 @@ files-info-na = Н/Д
 # =============================================================================
 
 err-dir-name-empty = Имя папки не может быть пустым
-err-dir-name-too-long = Имя папки слишком длинное (макс. { $max_length } символов)
+err-dir-name-too-long = Имя папки слишком длинное (макс. { $max } символов)
 err-dir-name-path-separator = Имя папки не может содержать / или \
 err-dir-name-parent-ref = Имя папки не может быть ".."
 err-dir-name-invalid = Имя папки содержит недопустимые символы
@@ -320,6 +320,14 @@ msg-password-changed = Пароль успешно изменён
 msg-news-created = Публикация успешно создана
 msg-news-updated = Публикация успешно обновлена
 msg-news-deleted = Публикация успешно удалена
+msg-now-away = Вы сейчас отсутствуете
+msg-now-away-status = Вы сейчас отсутствуете: { $status }
+msg-welcome-back = С возвращением
+msg-status-set = Статус установлен: { $status }
+msg-status-cleared = Статус очищен
+msg-user-is-away = { $nickname } отошёл
+msg-user-is-away-status = { $nickname } отошёл: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -388,10 +396,13 @@ err-avatar-unsupported-type = Неподдерживаемый тип файла
 err-avatar-too-large = Аватар слишком большой. Максимальный размер { $max_kb }КБ.
 err-avatar-decode-failed = Не удалось декодировать аватар. Возможно, файл повреждён.
 err-server-name-empty = Имя сервера не может быть пустым
-err-server-name-too-long = Имя сервера слишком длинное (макс { $max } символов)
-err-server-name-contains-newlines = Имя сервера не может содержать переносы строк
-err-server-name-invalid-characters = Имя сервера содержит недопустимые символы
-err-server-description-too-long = Описание слишком длинное (макс { $max } символов)
+err-server-name-too-long = Название сервера слишком длинное (макс. { $max } символов)
+err-server-name-contains-newlines = Название сервера не может содержать переносы строк
+err-server-name-invalid-characters = Название сервера содержит недопустимые символы
+err-status-too-long = Сообщение статуса слишком длинное (макс. { $max } символов)
+err-status-contains-newlines = Сообщение статуса не может содержать переносы строк
+err-status-invalid-characters = Сообщение статуса содержит недопустимые символы
+err-server-description-too-long = Описание слишком длинное (макс. { $max } символов)
 err-server-description-contains-newlines = Описание не может содержать переносы строк
 err-server-description-invalid-characters = Описание содержит недопустимые символы
 err-failed-send-update = Не удалось отправить обновление: { $error }
@@ -462,6 +473,7 @@ user-info-created = Создан:
 user-info-end = Конец информации о пользователе
 user-info-unknown = Неизвестно
 user-info-loading = Загрузка информации о пользователе...
+user-info-status = Статус:
 
 # =============================================================================
 # Time Duration
@@ -550,6 +562,12 @@ cmd-serverinfo-desc = Показать информацию о сервере
 cmd-serverinfo-usage = Использование: /{ $command }
 cmd-serverinfo-header = [сервер]
 cmd-serverinfo-end = Конец информации о сервере
+cmd-away-desc = Установить статус «отошёл»
+cmd-away-usage = Использование: /{ $command } [сообщение]
+cmd-back-desc = Убрать статус «отошёл»
+cmd-back-usage = Использование: /{ $command }
+cmd-status-desc = Установить или убрать сообщение статуса
+cmd-status-usage = Использование: /{ $command } [сообщение]
 
 # =============================================================================
 # About Panel

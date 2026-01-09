@@ -323,6 +323,15 @@ where
             };
             handlers::handle_user_update(request, ctx).await?;
         }
+        ClientMessage::UserAway { message } => {
+            handlers::handle_user_away(message, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserBack => {
+            handlers::handle_user_back(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::UserStatus { status } => {
+            handlers::handle_user_status(status, conn_state.session_id, ctx).await?;
+        }
         ClientMessage::ServerInfoUpdate {
             name,
             description,

@@ -2,7 +2,7 @@
 //!
 //! Validates server description strings.
 
-/// Maximum length for server description in characters
+/// Maximum length for server description in bytes
 pub const MAX_SERVER_DESCRIPTION_LENGTH: usize = 256;
 
 /// Validation error for server description

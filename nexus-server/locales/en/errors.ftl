@@ -11,6 +11,11 @@ err-nickname-not-online = User '{ $nickname }' is not online
 err-nickname-required = Nickname required for shared accounts
 err-nickname-too-long = Nickname is too long (max { $max_length } characters)
 
+# Away Message Errors
+err-status-too-long = Status message is too long (max { $max_length } characters)
+err-status-contains-newlines = Status message cannot contain newlines
+err-status-invalid-characters = Status message contains invalid characters
+
 # Shared Account Errors
 err-shared-cannot-be-admin = Shared accounts cannot be admins
 err-shared-cannot-change-password = Cannot change password on shared account

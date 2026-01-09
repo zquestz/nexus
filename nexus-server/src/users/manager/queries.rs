@@ -128,6 +128,8 @@ mod tests {
             locale: "en".to_string(),
             avatar: None,
             nickname: nickname.to_string(),
+            is_away: false,
+            status: None,
         }
     }
 

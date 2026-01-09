@@ -168,6 +168,16 @@ fn create_user_toolbar<'a>(
 ///
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
+/// Build tooltip text for a user, including away/status information
+fn build_user_tooltip(nickname: &str, is_away: bool, status: Option<&str>) -> String {
+    match (is_away, status) {
+        (true, Some(status_msg)) => format!("{} 💤\n{}", nickname, status_msg),
+        (true, None) => format!("{} 💤", nickname),
+        (false, Some(status_msg)) => format!("{}\n{}", nickname, status_msg),
+        (false, None) => nickname.to_string(),
+    }
+}
+
 pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element<'a, Message> {
     // Get current user's nickname for self-detection
     // Use session_id to find our entry (important for shared accounts where
@@ -240,8 +250,8 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     chat::admin(theme),
                 ));
 
-            // Tooltip: just show nickname (useful when truncated)
-            let tooltip_text = nickname.clone();
+            // Tooltip: show nickname with away/status if set
+            let tooltip_text = build_user_tooltip(nickname, user.is_away, user.status.as_deref());
 
             // Wrap button in tooltip showing full name (useful when truncated)
             let user_button_with_tooltip = tooltip(

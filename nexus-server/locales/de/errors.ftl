@@ -11,6 +11,11 @@ err-nickname-not-online = Benutzer „{ $nickname }" ist nicht online
 err-nickname-required = Spitzname für gemeinsame Konten erforderlich
 err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
 
+# Abwesenheitsnachricht-Fehler
+err-status-too-long = Abwesenheitsnachricht ist zu lang (max. { $max_length } Zeichen)
+err-status-contains-newlines = Abwesenheitsnachricht darf keine Zeilenumbrüche enthalten
+err-status-invalid-characters = Abwesenheitsnachricht enthält ungültige Zeichen
+
 # Fehler bei gemeinsamen Konten
 err-shared-cannot-be-admin = Gemeinsame Konten können keine Administratoren sein
 err-shared-cannot-change-password = Passwort für gemeinsames Konto kann nicht geändert werden

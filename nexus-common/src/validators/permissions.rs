@@ -4,7 +4,7 @@
 
 use crate::PERMISSIONS_COUNT;
 
-/// Maximum length for each permission string in characters
+/// Maximum length for each permission string in bytes
 pub const MAX_PERMISSION_LENGTH: usize = 32;
 
 /// Validation error for permissions

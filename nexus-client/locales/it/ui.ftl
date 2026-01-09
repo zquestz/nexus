@@ -192,8 +192,8 @@ tooltip-transfer-open-folder = Apri Cartella
 tooltip-settings = Impostazioni
 tooltip-hide-bookmarks = Nascondi segnalibri
 tooltip-show-bookmarks = Mostra segnalibri
-tooltip-hide-user-list = Nascondi lista utenti
-tooltip-show-user-list = Mostra lista utenti
+tooltip-hide-user-list = Nascondi Lista Utenti
+tooltip-show-user-list = Mostra Lista Utenti
 tooltip-disconnect = Disconnetti
 tooltip-edit = Modifica
 tooltip-info = Info
@@ -267,7 +267,7 @@ files-info-na = N/D
 # =============================================================================
 
 err-dir-name-empty = Il nome della cartella non può essere vuoto
-err-dir-name-too-long = Il nome della cartella è troppo lungo (max { $max_length } caratteri)
+err-dir-name-too-long = Il nome della cartella è troppo lungo (max { $max } caratteri)
 err-dir-name-path-separator = Il nome della cartella non può contenere / o \
 err-dir-name-parent-ref = Il nome della cartella non può essere ".."
 err-dir-name-invalid = Il nome della cartella contiene caratteri non validi
@@ -320,6 +320,14 @@ msg-password-changed = Password cambiata con successo
 msg-news-created = Pubblicazione creata con successo
 msg-news-updated = Pubblicazione aggiornata con successo
 msg-news-deleted = Pubblicazione eliminata con successo
+msg-now-away = Ora sei assente
+msg-now-away-status = Ora sei assente: { $status }
+msg-welcome-back = Bentornato
+msg-status-set = Stato impostato: { $status }
+msg-status-cleared = Stato cancellato
+msg-user-is-away = { $nickname } è assente
+msg-user-is-away-status = { $nickname } è assente: { $status }
+
 
 
 
@@ -393,6 +401,9 @@ err-server-name-empty = Il nome del server non può essere vuoto
 err-server-name-too-long = Il nome del server è troppo lungo (max { $max } caratteri)
 err-server-name-contains-newlines = Il nome del server non può contenere interruzioni di riga
 err-server-name-invalid-characters = Il nome del server contiene caratteri non validi
+err-status-too-long = Il messaggio di stato è troppo lungo (max { $max } caratteri)
+err-status-contains-newlines = Il messaggio di stato non può contenere interruzioni di riga
+err-status-invalid-characters = Il messaggio di stato contiene caratteri non validi
 err-server-description-too-long = La descrizione è troppo lunga (max { $max } caratteri)
 err-server-description-contains-newlines = La descrizione non può contenere interruzioni di riga
 err-server-description-invalid-characters = La descrizione contiene caratteri non validi
@@ -464,6 +475,7 @@ user-info-created = Creato:
 user-info-end = Fine informazioni utente
 user-info-unknown = Sconosciuto
 user-info-loading = Caricamento informazioni utente...
+user-info-status = Stato:
 
 # =============================================================================
 # Time Duration
@@ -544,7 +556,13 @@ cmd-window-not-found = Scheda non trovata: { $name }
 cmd-serverinfo-desc = Mostra informazioni del server
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [server]
-cmd-serverinfo-end = Fine informazioni server
+cmd-serverinfo-end = Fine informazioni del server
+cmd-away-desc = Imposta te stesso come assente
+cmd-away-usage = Uso: /{ $command } [messaggio]
+cmd-back-desc = Rimuovi stato assente
+cmd-back-usage = Uso: /{ $command }
+cmd-status-desc = Imposta o rimuovi il messaggio di stato
+cmd-status-usage = Uso: /{ $command } [messaggio]
 
 # =============================================================================
 # About Panel

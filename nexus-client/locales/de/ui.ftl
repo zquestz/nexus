@@ -266,7 +266,7 @@ files-info-na = N/A
 # =============================================================================
 
 err-dir-name-empty = Verzeichnisname darf nicht leer sein
-err-dir-name-too-long = Verzeichnisname ist zu lang (max. { $max_length } Zeichen)
+err-dir-name-too-long = Verzeichnisname ist zu lang (max. { $max } Zeichen)
 err-dir-name-path-separator = Verzeichnisname darf kein / oder \ enthalten
 err-dir-name-parent-ref = Verzeichnisname darf nicht ".." sein
 err-dir-name-invalid = Verzeichnisname enthält ungültige Zeichen
@@ -316,9 +316,17 @@ msg-user-updated-name = Benutzer '{ $username }' erfolgreich aktualisiert
 msg-permissions-updated = Deine Berechtigungen wurden aktualisiert
 msg-topic-updated = Thema erfolgreich aktualisiert
 msg-password-changed = Passwort erfolgreich geändert
-msg-news-created = Beitrag erfolgreich erstellt
-msg-news-updated = Beitrag erfolgreich aktualisiert
-msg-news-deleted = Beitrag erfolgreich gelöscht
+msg-news-created = Nachricht erfolgreich erstellt
+msg-news-updated = Nachricht erfolgreich aktualisiert
+msg-news-deleted = Nachricht erfolgreich gelöscht
+msg-now-away = Du bist jetzt abwesend
+msg-now-away-status = Du bist jetzt abwesend: { $status }
+msg-welcome-back = Willkommen zurück
+msg-status-set = Status gesetzt: { $status }
+msg-status-cleared = Status gelöscht
+msg-user-is-away = { $nickname } ist abwesend
+msg-user-is-away-status = { $nickname } ist abwesend: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -387,10 +395,13 @@ err-avatar-unsupported-type = Nicht unterstützter Dateityp. Verwenden Sie PNG, 
 err-avatar-too-large = Avatar zu groß. Maximale Größe ist { $max_kb }KB.
 err-avatar-decode-failed = Avatar konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
 err-server-name-empty = Servername darf nicht leer sein
-err-server-name-too-long = Servername ist zu lang (max { $max } Zeichen)
+err-server-name-too-long = Servername ist zu lang (max. { $max } Zeichen)
 err-server-name-contains-newlines = Servername darf keine Zeilenumbrüche enthalten
 err-server-name-invalid-characters = Servername enthält ungültige Zeichen
-err-server-description-too-long = Beschreibung ist zu lang (max { $max } Zeichen)
+err-status-too-long = Statusnachricht ist zu lang (max. { $max } Zeichen)
+err-status-contains-newlines = Statusnachricht darf keine Zeilenumbrüche enthalten
+err-status-invalid-characters = Statusnachricht enthält ungültige Zeichen
+err-server-description-too-long = Beschreibung ist zu lang (max. { $max } Zeichen)
 err-server-description-contains-newlines = Beschreibung darf keine Zeilenumbrüche enthalten
 err-server-description-invalid-characters = Beschreibung enthält ungültige Zeichen
 err-failed-send-update = Aktualisierung konnte nicht gesendet werden: { $error }
@@ -461,6 +472,7 @@ user-info-created = Erstellt:
 user-info-end = Ende der Benutzerinformationen
 user-info-unknown = Unbekannt
 user-info-loading = Benutzerinformationen werden geladen...
+user-info-status = Status:
 
 # =============================================================================
 # Time Duration
@@ -538,10 +550,17 @@ cmd-help-usage = Verwendung: /{ $command } [befehl]
 cmd-topic-arg-set = setzen
 cmd-topic-arg-clear = löschen
 cmd-topic-permission-denied = Sie haben keine Berechtigung, das Thema zu bearbeiten
-cmd-serverinfo-desc = Server-Informationen anzeigen
+cmd-serverinfo-desc = Serverinformationen anzeigen
 cmd-serverinfo-usage = Verwendung: /{ $command }
 cmd-serverinfo-header = [server]
-cmd-serverinfo-end = Ende der Server-Informationen
+cmd-serverinfo-end = Ende der Serverinformationen
+cmd-away-desc = Als abwesend markieren
+cmd-away-usage = Verwendung: /{ $command } [nachricht]
+cmd-back-desc = Abwesendheitsstatus entfernen
+cmd-back-usage = Verwendung: /{ $command }
+cmd-status-desc = Statusnachricht setzen oder entfernen
+cmd-status-usage = Verwendung: /{ $command } [nachricht]
+
 
 # =============================================================================
 # About Panel

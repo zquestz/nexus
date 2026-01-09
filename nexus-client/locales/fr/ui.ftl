@@ -268,7 +268,7 @@ files-info-na = N/D
 # =============================================================================
 
 err-dir-name-empty = Le nom du dossier ne peut pas être vide
-err-dir-name-too-long = Le nom du dossier est trop long (max { $max_length } caractères)
+err-dir-name-too-long = Le nom du dossier est trop long (max { $max } caractères)
 err-dir-name-path-separator = Le nom du dossier ne peut pas contenir / ou \
 err-dir-name-parent-ref = Le nom du dossier ne peut pas être ".."
 err-dir-name-invalid = Le nom du dossier contient des caractères invalides
@@ -321,6 +321,13 @@ msg-password-changed = Mot de passe modifié avec succès
 msg-news-created = Publication créée avec succès
 msg-news-updated = Publication mise à jour avec succès
 msg-news-deleted = Publication supprimée avec succès
+msg-now-away = Vous êtes maintenant absent
+msg-now-away-status = Vous êtes maintenant absent : { $status }
+msg-welcome-back = Bon retour
+msg-status-set = Statut défini : { $status }
+msg-status-cleared = Statut effacé
+msg-user-is-away = { $nickname } est absent
+msg-user-is-away-status = { $nickname } est absent: { $status }
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -392,6 +399,9 @@ err-server-name-empty = Le nom du serveur ne peut pas être vide
 err-server-name-too-long = Le nom du serveur est trop long (max { $max } caractères)
 err-server-name-contains-newlines = Le nom du serveur ne peut pas contenir de sauts de ligne
 err-server-name-invalid-characters = Le nom du serveur contient des caractères invalides
+err-status-too-long = Le message de statut est trop long (max { $max } caractères)
+err-status-contains-newlines = Le message de statut ne peut pas contenir de sauts de ligne
+err-status-invalid-characters = Le message de statut contient des caractères invalides
 err-server-description-too-long = La description est trop longue (max { $max } caractères)
 err-server-description-contains-newlines = La description ne peut pas contenir de sauts de ligne
 err-server-description-invalid-characters = La description contient des caractères invalides
@@ -463,6 +473,7 @@ user-info-created = Créé :
 user-info-end = Fin des informations utilisateur
 user-info-unknown = Inconnu
 user-info-loading = Chargement des informations utilisateur...
+user-info-status = Statut:
 
 # =============================================================================
 # Time Duration
@@ -541,9 +552,15 @@ cmd-window-list = Onglets ouverts : { $tabs } ({ $count } { $count ->
 cmd-window-close-server = Impossible de fermer l'onglet serveur
 cmd-window-not-found = Onglet non trouvé : { $name }
 cmd-serverinfo-desc = Afficher les informations du serveur
-cmd-serverinfo-usage = Utilisation : /{ $command }
+cmd-serverinfo-usage = Utilisation: /{ $command }
 cmd-serverinfo-header = [serveur]
-cmd-serverinfo-end = Fin des informations du serveur
+cmd-serverinfo-end = Fin des informations serveur
+cmd-away-desc = Se marquer comme absent
+cmd-away-usage = Utilisation: /{ $command } [message]
+cmd-back-desc = Supprimer le statut absent
+cmd-back-usage = Utilisation: /{ $command }
+cmd-status-desc = Définir ou supprimer votre message de statut
+cmd-status-usage = Utilisation: /{ $command } [message]
 
 # =============================================================================
 # About Panel

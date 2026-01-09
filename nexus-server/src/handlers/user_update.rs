@@ -677,6 +677,8 @@ where
                         session_ids,
                         locale,
                         avatar,
+                        is_away: false,
+                        status: None,
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
@@ -1780,6 +1782,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "editor".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -1991,6 +1995,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "editor".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -2011,6 +2017,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -2332,6 +2340,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .unwrap();
@@ -2399,10 +2409,13 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .unwrap();
 
+        // Update guest account permissions
         // Enable the guest account (should be allowed)
         let request = UserUpdateRequest {
             username: "guest".to_string(),
@@ -2461,6 +2474,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .unwrap();
@@ -2527,6 +2542,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .unwrap();

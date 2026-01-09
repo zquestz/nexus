@@ -203,6 +203,8 @@ async fn test_broadcast_respects_user_list_permission() {
                     session_ids: vec![99],
                     locale: "en".to_string(),
                     avatar: None,
+                    is_away: false,
+                    status: None,
                 },
             },
             None, // Don't exclude anyone
@@ -286,6 +288,8 @@ async fn test_broadcast_excludes_specified_session() {
                     session_ids: vec![30],
                     locale: "en".to_string(),
                     avatar: None,
+                    is_away: false,
+                    status: None,
                 },
             },
             Some(session_id1), // Exclude session 1

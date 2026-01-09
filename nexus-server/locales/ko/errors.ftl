@@ -11,6 +11,11 @@ err-nickname-not-online = 사용자 "{ $nickname }"이(가) 온라인 상태가 
 err-nickname-required = 공유 계정에는 닉네임이 필요합니다
 err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max_length }자)
 
+# 부재 메시지 오류
+err-status-too-long = 부재 메시지가 너무 깁니다 (최대 { $max_length }자)
+err-status-contains-newlines = 부재 메시지에는 줄 바꿈을 포함할 수 없습니다
+err-status-invalid-characters = 부재 메시지에 잘못된 문자가 포함되어 있습니다
+
 # 공유 계정 오류
 err-shared-cannot-be-admin = 공유 계정은 관리자가 될 수 없습니다
 err-shared-cannot-change-password = 공유 계정의 비밀번호는 변경할 수 없습니다

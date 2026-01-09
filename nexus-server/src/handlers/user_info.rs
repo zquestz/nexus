@@ -132,6 +132,13 @@ where
         .max_by_key(|s| s.login_time)
         .and_then(|s| s.avatar.clone());
 
+    // Get away status from most recent login session ("latest login wins")
+    let (is_away, status) = target_sessions
+        .iter()
+        .max_by_key(|s| s.login_time)
+        .map(|s| (s.is_away, s.status.clone()))
+        .unwrap_or((false, None));
+
     // Get nickname (display name) for the user from the session
     // (nickname is always populated - equals username for regular accounts)
     let display_nickname = target_sessions
@@ -165,6 +172,8 @@ where
             avatar,
             is_admin: Some(target_account.is_admin),
             addresses: Some(addresses),
+            is_away,
+            status,
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -180,6 +189,8 @@ where
             avatar,
             is_admin: Some(target_account.is_admin),
             addresses: None,
+            is_away,
+            status,
         }
     };
 
@@ -248,6 +259,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -305,6 +318,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -402,6 +417,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "requester".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -423,6 +440,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "target".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -526,6 +545,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -547,10 +568,13 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "target".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
 
+        // Admin requests info about target
         // Request info about target as admin
         let result = handle_user_info(
             "target".to_string(),
@@ -660,6 +684,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin1".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -681,6 +707,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin2".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -819,6 +847,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(avatar_data.clone()),
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -891,6 +921,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(old_avatar),
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -915,6 +947,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(new_avatar.clone()),
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");

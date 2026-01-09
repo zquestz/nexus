@@ -2,7 +2,7 @@
 //!
 //! Validates chat messages, broadcasts, and private messages.
 
-/// Maximum length for messages (chat, broadcast, private messages) in characters
+/// Maximum length for messages (chat, broadcast, private messages) in bytes
 pub const MAX_MESSAGE_LENGTH: usize = 1024;
 
 /// Validation error for messages

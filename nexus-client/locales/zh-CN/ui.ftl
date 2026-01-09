@@ -267,7 +267,7 @@ files-info-na = 不适用
 # =============================================================================
 
 err-dir-name-empty = 文件夹名称不能为空
-err-dir-name-too-long = 文件夹名称过长（最多 { $max_length } 个字符）
+err-dir-name-too-long = 文件夹名称过长（最多 { $max } 个字符）
 err-dir-name-path-separator = 文件夹名称不能包含 / 或 \
 err-dir-name-parent-ref = 文件夹名称不能为 ".."
 err-dir-name-invalid = 文件夹名称包含无效字符
@@ -320,6 +320,14 @@ msg-password-changed = 密码修改成功
 msg-news-created = 帖子创建成功
 msg-news-updated = 帖子更新成功
 msg-news-deleted = 帖子删除成功
+msg-now-away = 您现在处于离开状态
+msg-now-away-status = 您现在处于离开状态: { $status }
+msg-welcome-back = 欢迎回来
+msg-status-set = 状态已设置: { $status }
+msg-status-cleared = 状态已清除
+msg-user-is-away = { $nickname } 已离开
+msg-user-is-away-status = { $nickname } 已离开: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -388,10 +396,13 @@ err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP、J
 err-avatar-too-large = 头像过大。最大大小为{ $max_kb }KB。
 err-avatar-decode-failed = 无法解码头像。文件可能已损坏。
 err-server-name-empty = 服务器名称不能为空
-err-server-name-too-long = 服务器名称过长（最多{ $max }个字符）
+err-server-name-too-long = 服务器名称太长（最多 { $max } 个字符）
 err-server-name-contains-newlines = 服务器名称不能包含换行符
 err-server-name-invalid-characters = 服务器名称包含无效字符
-err-server-description-too-long = 描述过长（最多{ $max }个字符）
+err-status-too-long = 状态消息太长（最多 { $max } 个字符）
+err-status-contains-newlines = 状态消息不能包含换行符
+err-status-invalid-characters = 状态消息包含无效字符
+err-server-description-too-long = 描述太长（最多 { $max } 个字符）
 err-server-description-contains-newlines = 描述不能包含换行符
 err-server-description-invalid-characters = 描述包含无效字符
 err-failed-send-update = 发送更新失败：{ $error }
@@ -462,6 +473,7 @@ user-info-created = 创建时间：
 user-info-end = 用户信息结束
 user-info-unknown = 未知
 user-info-loading = 正在加载用户信息...
+user-info-status = 状态:
 
 # =============================================================================
 # Time Duration
@@ -519,9 +531,15 @@ cmd-window-list = 打开的标签页：{ $tabs }（{ $count }个标签页）
 cmd-window-close-server = 无法关闭服务器标签页
 cmd-window-not-found = 未找到标签页：{ $name }
 cmd-serverinfo-desc = 显示服务器信息
-cmd-serverinfo-usage = 用法：/{ $command }
+cmd-serverinfo-usage = 用法: /{ $command }
 cmd-serverinfo-header = [服务器]
 cmd-serverinfo-end = 服务器信息结束
+cmd-away-desc = 设置为离开状态
+cmd-away-usage = 用法: /{ $command } [消息]
+cmd-back-desc = 取消离开状态
+cmd-back-usage = 用法: /{ $command }
+cmd-status-desc = 设置或清除状态消息
+cmd-status-usage = 用法: /{ $command } [消息]
 
 # =============================================================================
 # About Panel

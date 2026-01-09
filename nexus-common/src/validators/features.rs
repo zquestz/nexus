@@ -5,7 +5,7 @@
 /// Maximum number of features allowed
 pub const MAX_FEATURES_COUNT: usize = 16;
 
-/// Maximum length for each feature name in characters
+/// Maximum length for each feature name in bytes
 pub const MAX_FEATURE_LENGTH: usize = 32;
 
 /// Validation error for features

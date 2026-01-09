@@ -123,4 +123,23 @@ impl UserManager {
 
         count
     }
+
+    /// Set status and away flag for a session (by session_id)
+    /// Returns the updated session if found
+    pub async fn set_status(
+        &self,
+        session_id: u32,
+        is_away: bool,
+        status: Option<String>,
+    ) -> Option<UserSession> {
+        let mut users = self.users.write().await;
+
+        if let Some(user) = users.get_mut(&session_id) {
+            user.is_away = is_away;
+            user.status = status;
+            Some(user.clone())
+        } else {
+            None
+        }
+    }
 }

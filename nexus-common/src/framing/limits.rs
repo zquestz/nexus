@@ -75,6 +75,9 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserKick", 65);
     m.insert("UserList", 31);
     m.insert("UserUpdate", USER_UPDATE_BASE as u64 + perm_size);
+    m.insert("UserAway", 160); // status (128) + overhead
+    m.insert("UserBack", 19);
+    m.insert("UserStatus", 161); // status (128) + overhead
     m.insert("ServerInfoUpdate", 700455); // includes image field (700000 + overhead) + max_transfers_per_ip
 
     // News client messages
@@ -97,7 +100,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileUpload", 4180); // destination (4096) + file_count (u64) + total_size (u64) + root + overhead
 
     // Server messages (limits match actual max size from validators)
-    // ServerInfo now includes image field (up to 700000 chars), adding ~700011 bytes
+    // ServerInfo now includes image field (up to 700000 bytes), adding ~700011 bytes
     m.insert("ChatMessage", 1164);
     m.insert("ChatTopicUpdated", 340);
     m.insert("ChatTopicUpdateResponse", 573);
@@ -111,7 +114,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ServerBroadcast", 1133);
     m.insert("ServerInfoUpdated", 700539); // includes ServerInfo with image + transfer_port + max_transfers_per_ip
     m.insert("ServerInfoUpdateResponse", 574);
-    m.insert("UserConnected", 176359);
+    m.insert("UserConnected", 176515); // includes is_away + status (128)
     m.insert("UserCreateResponse", 614);
     m.insert("UserDeleteResponse", 614);
     m.insert("UserDisconnected", 97);
@@ -120,12 +123,15 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         USER_EDIT_RESPONSE_BASE as u64 + perm_size,
     );
     m.insert("UserBroadcastResponse", 571);
-    m.insert("UserInfoResponse", 177477);
+    m.insert("UserInfoResponse", 177633); // includes is_away + status (128)
     m.insert("UserKickResponse", 612);
     m.insert("UserListResponse", 0); // unlimited (server-trusted)
     m.insert("UserMessage", 1177); // shared type: server (1177) > client (1108)
-    m.insert("UserMessageResponse", 569);
-    m.insert("UserUpdated", 176412);
+    m.insert("UserMessageResponse", 725); // includes is_away + status (128)
+    m.insert("UserUpdated", 176568); // includes is_away + status (128)
+    m.insert("UserAwayResponse", 2102); // success + error (2048) + overhead
+    m.insert("UserBackResponse", 2102); // success + error (2048) + overhead
+    m.insert("UserStatusResponse", 2104); // success + error (2048) + overhead
     m.insert("UserUpdateResponse", 614);
 
     // News server messages
@@ -198,8 +204,8 @@ mod tests {
         MAX_AVATAR_DATA_URI_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
         MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH,
         MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
-        MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_USERNAME_LENGTH,
-        MAX_VERSION_LENGTH,
+        MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH,
+        MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -238,8 +244,8 @@ mod tests {
         //
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 33; // Added 6 News + 7 File + 6 Transfer client messages (including FileHashing)
-        const SERVER_MESSAGE_COUNT: usize = 44; // Added 7 News + 8 File + 7 Transfer server messages (including FileHashing)
+        const CLIENT_MESSAGE_COUNT: usize = 36; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status client messages
+        const SERVER_MESSAGE_COUNT: usize = 47; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status server messages
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -428,6 +434,28 @@ mod tests {
             ),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("UserUpdate") as usize);
+    }
+
+    #[test]
+    fn test_limit_user_away() {
+        let msg = ClientMessage::UserAway {
+            message: Some(str_of_len(MAX_STATUS_LENGTH)),
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("UserAway") as usize);
+    }
+
+    #[test]
+    fn test_limit_user_back() {
+        let msg = ClientMessage::UserBack;
+        assert_eq!(json_size(&msg), max_payload_for_type("UserBack") as usize);
+    }
+
+    #[test]
+    fn test_limit_user_status() {
+        let msg = ClientMessage::UserStatus {
+            status: Some(str_of_len(MAX_STATUS_LENGTH)),
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("UserStatus") as usize);
     }
 
     #[test]
@@ -637,6 +665,8 @@ mod tests {
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
+                is_away: false,
+                status: Some(str_of_len(MAX_STATUS_LENGTH)),
             },
         };
         assert_eq!(
@@ -735,6 +765,8 @@ mod tests {
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
                 is_admin: Some(false),
                 addresses: Some(vec![str_of_len(45); 10]),
+                is_away: false,
+                status: Some(str_of_len(MAX_STATUS_LENGTH)),
             }),
         };
         assert_eq!(
@@ -785,6 +817,8 @@ mod tests {
         let msg = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(str_of_len(512)),
+            is_away: Some(false),
+            status: Some(str_of_len(MAX_STATUS_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -805,6 +839,8 @@ mod tests {
                 session_ids: vec![u32::MAX; 10],
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
+                is_away: false,
+                status: Some(str_of_len(MAX_STATUS_LENGTH)),
             },
         };
         assert_eq!(
@@ -823,6 +859,42 @@ mod tests {
         assert_eq!(
             json_size(&msg),
             max_payload_for_type("UserUpdateResponse") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_user_away_response() {
+        let msg = ServerMessage::UserAwayResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("UserAwayResponse") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_user_back_response() {
+        let msg = ServerMessage::UserBackResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("UserBackResponse") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_user_status_response() {
+        let msg = ServerMessage::UserStatusResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+        };
+        assert_eq!(
+            json_size(&msg),
+            max_payload_for_type("UserStatusResponse") as usize
         );
     }
 

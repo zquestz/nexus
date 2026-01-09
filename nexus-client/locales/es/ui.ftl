@@ -268,7 +268,7 @@ files-info-na = N/D
 # =============================================================================
 
 err-dir-name-empty = El nombre del directorio no puede estar vacío
-err-dir-name-too-long = El nombre del directorio es demasiado largo (máx. { $max_length } caracteres)
+err-dir-name-too-long = El nombre del directorio es demasiado largo (máx. { $max } caracteres)
 err-dir-name-path-separator = El nombre del directorio no puede contener / o \
 err-dir-name-parent-ref = El nombre del directorio no puede ser ".."
 err-dir-name-invalid = El nombre del directorio contiene caracteres inválidos
@@ -318,9 +318,16 @@ msg-user-updated-name = Usuario '{ $username }' actualizado exitosamente
 msg-permissions-updated = Tus permisos han sido actualizados
 msg-topic-updated = Tema actualizado correctamente
 msg-password-changed = Contraseña cambiada correctamente
-msg-news-created = Publicación creada correctamente
-msg-news-updated = Publicación actualizada correctamente
-msg-news-deleted = Publicación eliminada correctamente
+msg-news-created = Publicación creada exitosamente
+msg-news-updated = Publicación actualizada exitosamente
+msg-news-deleted = Publicación eliminada exitosamente
+msg-now-away = Estás ausente
+msg-now-away-status = Estás ausente: { $status }
+msg-welcome-back = Bienvenido de vuelta
+msg-status-set = Estado establecido: { $status }
+msg-status-cleared = Estado borrado
+msg-user-is-away = { $nickname } está ausente
+msg-user-is-away-status = { $nickname } está ausente: { $status }
 
 
 
@@ -391,10 +398,13 @@ err-avatar-unsupported-type = Tipo de archivo no soportado. Use PNG, WebP, JPEG 
 err-avatar-too-large = Icono demasiado grande. El tamaño máximo es { $max_kb }KB.
 err-avatar-decode-failed = Error al decodificar la imagen. El archivo puede estar dañado.
 err-server-name-empty = El nombre del servidor no puede estar vacío
-err-server-name-too-long = El nombre del servidor es demasiado largo (máx { $max } caracteres)
+err-server-name-too-long = El nombre del servidor es demasiado largo (máx. { $max } caracteres)
 err-server-name-contains-newlines = El nombre del servidor no puede contener saltos de línea
 err-server-name-invalid-characters = El nombre del servidor contiene caracteres inválidos
-err-server-description-too-long = La descripción es demasiado larga (máx { $max } caracteres)
+err-status-too-long = El mensaje de estado es demasiado largo (máx. { $max } caracteres)
+err-status-contains-newlines = El mensaje de estado no puede contener saltos de línea
+err-status-invalid-characters = El mensaje de estado contiene caracteres inválidos
+err-server-description-too-long = La descripción es demasiado larga (máx. { $max } caracteres)
 err-server-description-contains-newlines = La descripción no puede contener saltos de línea
 err-server-description-invalid-characters = La descripción contiene caracteres inválidos
 err-failed-send-update = Error al enviar actualización: { $error }
@@ -462,9 +472,10 @@ user-info-locale = Idioma:
 user-info-address = Dirección:
 user-info-addresses = Direcciones:
 user-info-created = Creado:
-user-info-end = Fin de información del usuario
+user-info-end = Fin de info del usuario
 user-info-unknown = Desconocido
-user-info-loading = Cargando información del usuario...
+user-info-loading = Cargando info del usuario...
+user-info-status = Estado:
 
 # =============================================================================
 # Time Duration
@@ -545,7 +556,13 @@ cmd-window-not-found = Pestaña no encontrada: { $name }
 cmd-serverinfo-desc = Mostrar información del servidor
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [servidor]
-cmd-serverinfo-end = Fin de información del servidor
+cmd-serverinfo-end = Fin de info del servidor
+cmd-away-desc = Establecerse como ausente
+cmd-away-usage = Uso: /{ $command } [mensaje]
+cmd-back-desc = Eliminar estado de ausente
+cmd-back-usage = Uso: /{ $command }
+cmd-status-desc = Establecer o eliminar mensaje de estado
+cmd-status-usage = Uso: /{ $command } [mensaje]
 
 # =============================================================================
 # About Panel

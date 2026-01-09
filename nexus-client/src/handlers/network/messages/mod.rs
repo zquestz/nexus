@@ -16,6 +16,7 @@ mod user_connection;
 mod user_info;
 mod user_kick;
 mod user_message;
+mod user_status;
 
 pub use user_admin::UserEditResponseData;
 
@@ -192,9 +193,19 @@ impl NexusApp {
                 action,
             ),
 
-            ServerMessage::UserMessageResponse { success, error } => {
-                self.handle_user_message_response(connection_id, message_id, success, error)
-            }
+            ServerMessage::UserMessageResponse {
+                success,
+                error,
+                is_away,
+                status,
+            } => self.handle_user_message_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                is_away,
+                status,
+            ),
 
             ServerMessage::UserUpdated {
                 previous_username,
@@ -326,6 +337,18 @@ impl NexusApp {
                 error,
                 error_kind,
             ),
+
+            ServerMessage::UserAwayResponse { success, error } => {
+                self.handle_user_away_response(connection_id, message_id, success, error)
+            }
+
+            ServerMessage::UserBackResponse { success, error } => {
+                self.handle_user_back_response(connection_id, message_id, success, error)
+            }
+
+            ServerMessage::UserStatusResponse { success, error } => {
+                self.handle_user_status_response(connection_id, message_id, success, error)
+            }
 
             // Catch-all for any unhandled message types
             _ => Task::none(),

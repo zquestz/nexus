@@ -194,7 +194,7 @@ tooltip-hide-bookmarks = 북마크 숨기기
 tooltip-show-bookmarks = 북마크 표시
 tooltip-hide-user-list = 사용자 목록 숨기기
 tooltip-show-user-list = 사용자 목록 표시
-tooltip-disconnect = 연결 해제
+tooltip-disconnect = 연결 끊기
 tooltip-edit = 편집
 tooltip-info = 정보
 tooltip-message = 메시지
@@ -267,7 +267,7 @@ files-info-na = N/A
 # =============================================================================
 
 err-dir-name-empty = 폴더 이름을 입력하세요
-err-dir-name-too-long = 폴더 이름이 너무 깁니다 (최대 { $max_length } 자)
+err-dir-name-too-long = 폴더 이름이 너무 깁니다 (최대 { $max } 자)
 err-dir-name-path-separator = 폴더 이름에 / 또는 \를 포함할 수 없습니다
 err-dir-name-parent-ref = 폴더 이름을 ".."로 할 수 없습니다
 err-dir-name-invalid = 폴더 이름에 잘못된 문자가 포함되어 있습니다
@@ -317,9 +317,17 @@ msg-user-updated-name = 사용자 '{ $username }'이(가) 성공적으로 업데
 msg-permissions-updated = 권한이 업데이트되었습니다
 msg-topic-updated = 주제가 성공적으로 업데이트되었습니다
 msg-password-changed = 비밀번호가 성공적으로 변경되었습니다
-msg-news-created = 게시물이 성공적으로 작성되었습니다
-msg-news-updated = 게시물이 성공적으로 수정되었습니다
+msg-news-created = 게시물이 성공적으로 생성되었습니다
+msg-news-updated = 게시물이 성공적으로 업데이트되었습니다
 msg-news-deleted = 게시물이 성공적으로 삭제되었습니다
+msg-now-away = 자리 비움으로 설정되었습니다
+msg-now-away-status = 자리 비움으로 설정되었습니다: { $status }
+msg-welcome-back = 다시 오신 것을 환영합니다
+msg-status-set = 상태 설정: { $status }
+msg-status-cleared = 상태 지움
+msg-user-is-away = { $nickname }님이 자리 비움 상태입니다
+msg-user-is-away-status = { $nickname }님이 자리 비움 상태입니다: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -391,6 +399,9 @@ err-server-name-empty = 서버 이름은 비워둘 수 없습니다
 err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max }자)
 err-server-name-contains-newlines = 서버 이름에 줄바꿈을 포함할 수 없습니다
 err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
+err-status-too-long = 상태 메시지가 너무 깁니다 (최대 { $max }자)
+err-status-contains-newlines = 상태 메시지에 줄바꿈을 포함할 수 없습니다
+err-status-invalid-characters = 상태 메시지에 잘못된 문자가 포함되어 있습니다
 err-server-description-too-long = 설명이 너무 깁니다 (최대 { $max }자)
 err-server-description-contains-newlines = 설명에 줄바꿈을 포함할 수 없습니다
 err-server-description-invalid-characters = 설명에 잘못된 문자가 포함되어 있습니다
@@ -461,7 +472,8 @@ user-info-addresses = 주소:
 user-info-created = 생성일:
 user-info-end = 사용자 정보 끝
 user-info-unknown = 알 수 없음
-user-info-loading = 사용자 정보 로딩 중...
+user-info-loading = 사용자 정보 로드 중...
+user-info-status = 상태:
 
 # =============================================================================
 # Time Duration
@@ -522,6 +534,12 @@ cmd-serverinfo-desc = 서버 정보 표시
 cmd-serverinfo-usage = 사용법: /{ $command }
 cmd-serverinfo-header = [서버]
 cmd-serverinfo-end = 서버 정보 끝
+cmd-away-desc = 자리 비움으로 설정
+cmd-away-usage = 사용법: /{ $command } [메시지]
+cmd-back-desc = 자리 비움 상태 해제
+cmd-back-usage = 사용법: /{ $command }
+cmd-status-desc = 상태 메시지 설정 또는 삭제
+cmd-status-usage = 사용법: /{ $command } [메시지]
 
 # =============================================================================
 # About Panel

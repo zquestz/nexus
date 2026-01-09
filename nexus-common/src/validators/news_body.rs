@@ -3,7 +3,7 @@
 //! Validates markdown content for news posts. Unlike chat messages,
 //! news body allows newlines and tabs for markdown formatting.
 
-/// Maximum length for news body in characters
+/// Maximum length for news body in bytes
 pub const MAX_NEWS_BODY_LENGTH: usize = 4096;
 
 /// Validation error for news body

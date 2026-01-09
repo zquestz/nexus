@@ -46,6 +46,8 @@ where
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(error_msg),
+            is_away: None,
+            status: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -61,6 +63,8 @@ where
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(error_msg),
+            is_away: None,
+            status: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -83,6 +87,8 @@ where
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_cannot_message_self(ctx.locale)),
+            is_away: None,
+            status: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -96,6 +102,8 @@ where
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            is_away: None,
+            status: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -108,17 +116,12 @@ where
             let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
+                is_away: None,
+                status: None,
             };
             return ctx.send_message(&response).await;
         }
     };
-
-    // Send success response to sender
-    let response = ServerMessage::UserMessageResponse {
-        success: true,
-        error: None,
-    };
-    ctx.send_message(&response).await?;
 
     // Build the message to broadcast
     let broadcast = ServerMessage::UserMessage {
@@ -141,7 +144,24 @@ where
         .broadcast_to_nickname(&target_session.nickname, &broadcast)
         .await;
 
-    Ok(())
+    // Send success response to sender via channel AFTER message broadcasts
+    // Using the channel ensures proper ordering - the response will be queued
+    // after the UserMessage broadcast, so the away notice appears after the message
+    let response = ServerMessage::UserMessageResponse {
+        success: true,
+        error: None,
+        is_away: if target_session.is_away {
+            Some(true)
+        } else {
+            None
+        },
+        status: if target_session.is_away {
+            target_session.status.clone()
+        } else {
+            None
+        },
+    };
+    ctx.send_message_via_channel(&response)
 }
 
 #[cfg(test)]
@@ -200,7 +220,7 @@ mod tests {
         // Check response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
                 assert!(error.unwrap().to_lowercase().contains("permission"));
@@ -235,7 +255,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("empty"));
             }
@@ -271,7 +291,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("too long"));
             }
@@ -305,7 +325,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.unwrap().to_lowercase().contains("yourself"));
             }
@@ -339,7 +359,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 // User not online (we don't distinguish "not found" from "not online" for security)
                 assert!(error.unwrap().contains("not online"));
@@ -384,7 +404,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.unwrap().contains("not online"));
             }
@@ -431,7 +451,7 @@ mod tests {
         // Check sender gets success response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success);
                 assert!(error.is_none());
             }
@@ -471,7 +491,7 @@ mod tests {
         // Check admin gets success response
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success);
                 assert!(error.is_none());
             }
@@ -541,7 +561,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(
                     success,
                     "Message to shared account by nickname should succeed"
@@ -607,7 +627,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success, "Self-message by nickname should be prevented");
                 assert!(error.is_some());
             }
@@ -718,7 +738,7 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx.client).await;
         match response {
-            ServerMessage::UserMessageResponse { success, error } => {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success, "Should allow messaging shared account by nickname");
                 assert!(error.is_none());
             }

@@ -107,6 +107,8 @@ impl NexusApp {
         message_id: MessageId,
         success: bool,
         error: Option<String>,
+        is_away: Option<bool>,
+        status: Option<String>,
     ) -> Task<Message> {
         // Check if this response corresponds to a tracked request
         let routing = self
@@ -115,6 +117,40 @@ impl NexusApp {
             .and_then(|conn| conn.pending_requests.remove(&message_id));
 
         if success {
+            // Get the nickname for showing away notice
+            let nickname_for_away = match &routing {
+                Some(ResponseRouting::OpenMessageTab(nickname)) => Some(nickname.clone()),
+                Some(ResponseRouting::ShowErrorInMessageTab(nickname)) => Some(nickname.clone()),
+                _ => None,
+            };
+
+            // Show away notice if recipient is away
+            if let Some(true) = is_away
+                && let Some(nickname) = &nickname_for_away
+            {
+                let away_msg = if let Some(status_msg) = &status {
+                    ChatMessage::info(t_args(
+                        "msg-user-is-away-status",
+                        &[
+                            ("nickname", nickname.as_str()),
+                            ("status", status_msg.as_str()),
+                        ],
+                    ))
+                } else {
+                    ChatMessage::info(t_args(
+                        "msg-user-is-away",
+                        &[("nickname", nickname.as_str())],
+                    ))
+                };
+
+                // Add the away notice to the PM tab
+                if let Some(conn) = self.connections.get_mut(&connection_id)
+                    && let Some(messages) = conn.user_messages.get_mut(nickname)
+                {
+                    messages.push(away_msg);
+                }
+            }
+
             // Switch to tab if this was a /msg command
             if let Some(ResponseRouting::OpenMessageTab(nickname)) = routing {
                 return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(nickname)));

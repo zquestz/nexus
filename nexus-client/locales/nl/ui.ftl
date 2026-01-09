@@ -268,7 +268,7 @@ files-info-na = N.v.t.
 # =============================================================================
 
 err-dir-name-empty = Mapnaam mag niet leeg zijn
-err-dir-name-too-long = Mapnaam is te lang (max { $max_length } tekens)
+err-dir-name-too-long = Mapnaam is te lang (max { $max } tekens)
 err-dir-name-path-separator = Mapnaam mag geen / of \ bevatten
 err-dir-name-parent-ref = Mapnaam mag niet ".." zijn
 err-dir-name-invalid = Mapnaam bevat ongeldige tekens
@@ -321,6 +321,13 @@ msg-password-changed = Wachtwoord succesvol gewijzigd
 msg-news-created = Bericht succesvol aangemaakt
 msg-news-updated = Bericht succesvol bijgewerkt
 msg-news-deleted = Bericht succesvol verwijderd
+msg-now-away = Je bent nu afwezig
+msg-now-away-status = Je bent nu afwezig: { $status }
+msg-welcome-back = Welkom terug
+msg-status-set = Status ingesteld: { $status }
+msg-status-cleared = Status gewist
+msg-user-is-away = { $nickname } is afwezig
+msg-user-is-away-status = { $nickname } is afwezig: { $status }
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -390,8 +397,11 @@ err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.
 err-avatar-decode-failed = Kan avatar niet decoderen. Het bestand is mogelijk beschadigd.
 err-server-name-empty = Servernaam mag niet leeg zijn
 err-server-name-too-long = Servernaam is te lang (max { $max } tekens)
-err-server-name-contains-newlines = Servernaam mag geen regeleinden bevatten
+err-server-name-contains-newlines = Servernaam mag geen regelovergangen bevatten
 err-server-name-invalid-characters = Servernaam bevat ongeldige tekens
+err-status-too-long = Statusbericht is te lang (max { $max } tekens)
+err-status-contains-newlines = Statusbericht mag geen regelovergangen bevatten
+err-status-invalid-characters = Statusbericht bevat ongeldige tekens
 err-server-description-too-long = Beschrijving is te lang (max { $max } tekens)
 err-server-description-contains-newlines = Beschrijving mag geen regeleinden bevatten
 err-server-description-invalid-characters = Beschrijving bevat ongeldige tekens
@@ -463,6 +473,7 @@ user-info-created = Aangemaakt:
 user-info-end = Einde gebruikersinformatie
 user-info-unknown = Onbekend
 user-info-loading = Gebruikersinformatie laden...
+user-info-status = Status:
 
 # =============================================================================
 # Time Duration
@@ -540,10 +551,16 @@ cmd-window-list = Open tabbladen: { $tabs } ({ $count } { $count ->
 })
 cmd-window-close-server = Kan het server-tabblad niet sluiten
 cmd-window-not-found = Tabblad niet gevonden: { $name }
-cmd-serverinfo-desc = Serverinformatie weergeven
+cmd-serverinfo-desc = Serverinformatie tonen
 cmd-serverinfo-usage = Gebruik: /{ $command }
 cmd-serverinfo-header = [server]
 cmd-serverinfo-end = Einde serverinformatie
+cmd-away-desc = Markeer jezelf als afwezig
+cmd-away-usage = Gebruik: /{ $command } [bericht]
+cmd-back-desc = Verwijder afwezigheidsstatus
+cmd-back-usage = Gebruik: /{ $command }
+cmd-status-desc = Stel statusbericht in of verwijder het
+cmd-status-usage = Gebruik: /{ $command } [bericht]
 
 # =============================================================================
 # About Panel

@@ -187,4 +187,8 @@ pub struct UserInfo {
     /// We store a 32-byte hash instead of the full data URI (up to 176KB) to save memory.
     /// The actual decoded avatar is stored in `ServerConnection.avatar_cache`.
     pub avatar_hash: Option<[u8; 32]>,
+    /// Whether user is away
+    pub is_away: bool,
+    /// User's status message (if any)
+    pub status: Option<String>,
 }

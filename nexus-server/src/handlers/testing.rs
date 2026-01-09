@@ -166,6 +166,8 @@ pub async fn login_user_with_features(
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: username.to_string(), // Regular account: nickname == username
+            is_away: false,
+            status: None,
         })
         .await
         .expect("Failed to add user to UserManager")
@@ -215,6 +217,8 @@ pub async fn login_shared_user(
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: nickname.to_string(), // Shared account: custom nickname
+            is_away: false,
+            status: None,
         })
         .await
         .expect("Failed to add shared user to UserManager")

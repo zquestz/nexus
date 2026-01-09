@@ -11,6 +11,11 @@ err-nickname-not-online = Gebruiker "{ $nickname }" is niet online
 err-nickname-required = Bijnaam vereist voor gedeelde accounts
 err-nickname-too-long = Bijnaam is te lang (max. { $max_length } tekens)
 
+# Afwezigheidsbericht-fouten
+err-status-too-long = Afwezigheidsbericht is te lang (max. { $max_length } tekens)
+err-status-contains-newlines = Afwezigheidsbericht mag geen regelovergangen bevatten
+err-status-invalid-characters = Afwezigheidsbericht bevat ongeldige tekens
+
 # Gedeelde account-fouten
 err-shared-cannot-be-admin = Gedeelde accounts kunnen geen beheerders zijn
 err-shared-cannot-change-password = Kan wachtwoord van gedeeld account niet wijzigen

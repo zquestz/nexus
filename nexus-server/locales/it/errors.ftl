@@ -11,6 +11,11 @@ err-nickname-not-online = L'utente "{ $nickname }" non è online
 err-nickname-required = Soprannome richiesto per account condivisi
 err-nickname-too-long = Il soprannome è troppo lungo (max { $max_length } caratteri)
 
+# Errori messaggio di assenza
+err-status-too-long = Il messaggio di assenza è troppo lungo (max { $max_length } caratteri)
+err-status-contains-newlines = Il messaggio di assenza non può contenere interruzioni di riga
+err-status-invalid-characters = Il messaggio di assenza contiene caratteri non validi
+
 # Errori account condivisi
 err-shared-cannot-be-admin = Gli account condivisi non possono essere amministratori
 err-shared-cannot-change-password = Impossibile cambiare la password di un account condiviso

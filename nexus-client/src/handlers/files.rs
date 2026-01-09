@@ -19,7 +19,7 @@ fn dir_name_error_message(error: DirNameError) -> String {
         DirNameError::Empty => t("err-dir-name-empty"),
         DirNameError::TooLong => crate::i18n::t_args(
             "err-dir-name-too-long",
-            &[("max_length", &validators::MAX_DIR_NAME_LENGTH.to_string())],
+            &[("max", &validators::MAX_DIR_NAME_LENGTH.to_string())],
         ),
         DirNameError::ContainsPathSeparator => t("err-dir-name-path-separator"),
         DirNameError::ContainsParentRef => t("err-dir-name-parent-ref"),

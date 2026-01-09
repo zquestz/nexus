@@ -192,9 +192,9 @@ tooltip-transfer-open-folder = 開啟資料夾
 tooltip-settings = 設定
 tooltip-hide-bookmarks = 隱藏書籤
 tooltip-show-bookmarks = 顯示書籤
-tooltip-hide-user-list = 隱藏使用者清單
-tooltip-show-user-list = 顯示使用者清單
-tooltip-disconnect = 中斷連線
+tooltip-hide-user-list = 隱藏使用者列表
+tooltip-show-user-list = 顯示使用者列表
+tooltip-disconnect = 斷開連線
 tooltip-edit = 編輯
 tooltip-info = 資訊
 tooltip-message = 訊息
@@ -267,7 +267,7 @@ files-info-na = 不適用
 # =============================================================================
 
 err-dir-name-empty = 資料夾名稱不能為空
-err-dir-name-too-long = 資料夾名稱過長（最多 { $max_length } 個字元）
+err-dir-name-too-long = 資料夾名稱過長（最多 { $max } 個字元）
 err-dir-name-path-separator = 資料夾名稱不能包含 / 或 \
 err-dir-name-parent-ref = 資料夾名稱不能為 ".."
 err-dir-name-invalid = 資料夾名稱包含無效字元
@@ -318,8 +318,16 @@ msg-permissions-updated = 您的權限已更新
 msg-topic-updated = 主題更新成功
 msg-password-changed = 密碼修改成功
 msg-news-created = 貼文建立成功
-msg-news-updated = 貼文更新成功
-msg-news-deleted = 貼文刪除成功
+msg-news-updated = 文章更新成功
+msg-news-deleted = 文章刪除成功
+msg-now-away = 您現在處於離開狀態
+msg-now-away-status = 您現在處於離開狀態: { $status }
+msg-welcome-back = 歡迎回來
+msg-status-set = 狀態已設定: { $status }
+msg-status-cleared = 狀態已清除
+msg-user-is-away = { $nickname } 已離開
+msg-user-is-away-status = { $nickname } 已離開: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -388,10 +396,13 @@ err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP、J
 err-avatar-too-large = 頭像過大。最大大小為{ $max_kb }KB。
 err-avatar-decode-failed = 無法解碼頭像。檔案可能已損壞。
 err-server-name-empty = 伺服器名稱不能為空
-err-server-name-too-long = 伺服器名稱過長（最多{ $max }個字元）
+err-server-name-too-long = 伺服器名稱太長（最多 { $max } 個字元）
 err-server-name-contains-newlines = 伺服器名稱不能包含換行符
 err-server-name-invalid-characters = 伺服器名稱包含無效字元
-err-server-description-too-long = 描述過長（最多{ $max }個字元）
+err-status-too-long = 狀態訊息太長（最多 { $max } 個字元）
+err-status-contains-newlines = 狀態訊息不能包含換行符
+err-status-invalid-characters = 狀態訊息包含無效字元
+err-server-description-too-long = 描述太長（最多 { $max } 個字元）
 err-server-description-contains-newlines = 描述不能包含換行符
 err-server-description-invalid-characters = 描述包含無效字元
 err-failed-send-update = 傳送更新失敗：{ $error }
@@ -462,6 +473,7 @@ user-info-created = 建立時間：
 user-info-end = 使用者資訊結束
 user-info-unknown = 未知
 user-info-loading = 正在載入使用者資訊...
+user-info-status = 狀態:
 
 # =============================================================================
 # Time Duration
@@ -519,9 +531,15 @@ cmd-window-list = 開啟的分頁：{ $tabs }（{ $count }個分頁）
 cmd-window-close-server = 無法關閉伺服器分頁
 cmd-window-not-found = 找不到分頁：{ $name }
 cmd-serverinfo-desc = 顯示伺服器資訊
-cmd-serverinfo-usage = 用法：/{ $command }
+cmd-serverinfo-usage = 用法: /{ $command }
 cmd-serverinfo-header = [伺服器]
 cmd-serverinfo-end = 伺服器資訊結束
+cmd-away-desc = 設定為離開狀態
+cmd-away-usage = 用法: /{ $command } [訊息]
+cmd-back-desc = 取消離開狀態
+cmd-back-usage = 用法: /{ $command }
+cmd-status-desc = 設定或清除狀態訊息
+cmd-status-usage = 用法: /{ $command } [訊息]
 
 # =============================================================================
 # About Panel

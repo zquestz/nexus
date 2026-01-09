@@ -6,15 +6,19 @@
 //!
 //! | Command | Aliases | Permission | Description |
 //! |---------|---------|------------|-------------|
-//! | `/broadcast` | `/b` | `user_broadcast` | Send a broadcast to all users |
+//! | `/away` | `/a` | *none* | Set yourself as away |
+//! | `/back` | `/b` | *none* | Clear away status |
+//! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 //! | `/clear` | | *none* | Clear chat history for current tab |
 //! | `/focus` | `/f` | *none* | Focus server chat or a user's PM tab |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
 //! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
 //! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
+//! | `/me` | | *none* | Send an action message |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
-//! | `/sinfo` | `/s`, `/serverinfo` | *none* | Show server information |
+//! | `/sinfo` | `/si`, `/serverinfo` | *none* | Show server information |
+//! | `/status` | `/s` | *none* | Set or clear your status message |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
 //! | `/window` | `/w` | *none* | Manage chat tabs (list, close) |
 //!
@@ -31,6 +35,8 @@
 //!
 //! Unknown commands display an error in chat and are never sent to the server.
 
+mod away;
+mod back;
 mod broadcast;
 mod clear;
 mod focus;
@@ -39,6 +45,7 @@ mod list;
 mod me;
 mod message;
 mod server_info;
+mod status;
 mod topic;
 mod user_info;
 mod user_kick;
@@ -86,8 +93,28 @@ struct CommandRegistration {
 static COMMANDS: &[CommandRegistration] = &[
     CommandRegistration {
         info: CommandInfo {
-            name: "broadcast",
+            name: "away",
+            aliases: &["a"],
+            description_key: "cmd-away-desc",
+            usage_key: "cmd-away-usage",
+            permissions: &[],
+        },
+        handler: away::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "back",
             aliases: &["b"],
+            description_key: "cmd-back-desc",
+            usage_key: "cmd-back-usage",
+            permissions: &[],
+        },
+        handler: back::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "broadcast",
+            aliases: &["bc"],
             description_key: "cmd-broadcast-desc",
             usage_key: "cmd-broadcast-usage",
             permissions: &[PERMISSION_USER_BROADCAST],
@@ -177,12 +204,22 @@ static COMMANDS: &[CommandRegistration] = &[
     CommandRegistration {
         info: CommandInfo {
             name: "sinfo",
-            aliases: &["s", "serverinfo"],
+            aliases: &["si", "serverinfo"],
             description_key: "cmd-serverinfo-desc",
             usage_key: "cmd-serverinfo-usage",
             permissions: &[],
         },
         handler: server_info::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "status",
+            aliases: &["s"],
+            description_key: "cmd-status-desc",
+            usage_key: "cmd-status-usage",
+            permissions: &[],
+        },
+        handler: status::execute,
     },
     CommandRegistration {
         info: CommandInfo {

@@ -4,8 +4,19 @@ use std::collections::HashMap;
 use std::io;
 
 /// Aggregated user data for deduplication
-/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, avatar_login_time)
-type UserAggregateData = (i64, bool, bool, Vec<u32>, String, Option<String>, i64);
+/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status)
+/// Note: avatar, is_away, and status all use "latest login wins" - tracked via latest_session_login_time
+type UserAggregateData = (
+    i64,
+    bool,
+    bool,
+    Vec<u32>,
+    String,
+    Option<String>,
+    i64,
+    bool,
+    Option<String>,
+);
 
 use tokio::io::AsyncWrite;
 
@@ -94,6 +105,8 @@ where
                 session_ids: vec![], // Not tracking online status for /list all
                 locale: String::new(),
                 avatar: None,
+                is_away: false,
+                status: None,
             })
             .collect();
 
@@ -130,6 +143,8 @@ where
                 session_ids: vec![user.session_id],
                 locale: user.locale.clone(),
                 avatar: user.avatar.clone(),
+                is_away: user.is_away,
+                status: user.status.clone(),
             });
         } else {
             // Regular accounts: deduplicate by username and aggregate sessions
@@ -138,14 +153,26 @@ where
             user_map
                 .entry(user.username.clone())
                 .and_modify(
-                    |(login_time, _, _, session_ids, _, avatar, avatar_login_time)| {
+                    |(
+                        login_time,
+                        _,
+                        _,
+                        session_ids,
+                        _,
+                        avatar,
+                        latest_session_login_time,
+                        is_away,
+                        status,
+                    )| {
                         // Keep earliest login time for display
                         *login_time = (*login_time).min(user.login_time);
                         session_ids.push(user.session_id);
-                        // Avatar: latest login wins
-                        if user.login_time > *avatar_login_time {
+                        // Avatar, away status, and status message: latest login wins
+                        if user.login_time > *latest_session_login_time {
                             *avatar = user.avatar.clone();
-                            *avatar_login_time = user.login_time;
+                            *latest_session_login_time = user.login_time;
+                            *is_away = user.is_away;
+                            *status = user.status.clone();
                         }
                     },
                 )
@@ -157,6 +184,8 @@ where
                     user.locale.clone(),
                     user.avatar.clone(),
                     user.login_time, // Track login time for avatar selection
+                    user.is_away,
+                    user.status.clone(),
                 ));
         }
     }
@@ -165,7 +194,10 @@ where
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
         .map(
-            |(username, (login_time, is_admin, is_shared, session_ids, locale, avatar, _))| {
+            |(
+                username,
+                (login_time, is_admin, is_shared, session_ids, locale, avatar, _, is_away, status),
+            )| {
                 UserInfo {
                     // For regular accounts, nickname == username
                     nickname: username.clone(),
@@ -176,6 +208,8 @@ where
                     session_ids,
                     locale,
                     avatar,
+                    is_away,
+                    status,
                 }
             },
         )
@@ -374,6 +408,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(avatar_data.clone()),
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -437,6 +473,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(old_avatar.clone()),
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -461,6 +499,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: Some(new_avatar.clone()),
                 nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -521,6 +561,8 @@ mod tests {
                 locale: "en".to_string(),
                 avatar: None,
                 nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -988,6 +1030,198 @@ mod tests {
                     vec!["Admin", "apple", "Banana", "cherry", "guest", "Zebra"],
                     "Users should be sorted alphabetically by nickname (case-insensitive)"
                 );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_away_status_latest_login_wins() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create user
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, false, true, &perms)
+            .await
+            .unwrap();
+
+        // Add first session (older) with is_away=true and old status
+        let _session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 1,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                is_shared: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: true,
+                status: Some("old status".to_string()),
+            })
+            .await
+            .expect("Failed to add first session");
+
+        // Delay to ensure different login timestamps (timestamps are in seconds)
+        tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
+
+        // Add second session (newer) with is_away=false and new status
+        let session2 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 2,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                is_shared: false,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: false,
+                status: Some("new status".to_string()),
+            })
+            .await
+            .expect("Failed to add second session");
+
+        // Get user list
+        let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                assert_eq!(users.len(), 1);
+                assert_eq!(users[0].session_ids.len(), 2, "Should have 2 sessions");
+                assert!(
+                    !users[0].is_away,
+                    "is_away should be from latest login (false)"
+                );
+                assert_eq!(
+                    users[0].status,
+                    Some("new status".to_string()),
+                    "status should be from latest login"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_shared_account_no_aggregation() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create shared account
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user("shared_acct", &hashed, false, true, true, &perms)
+            .await
+            .unwrap();
+
+        // Add first session with is_away=true
+        let session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 1,
+                db_user_id: account.id,
+                username: "shared_acct".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                is_shared: true,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "user_one".to_string(),
+                is_away: true,
+                status: Some("user one away".to_string()),
+            })
+            .await
+            .expect("Failed to add first session");
+
+        // Add second session with is_away=false
+        let _session2 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 2,
+                db_user_id: account.id,
+                username: "shared_acct".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                is_shared: true,
+                permissions: perms.permissions.clone(),
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "user_two".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .expect("Failed to add second session");
+
+        // Get user list
+        let result = handle_user_list(false, Some(session1), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                // Shared accounts are NOT aggregated - each session is separate
+                assert_eq!(
+                    users.len(),
+                    2,
+                    "Should have 2 separate entries for shared account sessions"
+                );
+
+                // Find each user by nickname
+                let user_one = users
+                    .iter()
+                    .find(|u| u.nickname == "user_one")
+                    .expect("user_one should exist");
+                let user_two = users
+                    .iter()
+                    .find(|u| u.nickname == "user_two")
+                    .expect("user_two should exist");
+
+                // Each should have their own away/status
+                assert!(user_one.is_away, "user_one should be away");
+                assert_eq!(user_one.status, Some("user one away".to_string()));
+                assert!(!user_two.is_away, "user_two should NOT be away");
+                assert_eq!(user_two.status, None);
             }
             _ => panic!("Expected UserListResponse"),
         }

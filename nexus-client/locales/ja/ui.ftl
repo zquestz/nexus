@@ -267,7 +267,7 @@ files-info-na = N/A
 # =============================================================================
 
 err-dir-name-empty = フォルダ名を入力してください
-err-dir-name-too-long = フォルダ名が長すぎます（最大 { $max_length } 文字）
+err-dir-name-too-long = フォルダ名が長すぎます（最大 { $max } 文字）
 err-dir-name-path-separator = フォルダ名に / や \ を含めることはできません
 err-dir-name-parent-ref = フォルダ名を ".." にすることはできません
 err-dir-name-invalid = フォルダ名に無効な文字が含まれています
@@ -320,6 +320,14 @@ msg-password-changed = パスワードが正常に変更されました
 msg-news-created = 投稿が正常に作成されました
 msg-news-updated = 投稿が正常に更新されました
 msg-news-deleted = 投稿が正常に削除されました
+msg-now-away = 退席中になりました
+msg-now-away-status = 退席中になりました: { $status }
+msg-welcome-back = おかえりなさい
+msg-status-set = ステータスを設定: { $status }
+msg-status-cleared = ステータスをクリア
+msg-user-is-away = { $nickname } は離席中です
+msg-user-is-away-status = { $nickname } は離席中です: { $status }
+
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -388,10 +396,13 @@ err-avatar-unsupported-type = サポートされていないファイル形式�
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。
 err-avatar-decode-failed = アバターのデコードに失敗しました。ファイルが破損している可能性があります。
 err-server-name-empty = サーバー名は空にできません
-err-server-name-too-long = サーバー名が長すぎます（最大{ $max }文字）
+err-server-name-too-long = サーバー名が長すぎます（最大 { $max } 文字）
 err-server-name-contains-newlines = サーバー名に改行を含めることはできません
 err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
-err-server-description-too-long = 説明が長すぎます（最大{ $max }文字）
+err-status-too-long = ステータスメッセージが長すぎます（最大 { $max } 文字）
+err-status-contains-newlines = ステータスメッセージに改行を含めることはできません
+err-status-invalid-characters = ステータスメッセージに無効な文字が含まれています
+err-server-description-too-long = 説明が長すぎます（最大 { $max } 文字）
 err-server-description-contains-newlines = 説明に改行を含めることはできません
 err-server-description-invalid-characters = 説明に無効な文字が含まれています
 err-failed-send-update = 更新の送信に失敗しました: { $error }
@@ -459,9 +470,10 @@ user-info-locale = ロケール:
 user-info-address = アドレス:
 user-info-addresses = アドレス:
 user-info-created = 作成日:
-user-info-end = ユーザー情報終了
+user-info-end = ユーザー情報の終わり
 user-info-unknown = 不明
 user-info-loading = ユーザー情報を読み込み中...
+user-info-status = ステータス:
 
 # =============================================================================
 # Time Duration
@@ -519,9 +531,15 @@ cmd-window-list = 開いているタブ: { $tabs } ({ $count }個のタブ)
 cmd-window-close-server = サーバータブは閉じられません
 cmd-window-not-found = タブが見つかりません: { $name }
 cmd-serverinfo-desc = サーバー情報を表示
-cmd-serverinfo-usage = 使用方法: /{ $command }
+cmd-serverinfo-usage = 使用法: /{ $command }
 cmd-serverinfo-header = [サーバー]
-cmd-serverinfo-end = サーバー情報終了
+cmd-serverinfo-end = サーバー情報の終わり
+cmd-away-desc = 離席中に設定する
+cmd-away-usage = 使用法: /{ $command } [メッセージ]
+cmd-back-desc = 離席中を解除する
+cmd-back-usage = 使用法: /{ $command }
+cmd-status-desc = ステータスメッセージを設定または削除する
+cmd-status-usage = 使用法: /{ $command } [メッセージ]
 
 # =============================================================================
 # About Panel

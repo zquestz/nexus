@@ -67,6 +67,29 @@ pub fn err_shared_invalid_permissions(locale: &str, permissions: &str) -> String
 }
 
 // ========================================================================
+// Status Message Errors
+// ========================================================================
+
+/// Get translated "status message too long" error
+pub fn err_status_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-status-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "status message contains newlines" error
+pub fn err_status_contains_newlines(locale: &str) -> String {
+    t(locale, "err-status-contains-newlines")
+}
+
+/// Get translated "status message invalid characters" error
+pub fn err_status_invalid_characters(locale: &str) -> String {
+    t(locale, "err-status-invalid-characters")
+}
+
+// ========================================================================
 // Guest Account Errors
 // ========================================================================
 

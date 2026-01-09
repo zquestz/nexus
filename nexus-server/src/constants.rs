@@ -504,3 +504,10 @@ pub const ERR_FILE_ROOT_CANONICALIZE: &str = "Failed to canonicalize file root: 
 
 /// Error when area root is not absolute
 pub const ERR_FILE_INVALID_AREA_ROOT: &str = "Area root must be an absolute path";
+
+// =============================================================================
+// Channel Errors
+// =============================================================================
+
+/// Error when message channel is closed (connection dropped)
+pub const ERR_CHANNEL_CLOSED: &str = "channel closed";

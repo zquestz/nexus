@@ -273,7 +273,7 @@ files-info-na = N/A
 # =============================================================================
 
 err-dir-name-empty = Directory name cannot be empty
-err-dir-name-too-long = Directory name is too long (max { $max_length } characters)
+err-dir-name-too-long = Directory name is too long (max { $max } characters)
 err-dir-name-path-separator = Directory name cannot contain / or \
 err-dir-name-parent-ref = Directory name cannot be ".."
 err-dir-name-invalid = Directory name contains invalid characters
@@ -326,6 +326,13 @@ msg-password-changed = Password changed successfully
 msg-news-created = News post created successfully
 msg-news-updated = News post updated successfully
 msg-news-deleted = News post deleted successfully
+msg-now-away = You are now away
+msg-now-away-status = You are now away: { $status }
+msg-welcome-back = Welcome back
+msg-status-set = Status set: { $status }
+msg-status-cleared = Status cleared
+msg-user-is-away = { $nickname } is away
+msg-user-is-away-status = { $nickname } is away: { $status }
 
 
 
@@ -399,6 +406,9 @@ err-server-name-empty = Server name cannot be empty
 err-server-name-too-long = Server name is too long (max { $max } characters)
 err-server-name-contains-newlines = Server name cannot contain newlines
 err-server-name-invalid-characters = Server name contains invalid characters
+err-status-too-long = Status message is too long (max { $max } characters)
+err-status-contains-newlines = Status message cannot contain newlines
+err-status-invalid-characters = Status message contains invalid characters
 err-server-description-too-long = Description is too long (max { $max } characters)
 err-server-description-contains-newlines = Description cannot contain newlines
 err-server-description-invalid-characters = Description contains invalid characters
@@ -487,6 +497,7 @@ user-info-created = Created:
 user-info-end = End of user info
 user-info-unknown = Unknown
 user-info-loading = Loading user info...
+user-info-status = Status:
 
 # =============================================================================
 # Time Duration
@@ -568,6 +579,12 @@ cmd-serverinfo-desc = Show server information
 cmd-serverinfo-usage = Usage: /{ $command }
 cmd-serverinfo-header = [server]
 cmd-serverinfo-end = End of server info
+cmd-away-desc = Set yourself as away
+cmd-away-usage = Usage: /{ $command } [message]
+cmd-back-desc = Clear away status
+cmd-back-usage = Usage: /{ $command }
+cmd-status-desc = Set or clear your status message
+cmd-status-usage = Usage: /{ $command } [message]
 
 # =============================================================================
 # About Panel

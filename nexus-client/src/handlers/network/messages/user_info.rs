@@ -102,8 +102,12 @@ impl NexusApp {
         // Build multi-line IRC WHOIS-style output
         let mut lines = Vec::new();
 
-        // Header: display name (nickname is always populated - equals username for regular accounts)
-        lines.push(format!("[{}]", user.nickname));
+        // Header: display name with 💤 if away (nickname is always populated - equals username for regular accounts)
+        if user.is_away {
+            lines.push(format!("[{} 💤]", user.nickname));
+        } else {
+            lines.push(format!("[{}]", user.nickname));
+        }
 
         // Role (only visible to admins)
         if let Some(is_admin) = user.is_admin {
@@ -139,6 +143,15 @@ impl NexusApp {
             t("user-info-connected").to_lowercase(),
             connected_value
         ));
+
+        // Status (if set) - away is shown via 💤 in header
+        if let Some(status) = &user.status {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-status").to_lowercase(),
+                status
+            ));
+        }
 
         // Features
         let features_value = if user.features.is_empty() {
@@ -264,6 +277,8 @@ impl NexusApp {
                     is_shared: u.is_shared,
                     session_ids: u.session_ids,
                     avatar_hash,
+                    is_away: u.is_away,
+                    status: u.status,
                 }
             })
             .collect();
@@ -356,6 +371,8 @@ impl NexusApp {
             existing_user.is_shared = user.is_shared;
             existing_user.session_ids = user.session_ids.clone();
             existing_user.avatar_hash = new_avatar_hash;
+            existing_user.is_away = user.is_away;
+            existing_user.status = user.status.clone();
 
             // Get new nickname for cache update
             let new_nickname = existing_user.nickname.clone();

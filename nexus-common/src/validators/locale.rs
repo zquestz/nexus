@@ -2,7 +2,7 @@
 //!
 //! Validates locale/language code strings.
 
-/// Maximum length for locale strings in characters
+/// Maximum length for locale strings in bytes
 ///
 /// Locales like "zh-Hant-TW" are 10 characters, so 16 gives some headroom.
 pub const MAX_LOCALE_LENGTH: usize = 16;

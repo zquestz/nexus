@@ -329,6 +329,24 @@ where
         }
     };
 
+    // For regular accounts with existing sessions, inherit is_away/status from the latest session
+    // This ensures that if a user set themselves as away, logging in from another device
+    // doesn't silently clear their away status from the perspective of other users.
+    // Shared accounts don't inherit (different people may use the same account).
+    let (inherited_is_away, inherited_status) = if !authenticated_account.is_shared {
+        let existing_sessions = ctx
+            .user_manager
+            .get_sessions_by_username(&authenticated_account.username)
+            .await;
+        if let Some(latest) = existing_sessions.iter().max_by_key(|s| s.login_time) {
+            (latest.is_away, latest.status.clone())
+        } else {
+            (false, None)
+        }
+    } else {
+        (false, None)
+    };
+
     // Create session in UserManager with cached permissions
     // Note: Features are client preferences (what they want to subscribe to)
     // Permissions are now cached in the User struct to avoid DB lookups during broadcasts
@@ -353,6 +371,8 @@ where
             nickname: validated_nickname
                 .clone()
                 .unwrap_or_else(|| authenticated_account.username.clone()),
+            is_away: inherited_is_away,
+            status: inherited_status,
         })
         .await
     {
@@ -444,6 +464,8 @@ where
         session_ids: vec![id],
         locale: locale.clone(),
         avatar,
+        is_away: false,
+        status: None,
     };
     ctx.user_manager
         .broadcast_user_event(
@@ -2389,5 +2411,283 @@ mod tests {
             }
             _ => panic!("Expected LoginResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_login_inherits_away_status_from_existing_session() {
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Create user in database
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let account = test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Manually add first session with is_away=true and status set
+        // (simulating an existing session that has set away status)
+        let _session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: true,
+                status: Some("grabbing lunch".to_string()),
+            })
+            .await
+            .expect("Failed to add first session");
+
+        // Now login via handle_login (second session)
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Second login should succeed");
+        let new_session_id = session_id.expect("Session ID should be set");
+
+        // Read the LoginResponse
+        let _response = read_server_message(&mut test_ctx.client).await;
+
+        // Verify the new session inherited is_away and status from existing session
+        let new_session = test_ctx
+            .user_manager
+            .get_user_by_session_id(new_session_id)
+            .await
+            .expect("New session should exist");
+
+        assert!(
+            new_session.is_away,
+            "New session should inherit is_away=true from existing session"
+        );
+        assert_eq!(
+            new_session.status,
+            Some("grabbing lunch".to_string()),
+            "New session should inherit status from existing session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_no_inheritance_for_shared_accounts() {
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Create shared account in database
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let account = test_ctx
+            .db
+            .users
+            .create_user(
+                "shared_acct",
+                &hashed,
+                false,
+                true, // is_shared = true
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Manually add first session with is_away=true
+        let _session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: account.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "user_one".to_string(),
+                is_away: true,
+                status: Some("away message".to_string()),
+            })
+            .await
+            .expect("Failed to add first session");
+
+        // Login as second user on the same shared account (different nickname)
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("user_two".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Second shared login should succeed");
+        let new_session_id = session_id.expect("Session ID should be set");
+
+        // Read the LoginResponse
+        let _response = read_server_message(&mut test_ctx.client).await;
+
+        // Verify the new session did NOT inherit is_away/status (shared accounts don't inherit)
+        let new_session = test_ctx
+            .user_manager
+            .get_user_by_session_id(new_session_id)
+            .await
+            .expect("New session should exist");
+
+        assert!(
+            !new_session.is_away,
+            "Shared account session should NOT inherit is_away"
+        );
+        assert_eq!(
+            new_session.status, None,
+            "Shared account session should NOT inherit status"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_inherits_from_latest_session() {
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        // Create user in database
+        let password = "password";
+        let hashed = db::hash_password(password).unwrap();
+        let account = test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Add first session (older) with one away status
+        let _session1 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: true,
+                status: Some("old status".to_string()),
+            })
+            .await
+            .expect("Failed to add first session");
+
+        // Wait to ensure different login timestamps
+        tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
+
+        // Add second session (newer) with different away status
+        let _session2 = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: account.id,
+                username: "alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: false,
+                status: Some("new status".to_string()),
+            })
+            .await
+            .expect("Failed to add second session");
+
+        // Now login via handle_login (third session)
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Third login should succeed");
+        let new_session_id = session_id.expect("Session ID should be set");
+
+        // Read the LoginResponse
+        let _response = read_server_message(&mut test_ctx.client).await;
+
+        // Verify the new session inherited from the LATEST session (session2)
+        let new_session = test_ctx
+            .user_manager
+            .get_user_by_session_id(new_session_id)
+            .await
+            .expect("New session should exist");
+
+        assert!(
+            !new_session.is_away,
+            "Should inherit is_away=false from latest session"
+        );
+        assert_eq!(
+            new_session.status,
+            Some("new status".to_string()),
+            "Should inherit status from latest session"
+        );
     }
 }

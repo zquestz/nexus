@@ -247,17 +247,24 @@ fn build_user_info_content<'a>(
             generate_identicon(nickname).render(USER_INFO_AVATAR_SIZE)
         };
 
+    // Build nickname display with 💤 if away
+    let nickname_display = if user.is_away {
+        format!("{} 💤", nickname)
+    } else {
+        nickname.clone()
+    };
+
     // Apply color: admin = red, shared = muted, regular = default
     let nickname_text = if is_admin {
-        shaped_text(nickname)
+        shaped_text(nickname_display)
             .size(TITLE_SIZE)
             .color(chat::admin(theme))
     } else if is_shared {
-        shaped_text(nickname)
+        shaped_text(nickname_display)
             .size(TITLE_SIZE)
             .color(chat::shared(theme))
     } else {
-        shaped_text(nickname).size(TITLE_SIZE)
+        shaped_text(nickname_display).size(TITLE_SIZE)
     };
 
     let header_row = row![avatar_element, nickname_text]
@@ -333,6 +340,11 @@ fn build_user_info_content<'a>(
                 content = content.push(info_row(String::from("  "), addr.clone(), None));
             }
         }
+    }
+
+    // Status (if set) - away is shown via 💤 in header
+    if let Some(status) = &user.status {
+        content = content.push(info_row(t("user-info-status"), status.clone(), None));
     }
 
     // Account created

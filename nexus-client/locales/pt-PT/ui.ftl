@@ -194,7 +194,7 @@ tooltip-hide-bookmarks = Ocultar Marcadores
 tooltip-show-bookmarks = Mostrar Marcadores
 tooltip-hide-user-list = Ocultar Lista de Utilizadores
 tooltip-show-user-list = Mostrar Lista de Utilizadores
-tooltip-disconnect = Desligar
+tooltip-disconnect = Desconectar
 tooltip-edit = Editar
 tooltip-info = Info
 tooltip-message = Mensagem
@@ -267,7 +267,7 @@ files-info-na = N/D
 # =============================================================================
 
 err-dir-name-empty = O nome do diretório não pode estar vazio
-err-dir-name-too-long = O nome do diretório é demasiado longo (máx. { $max_length } caracteres)
+err-dir-name-too-long = O nome do diretório é demasiado longo (máx. { $max } caracteres)
 err-dir-name-path-separator = O nome do diretório não pode conter / ou \
 err-dir-name-parent-ref = O nome do diretório não pode ser ".."
 err-dir-name-invalid = O nome do diretório contém caracteres inválidos
@@ -318,8 +318,15 @@ msg-permissions-updated = As suas permissões foram actualizadas
 msg-topic-updated = Tópico actualizado com sucesso
 msg-password-changed = Palavra-passe alterada com sucesso
 msg-news-created = Publicação criada com sucesso
-msg-news-updated = Publicação actualizada com sucesso
+msg-news-updated = Publicação atualizada com sucesso
 msg-news-deleted = Publicação eliminada com sucesso
+msg-now-away = Está agora ausente
+msg-now-away-status = Está agora ausente: { $status }
+msg-welcome-back = Bem-vindo de volta
+msg-status-set = Estado definido: { $status }
+msg-status-cleared = Estado limpo
+msg-user-is-away = { $nickname } está ausente
+msg-user-is-away-status = { $nickname } está ausente: { $status }
 
 
 # =============================================================================
@@ -392,6 +399,9 @@ err-server-name-empty = O nome do servidor não pode estar vazio
 err-server-name-too-long = O nome do servidor é demasiado longo (máx { $max } caracteres)
 err-server-name-contains-newlines = O nome do servidor não pode conter quebras de linha
 err-server-name-invalid-characters = O nome do servidor contém caracteres inválidos
+err-status-too-long = A mensagem de estado é demasiado longa (máx { $max } caracteres)
+err-status-contains-newlines = A mensagem de estado não pode conter quebras de linha
+err-status-invalid-characters = A mensagem de estado contém caracteres inválidos
 err-server-description-too-long = A descrição é demasiado longa (máx { $max } caracteres)
 err-server-description-contains-newlines = A descrição não pode conter quebras de linha
 err-server-description-invalid-characters = A descrição contém caracteres inválidos
@@ -463,6 +473,7 @@ user-info-created = Criado:
 user-info-end = Fim das informações do utilizador
 user-info-unknown = Desconhecido
 user-info-loading = A carregar informações do utilizador...
+user-info-status = Estado:
 
 # =============================================================================
 # Time Duration
@@ -541,9 +552,15 @@ cmd-window-list = Separadores abertos: { $tabs } ({ $count } { $count ->
 cmd-window-close-server = Não é possível fechar o separador do servidor
 cmd-window-not-found = Separador não encontrado: { $name }
 cmd-serverinfo-desc = Mostrar informações do servidor
-cmd-serverinfo-usage = Utilização: /{ $command }
+cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [servidor]
 cmd-serverinfo-end = Fim das informações do servidor
+cmd-away-desc = Marcar-se como ausente
+cmd-away-usage = Uso: /{ $command } [mensagem]
+cmd-back-desc = Remover estado de ausente
+cmd-back-usage = Uso: /{ $command }
+cmd-status-desc = Definir ou remover mensagem de estado
+cmd-status-usage = Uso: /{ $command } [mensagem]
 
 # =============================================================================
 # About Panel

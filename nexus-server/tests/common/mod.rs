@@ -71,6 +71,8 @@ pub async fn add_test_user(
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: username.to_string(),
+            is_away: false,
+            status: None,
         })
         .await
         .expect("Failed to add user to UserManager");

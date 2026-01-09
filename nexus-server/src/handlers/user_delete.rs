@@ -559,6 +559,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "online_user".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");

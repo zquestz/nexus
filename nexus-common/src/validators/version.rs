@@ -4,7 +4,7 @@
 
 use semver::Version;
 
-/// Maximum length for version strings in characters
+/// Maximum length for version strings in bytes
 pub const MAX_VERSION_LENGTH: usize = 32;
 
 /// Validation error for version strings

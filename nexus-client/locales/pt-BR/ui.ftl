@@ -267,7 +267,7 @@ files-info-na = N/D
 # =============================================================================
 
 err-dir-name-empty = O nome do diretório não pode estar vazio
-err-dir-name-too-long = O nome do diretório é muito longo (máx. { $max_length } caracteres)
+err-dir-name-too-long = O nome do diretório é muito longo (máx. { $max } caracteres)
 err-dir-name-path-separator = O nome do diretório não pode conter / ou \
 err-dir-name-parent-ref = O nome do diretório não pode ser ".."
 err-dir-name-invalid = O nome do diretório contém caracteres inválidos
@@ -320,6 +320,13 @@ msg-password-changed = Senha alterada com sucesso
 msg-news-created = Publicação criada com sucesso
 msg-news-updated = Publicação atualizada com sucesso
 msg-news-deleted = Publicação excluída com sucesso
+msg-now-away = Você está ausente agora
+msg-now-away-status = Você está ausente agora: { $status }
+msg-welcome-back = Bem-vindo de volta
+msg-status-set = Status definido: { $status }
+msg-status-cleared = Status limpo
+msg-user-is-away = { $nickname } está ausente
+msg-user-is-away-status = { $nickname } está ausente: { $status }
 
 # =============================================================================
 # Dynamic Messages (with parameters)
@@ -391,6 +398,9 @@ err-server-name-empty = O nome do servidor não pode estar vazio
 err-server-name-too-long = O nome do servidor é muito longo (máx { $max } caracteres)
 err-server-name-contains-newlines = O nome do servidor não pode conter quebras de linha
 err-server-name-invalid-characters = O nome do servidor contém caracteres inválidos
+err-status-too-long = A mensagem de status é muito longa (máx { $max } caracteres)
+err-status-contains-newlines = A mensagem de status não pode conter quebras de linha
+err-status-invalid-characters = A mensagem de status contém caracteres inválidos
 err-server-description-too-long = A descrição é muito longa (máx { $max } caracteres)
 err-server-description-contains-newlines = A descrição não pode conter quebras de linha
 err-server-description-invalid-characters = A descrição contém caracteres inválidos
@@ -462,6 +472,7 @@ user-info-created = Criado:
 user-info-end = Fim das informações do usuário
 user-info-unknown = Desconhecido
 user-info-loading = Carregando informações do usuário...
+user-info-status = Status:
 
 # =============================================================================
 # Time Duration
@@ -543,6 +554,12 @@ cmd-serverinfo-desc = Mostrar informações do servidor
 cmd-serverinfo-usage = Uso: /{ $command }
 cmd-serverinfo-header = [servidor]
 cmd-serverinfo-end = Fim das informações do servidor
+cmd-away-desc = Marcar-se como ausente
+cmd-away-usage = Uso: /{ $command } [mensagem]
+cmd-back-desc = Remover status de ausente
+cmd-back-usage = Uso: /{ $command }
+cmd-status-desc = Definir ou remover mensagem de status
+cmd-status-usage = Uso: /{ $command } [mensagem]
 
 # =============================================================================
 # About Panel

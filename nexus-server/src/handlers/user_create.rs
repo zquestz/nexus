@@ -431,6 +431,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -755,6 +757,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "creator".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
@@ -828,6 +832,8 @@ mod tests {
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "creator".to_string(),
+                is_away: false,
+                status: None,
             })
             .await
             .expect("Failed to add user");
