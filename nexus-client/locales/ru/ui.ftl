@@ -156,6 +156,9 @@ permission-file_move = Перемещение Файла
 permission-file_rename = Переименовать Файл
 permission-file_root = Корень Файлов
 permission-file_upload = Загрузка Файла
+permission-ban_create = Создать Бан
+permission-ban_delete = Удалить Бан
+permission-ban_list = Список Банов
 
 # =============================================================================
 # Tooltips
@@ -568,6 +571,12 @@ cmd-back-desc = Убрать статус «отошёл»
 cmd-back-usage = Использование: /{ $command }
 cmd-status-desc = Установить или убрать сообщение статуса
 cmd-status-usage = Использование: /{ $command } [сообщение]
+cmd-ban-desc = Забанить пользователя по IP, диапазону CIDR или никнейму
+cmd-ban-usage = Использование: /{ $command } <цель> [длительность] [причина]
+cmd-unban-desc = Снять IP-бан
+cmd-unban-usage = Использование: /{ $command } <цель>
+cmd-bans-desc = Показать активные баны
+cmd-bans-usage = Использование: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -726,3 +735,31 @@ notification-user-message-from = Сообщение от {$username}
 
 # Fallback values
 unknown-server = Неизвестный сервер
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } забанен
+msg-banned-ip-nickname = { $ip } ({ $nickname }) забанен
+msg-banned-ips = { $count } IP забанено
+msg-banned-ips-nickname = { $count } IP ({ $nickname }) забанено
+msg-ban-created = Бан успешно создан
+
+# Unban success messages
+msg-unbanned-ip = Бан { $ip } снят
+msg-unbanned-ip-nickname = Бан { $ip } ({ $nickname }) снят
+msg-unbanned-ips = { $count } IP-банов снято
+msg-unbanned-ips-nickname = { $count } IP-банов ({ $nickname }) снято
+msg-unbanned-success = Бан успешно снят
+
+# Ban list messages
+msg-ban-list-header = Активные баны:
+msg-ban-list-empty = Нет активных банов
+msg-ban-permanent = постоянный
+msg-ban-expired = истёк
+msg-ban-remaining = { $time } осталось
+msg-ban-remaining-days = { $days }д { $hours }ч
+msg-ban-remaining-hours = { $hours }ч { $minutes }м
+msg-ban-remaining-minutes = { $minutes }м

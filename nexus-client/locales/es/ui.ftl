@@ -157,6 +157,9 @@ permission-file_move = Mover Archivo
 permission-file_rename = Renombrar Archivo
 permission-file_root = Raíz de Archivos
 permission-file_upload = Subir Archivo
+permission-ban_create = Crear Baneo
+permission-ban_delete = Eliminar Baneo
+permission-ban_list = Lista de Baneos
 
 # =============================================================================
 # Tooltips
@@ -563,6 +566,12 @@ cmd-back-desc = Eliminar estado de ausente
 cmd-back-usage = Uso: /{ $command }
 cmd-status-desc = Establecer o eliminar mensaje de estado
 cmd-status-usage = Uso: /{ $command } [mensaje]
+cmd-ban-desc = Banear usuario por IP, rango CIDR o apodo
+cmd-ban-usage = Uso: /{ $command } <objetivo> [duración] [razón]
+cmd-unban-desc = Eliminar un baneo de IP
+cmd-unban-usage = Uso: /{ $command } <objetivo>
+cmd-bans-desc = Listar baneos activos
+cmd-bans-usage = Uso: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -721,3 +730,31 @@ notification-user-message-from = Mensaje de {$username}
 
 # Fallback values
 unknown-server = Servidor desconocido
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } baneado
+msg-banned-ip-nickname = { $ip } ({ $nickname }) baneado
+msg-banned-ips = { $count } IPs baneadas
+msg-banned-ips-nickname = { $count } IPs ({ $nickname }) baneadas
+msg-ban-created = Baneo creado correctamente
+
+# Unban success messages
+msg-unbanned-ip = Baneo de { $ip } eliminado
+msg-unbanned-ip-nickname = Baneo de { $ip } ({ $nickname }) eliminado
+msg-unbanned-ips = { $count } baneos de IP eliminados
+msg-unbanned-ips-nickname = { $count } baneos de IP ({ $nickname }) eliminados
+msg-unbanned-success = Baneo eliminado correctamente
+
+# Ban list messages
+msg-ban-list-header = Baneos activos:
+msg-ban-list-empty = No hay baneos activos
+msg-ban-permanent = permanente
+msg-ban-expired = expirado
+msg-ban-remaining = { $time } restante
+msg-ban-remaining-days = { $days }d { $hours }h
+msg-ban-remaining-hours = { $hours }h { $minutes }m
+msg-ban-remaining-minutes = { $minutes }m

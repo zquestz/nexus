@@ -8,6 +8,8 @@
 //! |---------|---------|------------|-------------|
 //! | `/away` | `/a` | *none* | Set yourself as away |
 //! | `/back` | `/b` | *none* | Clear away status |
+//! | `/ban` | | `ban_create` | Ban a user by IP, CIDR range, or nickname |
+//! | `/bans` | `/banlist` | `ban_list` | List active bans |
 //! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 //! | `/clear` | | *none* | Clear chat history for current tab |
 //! | `/focus` | `/f` | *none* | Focus server chat or a user's PM tab |
@@ -20,6 +22,7 @@
 //! | `/sinfo` | `/si`, `/serverinfo` | *none* | Show server information |
 //! | `/status` | `/s` | *none* | Set or clear your status message |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
+//! | `/unban` | | `ban_delete` | Remove an IP ban |
 //! | `/window` | `/w` | *none* | Manage chat tabs (list, close) |
 //!
 //! ## Special Syntax
@@ -37,6 +40,8 @@
 
 mod away;
 mod back;
+mod ban;
+mod bans;
 mod broadcast;
 mod clear;
 mod focus;
@@ -47,6 +52,7 @@ mod message;
 mod server_info;
 mod status;
 mod topic;
+mod unban;
 mod user_info;
 mod user_kick;
 mod window;
@@ -61,8 +67,9 @@ use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
-    PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_USER_BROADCAST,
-    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
+    PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_TOPIC,
+    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_USER_BROADCAST, PERMISSION_USER_INFO,
+    PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
 
 /// Command handler function type
@@ -110,6 +117,26 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[],
         },
         handler: back::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "ban",
+            aliases: &[],
+            description_key: "cmd-ban-desc",
+            usage_key: "cmd-ban-usage",
+            permissions: &[PERMISSION_BAN_CREATE],
+        },
+        handler: ban::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "bans",
+            aliases: &["banlist"],
+            description_key: "cmd-bans-desc",
+            usage_key: "cmd-bans-usage",
+            permissions: &[PERMISSION_BAN_LIST],
+        },
+        handler: bans::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -230,6 +257,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
         },
         handler: topic::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "unban",
+            aliases: &[],
+            description_key: "cmd-unban-desc",
+            usage_key: "cmd-unban-usage",
+            permissions: &[PERMISSION_BAN_DELETE],
+        },
+        handler: unban::execute,
     },
     CommandRegistration {
         info: CommandInfo {

@@ -161,6 +161,9 @@ permission-file_move = File Move
 permission-file_rename = File Rename
 permission-file_root = File Root
 permission-file_upload = File Upload
+permission-ban_create = Ban Create
+permission-ban_delete = Ban Delete
+permission-ban_list = Ban List
 
 # =============================================================================
 # Tooltips
@@ -585,6 +588,12 @@ cmd-back-desc = Clear away status
 cmd-back-usage = Usage: /{ $command }
 cmd-status-desc = Set or clear your status message
 cmd-status-usage = Usage: /{ $command } [message]
+cmd-ban-desc = Ban a user by IP, CIDR range, or nickname
+cmd-ban-usage = Usage: /{ $command } <target> [duration] [reason]
+cmd-unban-desc = Remove an IP ban
+cmd-unban-usage = Usage: /{ $command } <target>
+cmd-bans-desc = List active bans
+cmd-bans-usage = Usage: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -728,3 +737,31 @@ notification-user-message-from = Message from {$username}
 
 # Fallback values
 unknown-server = Unknown server
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = Banned { $ip }
+msg-banned-ip-nickname = Banned { $ip } ({ $nickname })
+msg-banned-ips = Banned { $count } IPs
+msg-banned-ips-nickname = Banned { $count } IPs ({ $nickname })
+msg-ban-created = Ban created successfully
+
+# Unban success messages
+msg-unbanned-ip = Unbanned { $ip }
+msg-unbanned-ip-nickname = Unbanned { $ip } ({ $nickname })
+msg-unbanned-ips = Unbanned { $count } IPs
+msg-unbanned-ips-nickname = Unbanned { $count } IPs ({ $nickname })
+msg-unbanned-success = Ban removed successfully
+
+# Ban list messages
+msg-ban-list-header = Active bans:
+msg-ban-list-empty = No active bans
+msg-ban-permanent = permanent
+msg-ban-expired = expired
+msg-ban-remaining = { $time } remaining
+msg-ban-remaining-days = { $days }d { $hours }h
+msg-ban-remaining-hours = { $hours }h { $minutes }m
+msg-ban-remaining-minutes = { $minutes }m

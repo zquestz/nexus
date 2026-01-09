@@ -153,9 +153,12 @@ permission-file_download = Datei Herunterladen
 permission-file_info = Datei Info
 permission-file_list = Dateiliste
 permission-file_move = Datei Verschieben
-permission-file_rename = Datei Umbenennen
-permission-file_root = Dateistamm
-permission-file_upload = Datei Hochladen
+permission-file_rename = Datei umbenennen
+permission-file_root = Datei-Root
+permission-file_upload = Datei hochladen
+permission-ban_create = Sperre erstellen
+permission-ban_delete = Sperre aufheben
+permission-ban_list = Sperrliste
 
 # =============================================================================
 # Tooltips
@@ -558,8 +561,14 @@ cmd-away-desc = Als abwesend markieren
 cmd-away-usage = Verwendung: /{ $command } [nachricht]
 cmd-back-desc = Abwesendheitsstatus entfernen
 cmd-back-usage = Verwendung: /{ $command }
-cmd-status-desc = Statusnachricht setzen oder entfernen
+cmd-status-desc = Status-Nachricht setzen oder löschen
 cmd-status-usage = Verwendung: /{ $command } [nachricht]
+cmd-ban-desc = Benutzer nach IP, CIDR-Bereich oder Nickname sperren
+cmd-ban-usage = Verwendung: /{ $command } <ziel> [dauer] [grund]
+cmd-unban-desc = IP-Sperre aufheben
+cmd-unban-usage = Verwendung: /{ $command } <ziel>
+cmd-bans-desc = Aktive Sperren anzeigen
+cmd-bans-usage = Verwendung: /{ $command }
 
 
 # =============================================================================
@@ -722,3 +731,31 @@ notification-user-message-from = Nachricht von {$username}
 
 # Fallback values
 unknown-server = Unbekannter Server
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } gesperrt
+msg-banned-ip-nickname = { $ip } ({ $nickname }) gesperrt
+msg-banned-ips = { $count } IPs gesperrt
+msg-banned-ips-nickname = { $count } IPs ({ $nickname }) gesperrt
+msg-ban-created = Sperre erfolgreich erstellt
+
+# Unban success messages
+msg-unbanned-ip = Sperre für { $ip } aufgehoben
+msg-unbanned-ip-nickname = Sperre für { $ip } ({ $nickname }) aufgehoben
+msg-unbanned-ips = { $count } IP-Sperren aufgehoben
+msg-unbanned-ips-nickname = { $count } IP-Sperren ({ $nickname }) aufgehoben
+msg-unbanned-success = Sperre erfolgreich aufgehoben
+
+# Ban list messages
+msg-ban-list-header = Aktive Sperren:
+msg-ban-list-empty = Keine aktiven Sperren
+msg-ban-permanent = dauerhaft
+msg-ban-expired = abgelaufen
+msg-ban-remaining = { $time } verbleibend
+msg-ban-remaining-days = { $days }T { $hours }Std
+msg-ban-remaining-hours = { $hours }Std { $minutes }Min
+msg-ban-remaining-minutes = { $minutes }Min

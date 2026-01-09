@@ -93,3 +93,14 @@ pub(crate) const PERMISSION_FILE_DOWNLOAD: &str = "file_download";
 
 /// Permission to upload files
 pub(crate) const PERMISSION_FILE_UPLOAD: &str = "file_upload";
+
+// === Ban Permissions ===
+
+/// Permission to create/update bans
+pub(crate) const PERMISSION_BAN_CREATE: &str = "ban_create";
+
+/// Permission to remove bans
+pub(crate) const PERMISSION_BAN_DELETE: &str = "ban_delete";
+
+/// Permission to view ban list
+pub(crate) const PERMISSION_BAN_LIST: &str = "ban_list";

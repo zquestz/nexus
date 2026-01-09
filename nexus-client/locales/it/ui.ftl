@@ -156,6 +156,9 @@ permission-file_move = Sposta File
 permission-file_rename = Rinomina File
 permission-file_root = Root File
 permission-file_upload = Carica File
+permission-ban_create = Crea Ban
+permission-ban_delete = Elimina Ban
+permission-ban_list = Lista Ban
 
 # =============================================================================
 # Tooltips
@@ -561,8 +564,14 @@ cmd-away-desc = Imposta te stesso come assente
 cmd-away-usage = Uso: /{ $command } [messaggio]
 cmd-back-desc = Rimuovi stato assente
 cmd-back-usage = Uso: /{ $command }
-cmd-status-desc = Imposta o rimuovi il messaggio di stato
+cmd-status-desc = Imposta o cancella il messaggio di stato
 cmd-status-usage = Uso: /{ $command } [messaggio]
+cmd-ban-desc = Banna un utente per IP, range CIDR o nickname
+cmd-ban-usage = Uso: /{ $command } <obiettivo> [durata] [motivo]
+cmd-unban-desc = Rimuovi un ban IP
+cmd-unban-usage = Uso: /{ $command } <obiettivo>
+cmd-bans-desc = Elenca i ban attivi
+cmd-bans-usage = Uso: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -721,3 +730,31 @@ notification-user-message-from = Messaggio da {$username}
 
 # Fallback values
 unknown-server = Server sconosciuto
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } bannato
+msg-banned-ip-nickname = { $ip } ({ $nickname }) bannato
+msg-banned-ips = { $count } IP bannati
+msg-banned-ips-nickname = { $count } IP ({ $nickname }) bannati
+msg-ban-created = Ban creato con successo
+
+# Unban success messages
+msg-unbanned-ip = Ban di { $ip } rimosso
+msg-unbanned-ip-nickname = Ban di { $ip } ({ $nickname }) rimosso
+msg-unbanned-ips = { $count } ban IP rimossi
+msg-unbanned-ips-nickname = { $count } ban IP ({ $nickname }) rimossi
+msg-unbanned-success = Ban rimosso con successo
+
+# Ban list messages
+msg-ban-list-header = Ban attivi:
+msg-ban-list-empty = Nessun ban attivo
+msg-ban-permanent = permanente
+msg-ban-expired = scaduto
+msg-ban-remaining = { $time } rimanente
+msg-ban-remaining-days = { $days }g { $hours }h
+msg-ban-remaining-hours = { $hours }h { $minutes }m
+msg-ban-remaining-minutes = { $minutes }m

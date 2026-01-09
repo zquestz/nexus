@@ -156,6 +156,9 @@ permission-file_move = 파일 이동
 permission-file_rename = 파일 이름 변경
 permission-file_root = 파일 루트
 permission-file_upload = 파일 업로드
+permission-ban_create = 차단 생성
+permission-ban_delete = 차단 삭제
+permission-ban_list = 차단 목록
 
 # =============================================================================
 # Tooltips
@@ -538,8 +541,14 @@ cmd-away-desc = 자리 비움으로 설정
 cmd-away-usage = 사용법: /{ $command } [메시지]
 cmd-back-desc = 자리 비움 상태 해제
 cmd-back-usage = 사용법: /{ $command }
-cmd-status-desc = 상태 메시지 설정 또는 삭제
+cmd-status-desc = 상태 메시지 설정 또는 제거
 cmd-status-usage = 사용법: /{ $command } [메시지]
+cmd-ban-desc = IP, CIDR 범위 또는 닉네임으로 사용자 차단
+cmd-ban-usage = 사용법: /{ $command } <대상> [기간] [사유]
+cmd-unban-desc = IP 차단 해제
+cmd-unban-usage = 사용법: /{ $command } <대상>
+cmd-bans-desc = 활성 차단 목록 표시
+cmd-bans-usage = 사용법: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -698,3 +707,31 @@ notification-user-message-from = {$username}님의 메시지
 
 # Fallback values
 unknown-server = 알 수 없는 서버
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } 차단됨
+msg-banned-ip-nickname = { $ip } ({ $nickname }) 차단됨
+msg-banned-ips = { $count }개 IP 차단됨
+msg-banned-ips-nickname = { $count }개 IP ({ $nickname }) 차단됨
+msg-ban-created = 차단이 생성되었습니다
+
+# Unban success messages
+msg-unbanned-ip = { $ip } 차단 해제됨
+msg-unbanned-ip-nickname = { $ip } ({ $nickname }) 차단 해제됨
+msg-unbanned-ips = { $count }개 IP 차단 해제됨
+msg-unbanned-ips-nickname = { $count }개 IP ({ $nickname }) 차단 해제됨
+msg-unbanned-success = 차단이 해제되었습니다
+
+# Ban list messages
+msg-ban-list-header = 활성 차단:
+msg-ban-list-empty = 활성 차단 없음
+msg-ban-permanent = 영구
+msg-ban-expired = 만료됨
+msg-ban-remaining = { $time } 남음
+msg-ban-remaining-days = { $days }일 { $hours }시간
+msg-ban-remaining-hours = { $hours }시간 { $minutes }분
+msg-ban-remaining-minutes = { $minutes }분

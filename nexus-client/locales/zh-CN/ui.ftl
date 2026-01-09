@@ -156,6 +156,9 @@ permission-file_move = 文件移动
 permission-file_rename = 重命名文件
 permission-file_root = 文件根目录
 permission-file_upload = 文件上传
+permission-ban_create = 创建封禁
+permission-ban_delete = 删除封禁
+permission-ban_list = 封禁列表
 
 # =============================================================================
 # Tooltips
@@ -540,6 +543,12 @@ cmd-back-desc = 取消离开状态
 cmd-back-usage = 用法: /{ $command }
 cmd-status-desc = 设置或清除状态消息
 cmd-status-usage = 用法: /{ $command } [消息]
+cmd-ban-desc = 通过IP、CIDR范围或昵称封禁用户
+cmd-ban-usage = 用法: /{ $command } <目标> [时长] [原因]
+cmd-unban-desc = 解除IP封禁
+cmd-unban-usage = 用法: /{ $command } <目标>
+cmd-bans-desc = 列出有效封禁
+cmd-bans-usage = 用法: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -698,3 +707,31 @@ notification-user-message-from = 来自{$username}的消息
 
 # Fallback values
 unknown-server = 未知服务器
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = 已封禁 { $ip }
+msg-banned-ip-nickname = 已封禁 { $ip } ({ $nickname })
+msg-banned-ips = 已封禁 { $count } 个IP
+msg-banned-ips-nickname = 已封禁 { $count } 个IP ({ $nickname })
+msg-ban-created = 封禁创建成功
+
+# Unban success messages
+msg-unbanned-ip = 已解除 { $ip } 的封禁
+msg-unbanned-ip-nickname = 已解除 { $ip } ({ $nickname }) 的封禁
+msg-unbanned-ips = 已解除 { $count } 个IP封禁
+msg-unbanned-ips-nickname = 已解除 { $count } 个IP ({ $nickname }) 封禁
+msg-unbanned-success = 封禁解除成功
+
+# Ban list messages
+msg-ban-list-header = 有效封禁:
+msg-ban-list-empty = 无有效封禁
+msg-ban-permanent = 永久
+msg-ban-expired = 已过期
+msg-ban-remaining = 剩余 { $time }
+msg-ban-remaining-days = { $days }天 { $hours }小时
+msg-ban-remaining-hours = { $hours }小时 { $minutes }分钟
+msg-ban-remaining-minutes = { $minutes }分钟

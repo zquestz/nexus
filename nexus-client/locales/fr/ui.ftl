@@ -157,6 +157,9 @@ permission-file_move = Déplacer Fichier
 permission-file_rename = Renommer Fichier
 permission-file_root = Racine Fichiers
 permission-file_upload = Téléverser Fichier
+permission-ban_create = Créer Bannissement
+permission-ban_delete = Supprimer Bannissement
+permission-ban_list = Liste des Bannissements
 
 # =============================================================================
 # Tooltips
@@ -559,8 +562,14 @@ cmd-away-desc = Se marquer comme absent
 cmd-away-usage = Utilisation: /{ $command } [message]
 cmd-back-desc = Supprimer le statut absent
 cmd-back-usage = Utilisation: /{ $command }
-cmd-status-desc = Définir ou supprimer votre message de statut
+cmd-status-desc = Définir ou effacer votre message de statut
 cmd-status-usage = Utilisation: /{ $command } [message]
+cmd-ban-desc = Bannir un utilisateur par IP, plage CIDR ou pseudo
+cmd-ban-usage = Utilisation: /{ $command } <cible> [durée] [raison]
+cmd-unban-desc = Supprimer un bannissement IP
+cmd-unban-usage = Utilisation: /{ $command } <cible>
+cmd-bans-desc = Lister les bannissements actifs
+cmd-bans-usage = Utilisation: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -719,3 +728,31 @@ notification-user-message-from = Message de {$username}
 
 # Fallback values
 unknown-server = Serveur inconnu
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } banni
+msg-banned-ip-nickname = { $ip } ({ $nickname }) banni
+msg-banned-ips = { $count } IPs bannies
+msg-banned-ips-nickname = { $count } IPs ({ $nickname }) bannies
+msg-ban-created = Bannissement créé avec succès
+
+# Unban success messages
+msg-unbanned-ip = Bannissement de { $ip } supprimé
+msg-unbanned-ip-nickname = Bannissement de { $ip } ({ $nickname }) supprimé
+msg-unbanned-ips = { $count } bannissements IP supprimés
+msg-unbanned-ips-nickname = { $count } bannissements IP ({ $nickname }) supprimés
+msg-unbanned-success = Bannissement supprimé avec succès
+
+# Ban list messages
+msg-ban-list-header = Bannissements actifs:
+msg-ban-list-empty = Aucun bannissement actif
+msg-ban-permanent = permanent
+msg-ban-expired = expiré
+msg-ban-remaining = { $time } restant
+msg-ban-remaining-days = { $days }j { $hours }h
+msg-ban-remaining-hours = { $hours }h { $minutes }m
+msg-ban-remaining-minutes = { $minutes }m

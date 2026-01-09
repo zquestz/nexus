@@ -100,7 +100,8 @@ where
     };
 
     // Resolve target to IP address(es) or CIDR range
-    let (targets_to_ban, nickname_annotation, is_cidr) = match resolve_target(&target, ctx).await {
+    let (targets_to_ban, nickname_annotation, is_cidr) =
+        match resolve_target(&target, &requesting_user.username, ctx).await {
         Ok(result) => result,
         Err(TargetResolutionError::InvalidTarget) => {
             let response = ServerMessage::BanCreateResponse {
@@ -135,16 +136,32 @@ where
         }
     };
 
-    // Check if any of the IPs/ranges have an admin connected (only if banning by IP/CIDR directly)
-    if nickname_annotation.is_none() {
-        if is_cidr {
-            // For CIDR ranges, check if any admin's IP falls within the range
-            if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
-                && ctx.user_manager.is_admin_connected_in_range(&net).await
-            {
+    // Check if any of the IPs/ranges have an admin connected
+    // (this applies to all bans - by nickname, IP, or CIDR)
+    if is_cidr {
+        // For CIDR ranges, check if any admin's IP falls within the range
+        if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
+            && ctx.user_manager.is_admin_connected_in_range(&net).await
+        {
+            eprintln!(
+                "BanCreate from {} (user: {}) attempted to ban CIDR {} with admin connected",
+                ctx.peer_addr, requesting_user.username, targets_to_ban[0]
+            );
+            let response = ServerMessage::BanCreateResponse {
+                success: false,
+                error: Some(err_ban_admin_by_ip(ctx.locale)),
+                ips: None,
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    } else {
+        // For single IPs, check each one
+        for ip in &targets_to_ban {
+            if ctx.user_manager.is_admin_connected_from_ip(ip).await {
                 eprintln!(
-                    "BanCreate from {} (user: {}) attempted to ban CIDR {} with admin connected",
-                    ctx.peer_addr, requesting_user.username, targets_to_ban[0]
+                    "BanCreate from {} (user: {}) attempted to ban IP {} with admin connected",
+                    ctx.peer_addr, requesting_user.username, ip
                 );
                 let response = ServerMessage::BanCreateResponse {
                     success: false,
@@ -154,27 +171,11 @@ where
                 };
                 return ctx.send_message(&response).await;
             }
-        } else {
-            // For single IPs, check each one
-            for ip in &targets_to_ban {
-                if ctx.user_manager.is_admin_connected_from_ip(ip).await {
-                    eprintln!(
-                        "BanCreate from {} (user: {}) attempted to ban IP {} with admin connected",
-                        ctx.peer_addr, requesting_user.username, ip
-                    );
-                    let response = ServerMessage::BanCreateResponse {
-                        success: false,
-                        error: Some(err_ban_admin_by_ip(ctx.locale)),
-                        ips: None,
-                        nickname: None,
-                    };
-                    return ctx.send_message(&response).await;
-                }
-            }
         }
     }
 
-    // Check if we'd be banning our own IP
+    // Check if we'd be banning our own IP (always check, even when banning by nickname,
+    // because the target user might share our IP)
     let our_ip = ctx.peer_addr.ip();
     let would_ban_self = if is_cidr {
         // For CIDR, check if our IP falls within the range
@@ -281,6 +282,7 @@ enum TargetResolutionError {
 /// - For CIDR: returns list with the CIDR string, None, true
 async fn resolve_target<W>(
     target: &str,
+    requesting_username: &str,
     ctx: &HandlerContext<'_, W>,
 ) -> Result<(Vec<String>, Option<String>, bool), TargetResolutionError>
 where
@@ -293,14 +295,13 @@ where
             return Err(TargetResolutionError::IsAdmin);
         }
 
-        // Get all IPs for this nickname (may have multiple sessions)
-        let ips = ctx.user_manager.get_ips_for_nickname(target).await;
-
-        // Check if target is self (by checking if our IP is in their IPs)
-        let our_ip = ctx.peer_addr.ip().to_string();
-        if ips.contains(&our_ip) {
+        // Check if target is self (compare usernames, case-insensitive)
+        if session.username.to_lowercase() == requesting_username.to_lowercase() {
             return Err(TargetResolutionError::IsSelf);
         }
+
+        // Get all IPs for this nickname (may have multiple sessions)
+        let ips = ctx.user_manager.get_ips_for_nickname(target).await;
 
         return Ok((ips, Some(session.nickname.clone()), false));
     }

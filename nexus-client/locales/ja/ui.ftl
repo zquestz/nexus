@@ -156,6 +156,9 @@ permission-file_move = ファイル移動
 permission-file_rename = ファイル名変更
 permission-file_root = ファイルルート
 permission-file_upload = ファイルアップロード
+permission-ban_create = BAN作成
+permission-ban_delete = BAN削除
+permission-ban_list = BANリスト
 
 # =============================================================================
 # Tooltips
@@ -538,8 +541,14 @@ cmd-away-desc = 離席中に設定する
 cmd-away-usage = 使用法: /{ $command } [メッセージ]
 cmd-back-desc = 離席中を解除する
 cmd-back-usage = 使用法: /{ $command }
-cmd-status-desc = ステータスメッセージを設定または削除する
+cmd-status-desc = ステータスメッセージを設定または削除
 cmd-status-usage = 使用法: /{ $command } [メッセージ]
+cmd-ban-desc = IP、CIDRレンジ、またはニックネームでユーザーをBAN
+cmd-ban-usage = 使用法: /{ $command } <対象> [期間] [理由]
+cmd-unban-desc = IP BANを解除
+cmd-unban-usage = 使用法: /{ $command } <対象>
+cmd-bans-desc = 有効なBANを一覧表示
+cmd-bans-usage = 使用法: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -698,3 +707,31 @@ notification-user-message-from = {$username}からのメッセージ
 
 # Fallback values
 unknown-server = 不明なサーバー
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } をBANしました
+msg-banned-ip-nickname = { $ip } ({ $nickname }) をBANしました
+msg-banned-ips = { $count } 件のIPをBANしました
+msg-banned-ips-nickname = { $count } 件のIP ({ $nickname }) をBANしました
+msg-ban-created = BANを作成しました
+
+# Unban success messages
+msg-unbanned-ip = { $ip } のBANを解除しました
+msg-unbanned-ip-nickname = { $ip } ({ $nickname }) のBANを解除しました
+msg-unbanned-ips = { $count } 件のIP BANを解除しました
+msg-unbanned-ips-nickname = { $count } 件のIP BAN ({ $nickname }) を解除しました
+msg-unbanned-success = BANを解除しました
+
+# Ban list messages
+msg-ban-list-header = 有効なBAN:
+msg-ban-list-empty = 有効なBANはありません
+msg-ban-permanent = 永久
+msg-ban-expired = 期限切れ
+msg-ban-remaining = 残り { $time }
+msg-ban-remaining-days = { $days }日 { $hours }時間
+msg-ban-remaining-hours = { $hours }時間 { $minutes }分
+msg-ban-remaining-minutes = { $minutes }分

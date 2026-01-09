@@ -4,6 +4,9 @@
 
 use files::FileListResponseData;
 
+mod ban_create;
+mod ban_delete;
+mod ban_list;
 mod broadcast;
 mod chat;
 mod error;
@@ -349,6 +352,26 @@ impl NexusApp {
             ServerMessage::UserStatusResponse { success, error } => {
                 self.handle_user_status_response(connection_id, message_id, success, error)
             }
+
+            ServerMessage::BanCreateResponse {
+                success,
+                error,
+                ips,
+                nickname,
+            } => self.handle_ban_create_response(connection_id, success, error, ips, nickname),
+
+            ServerMessage::BanDeleteResponse {
+                success,
+                error,
+                ips,
+                nickname,
+            } => self.handle_ban_delete_response(connection_id, success, error, ips, nickname),
+
+            ServerMessage::BanListResponse {
+                success,
+                error,
+                bans,
+            } => self.handle_ban_list_response(connection_id, success, error, bans),
 
             // Catch-all for any unhandled message types
             _ => Task::none(),

@@ -157,6 +157,9 @@ permission-file_move = Bestand Verplaatsen
 permission-file_rename = Bestand Hernoemen
 permission-file_root = Bestandsroot
 permission-file_upload = Bestand Uploaden
+permission-ban_create = Ban Aanmaken
+permission-ban_delete = Ban Verwijderen
+permission-ban_list = Banlijst
 
 # =============================================================================
 # Tooltips
@@ -561,6 +564,12 @@ cmd-back-desc = Verwijder afwezigheidsstatus
 cmd-back-usage = Gebruik: /{ $command }
 cmd-status-desc = Stel statusbericht in of verwijder het
 cmd-status-usage = Gebruik: /{ $command } [bericht]
+cmd-ban-desc = Ban een gebruiker op IP, CIDR-bereik of bijnaam
+cmd-ban-usage = Gebruik: /{ $command } <doel> [duur] [reden]
+cmd-unban-desc = Verwijder een IP-ban
+cmd-unban-usage = Gebruik: /{ $command } <doel>
+cmd-bans-desc = Toon actieve bans
+cmd-bans-usage = Gebruik: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -719,3 +728,31 @@ notification-user-message-from = Bericht van {$username}
 
 # Fallback values
 unknown-server = Onbekende server
+
+# =============================================================================
+# Ban System
+# =============================================================================
+
+# Ban success messages
+msg-banned-ip = { $ip } geband
+msg-banned-ip-nickname = { $ip } ({ $nickname }) geband
+msg-banned-ips = { $count } IPs geband
+msg-banned-ips-nickname = { $count } IPs ({ $nickname }) geband
+msg-ban-created = Ban succesvol aangemaakt
+
+# Unban success messages
+msg-unbanned-ip = Ban van { $ip } verwijderd
+msg-unbanned-ip-nickname = Ban van { $ip } ({ $nickname }) verwijderd
+msg-unbanned-ips = { $count } IP-bans verwijderd
+msg-unbanned-ips-nickname = { $count } IP-bans ({ $nickname }) verwijderd
+msg-unbanned-success = Ban succesvol verwijderd
+
+# Ban list messages
+msg-ban-list-header = Actieve bans:
+msg-ban-list-empty = Geen actieve bans
+msg-ban-permanent = permanent
+msg-ban-expired = verlopen
+msg-ban-remaining = { $time } resterend
+msg-ban-remaining-days = { $days }d { $hours }u
+msg-ban-remaining-hours = { $hours }u { $minutes }m
+msg-ban-remaining-minutes = { $minutes }m
