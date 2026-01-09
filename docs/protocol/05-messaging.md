@@ -79,18 +79,32 @@ Note: Use `to_nickname` (the display name), not username. For regular accounts t
 
 ### UserMessageResponse (Server → Client)
 
-Response to the sender indicating success or failure.
+Response to the sender indicating success or failure. On success, also indicates if the recipient is away.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `success` | boolean | Yes | Whether the message was delivered |
 | `error` | string | If failure | Error message |
+| `is_away` | boolean | If success | Whether the recipient is away |
+| `status` | string | If success | Recipient's status message (null if none) |
 
-**Success example:**
+**Success example (recipient available):**
 
 ```json
 {
-  "success": true
+  "success": true,
+  "is_away": false,
+  "status": null
+}
+```
+
+**Success example (recipient away):**
+
+```json
+{
+  "success": true,
+  "is_away": true,
+  "status": "grabbing lunch"
 }
 ```
 

@@ -102,7 +102,9 @@ Response containing the user list.
       "is_shared": false,
       "session_ids": [1, 5],
       "locale": "en",
-      "avatar": "data:image/png;base64,..."
+      "avatar": "data:image/png;base64,...",
+      "is_away": true,
+      "status": "in a meeting"
     },
     {
       "username": "bob",
@@ -112,7 +114,9 @@ Response containing the user list.
       "is_shared": false,
       "session_ids": [3],
       "locale": "de",
-      "avatar": null
+      "avatar": null,
+      "is_away": false,
+      "status": null
     },
     {
       "username": "shared_acct",
@@ -122,7 +126,9 @@ Response containing the user list.
       "is_shared": true,
       "session_ids": [7],
       "locale": "en",
-      "avatar": null
+      "avatar": null,
+      "is_away": false,
+      "status": "just browsing"
     }
   ]
 }
@@ -211,7 +217,9 @@ Response containing detailed user information.
     "features": ["chat"],
     "created_at": 1702900000,
     "locale": "en",
-    "avatar": "data:image/png;base64,..."
+    "avatar": "data:image/png;base64,...",
+    "is_away": true,
+    "status": "in a meeting"
   }
 }
 ```
@@ -231,6 +239,8 @@ Response containing detailed user information.
     "created_at": 1702950000,
     "locale": "de",
     "avatar": null,
+    "is_away": false,
+    "status": null,
     "is_admin": false,
     "addresses": ["192.168.1.100", "10.0.0.5"]
   }
@@ -268,7 +278,9 @@ Broadcast when a user connects.
     "is_shared": false,
     "session_ids": [9],
     "locale": "fr",
-    "avatar": null
+    "avatar": null,
+    "is_away": false,
+    "status": null
   }
 }
 ```
@@ -285,7 +297,9 @@ Broadcast when a user connects.
     "is_shared": true,
     "session_ids": [10],
     "locale": "en",
-    "avatar": "data:image/png;base64,..."
+    "avatar": "data:image/png;base64,...",
+    "is_away": false,
+    "status": null
   }
 }
 ```
@@ -330,7 +344,9 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "is_shared": false,
     "session_ids": [3],
     "locale": "de",
-    "avatar": null
+    "avatar": null,
+    "is_away": false,
+    "status": null
   }
 }
 ```
@@ -348,7 +364,9 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "is_shared": false,
     "session_ids": [1, 5],
     "locale": "en",
-    "avatar": "data:image/png;base64,..."
+    "avatar": "data:image/png;base64,...",
+    "is_away": true,
+    "status": "in a meeting"
   }
 }
 ```
@@ -369,6 +387,8 @@ Basic user information returned in lists and broadcasts.
 | `session_ids` | array | List of active session IDs |
 | `locale` | string | User's preferred locale |
 | `avatar` | string | Avatar as data URI (null if none) |
+| `is_away` | boolean | Whether user is away |
+| `status` | string | User's status message (null if none) |
 
 ### UserInfoDetailed
 
@@ -385,6 +405,8 @@ Extended user information for individual queries.
 | `created_at` | integer | Account creation timestamp |
 | `locale` | string | User's preferred locale |
 | `avatar` | string | Avatar as data URI (null if none) |
+| `is_away` | boolean | Whether user is away |
+| `status` | string | User's status message (null if none) |
 | `is_admin` | boolean | Admin status (only visible to admins) |
 | `addresses` | array | IP addresses (only visible to admins) |
 
@@ -431,6 +453,110 @@ A single account can have multiple concurrent sessions (e.g., desktop and mobile
 - For multi-session users, the most recent login's avatar is used
 - Avatars are included in `UserConnected`, `UserListResponse`, `UserInfoResponse`, and `UserUpdated`
 - If no avatar is provided, clients should generate an identicon from the nickname
+
+## Away/Status
+
+Users can set an away status and/or a status message to indicate their availability.
+
+### UserAway (Client → Server)
+
+Set the user as away, optionally with a status message.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | No | Optional status message (max 128 characters) |
+
+**Example (away with message):**
+
+```json
+{
+  "message": "grabbing lunch"
+}
+```
+
+**Example (away without message):**
+
+```json
+{
+  "message": null
+}
+```
+
+### UserAwayResponse (Server → Client)
+
+Response to `UserAway` request.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `success` | boolean | Yes | Whether the request succeeded |
+| `error` | string | If failure | Error message |
+
+### UserBack (Client → Server)
+
+Clear the user's away status and status message.
+
+This message has no fields:
+
+```json
+{}
+```
+
+### UserBackResponse (Server → Client)
+
+Response to `UserBack` request.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `success` | boolean | Yes | Whether the request succeeded |
+| `error` | string | If failure | Error message |
+
+### UserStatus (Client → Server)
+
+Set or clear a status message without changing away state.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `status` | string | No | Status message (null to clear, max 128 characters) |
+
+**Example (set status):**
+
+```json
+{
+  "status": "working on project"
+}
+```
+
+**Example (clear status):**
+
+```json
+{
+  "status": null
+}
+```
+
+### UserStatusResponse (Server → Client)
+
+Response to `UserStatus` request.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `success` | boolean | Yes | Whether the request succeeded |
+| `error` | string | If failure | Error message |
+
+### Away/Status Behavior
+
+- **Session-only**: Away and status are cleared on disconnect
+- **Multi-session inheritance**: New sessions for regular accounts inherit away/status from the latest existing session
+- **Shared accounts**: No inheritance; each session starts fresh
+- **No restrictions**: Away users can still chat, PM, and transfer files
+- **Broadcasts**: Changes trigger `UserUpdated` broadcast to all users with `user_list` permission
+
+### Validation
+
+Status messages must:
+- Be 128 characters or fewer
+- Not contain newlines
+- Not contain control characters
 
 ## Sorting
 

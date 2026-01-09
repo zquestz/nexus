@@ -36,11 +36,40 @@ Show available commands or get help for a specific command.
 /help broadcast    # Show help for the broadcast command
 ```
 
+### /away
+
+Set yourself as away, optionally with a status message. Away users are shown with a 💤 indicator.
+
+**Aliases:** `/a`
+
+**Permission:** None
+
+**Usage:**
+```
+/away                           # Set as away (no message)
+/away grabbing lunch            # Set as away with status
+/a brb                          # Short form
+```
+
+### /back
+
+Clear your away status and status message.
+
+**Aliases:** `/b`
+
+**Permission:** None
+
+**Usage:**
+```
+/back
+/b
+```
+
 ### /broadcast
 
 Send a broadcast message to all connected users. Broadcasts appear prominently to all users.
 
-**Aliases:** `/b`
+**Aliases:** `/bc`
 
 **Permission:** `user_broadcast`
 
@@ -172,7 +201,7 @@ After sending, the client switches to that user's PM tab.
 
 Show information about the connected server.
 
-**Aliases:** `/s`, `/serverinfo`
+**Aliases:** `/si`, `/serverinfo`
 
 **Permission:** None
 
@@ -187,6 +216,21 @@ Displays:
 - Server description (if set)
 - Server version
 - Max connections per IP (admin only)
+
+### /status
+
+Set or clear your status message without changing your away state.
+
+**Aliases:** `/s`
+
+**Permission:** None
+
+**Usage:**
+```
+/status                         # Clear status message
+/status working on project      # Set status message
+/s in a meeting                 # Short form
+```
 
 ### /topic
 
@@ -226,7 +270,9 @@ Manage chat tabs (server chat and PM conversations).
 
 | Command | Aliases | Permission | Description |
 |---------|---------|------------|-------------|
-| `/broadcast` | `/b` | `user_broadcast` | Send a broadcast to all users |
+| `/away` | `/a` | None | Set yourself as away |
+| `/back` | `/b` | None | Clear away status |
+| `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 | `/clear` | — | None | Clear chat history for current tab |
 | `/focus` | `/f` | None | Focus server chat or a user's PM tab |
 | `/help` | `/h`, `/?` | None | Show available commands |
@@ -235,7 +281,8 @@ Manage chat tabs (server chat and PM conversations).
 | `/list` | `/l`, `/userlist` | `user_list` | Show connected/all users |
 | `/me` | — | None | Send an action message |
 | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
-| `/sinfo` | `/s`, `/serverinfo` | None | Show server information |
+| `/sinfo` | `/si`, `/serverinfo` | None | Show server information |
+| `/status` | `/s` | None | Set or clear status message |
 | `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |
 | `/window` | `/w` | None | Manage chat tabs |
 
