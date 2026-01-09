@@ -325,7 +325,20 @@ impl NexusApp {
 
             // User list interactions
             Message::UserInfoIconClicked(nickname) => self.handle_user_info_icon_clicked(nickname),
-            Message::UserKickIconClicked(nickname) => self.handle_user_kick_icon_clicked(nickname),
+            Message::DisconnectIconClicked(nickname) => {
+                self.handle_disconnect_icon_clicked(nickname)
+            }
+            Message::DisconnectDialogActionChanged(action) => {
+                self.handle_disconnect_dialog_action_changed(action)
+            }
+            Message::DisconnectDialogDurationChanged(duration) => {
+                self.handle_disconnect_dialog_duration_changed(duration)
+            }
+            Message::DisconnectDialogReasonChanged(reason) => {
+                self.handle_disconnect_dialog_reason_changed(reason)
+            }
+            Message::DisconnectDialogCancel => self.handle_disconnect_dialog_cancel(),
+            Message::DisconnectDialogSubmit => self.handle_disconnect_dialog_submit(),
             Message::UserListItemClicked(nickname) => self.handle_user_list_item_clicked(nickname),
             Message::UserMessageIconClicked(nickname) => {
                 self.handle_user_message_icon_clicked(nickname)

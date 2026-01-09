@@ -514,7 +514,7 @@ cmd-message-usage = Gebruik: /{ $command } <gebruikersnaam> <bericht>
 cmd-userinfo-desc = Toon informatie over een gebruiker
 cmd-userinfo-usage = Gebruik: /{ $command } <gebruikersnaam>
 cmd-kick-desc = Verwijder een gebruiker van de server
-cmd-kick-usage = Gebruik: /{ $command } <gebruikersnaam>
+cmd-kick-usage = Gebruik: /{ $command } <gebruikersnaam> [reden]
 cmd-topic-desc = Bekijk of beheer het chatonderwerp
 cmd-topic-usage = Gebruik: /{ $command } [set|clear] [onderwerp]
 cmd-topic-set-usage = Gebruik: /{ $command } set <onderwerp>
@@ -728,6 +728,27 @@ notification-user-message-from = Bericht van {$username}
 
 # Fallback values
 unknown-server = Onbekende server
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = { $nickname } verbreken
+disconnect-action-kick = Kicken
+disconnect-action-ban = Bannen
+disconnect-duration-label = Duur:
+disconnect-reason-label = Reden:
+disconnect-reason-placeholder = Optionele reden
+button-kick = Kicken
+button-ban = Bannen
+
+# Ban duration options
+ban-duration-10m = 10 minuten
+ban-duration-1h = 1 uur
+ban-duration-1d = 1 dag
+ban-duration-7d = 7 dagen
+ban-duration-30d = 30 dagen
+ban-duration-permanent = Permanent
 
 # =============================================================================
 # Ban System

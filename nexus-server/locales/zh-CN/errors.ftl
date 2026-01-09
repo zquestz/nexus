@@ -111,6 +111,7 @@ err-topic-too-long = 主题不能超过{ $max_length }个字符
 err-version-major-mismatch = 不兼容的协议版本：服务器是版本{ $server_major }.x，客户端是版本{ $client_major }.x
 err-version-client-too-new = 客户端版本{ $client_version }比服务器版本{ $server_version }更新。请更新服务器或使用旧版客户端。
 err-kicked-by = 您已被{ $username }踢出
+err-kicked-by-reason = 您已被{ $username }踢出: { $reason }
 err-username-exists = 用户名"{ $username }"已存在
 err-user-not-found = 找不到用户"{ $username }"
 err-user-not-online = 用户"{ $username }"不在线

@@ -130,3 +130,4 @@ Current version: `0.5.0`
 | [08-transfers.md](08-transfers.md) | File upload and download (port 7501) |
 | [09-admin.md](09-admin.md) | User and server administration |
 | [10-errors.md](10-errors.md) | Error handling |
+| [11-bans.md](11-bans.md) | IP bans and CIDR ranges |

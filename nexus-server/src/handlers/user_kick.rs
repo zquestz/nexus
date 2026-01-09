@@ -9,14 +9,15 @@ use nexus_common::validators::{self, NicknameError};
 
 use super::{
     HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
-    err_kicked_by, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
-    err_nickname_too_long, err_not_logged_in, err_permission_denied,
+    err_kicked_by, err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid,
+    err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 
 /// Handle UserKick command
 pub async fn handle_user_kick<W>(
     nickname: String,
+    reason: Option<String>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -138,26 +139,22 @@ where
     // Kick all target sessions
     for user in sessions_to_kick {
         // Send kick message to the user in their locale before disconnecting
+        let kick_message = if let Some(ref r) = reason {
+            err_kicked_by_with_reason(&user.locale, &requesting_user_session.username, r)
+        } else {
+            err_kicked_by(&user.locale, &requesting_user_session.username)
+        };
         let kick_msg = ServerMessage::Error {
-            message: err_kicked_by(&user.locale, &requesting_user_session.username),
+            message: kick_message,
             command: Some("UserKick".to_string()),
         };
         let _ = user.tx.send((kick_msg, None));
 
-        // Remove user from UserManager (channel closes, connection breaks)
+        // Remove user from UserManager and broadcast disconnection
         let target_session_id = user.session_id;
-        if let Some(removed_user) = ctx.user_manager.remove_user(target_session_id).await {
-            // Broadcast disconnection to users with user_list permission
-            ctx.user_manager
-                .broadcast_user_event(
-                    ServerMessage::UserDisconnected {
-                        session_id: target_session_id,
-                        nickname: removed_user.nickname.clone(),
-                    },
-                    Some(target_session_id), // Exclude the kicked user
-                )
-                .await;
-        }
+        ctx.user_manager
+            .remove_user_and_broadcast(target_session_id)
+            .await;
     }
 
     // Send success response to requester
@@ -184,8 +181,13 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to kick user without being logged in
-        let result =
-            handle_user_kick("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+        let result = handle_user_kick(
+            "alice".to_string(),
+            None,
+            None,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserKick should require login");
@@ -202,8 +204,13 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "bob", "password", &[], false).await;
 
         // Try to kick bob (should fail - no permission)
-        let result =
-            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+        let result = handle_user_kick(
+            "bob".to_string(),
+            None,
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
@@ -238,8 +245,13 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "bob", "password", &[], false).await;
 
         // Kick bob (should succeed)
-        let result =
-            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+        let result = handle_user_kick(
+            "bob".to_string(),
+            None,
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         assert!(result.is_ok(), "Kick should succeed with permission");
 
@@ -270,8 +282,13 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "bob", "password", &[], false).await;
 
         // Admin kicks bob (should succeed)
-        let result =
-            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+        let result = handle_user_kick(
+            "bob".to_string(),
+            None,
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         assert!(result.is_ok(), "Admin should be able to kick");
 
@@ -308,6 +325,7 @@ mod tests {
         // Try to kick self (should fail)
         let result = handle_user_kick(
             "alice".to_string(),
+            None,
             Some(1),
             &mut test_ctx.handler_context(),
         )
@@ -349,6 +367,7 @@ mod tests {
         // Try to kick offline user (should fail)
         let result = handle_user_kick(
             "offline_user".to_string(),
+            None,
             Some(1),
             &mut test_ctx.handler_context(),
         )
@@ -382,6 +401,7 @@ mod tests {
         // Kick using different case (should succeed)
         let result = handle_user_kick(
             "alice".to_string(),
+            None,
             Some(1),
             &mut test_ctx.handler_context(),
         )
@@ -423,6 +443,7 @@ mod tests {
         // Kick alice (should kick all sessions)
         let result = handle_user_kick(
             "alice".to_string(),
+            None,
             Some(1),
             &mut test_ctx.handler_context(),
         )
@@ -465,8 +486,13 @@ mod tests {
         let _target_admin_id = login_user(&mut test_ctx, "bob", "password", &[], true).await;
 
         // Try to kick admin (should fail)
-        let result =
-            handle_user_kick("bob".to_string(), Some(1), &mut test_ctx.handler_context()).await;
+        let result = handle_user_kick(
+            "bob".to_string(),
+            None,
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
@@ -538,6 +564,7 @@ mod tests {
         // Kick by nickname
         let result = handle_user_kick(
             "Nick1".to_string(),
+            None,
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -611,6 +638,7 @@ mod tests {
         // Try to kick self by nickname (should fail)
         let result = handle_user_kick(
             "Nick1".to_string(),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -642,6 +670,7 @@ mod tests {
         // Kick by nickname (should succeed)
         let result = handle_user_kick(
             "Nick1".to_string(),
+            None,
             Some(1), // admin's session_id
             &mut test_ctx.handler_context(),
         )

@@ -199,23 +199,12 @@ where
     // Shutdown the writer gracefully
     let _ = frame_writer.get_mut().shutdown().await;
 
-    // Remove user on disconnect
+    // Remove user on disconnect and broadcast to other clients
     if let Some(id) = conn_state.session_id
-        && let Some(user) = user_manager.remove_user(id).await
+        && let Some(user) = user_manager.remove_user_and_broadcast(id).await
+        && debug
     {
-        if debug {
-            println!("User '{}' disconnected", user.username);
-        }
-        // Broadcast disconnection to users with user_list permission
-        user_manager
-            .broadcast_user_event(
-                ServerMessage::UserDisconnected {
-                    session_id: id,
-                    nickname: user.nickname.clone(),
-                },
-                Some(id), // Exclude the disconnecting user
-            )
-            .await;
+        println!("User '{}' disconnected", user.username);
     }
 
     Ok(())
@@ -292,8 +281,8 @@ where
         ClientMessage::UserInfo { nickname } => {
             handlers::handle_user_info(nickname, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserKick { nickname } => {
-            handlers::handle_user_kick(nickname, conn_state.session_id, ctx).await?;
+        ClientMessage::UserKick { nickname, reason } => {
+            handlers::handle_user_kick(nickname, reason, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserList { all } => {
             handlers::handle_user_list(all, conn_state.session_id, ctx).await?;

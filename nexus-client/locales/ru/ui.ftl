@@ -518,7 +518,7 @@ cmd-message-usage = Использование: /{ $command } <имя_польз
 cmd-userinfo-desc = Показать информацию о пользователе
 cmd-userinfo-usage = Использование: /{ $command } <имя_пользователя>
 cmd-kick-desc = Отключить пользователя от сервера
-cmd-kick-usage = Использование: /{ $command } <имя_пользователя>
+cmd-kick-usage = Использование: /{ $command } <имя_пользователя> [причина]
 cmd-topic-desc = Просмотр или управление темой чата
 cmd-topic-usage = Использование: /{ $command } [установить|очистить] [тема]
 cmd-topic-arg-set = установить
@@ -735,6 +735,27 @@ notification-user-message-from = Сообщение от {$username}
 
 # Fallback values
 unknown-server = Неизвестный сервер
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = Отключить { $nickname }
+disconnect-action-kick = Кикнуть
+disconnect-action-ban = Забанить
+disconnect-duration-label = Длительность:
+disconnect-reason-label = Причина:
+disconnect-reason-placeholder = Необязательная причина
+button-kick = Кикнуть
+button-ban = Забанить
+
+# Ban duration options
+ban-duration-10m = 10 минут
+ban-duration-1h = 1 час
+ban-duration-1d = 1 день
+ban-duration-7d = 7 дней
+ban-duration-30d = 30 дней
+ban-duration-permanent = Постоянно
 
 # =============================================================================
 # Ban System

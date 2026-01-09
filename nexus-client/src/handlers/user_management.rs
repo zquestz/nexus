@@ -658,17 +658,121 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle user kick icon click (kick/disconnect user)
+    /// Handle disconnect icon click - opens the disconnect dialog
     ///
     /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
-    pub fn handle_user_kick_icon_clicked(&mut self, nickname: String) -> Task<Message> {
+    pub fn handle_disconnect_icon_clicked(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            // Send UserKick request to server
-            if let Err(e) = conn.send(ClientMessage::UserKick { nickname }) {
-                let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+            use crate::types::DisconnectDialogState;
+            conn.disconnect_dialog = Some(DisconnectDialogState::new(nickname));
+        }
+        Task::none()
+    }
+
+    /// Handle disconnect dialog action changed (kick or ban)
+    pub fn handle_disconnect_dialog_action_changed(
+        &mut self,
+        action: crate::types::DisconnectAction,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(ref mut dialog) = conn.disconnect_dialog
+        {
+            dialog.action = action;
+        }
+        Task::none()
+    }
+
+    /// Handle disconnect dialog duration changed
+    pub fn handle_disconnect_dialog_duration_changed(
+        &mut self,
+        duration: crate::types::BanDuration,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(ref mut dialog) = conn.disconnect_dialog
+        {
+            dialog.duration = duration;
+        }
+        Task::none()
+    }
+
+    /// Handle disconnect dialog reason changed
+    pub fn handle_disconnect_dialog_reason_changed(&mut self, reason: String) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(ref mut dialog) = conn.disconnect_dialog
+        {
+            dialog.reason = reason;
+        }
+        Task::none()
+    }
+
+    /// Handle disconnect dialog cancel
+    pub fn handle_disconnect_dialog_cancel(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.disconnect_dialog = None;
+        }
+        Task::none()
+    }
+
+    /// Handle disconnect dialog submit (kick or ban)
+    pub fn handle_disconnect_dialog_submit(&mut self) -> Task<Message> {
+        use crate::types::DisconnectAction;
+
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(ref dialog) = conn.disconnect_dialog
+        {
+            let nickname = dialog.nickname.clone();
+
+            match dialog.action {
+                DisconnectAction::Kick => {
+                    // Send UserKick request with optional reason
+                    let reason = if dialog.reason.is_empty() {
+                        None
+                    } else {
+                        Some(dialog.reason.clone())
+                    };
+
+                    if let Err(e) = conn.send(ClientMessage::UserKick {
+                        nickname: nickname.clone(),
+                        reason,
+                    }) {
+                        let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                        return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+                    }
+                    // Close dialog on success
+                    if let Some(conn) = self.connections.get_mut(&conn_id) {
+                        conn.disconnect_dialog = None;
+                    }
+                }
+                DisconnectAction::Ban => {
+                    // Send BanCreate request
+                    let duration = dialog.duration.as_duration_string();
+                    let reason = if dialog.reason.is_empty() {
+                        None
+                    } else {
+                        Some(dialog.reason.clone())
+                    };
+
+                    if let Err(e) = conn.send(ClientMessage::BanCreate {
+                        target: nickname.clone(),
+                        duration,
+                        reason,
+                    }) {
+                        let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                        return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+                    }
+                    // Close dialog on success
+                    if let Some(conn) = self.connections.get_mut(&conn_id) {
+                        conn.disconnect_dialog = None;
+                    }
+                }
             }
 
             return self.handle_show_chat_view();

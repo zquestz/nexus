@@ -5,7 +5,7 @@ mod helpers;
 mod mutations;
 mod queries;
 
-pub use mutations::AddUserError;
+pub use mutations::{AddUserError, DisconnectedSession};
 
 use std::collections::HashMap;
 use std::sync::Arc;

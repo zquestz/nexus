@@ -111,6 +111,7 @@ err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } tekens beva
 err-version-major-mismatch = Incompatibele protocolversie: server is versie { $server_major }.x, client is versie { $client_major }.x
 err-version-client-too-new = Clientversie { $client_version } is nieuwer dan serverversie { $server_version }. Werk de server bij of gebruik een oudere client.
 err-kicked-by = U bent verwijderd door { $username }
+err-kicked-by-reason = U bent verwijderd door { $username }: { $reason }
 err-username-exists = De gebruikersnaam "{ $username }" bestaat al
 err-user-not-found = Gebruiker "{ $username }" niet gevonden
 err-user-not-online = Gebruiker "{ $username }" is niet online

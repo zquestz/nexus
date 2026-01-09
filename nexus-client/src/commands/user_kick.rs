@@ -11,15 +11,15 @@ use crate::types::{ChatMessage, Message};
 /// Execute the /kick command
 ///
 /// Kicks a user from the server (disconnects them).
-/// Usage: /kick <nickname>
+/// Usage: /kick <nickname> [reason]
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // /kick takes exactly 1 argument (nickname)
-    if args.len() != 1 {
+    // /kick takes 1 or more arguments (nickname + optional reason)
+    if args.is_empty() {
         let error_msg = t_args("cmd-kick-usage", &[("command", invoked_name)]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
@@ -43,8 +43,16 @@ pub fn execute(
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
+    // Join remaining args as reason (if any)
+    let reason = if args.len() > 1 {
+        Some(args[1..].join(" "))
+    } else {
+        None
+    };
+
     let msg = ClientMessage::UserKick {
         nickname: nickname.clone(),
+        reason,
     };
 
     if let Err(e) = conn.send(msg) {

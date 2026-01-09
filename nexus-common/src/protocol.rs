@@ -75,6 +75,9 @@ pub enum ClientMessage {
     },
     UserKick {
         nickname: String,
+        /// Optional reason for the kick (shown to kicked user)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
     },
     UserList {
         #[serde(default)]
@@ -893,9 +896,10 @@ impl std::fmt::Debug for ClientMessage {
                 .debug_struct("UserInfo")
                 .field("nickname", nickname)
                 .finish(),
-            ClientMessage::UserKick { nickname } => f
+            ClientMessage::UserKick { nickname, reason } => f
                 .debug_struct("UserKick")
                 .field("nickname", nickname)
+                .field("reason", reason)
                 .finish(),
             ClientMessage::UserList { all } => {
                 f.debug_struct("UserList").field("all", all).finish()
@@ -1603,10 +1607,24 @@ mod tests {
     fn test_serialize_client_user_kick_with_nickname() {
         let msg = ClientMessage::UserKick {
             nickname: "Nick1".to_string(),
+            reason: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserKick\""));
         assert!(json.contains("\"nickname\":\"Nick1\""));
+        assert!(!json.contains("\"reason\"")); // None should be skipped
+    }
+
+    #[test]
+    fn test_serialize_client_user_kick_with_reason() {
+        let msg = ClientMessage::UserKick {
+            nickname: "Nick1".to_string(),
+            reason: Some("spamming".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"UserKick\""));
+        assert!(json.contains("\"nickname\":\"Nick1\""));
+        assert!(json.contains("\"reason\":\"spamming\""));
     }
 
     #[test]

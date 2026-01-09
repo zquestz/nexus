@@ -111,6 +111,7 @@ err-topic-too-long = O tópico não pode exceder { $max_length } caracteres
 err-version-major-mismatch = Versão de protocolo incompatível: o servidor é versão { $server_major }.x, o cliente é versão { $client_major }.x
 err-version-client-too-new = A versão do cliente { $client_version } é mais recente que a versão do servidor { $server_version }. Por favor, atualize o servidor ou use um cliente mais antigo.
 err-kicked-by = Você foi expulso por { $username }
+err-kicked-by-reason = Você foi expulso por { $username }: { $reason }
 err-username-exists = O nome de usuário "{ $username }" já existe
 err-user-not-found = Usuário "{ $username }" não encontrado
 err-user-not-online = O usuário "{ $username }" não está online

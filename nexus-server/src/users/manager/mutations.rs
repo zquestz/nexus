@@ -9,6 +9,12 @@ use super::UserManager;
 use crate::db::Permission;
 use crate::users::user::{NewSessionParams, UserSession};
 
+/// Information about a disconnected session, used for broadcasting UserDisconnected
+pub struct DisconnectedSession {
+    pub session_id: u32,
+    pub nickname: String,
+}
+
 /// Error returned when adding a user fails
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AddUserError {
@@ -73,6 +79,31 @@ impl UserManager {
     pub async fn remove_user(&self, session_id: u32) -> Option<UserSession> {
         let mut users = self.users.write().await;
         users.remove(&session_id)
+    }
+
+    /// Remove a user and broadcast UserDisconnected to other clients
+    ///
+    /// This is a convenience method that combines `remove_user()` with broadcasting
+    /// `UserDisconnected` to all users with the `user_list` permission. Use this
+    /// for normal disconnects, kicks, account deletion, and account disable.
+    ///
+    /// For ban disconnects, use `disconnect_sessions_by_ip()` or
+    /// `disconnect_sessions_in_range()` instead, as those need to send a custom
+    /// message to the disconnected user before removing them.
+    pub async fn remove_user_and_broadcast(&self, session_id: u32) -> Option<UserSession> {
+        if let Some(user) = self.remove_user(session_id).await {
+            self.broadcast_user_event(
+                ServerMessage::UserDisconnected {
+                    session_id,
+                    nickname: user.nickname.clone(),
+                },
+                Some(session_id),
+            )
+            .await;
+            Some(user)
+        } else {
+            None
+        }
     }
 
     /// Update username for a user by database user ID
@@ -152,8 +183,13 @@ impl UserManager {
     /// which receives the user's locale to generate a properly localized message.
     /// Used by the ban system to disconnect users when their IP is banned.
     ///
-    /// Returns the number of sessions disconnected.
-    pub async fn disconnect_sessions_by_ip<F>(&self, ip: &str, build_message: F) -> usize
+    /// Returns information about disconnected sessions so the caller can broadcast
+    /// UserDisconnected messages to update other clients' user lists.
+    pub async fn disconnect_sessions_by_ip<F>(
+        &self,
+        ip: &str,
+        build_message: F,
+    ) -> Vec<DisconnectedSession>
     where
         F: Fn(&str) -> ServerMessage,
     {
@@ -168,12 +204,12 @@ impl UserManager {
         };
 
         if session_ids.is_empty() {
-            return 0;
+            return Vec::new();
         }
 
         // Send disconnect message to each session and remove them
         let mut users = self.users.write().await;
-        let mut count = 0;
+        let mut disconnected = Vec::new();
 
         for session_id in session_ids {
             if let Some(user) = users.remove(&session_id) {
@@ -181,11 +217,14 @@ impl UserManager {
                 // (ignore send errors - channel may already be closed)
                 let message = build_message(&user.locale);
                 let _ = user.tx.send((message, None));
-                count += 1;
+                disconnected.push(DisconnectedSession {
+                    session_id,
+                    nickname: user.nickname.clone(),
+                });
             }
         }
 
-        count
+        disconnected
     }
 
     /// Disconnect all sessions from IPs within a given CIDR range
@@ -194,8 +233,13 @@ impl UserManager {
     /// which receives the user's locale to generate a properly localized message.
     /// Used by the ban system to disconnect users when a CIDR range is banned.
     ///
-    /// Returns the number of sessions disconnected.
-    pub async fn disconnect_sessions_in_range<F>(&self, range: &IpNet, build_message: F) -> usize
+    /// Returns information about disconnected sessions so the caller can broadcast
+    /// UserDisconnected messages to update other clients' user lists.
+    pub async fn disconnect_sessions_in_range<F>(
+        &self,
+        range: &IpNet,
+        build_message: F,
+    ) -> Vec<DisconnectedSession>
     where
         F: Fn(&str) -> ServerMessage,
     {
@@ -210,12 +254,12 @@ impl UserManager {
         };
 
         if session_ids.is_empty() {
-            return 0;
+            return Vec::new();
         }
 
         // Send disconnect message to each session and remove them
         let mut users = self.users.write().await;
-        let mut count = 0;
+        let mut disconnected = Vec::new();
 
         for session_id in session_ids {
             if let Some(user) = users.remove(&session_id) {
@@ -223,10 +267,13 @@ impl UserManager {
                 // (ignore send errors - channel may already be closed)
                 let message = build_message(&user.locale);
                 let _ = user.tx.send((message, None));
-                count += 1;
+                disconnected.push(DisconnectedSession {
+                    session_id,
+                    nickname: user.nickname.clone(),
+                });
             }
         }
 
-        count
+        disconnected
     }
 }

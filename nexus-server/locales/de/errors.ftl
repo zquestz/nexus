@@ -111,6 +111,7 @@ err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
 err-chat-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
 err-topic-too-long = Das Thema darf { $max_length } Zeichen nicht überschreiten
 err-kicked-by = Sie wurden von { $username } hinausgeworfen
+err-kicked-by-reason = Sie wurden von { $username } hinausgeworfen: { $reason }
 err-username-exists = Der Benutzername „{ $username }" existiert bereits
 err-user-not-found = Benutzer „{ $username }" nicht gefunden
 err-user-not-online = Benutzer „{ $username }" ist nicht online

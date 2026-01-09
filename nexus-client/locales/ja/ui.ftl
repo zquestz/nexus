@@ -502,7 +502,7 @@ cmd-message-usage = 使用方法: /{ $command } <ユーザー名> <メッセー�
 cmd-userinfo-desc = ユーザーの情報を表示
 cmd-userinfo-usage = 使用方法: /{ $command } <ユーザー名>
 cmd-kick-desc = ユーザーをサーバーからキック
-cmd-kick-usage = 使用方法: /{ $command } <ユーザー名>
+cmd-kick-usage = 使用方法: /{ $command } <ユーザー名> [理由]
 cmd-topic-desc = チャットトピックを表示または管理
 cmd-topic-usage = 使用方法: /{ $command } [設定|クリア] [トピック]
 cmd-topic-arg-set = 設定
@@ -707,6 +707,27 @@ notification-user-message-from = {$username}からのメッセージ
 
 # Fallback values
 unknown-server = 不明なサーバー
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = { $nickname } を切断
+disconnect-action-kick = キック
+disconnect-action-ban = BAN
+disconnect-duration-label = 期間:
+disconnect-reason-label = 理由:
+disconnect-reason-placeholder = 任意の理由
+button-kick = キック
+button-ban = BAN
+
+# Ban duration options
+ban-duration-10m = 10分
+ban-duration-1h = 1時間
+ban-duration-1d = 1日
+ban-duration-7d = 7日
+ban-duration-30d = 30日
+ban-duration-permanent = 永久
 
 # =============================================================================
 # Ban System

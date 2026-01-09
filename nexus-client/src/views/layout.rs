@@ -12,6 +12,7 @@ use super::constants::{
     PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE,
     PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
+use super::disconnect_dialog::disconnect_dialog_view;
 use super::files::{FilePermissions, files_view};
 use super::news::news_view;
 use super::server_info::{ServerInfoData, server_info_view};
@@ -646,8 +647,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
         ctx.timestamp_settings,
     );
 
-    // Overlay panels on top when active
-    match ctx.active_panel {
+    // Build the main content based on active panel
+    let main_content: Element<'a, Message> = match ctx.active_panel {
         ActivePanel::About => stack![chat, about_view(ctx.theme)]
             .width(Fill)
             .height(Fill)
@@ -758,6 +759,16 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             .height(Fill)
             .into(),
         ActivePanel::None => chat,
+    };
+
+    // If disconnect dialog is open, overlay it on top of everything
+    if let Some(ref dialog_state) = ctx.conn.disconnect_dialog {
+        stack![main_content, disconnect_dialog_view(ctx.conn, dialog_state)]
+            .width(Fill)
+            .height(Fill)
+            .into()
+    } else {
+        main_content
     }
 }
 

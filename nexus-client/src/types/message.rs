@@ -279,8 +279,19 @@ pub enum Message {
     UpdateServerInfoPressed,
     /// User list: Info icon clicked on expanded user (nickname)
     UserInfoIconClicked(String),
-    /// User list: Kick icon clicked on expanded user (nickname)
-    UserKickIconClicked(String),
+    /// User list: Disconnect icon clicked on expanded user (nickname)
+    /// Opens the disconnect dialog with kick/ban options
+    DisconnectIconClicked(String),
+    /// Disconnect dialog: Action changed (kick or ban)
+    DisconnectDialogActionChanged(crate::types::DisconnectAction),
+    /// Disconnect dialog: Ban duration changed
+    DisconnectDialogDurationChanged(crate::types::BanDuration),
+    /// Disconnect dialog: Ban reason changed
+    DisconnectDialogReasonChanged(String),
+    /// Disconnect dialog: Cancel button pressed
+    DisconnectDialogCancel,
+    /// Disconnect dialog: Submit button pressed (kick or ban)
+    DisconnectDialogSubmit,
     /// User list: User item clicked (expand/collapse) (nickname)
     UserListItemClicked(String),
     /// User list: Message icon clicked on expanded user (nickname)

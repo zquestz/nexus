@@ -111,6 +111,7 @@ err-topic-too-long = 주제는 { $max_length }자를 초과할 수 없습니다
 err-version-major-mismatch = 호환되지 않는 프로토콜 버전: 서버는 버전 { $server_major }.x, 클라이언트는 버전 { $client_major }.x입니다
 err-version-client-too-new = 클라이언트 버전 { $client_version }이(가) 서버 버전 { $server_version }보다 최신입니다. 서버를 업데이트하거나 이전 클라이언트를 사용하세요.
 err-kicked-by = { $username }에게 추방당했습니다
+err-kicked-by-reason = { $username }에게 추방당했습니다: { $reason }
 err-username-exists = 사용자 이름 "{ $username }"이(가) 이미 존재합니다
 err-user-not-found = 사용자 "{ $username }"을(를) 찾을 수 없습니다
 err-user-not-online = 사용자 "{ $username }"이(가) 온라인 상태가 아닙니다

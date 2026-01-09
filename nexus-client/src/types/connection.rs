@@ -11,9 +11,9 @@ use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
 use super::{
-    ActivePanel, ChatMessage, ChatTab, FilesManagementState, NewsManagementState,
-    PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState, UserInfo,
-    UserManagementState,
+    ActivePanel, ChatMessage, ChatTab, DisconnectDialogState, FilesManagementState,
+    NewsManagementState, PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState,
+    UserInfo, UserManagementState,
 };
 use crate::image::CachedImage;
 
@@ -238,6 +238,8 @@ pub struct ServerConnection {
     pub files_management: FilesManagementState,
     /// Pending kick message (set when we receive a kick error, used on disconnect)
     pub pending_kick_message: Option<String>,
+    /// Disconnect dialog state (Some when dialog is open)
+    pub disconnect_dialog: Option<DisconnectDialogState>,
 }
 
 impl ServerConnection {
@@ -320,6 +322,7 @@ impl ServerConnection {
             tab_completion: None,
             files_management: FilesManagementState::default(),
             pending_kick_message: None,
+            disconnect_dialog: None,
         }
     }
 }

@@ -502,7 +502,7 @@ cmd-message-usage = 사용법: /{ $command } <사용자명> <메시지>
 cmd-userinfo-desc = 사용자 정보 표시
 cmd-userinfo-usage = 사용법: /{ $command } <사용자명>
 cmd-kick-desc = 서버에서 사용자 추방
-cmd-kick-usage = 사용법: /{ $command } <사용자명>
+cmd-kick-usage = 사용법: /{ $command } <사용자명> [사유]
 cmd-topic-desc = 채팅 주제 보기 또는 관리
 cmd-topic-usage = 사용법: /{ $command } [설정|지우기] [주제]
 cmd-topic-arg-set = 설정
@@ -707,6 +707,27 @@ notification-user-message-from = {$username}님의 메시지
 
 # Fallback values
 unknown-server = 알 수 없는 서버
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = { $nickname } 연결 끊기
+disconnect-action-kick = 추방
+disconnect-action-ban = 차단
+disconnect-duration-label = 기간:
+disconnect-reason-label = 사유:
+disconnect-reason-placeholder = 선택적 사유
+button-kick = 추방
+button-ban = 차단
+
+# Ban duration options
+ban-duration-10m = 10분
+ban-duration-1h = 1시간
+ban-duration-1d = 1일
+ban-duration-7d = 7일
+ban-duration-30d = 30일
+ban-duration-permanent = 영구
 
 # =============================================================================
 # Ban System

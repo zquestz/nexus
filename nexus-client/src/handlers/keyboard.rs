@@ -196,6 +196,14 @@ impl NexusApp {
             ..
         }) = event
         {
+            // First check if disconnect dialog is open
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+                && conn.disconnect_dialog.is_some()
+            {
+                return self.update(Message::DisconnectDialogCancel);
+            }
+
             if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // Cancel bookmark edit
                 return self.update(Message::CancelBookmarkEdit);

@@ -365,12 +365,14 @@ Disconnect a user from the server.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `nickname` | string | Yes | Display name of user to kick |
+| `reason` | string | No | Reason for the kick (shown to kicked user) |
 
 **Example:**
 
 ```json
 {
-  "nickname": "troublemaker"
+  "nickname": "troublemaker",
+  "reason": "Please stop spamming"
 }
 ```
 

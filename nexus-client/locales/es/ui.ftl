@@ -516,7 +516,7 @@ cmd-message-usage = Uso: /{ $command } <usuario> <mensaje>
 cmd-userinfo-desc = Mostrar información sobre un usuario
 cmd-userinfo-usage = Uso: /{ $command } <usuario>
 cmd-kick-desc = Expulsar a un usuario del servidor
-cmd-kick-usage = Uso: /{ $command } <usuario>
+cmd-kick-usage = Uso: /{ $command } <usuario> [razón]
 cmd-topic-desc = Ver o gestionar el tema del chat
 cmd-topic-usage = Uso: /{ $command } [set|clear] [tema]
 cmd-topic-set-usage = Uso: /{ $command } set <tema>
@@ -730,6 +730,27 @@ notification-user-message-from = Mensaje de {$username}
 
 # Fallback values
 unknown-server = Servidor desconocido
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = Desconectar { $nickname }
+disconnect-action-kick = Expulsar
+disconnect-action-ban = Banear
+disconnect-duration-label = Duración:
+disconnect-reason-label = Razón:
+disconnect-reason-placeholder = Razón opcional
+button-kick = Expulsar
+button-ban = Banear
+
+# Ban duration options
+ban-duration-10m = 10 minutos
+ban-duration-1h = 1 hora
+ban-duration-1d = 1 día
+ban-duration-7d = 7 días
+ban-duration-30d = 30 días
+ban-duration-permanent = Permanente
 
 # =============================================================================
 # Ban System

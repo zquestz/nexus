@@ -112,6 +112,14 @@ Permissions control what actions users can perform. Admins have all permissions 
 | `file_delete` | Delete files/directories |
 | `file_root` | Access entire file root |
 
+### Ban Permissions
+
+| Permission | Allows |
+|------------|--------|
+| `ban_create` | Ban users by IP or CIDR range |
+| `ban_delete` | Remove bans |
+| `ban_list` | View active bans |
+
 ## Permission Presets
 
 Common permission combinations:

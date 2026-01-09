@@ -321,6 +321,15 @@ pub fn err_kicked_by(locale: &str, username: &str) -> String {
     t_args(locale, "err-kicked-by", &[("username", username)])
 }
 
+/// Get translated "kicked by" message with reason
+pub fn err_kicked_by_with_reason(locale: &str, username: &str, reason: &str) -> String {
+    t_args(
+        locale,
+        "err-kicked-by-reason",
+        &[("username", username), ("reason", reason)],
+    )
+}
+
 /// Get translated "locale invalid characters" error
 pub fn err_locale_invalid_characters(locale: &str) -> String {
     t(locale, "err-locale-invalid-characters")

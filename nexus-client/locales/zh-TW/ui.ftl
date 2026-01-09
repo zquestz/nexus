@@ -502,7 +502,7 @@ cmd-message-usage = 用法：/{ $command } <用戶名> <訊息>
 cmd-userinfo-desc = 顯示用戶資訊
 cmd-userinfo-usage = 用法：/{ $command } <用戶名>
 cmd-kick-desc = 將用戶踢出伺服器
-cmd-kick-usage = 用法：/{ $command } <用戶名>
+cmd-kick-usage = 用法：/{ $command } <用戶名> [原因]
 cmd-topic-desc = 查看或管理聊天主題
 cmd-topic-usage = 用法：/{ $command } [設定|清除] [主題]
 cmd-topic-arg-set = 設定
@@ -707,6 +707,27 @@ notification-user-message-from = 來自{$username}的訊息
 
 # Fallback values
 unknown-server = 未知伺服器
+
+# =============================================================================
+# Disconnect Dialog
+# =============================================================================
+
+title-disconnect-user-name = 斷開 { $nickname } 的連線
+disconnect-action-kick = 踢出
+disconnect-action-ban = 封鎖
+disconnect-duration-label = 時長:
+disconnect-reason-label = 原因:
+disconnect-reason-placeholder = 選填原因
+button-kick = 踢出
+button-ban = 封鎖
+
+# Ban duration options
+ban-duration-10m = 10分鐘
+ban-duration-1h = 1小時
+ban-duration-1d = 1天
+ban-duration-7d = 7天
+ban-duration-30d = 30天
+ban-duration-permanent = 永久
 
 # =============================================================================
 # Ban System

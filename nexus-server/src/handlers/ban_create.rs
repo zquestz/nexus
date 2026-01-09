@@ -16,6 +16,8 @@ use super::{
 };
 use crate::ban_cache::parse_ip_or_cidr;
 use crate::db::Permission;
+use crate::users::UserManager;
+use crate::users::manager::DisconnectedSession;
 
 /// Handle BanCreate command
 ///
@@ -102,39 +104,39 @@ where
     // Resolve target to IP address(es) or CIDR range
     let (targets_to_ban, nickname_annotation, is_cidr) =
         match resolve_target(&target, &requesting_user.username, ctx).await {
-        Ok(result) => result,
-        Err(TargetResolutionError::InvalidTarget) => {
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_invalid_target(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(TargetResolutionError::IsAdmin) => {
-            eprintln!(
-                "BanCreate from {} (user: {}) attempted to ban admin by nickname",
-                ctx.peer_addr, requesting_user.username
-            );
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_admin_by_nickname(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(TargetResolutionError::IsSelf) => {
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_self(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
+            Ok(result) => result,
+            Err(TargetResolutionError::InvalidTarget) => {
+                let response = ServerMessage::BanCreateResponse {
+                    success: false,
+                    error: Some(err_ban_invalid_target(ctx.locale)),
+                    ips: None,
+                    nickname: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+            Err(TargetResolutionError::IsAdmin) => {
+                eprintln!(
+                    "BanCreate from {} (user: {}) attempted to ban admin by nickname",
+                    ctx.peer_addr, requesting_user.username
+                );
+                let response = ServerMessage::BanCreateResponse {
+                    success: false,
+                    error: Some(err_ban_admin_by_nickname(ctx.locale)),
+                    ips: None,
+                    nickname: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+            Err(TargetResolutionError::IsSelf) => {
+                let response = ServerMessage::BanCreateResponse {
+                    success: false,
+                    error: Some(err_ban_self(ctx.locale)),
+                    ips: None,
+                    nickname: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+        };
 
     // Check if any of the IPs/ranges have an admin connected
     // (this applies to all bans - by nickname, IP, or CIDR)
@@ -236,24 +238,30 @@ where
         }
     }
 
-    // Disconnect affected sessions
+    // Disconnect affected sessions and broadcast UserDisconnected to other clients
     if is_cidr {
         // For CIDR ranges, disconnect all sessions whose IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
-            ctx.user_manager
+            let disconnected = ctx
+                .user_manager
                 .disconnect_sessions_in_range(&net, |user_locale| {
                     build_ban_disconnect_message(user_locale, expires_at)
                 })
                 .await;
+
+            broadcast_disconnections(ctx.user_manager, disconnected).await;
         }
     } else {
         // For single IPs, disconnect sessions from those specific IPs
         for ip in &banned_targets {
-            ctx.user_manager
+            let disconnected = ctx
+                .user_manager
                 .disconnect_sessions_by_ip(ip, |user_locale| {
                     build_ban_disconnect_message(user_locale, expires_at)
                 })
                 .await;
+
+            broadcast_disconnections(ctx.user_manager, disconnected).await;
         }
     }
 
@@ -265,6 +273,24 @@ where
         nickname: nickname_annotation,
     };
     ctx.send_message(&response).await
+}
+
+/// Broadcast UserDisconnected for each removed session
+async fn broadcast_disconnections(
+    user_manager: &UserManager,
+    disconnected: Vec<DisconnectedSession>,
+) {
+    for session in disconnected {
+        user_manager
+            .broadcast_user_event(
+                ServerMessage::UserDisconnected {
+                    session_id: session.session_id,
+                    nickname: session.nickname,
+                },
+                Some(session.session_id),
+            )
+            .await;
+    }
 }
 
 /// Error types for target resolution

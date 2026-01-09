@@ -72,7 +72,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserDelete", 67);
     m.insert("UserEdit", 65);
     m.insert("UserInfo", 65);
-    m.insert("UserKick", 65);
+    m.insert("UserKick", 2125); // nickname (32) + reason (2048) + overhead
     m.insert("UserList", 31);
     m.insert("UserUpdate", USER_UPDATE_BASE as u64 + perm_size);
     m.insert("UserAway", 160); // status (128) + overhead
@@ -406,6 +406,7 @@ mod tests {
     fn test_limit_user_kick() {
         let msg = ClientMessage::UserKick {
             nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            reason: Some(str_of_len(MAX_BAN_REASON_LENGTH)),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("UserKick") as usize);
     }

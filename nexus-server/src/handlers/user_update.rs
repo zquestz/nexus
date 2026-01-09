@@ -588,20 +588,8 @@ where
                             let _ = user.tx.send((disconnect_msg, None));
                         }
 
-                        // Remove user from manager - this drops tx, causing rx.recv() to return None,
-                        // which breaks the connection loop and triggers cleanup
-                        if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
-                            // Broadcast disconnect to users with user_list permission
-                            ctx.user_manager
-                                .broadcast_user_event(
-                                    ServerMessage::UserDisconnected {
-                                        session_id,
-                                        nickname: removed_user.nickname.clone(),
-                                    },
-                                    Some(session_id), // Exclude the disabled user
-                                )
-                                .await;
-                        }
+                        // Remove user from manager and broadcast disconnection
+                        ctx.user_manager.remove_user_and_broadcast(session_id).await;
                     }
                 }
 

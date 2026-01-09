@@ -31,7 +31,9 @@ impl NexusApp {
         let mut tasks = Vec::new();
 
         // Header
-        tasks.push(self.add_chat_message(connection_id, ChatMessage::info(t("msg-ban-list-header"))));
+        tasks.push(
+            self.add_chat_message(connection_id, ChatMessage::info(t("msg-ban-list-header"))),
+        );
 
         // Each ban entry
         for ban in bans {
@@ -91,16 +93,22 @@ fn format_remaining_time(expires_at: i64) -> String {
     let minutes = (remaining_secs % 3600) / 60;
 
     if days > 0 {
-        t_args("msg-ban-remaining-days", &[
-            ("days", &days.to_string()),
-            ("hours", &hours.to_string()),
-        ])
+        t_args(
+            "msg-ban-remaining-days",
+            &[("days", &days.to_string()), ("hours", &hours.to_string())],
+        )
     } else if hours > 0 {
-        t_args("msg-ban-remaining-hours", &[
-            ("hours", &hours.to_string()),
-            ("minutes", &minutes.to_string()),
-        ])
+        t_args(
+            "msg-ban-remaining-hours",
+            &[
+                ("hours", &hours.to_string()),
+                ("minutes", &minutes.to_string()),
+            ],
+        )
     } else {
-        t_args("msg-ban-remaining-minutes", &[("minutes", &minutes.to_string())])
+        t_args(
+            "msg-ban-remaining-minutes",
+            &[("minutes", &minutes.to_string())],
+        )
     }
 }

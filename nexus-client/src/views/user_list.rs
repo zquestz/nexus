@@ -3,7 +3,9 @@
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
 use iced::{Center, Color, Element, Fill, Theme};
 
-use super::constants::{PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE};
+use super::constants::{
+    PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
+};
 use crate::avatar::generate_identicon;
 use crate::i18n::t;
 use crate::icon;
@@ -97,7 +99,8 @@ fn create_user_toolbar<'a>(
     // Check permissions
     let has_user_info_permission = conn.has_permission(PERMISSION_USER_INFO);
     let has_user_message_permission = conn.has_permission(PERMISSION_USER_MESSAGE);
-    let has_user_kick_permission = conn.has_permission(PERMISSION_USER_KICK);
+    let has_disconnect_permission =
+        conn.has_permission(PERMISSION_USER_KICK) || conn.has_permission(PERMISSION_BAN_CREATE);
 
     // Build toolbar row
     let mut toolbar_row = row![].spacing(NO_SPACING).width(Fill);
@@ -138,19 +141,19 @@ fn create_user_toolbar<'a>(
         toolbar_row = toolbar_row.push(with_tooltip(message_button, t("tooltip-message")));
     }
 
-    // Kick button (if not self, has permission, and target is not admin)
-    if !is_self && has_user_kick_permission && !target_is_admin {
-        // Add spacer to push kick button to the right
+    // Disconnect button (if not self, has kick or ban permission, and target is not admin)
+    if !is_self && has_disconnect_permission && !target_is_admin {
+        // Add spacer to push disconnect button to the right
         toolbar_row = toolbar_row.push(Space::new().width(Fill).height(SEPARATOR_HEIGHT));
 
-        let kick_icon = icon_container(icon::kick());
-        let kick_button = enabled_icon_button(
-            kick_icon,
-            Message::UserKickIconClicked(nickname_owned),
+        let disconnect_icon = icon_container(icon::kick());
+        let disconnect_button = enabled_icon_button(
+            disconnect_icon,
+            Message::DisconnectIconClicked(nickname_owned),
             danger_color,
             icon_color,
         );
-        toolbar_row = toolbar_row.push(with_tooltip(kick_button, t("tooltip-kick")));
+        toolbar_row = toolbar_row.push(with_tooltip(disconnect_button, t("tooltip-disconnect")));
     }
 
     toolbar_row

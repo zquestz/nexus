@@ -65,6 +65,42 @@ Clear your away status and status message.
 /b
 ```
 
+### /ban
+
+Ban a user by IP address, CIDR range, or online nickname.
+
+**Aliases:** None
+
+**Permission:** `ban_create`
+
+**Usage:**
+```
+/ban Spammer                       # Permanent ban, no reason
+/ban Spammer 1h                    # 1 hour ban
+/ban Spammer 0 flooding chat       # Permanent ban with reason
+/ban Spammer 1h flooding chat      # 1 hour ban with reason
+/ban 192.168.1.100                 # Ban single IP
+/ban 192.168.1.0/24 7d             # Ban CIDR range for 7 days
+```
+
+**Duration format:** `<number><unit>` where unit is `m` (minutes), `h` (hours), `d` (days). Use `0` for permanent when followed by a reason.
+
+**Note:** You cannot ban administrators or yourself.
+
+### /bans
+
+List all active bans on the server.
+
+**Aliases:** `/banlist`
+
+**Permission:** `ban_list`
+
+**Usage:**
+```
+/bans
+/banlist
+```
+
 ### /broadcast
 
 Send a broadcast message to all connected users. Broadcasts appear prominently to all users.
@@ -134,7 +170,8 @@ Kick a user from the server, disconnecting them immediately.
 **Usage:**
 ```
 /kick alice
-/k troublemaker
+/kick alice Please stop spamming
+/k troublemaker Being disruptive
 ```
 
 **Note:** You cannot kick administrators unless you are also an administrator.
@@ -247,6 +284,23 @@ View or manage the chat topic.
 /topic clear                     # Clear the topic
 ```
 
+### /unban
+
+Remove an IP ban.
+
+**Aliases:** None
+
+**Permission:** `ban_delete`
+
+**Usage:**
+```
+/unban Spammer                   # Unban by nickname (removes all IPs for that user)
+/unban 192.168.1.100             # Unban single IP
+/unban 192.168.1.0/24            # Unban CIDR range (also removes contained IPs)
+```
+
+**Note:** When unbanning a CIDR range, any single IPs or smaller ranges within it are also removed.
+
 ### /window
 
 Manage chat tabs (server chat and PM conversations).
@@ -272,6 +326,8 @@ Manage chat tabs (server chat and PM conversations).
 |---------|---------|------------|-------------|
 | `/away` | `/a` | None | Set yourself as away |
 | `/back` | `/b` | None | Clear away status |
+| `/ban` | — | `ban_create` | Ban a user by IP, CIDR, or nickname |
+| `/bans` | `/banlist` | `ban_list` | List active bans |
 | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 | `/clear` | — | None | Clear chat history for current tab |
 | `/focus` | `/f` | None | Focus server chat or a user's PM tab |
@@ -284,6 +340,7 @@ Manage chat tabs (server chat and PM conversations).
 | `/sinfo` | `/si`, `/serverinfo` | None | Show server information |
 | `/status` | `/s` | None | Set or clear status message |
 | `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |
+| `/unban` | — | `ban_delete` | Remove an IP ban |
 | `/window` | `/w` | None | Manage chat tabs |
 
 ## Keyboard Shortcuts

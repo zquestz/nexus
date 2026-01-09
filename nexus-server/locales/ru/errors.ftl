@@ -111,6 +111,7 @@ err-topic-too-long = Тема не может превышать { $max_length }
 err-version-major-mismatch = Несовместимая версия протокола: сервер версии { $server_major }.x, клиент версии { $client_major }.x
 err-version-client-too-new = Версия клиента { $client_version } новее версии сервера { $server_version }. Пожалуйста, обновите сервер или используйте более старый клиент.
 err-kicked-by = Вы были выгнаны пользователем { $username }
+err-kicked-by-reason = Вы были выгнаны пользователем { $username }: { $reason }
 err-username-exists = Имя пользователя "{ $username }" уже существует
 err-user-not-found = Пользователь "{ $username }" не найден
 err-user-not-online = Пользователь "{ $username }" не в сети

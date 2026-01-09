@@ -143,20 +143,9 @@ where
         };
         let _ = online_user.tx.send((disconnect_msg, None));
 
-        // Remove them from UserManager
+        // Remove them from UserManager and broadcast disconnection
         let session_id = online_user.session_id;
-        if let Some(removed_user) = ctx.user_manager.remove_user(session_id).await {
-            // Broadcast disconnection to users with user_list permission
-            ctx.user_manager
-                .broadcast_user_event(
-                    ServerMessage::UserDisconnected {
-                        session_id,
-                        nickname: removed_user.nickname.clone(),
-                    },
-                    Some(session_id), // Exclude the deleted user
-                )
-                .await;
-        }
+        ctx.user_manager.remove_user_and_broadcast(session_id).await;
     }
 
     // Delete user from database (atomic last-admin protection)

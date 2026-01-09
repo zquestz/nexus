@@ -6,6 +6,7 @@ mod broadcast;
 mod chat;
 mod connection;
 pub(crate) mod constants;
+mod disconnect_dialog;
 pub(crate) mod files;
 mod fingerprint;
 mod layout;
