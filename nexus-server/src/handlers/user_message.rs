@@ -169,7 +169,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_shared_user, login_user, read_server_message,
+        create_test_context, login_shared_user, login_user, read_channel_response,
+        read_server_message,
     };
 
     #[tokio::test]
@@ -448,8 +449,11 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Check sender gets success response
-        let response = read_server_message(&mut test_ctx.client).await;
+        // Check sender gets success response (via channel since success uses send_message_via_channel)
+        // Skip broadcast messages (UserMessage) to find the response
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success);
@@ -488,8 +492,11 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Check admin gets success response
-        let response = read_server_message(&mut test_ctx.client).await;
+        // Check admin gets success response (via channel since success uses send_message_via_channel)
+        // Skip broadcast messages (UserMessage) to find the response
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success);
@@ -559,7 +566,11 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        // Success response comes via channel since success uses send_message_via_channel
+        // Skip broadcast messages (UserMessage) to find the response
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(
@@ -688,7 +699,11 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        // Success response comes via channel since success uses send_message_via_channel
+        // Skip broadcast messages (UserMessage) to find the response
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
         match response {
             ServerMessage::UserMessageResponse { success, .. } => {
                 assert!(success, "Message from shared account should succeed");
@@ -736,7 +751,11 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        // Success response comes via channel since success uses send_message_via_channel
+        // Skip broadcast messages (UserMessage) to find the response
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(success, "Should allow messaging shared account by nickname");

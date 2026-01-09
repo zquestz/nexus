@@ -33,7 +33,7 @@ pub struct TestContext {
     pub db: Database,
     pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub peer_addr: SocketAddr,
-    pub _rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>, // Keep receiver alive to prevent channel closure
+    pub rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
@@ -109,7 +109,7 @@ pub async fn create_test_context() -> TestContext {
         db,
         tx,
         peer_addr,
-        _rx: rx,
+        rx,
         message_id,
         file_root: None,
         connection_tracker,
@@ -299,4 +299,28 @@ pub async fn read_server_message(client: &mut TcpStream) -> ServerMessage {
         .expect("Failed to read message")
         .expect("Connection closed unexpectedly")
         .message
+}
+
+/// Helper to drain broadcast messages from the channel until a response is found
+///
+/// In tests, all users share the same `tx` channel, so broadcast messages (like
+/// `UserMessage`) arrive in the channel before the response (like `UserMessageResponse`).
+/// This helper drains all broadcast messages and returns the first response message.
+///
+/// The `is_response` predicate should return true for the response message type you expect.
+pub fn read_channel_response<F>(test_ctx: &mut TestContext, is_response: F) -> ServerMessage
+where
+    F: Fn(&ServerMessage) -> bool,
+{
+    loop {
+        let msg = test_ctx
+            .rx
+            .try_recv()
+            .expect("No response message found in channel")
+            .0;
+        if is_response(&msg) {
+            return msg;
+        }
+        // Otherwise, it's a broadcast - skip it and keep looking
+    }
 }
