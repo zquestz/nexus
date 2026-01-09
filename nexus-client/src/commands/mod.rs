@@ -101,7 +101,7 @@ static COMMANDS: &[CommandRegistration] = &[
     CommandRegistration {
         info: CommandInfo {
             name: "away",
-            aliases: &["a"],
+            aliases: &["a", "afk"],
             description_key: "cmd-away-desc",
             usage_key: "cmd-away-usage",
             permissions: &[],
