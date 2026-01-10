@@ -582,11 +582,14 @@ impl NexusApp {
 
         if success {
             // Sort results based on current sort settings
-            let mut sorted_results = results;
-            if let Some(ref mut results) = sorted_results {
-                sort_search_results(results, tab.search_sort_column, tab.search_sort_ascending);
-            }
-            tab.search_results = sorted_results;
+            // Treat None as empty results (defensive against malformed server response)
+            let mut sorted_results = results.unwrap_or_default();
+            sort_search_results(
+                &mut sorted_results,
+                tab.search_sort_column,
+                tab.search_sort_ascending,
+            );
+            tab.search_results = Some(sorted_results);
             tab.search_error = None;
         } else {
             tab.search_results = None;

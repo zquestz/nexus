@@ -13,10 +13,23 @@ use crate::types::{
 };
 use crate::views::files::build_navigate_path;
 
+/// Strip leading slash from a path
+///
+/// Search results have paths with leading slashes (e.g., "/Documents/file.txt"),
+/// but server requests expect paths without leading slashes (e.g., "Documents/file.txt").
+fn strip_leading_slash(path: &str) -> &str {
+    path.strip_prefix('/').unwrap_or(path)
+}
+
 /// Sort search results by the specified column and direction
 ///
 /// For the Name column, directories are always sorted first.
 /// For other columns, ties are broken by name (case-insensitive, ascending).
+///
+/// Note: This function has parallel sorting logic to `FileTab::update_sorted_entries()`
+/// in `types/form.rs`. That function sorts `FileEntry` (for directory listings),
+/// while this sorts `FileSearchResult` (for search results). If you modify sorting
+/// behavior here, consider whether the same change should apply there.
 pub fn sort_search_results(
     results: &mut [FileSearchResult],
     column: FileSortColumn,
@@ -457,7 +470,9 @@ impl NexusApp {
         };
 
         // Set loading state and clear previous results
+        // Store the viewing_root used for this search (for downloads from results)
         tab.search_query = Some(query.clone());
+        tab.search_viewing_root = viewing_root;
         tab.search_loading = true;
         tab.search_results = None;
         tab.search_error = None;
@@ -469,7 +484,10 @@ impl NexusApp {
 
         match conn.send(message) {
             Ok(message_id) => {
-                // Store the message_id to detect stale responses
+                // Store the message_id to detect stale responses.
+                // Note: We need a second tab lookup here because we can't hold the mutable
+                // borrow of `tab` across `conn.send()` (which also borrows `conn`), and we
+                // only get the `message_id` after the send succeeds.
                 if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                     tab.current_search_request = Some(message_id);
                 }
@@ -1407,12 +1425,12 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get the viewing_root from the current tab's search context
-        // This ensures the download uses the same root context as the search
-        let remote_root = conn.files_management.active_tab().viewing_root;
+        // Use the root context that was active when the search was performed
+        // This ensures downloads work correctly even if user switches tabs
+        let remote_root = conn.files_management.active_tab().search_viewing_root;
 
         // Strip leading slash for the download path
-        let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+        let path = strip_leading_slash(&result.path);
 
         if result.is_directory {
             self.queue_download_with_root(path.to_string(), true, remote_root)
@@ -1434,10 +1452,11 @@ impl NexusApp {
         };
 
         let tab_id = conn.files_management.active_tab_id();
-        let viewing_root = conn.files_management.active_tab().viewing_root;
+        // Use the root context that was active when the search was performed
+        let viewing_root = conn.files_management.active_tab().search_viewing_root;
 
         // Strip leading slash for the path
-        let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+        let path = strip_leading_slash(&result.path);
 
         let message = ClientMessage::FileInfo {
             path: path.to_string(),
@@ -1449,8 +1468,8 @@ impl NexusApp {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::FileInfoResult { tab_id });
             }
-            Err(err) => {
-                eprintln!("Failed to send file info request: {err}");
+            Err(_) => {
+                // Error is silently ignored - the info dialog just won't appear
             }
         }
 
@@ -1485,14 +1504,10 @@ impl NexusApp {
         // Determine the target path
         let target_path = if result.is_directory {
             // Navigate into the directory
-            result
-                .path
-                .strip_prefix('/')
-                .unwrap_or(&result.path)
-                .to_string()
+            strip_leading_slash(&result.path).to_string()
         } else {
             // Navigate to parent directory
-            let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+            let path = strip_leading_slash(&result.path);
             if let Some(pos) = path.rfind('/') {
                 path[..pos].to_string()
             } else {
@@ -1501,8 +1516,8 @@ impl NexusApp {
             }
         };
 
-        // Get viewing_root from current search tab
-        let viewing_root = conn.files_management.active_tab().viewing_root;
+        // Use the root context that was active when the search was performed
+        let viewing_root = conn.files_management.active_tab().search_viewing_root;
 
         // Create new tab at target path
         let new_tab = FileTab::new_at_path(target_path.clone(), viewing_root);
@@ -1527,7 +1542,6 @@ impl NexusApp {
                 );
             }
             Err(err) => {
-                eprintln!("Failed to send file list request: {err}");
                 if let Some(tab) = conn.files_management.tab_by_id_mut(new_tab_id) {
                     tab.error = Some(err);
                 }

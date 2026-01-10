@@ -563,6 +563,14 @@ fn search_breadcrumb<'a>(query: &str) -> Element<'a, Message> {
 }
 
 /// Extract the parent directory path from a full file path
+///
+/// Used for displaying the "Path" column in search results, showing where each
+/// result is located. Returns the parent directory with a leading slash for display
+/// (e.g., "/Documents" for a file at "/Documents/file.txt").
+///
+/// Note: Similar parent-path extraction logic exists in `open_search_result_in_new_tab()`
+/// in `handlers/files.rs`, but that version returns without the leading slash since
+/// it's used for server requests rather than display.
 fn parent_path(path: &str) -> String {
     // Remove leading slash if present for processing
     let path = path.strip_prefix('/').unwrap_or(path);

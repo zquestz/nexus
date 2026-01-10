@@ -394,6 +394,8 @@ pub struct FileTab {
     pub search_loading: bool,
     /// Current active search request ID (for ignoring stale responses)
     pub current_search_request: Option<MessageId>,
+    /// Root mode when search was performed (for downloads from search results)
+    pub search_viewing_root: bool,
     /// Sort column for search results (separate from browsing sort)
     pub search_sort_column: FileSortColumn,
     /// Sort ascending for search results (separate from browsing sort)
@@ -428,6 +430,7 @@ impl Default for FileTab {
             search_error: None,
             search_loading: false,
             current_search_request: None,
+            search_viewing_root: false,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -466,6 +469,7 @@ impl FileTab {
             search_error: None,
             search_loading: false,
             current_search_request: None,
+            search_viewing_root: false,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -501,6 +505,7 @@ impl FileTab {
             search_error: None,
             search_loading: false,
             current_search_request: None,
+            search_viewing_root: false,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -519,6 +524,7 @@ impl FileTab {
         self.search_error = None;
         self.search_loading = false;
         self.current_search_request = None;
+        // Note: search_viewing_root is NOT cleared - it's only relevant when search_query is Some
     }
 
     /// Get the tab display name
@@ -616,6 +622,11 @@ impl FileTab {
     }
 
     /// Update the sorted entries cache based on current entries and sort settings
+    ///
+    /// Note: This function has parallel sorting logic to `sort_search_results()`
+    /// in `handlers/files.rs`. That function sorts `FileSearchResult` (for search results),
+    /// while this sorts `FileEntry` (for directory listings). If you modify sorting
+    /// behavior here, consider whether the same change should apply there.
     pub fn update_sorted_entries(&mut self) {
         self.sorted_entries = self.entries.as_ref().map(|entries| {
             let mut sorted = entries.clone();
@@ -1538,6 +1549,7 @@ mod tests {
             search_error: None,
             search_loading: false,
             current_search_request: None,
+            search_viewing_root: false,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         };
@@ -2183,5 +2195,50 @@ mod tests {
     fn test_new_at_path_has_no_current_search_request() {
         let tab = FileTab::new_at_path("/Documents".to_string(), true);
         assert!(tab.current_search_request.is_none());
+    }
+
+    #[test]
+    fn test_search_viewing_root_false_by_default() {
+        let tab = FileTab::default();
+        assert!(!tab.search_viewing_root);
+    }
+
+    #[test]
+    fn test_search_viewing_root_not_cleared_by_clear_search() {
+        // search_viewing_root should persist after clear_search since it's
+        // only relevant when search_query is Some, and may be needed for
+        // downloads initiated just before clearing
+        let mut tab = FileTab {
+            search_query: Some("test".to_string()),
+            search_viewing_root: true,
+            ..Default::default()
+        };
+
+        tab.clear_search();
+
+        // search_viewing_root is NOT cleared (by design)
+        assert!(tab.search_viewing_root);
+    }
+
+    #[test]
+    fn test_search_viewing_root_not_copied_to_new_tab() {
+        let source_tab = FileTab {
+            current_path: "/Documents".to_string(),
+            search_viewing_root: true,
+            ..Default::default()
+        };
+
+        let new_tab = FileTab::new_from_location(&source_tab);
+
+        // New tabs start with search_viewing_root = false
+        assert!(!new_tab.search_viewing_root);
+    }
+
+    #[test]
+    fn test_new_at_path_has_search_viewing_root_false() {
+        let tab = FileTab::new_at_path("/Documents".to_string(), true);
+        // Even though viewing_root is true, search_viewing_root starts false
+        // It's only set when a search is actually performed
+        assert!(!tab.search_viewing_root);
     }
 }
