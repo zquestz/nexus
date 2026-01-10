@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::config::events::EventType;
 
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::{NewsItem, UserInfo};
 use nexus_common::{ALL_PERMISSIONS, DEFAULT_PORT};
 
@@ -391,6 +392,8 @@ pub struct FileTab {
     pub search_error: Option<String>,
     /// Whether a search is in progress
     pub search_loading: bool,
+    /// Current active search request ID (for ignoring stale responses)
+    pub current_search_request: Option<MessageId>,
     /// Sort column for search results (separate from browsing sort)
     pub search_sort_column: FileSortColumn,
     /// Sort ascending for search results (separate from browsing sort)
@@ -424,6 +427,7 @@ impl Default for FileTab {
             search_results: None,
             search_error: None,
             search_loading: false,
+            current_search_request: None,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -461,6 +465,7 @@ impl FileTab {
             search_results: None,
             search_error: None,
             search_loading: false,
+            current_search_request: None,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -495,6 +500,7 @@ impl FileTab {
             search_results: None,
             search_error: None,
             search_loading: false,
+            current_search_request: None,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         }
@@ -512,6 +518,7 @@ impl FileTab {
         self.search_results = None;
         self.search_error = None;
         self.search_loading = false;
+        self.current_search_request = None;
     }
 
     /// Get the tab display name
@@ -1530,6 +1537,7 @@ mod tests {
             search_results: None,
             search_error: None,
             search_loading: false,
+            current_search_request: None,
             search_sort_column: FileSortColumn::Name,
             search_sort_ascending: true,
         };
@@ -1864,18 +1872,22 @@ mod tests {
 
     #[test]
     fn test_file_tab_is_searching_true_when_query_set() {
-        let mut tab = FileTab::default();
-        tab.search_query = Some("test".to_string());
+        let tab = FileTab {
+            search_query: Some("test".to_string()),
+            ..Default::default()
+        };
         assert!(tab.is_searching());
     }
 
     #[test]
     fn test_file_tab_clear_search() {
-        let mut tab = FileTab::default();
-        tab.search_input = "test query".to_string();
-        tab.search_query = Some("test query".to_string());
-        tab.search_loading = true;
-        tab.search_error = Some("error".to_string());
+        let mut tab = FileTab {
+            search_input: "test query".to_string(),
+            search_query: Some("test query".to_string()),
+            search_loading: true,
+            search_error: Some("error".to_string()),
+            ..Default::default()
+        };
 
         tab.clear_search();
 
@@ -1888,15 +1900,19 @@ mod tests {
 
     #[test]
     fn test_file_tab_tab_name_shows_search_query() {
-        let mut tab = FileTab::default();
-        tab.search_query = Some("report".to_string());
+        let tab = FileTab {
+            search_query: Some("report".to_string()),
+            ..Default::default()
+        };
         assert_eq!(tab.tab_name(), "report");
     }
 
     #[test]
     fn test_file_tab_tab_name_shows_path_when_not_searching() {
-        let mut tab = FileTab::default();
-        tab.current_path = "/Documents/Work".to_string();
+        let tab = FileTab {
+            current_path: "/Documents/Work".to_string(),
+            ..Default::default()
+        };
         assert_eq!(tab.tab_name(), "Work");
     }
 
@@ -1950,13 +1966,15 @@ mod tests {
     #[test]
     fn test_new_tab_from_location_does_not_copy_search_state() {
         // Set up a tab with search state
-        let mut source_tab = FileTab::default();
-        source_tab.current_path = "/Documents".to_string();
-        source_tab.viewing_root = true;
-        source_tab.search_input = "report".to_string();
-        source_tab.search_query = Some("report".to_string());
-        source_tab.search_results = Some(vec![]);
-        source_tab.search_loading = true;
+        let source_tab = FileTab {
+            current_path: "/Documents".to_string(),
+            viewing_root: true,
+            search_input: "report".to_string(),
+            search_query: Some("report".to_string()),
+            search_results: Some(vec![]),
+            search_loading: true,
+            ..Default::default()
+        };
 
         // Create a new tab from that location
         let new_tab = FileTab::new_from_location(&source_tab);
@@ -1993,14 +2011,14 @@ mod tests {
 
     #[test]
     fn test_clear_search_resets_all_search_state() {
-        let mut tab = FileTab::default();
-
-        // Set all search-related state
-        tab.search_input = "test query".to_string();
-        tab.search_query = Some("test query".to_string());
-        tab.search_results = Some(vec![]);
-        tab.search_error = Some("some error".to_string());
-        tab.search_loading = true;
+        let mut tab = FileTab {
+            search_input: "test query".to_string(),
+            search_query: Some("test query".to_string()),
+            search_results: Some(vec![]),
+            search_error: Some("some error".to_string()),
+            search_loading: true,
+            ..Default::default()
+        };
 
         // Clear search
         tab.clear_search();
@@ -2016,10 +2034,12 @@ mod tests {
 
     #[test]
     fn test_navigate_home_clears_search() {
-        let mut tab = FileTab::default();
-        tab.current_path = "/some/path".to_string();
-        tab.search_query = Some("test".to_string());
-        tab.search_results = Some(vec![]);
+        let mut tab = FileTab {
+            current_path: "/some/path".to_string(),
+            search_query: Some("test".to_string()),
+            search_results: Some(vec![]),
+            ..Default::default()
+        };
 
         tab.navigate_home();
 
@@ -2030,9 +2050,11 @@ mod tests {
 
     #[test]
     fn test_navigate_to_does_not_clear_search() {
-        let mut tab = FileTab::default();
-        tab.search_query = Some("test".to_string());
-        tab.search_results = Some(vec![]);
+        let mut tab = FileTab {
+            search_query: Some("test".to_string()),
+            search_results: Some(vec![]),
+            ..Default::default()
+        };
 
         tab.navigate_to("/new/path".to_string());
 
@@ -2044,15 +2066,13 @@ mod tests {
 
     #[test]
     fn test_search_sort_settings_independent_of_browse_sort() {
-        let mut tab = FileTab::default();
-
-        // Set browse sort settings
-        tab.sort_column = FileSortColumn::Size;
-        tab.sort_ascending = false;
-
-        // Set search sort settings
-        tab.search_sort_column = FileSortColumn::Path;
-        tab.search_sort_ascending = true;
+        let tab = FileTab {
+            sort_column: FileSortColumn::Size,
+            sort_ascending: false,
+            search_sort_column: FileSortColumn::Path,
+            search_sort_ascending: true,
+            ..Default::default()
+        };
 
         // They should be independent
         assert_eq!(tab.sort_column, FileSortColumn::Size);
@@ -2072,22 +2092,29 @@ mod tests {
 
     #[test]
     fn test_is_searching_with_empty_results() {
-        let mut tab = FileTab::default();
-
         // With query but no results yet (loading)
-        tab.search_query = Some("test".to_string());
-        tab.search_results = None;
+        let tab = FileTab {
+            search_query: Some("test".to_string()),
+            search_results: None,
+            ..Default::default()
+        };
         assert!(tab.is_searching());
 
         // With query and empty results
-        tab.search_results = Some(vec![]);
+        let tab = FileTab {
+            search_query: Some("test".to_string()),
+            search_results: Some(vec![]),
+            ..Default::default()
+        };
         assert!(tab.is_searching());
     }
 
     #[test]
     fn test_tab_name_truncates_long_search_query() {
-        let mut tab = FileTab::default();
-        tab.search_query = Some("this is a very long search query".to_string());
+        let tab = FileTab {
+            search_query: Some("this is a very long search query".to_string()),
+            ..Default::default()
+        };
 
         // tab_name returns the full query (truncation is UI's responsibility)
         assert_eq!(tab.tab_name(), "this is a very long search query");
@@ -2095,18 +2122,16 @@ mod tests {
 
     #[test]
     fn test_clear_search_preserves_browsing_state() {
-        let mut tab = FileTab::default();
-
-        // Set up browsing state
-        tab.current_path = "/Documents/Work".to_string();
-        tab.viewing_root = true;
-        tab.sort_column = FileSortColumn::Size;
-        tab.sort_ascending = false;
-
-        // Enter search mode
-        tab.search_input = "report".to_string();
-        tab.search_query = Some("report".to_string());
-        tab.search_results = Some(vec![]);
+        let mut tab = FileTab {
+            current_path: "/Documents/Work".to_string(),
+            viewing_root: true,
+            sort_column: FileSortColumn::Size,
+            sort_ascending: false,
+            search_input: "report".to_string(),
+            search_query: Some("report".to_string()),
+            search_results: Some(vec![]),
+            ..Default::default()
+        };
 
         // Clear search
         tab.clear_search();
@@ -2120,5 +2145,43 @@ mod tests {
         // Search state should be cleared
         assert!(!tab.is_searching());
         assert!(tab.search_input.is_empty());
+    }
+
+    #[test]
+    fn test_current_search_request_cleared_by_clear_search() {
+        let mut tab = FileTab {
+            search_query: Some("test".to_string()),
+            current_search_request: Some(MessageId::new()),
+            ..Default::default()
+        };
+
+        tab.clear_search();
+
+        assert!(tab.current_search_request.is_none());
+    }
+
+    #[test]
+    fn test_current_search_request_not_copied_to_new_tab() {
+        let source_tab = FileTab {
+            current_path: "/Documents".to_string(),
+            current_search_request: Some(MessageId::new()),
+            ..Default::default()
+        };
+
+        let new_tab = FileTab::new_from_location(&source_tab);
+
+        assert!(new_tab.current_search_request.is_none());
+    }
+
+    #[test]
+    fn test_current_search_request_none_by_default() {
+        let tab = FileTab::default();
+        assert!(tab.current_search_request.is_none());
+    }
+
+    #[test]
+    fn test_new_at_path_has_no_current_search_request() {
+        let tab = FileTab::new_at_path("/Documents".to_string(), true);
+        assert!(tab.current_search_request.is_none());
     }
 }

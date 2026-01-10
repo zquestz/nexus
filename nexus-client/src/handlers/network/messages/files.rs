@@ -570,7 +570,14 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Update search state
+        // Check if this response is for the current search request
+        // If user submitted a new search before this response arrived, ignore this stale response
+        if tab.current_search_request != Some(message_id) {
+            return Task::none();
+        }
+
+        // Clear the current request tracker now that we're processing it
+        tab.current_search_request = None;
         tab.search_loading = false;
 
         if success {

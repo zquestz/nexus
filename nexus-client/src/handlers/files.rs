@@ -9,7 +9,7 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{
     ActivePanel, ClipboardItem, ClipboardOperation, FileSortColumn, InputId, Message,
-    PendingRequests, ResponseRouting,
+    PendingRequests, ResponseRouting, TabId,
 };
 use crate::views::files::build_navigate_path;
 
@@ -190,33 +190,10 @@ impl NexusApp {
 
         // If in search mode, re-run the search
         if let Some(query) = tab.search_query.clone() {
-            tab.search_loading = true;
-            tab.search_results = None;
-            tab.search_error = None;
-
             let tab_id = tab.id;
             let viewing_root = tab.viewing_root;
 
-            let message = ClientMessage::FileSearch {
-                query,
-                root: viewing_root,
-            };
-
-            match conn.send(message) {
-                Ok(message_id) => {
-                    conn.pending_requests
-                        .track(message_id, ResponseRouting::FileSearchResult { tab_id });
-                }
-                Err(err) => {
-                    eprintln!("Failed to send file search request: {err}");
-                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
-                        tab.search_loading = false;
-                        tab.search_error = Some(err);
-                    }
-                }
-            }
-
-            return Task::none();
+            return self.send_search_request(conn_id, tab_id, query, viewing_root);
         }
 
         // Normal browsing mode - refresh file list
@@ -248,33 +225,10 @@ impl NexusApp {
         // If in search mode, toggle root and re-run search
         if let Some(query) = tab.search_query.clone() {
             tab.viewing_root = !tab.viewing_root;
-            tab.search_loading = true;
-            tab.search_results = None;
-            tab.search_error = None;
-
             let tab_id = tab.id;
             let viewing_root = tab.viewing_root;
 
-            let message = ClientMessage::FileSearch {
-                query,
-                root: viewing_root,
-            };
-
-            match conn.send(message) {
-                Ok(message_id) => {
-                    conn.pending_requests
-                        .track(message_id, ResponseRouting::FileSearchResult { tab_id });
-                }
-                Err(err) => {
-                    eprintln!("Failed to send file search request: {err}");
-                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
-                        tab.search_loading = false;
-                        tab.search_error = Some(err);
-                    }
-                }
-            }
-
-            return Task::none();
+            return self.send_search_request(conn_id, tab_id, query, viewing_root);
         }
 
         // Normal browsing mode - toggle and go to root/home
@@ -471,6 +425,62 @@ impl NexusApp {
                 } else {
                     conn.files_management.active_tab_mut().error =
                         Some(format!("{}: {}", t("err-send-failed"), e));
+                }
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Send a FileSearch request to the server for a specific tab
+    ///
+    /// This helper consolidates the search request logic used by:
+    /// - `handle_file_search_submit` - new search
+    /// - `handle_file_refresh` - re-run current search
+    /// - `handle_file_toggle_root` - re-run with toggled scope
+    ///
+    /// It sets the loading state, clears previous results, tracks the request
+    /// for the specific tab, and stores the message_id to detect stale responses.
+    fn send_search_request(
+        &mut self,
+        conn_id: usize,
+        tab_id: TabId,
+        query: String,
+        viewing_root: bool,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
+            return Task::none();
+        };
+
+        // Set loading state and clear previous results
+        tab.search_query = Some(query.clone());
+        tab.search_loading = true;
+        tab.search_results = None;
+        tab.search_error = None;
+
+        let message = ClientMessage::FileSearch {
+            query,
+            root: viewing_root,
+        };
+
+        match conn.send(message) {
+            Ok(message_id) => {
+                // Store the message_id to detect stale responses
+                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                    tab.current_search_request = Some(message_id);
+                }
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileSearchResult { tab_id });
+            }
+            Err(err) => {
+                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                    tab.search_loading = false;
+                    tab.search_error = Some(err);
+                    tab.current_search_request = None;
                 }
             }
         }
@@ -1034,6 +1044,7 @@ impl NexusApp {
     /// Queue a download transfer
     ///
     /// Creates a Transfer with Queued status and adds it to the transfer manager.
+    /// Uses the current tab's viewing_root for the remote root context.
     fn queue_download(&mut self, remote_path: String, is_directory: bool) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -1044,6 +1055,28 @@ impl NexusApp {
 
         // Get the current viewing mode (root or user area)
         let remote_root = conn.files_management.active_tab().viewing_root;
+
+        self.queue_download_with_root(remote_path, is_directory, remote_root)
+    }
+
+    /// Queue a download transfer with explicit root context
+    ///
+    /// This variant is used when the root context is known explicitly,
+    /// such as when downloading from search results where the search
+    /// may have been performed with a different root setting than the
+    /// current tab's browsing mode.
+    fn queue_download_with_root(
+        &mut self,
+        remote_path: String,
+        is_directory: bool,
+        remote_root: bool,
+    ) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
 
         // Build local path from download directory + remote filename
         let download_dir = self
@@ -1347,36 +1380,11 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Set loading state
-        tab.search_query = Some(query.clone());
-        tab.search_loading = true;
-        tab.search_results = None;
-        tab.search_error = None;
-
         let tab_id = tab.id;
         let viewing_root = tab.viewing_root;
 
-        // Send search request
-        let message = ClientMessage::FileSearch {
-            query,
-            root: viewing_root,
-        };
-
-        match conn.send(message) {
-            Ok(message_id) => {
-                conn.pending_requests
-                    .track(message_id, ResponseRouting::FileSearchResult { tab_id });
-            }
-            Err(err) => {
-                eprintln!("Failed to send file search request: {err}");
-                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
-                    tab.search_loading = false;
-                    tab.search_error = Some(err);
-                }
-            }
-        }
-
-        Task::none()
+        // Use helper to send search request (handles loading state and race conditions)
+        self.send_search_request(conn_id, tab_id, query, viewing_root)
     }
 
     /// Handle search result click (left-click) - opens new tab
@@ -1392,14 +1400,24 @@ impl NexusApp {
         &mut self,
         result: nexus_common::protocol::FileSearchResult,
     ) -> Task<Message> {
-        // Queue the download using the result's path
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Get the viewing_root from the current tab's search context
+        // This ensures the download uses the same root context as the search
+        let remote_root = conn.files_management.active_tab().viewing_root;
+
         // Strip leading slash for the download path
         let path = result.path.strip_prefix('/').unwrap_or(&result.path);
 
         if result.is_directory {
-            self.handle_file_download_all(path.to_string())
+            self.queue_download_with_root(path.to_string(), true, remote_root)
         } else {
-            self.handle_file_download(path.to_string())
+            self.queue_download_with_root(path.to_string(), false, remote_root)
         }
     }
 
