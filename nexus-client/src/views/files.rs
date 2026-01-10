@@ -158,9 +158,9 @@ fn truncate_segment(name: &str, max_len: usize) -> String {
     if name.chars().count() <= max_len {
         name.to_string()
     } else {
-        // Leave room for "..." (3 characters)
-        let truncated: String = name.chars().take(max_len - 3).collect();
-        format!("{truncated}...")
+        // Leave room for "…" (1 character)
+        let truncated: String = name.chars().take(max_len - 1).collect();
+        format!("{truncated}…")
     }
 }
 
@@ -2173,8 +2173,8 @@ mod tests {
         let name = "a".repeat(40);
         let result = truncate_segment(&name, 32);
         assert_eq!(result.chars().count(), 32);
-        assert!(result.ends_with("..."));
-        assert_eq!(result, format!("{}...", "a".repeat(29)));
+        assert!(result.ends_with("…"));
+        assert_eq!(result, format!("{}…", "a".repeat(31)));
     }
 
     #[test]
@@ -2188,7 +2188,7 @@ mod tests {
         let long_name = "日".repeat(40);
         let result = truncate_segment(&long_name, 32);
         assert_eq!(result.chars().count(), 32);
-        assert!(result.ends_with("..."));
+        assert!(result.ends_with("…"));
     }
 
     #[test]
@@ -2197,7 +2197,7 @@ mod tests {
         let name = "a".repeat(33);
         let result = truncate_segment(&name, 32);
         assert_eq!(result.chars().count(), 32);
-        assert_eq!(result, format!("{}...", "a".repeat(29)));
+        assert_eq!(result, format!("{}…", "a".repeat(31)));
     }
 
     // =========================================================================

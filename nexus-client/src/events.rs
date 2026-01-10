@@ -493,7 +493,7 @@ fn build_news_post_notification(
                 // Take first line or truncate to reasonable length
                 let first_line = msg.lines().next().unwrap_or(msg);
                 if first_line.len() > 100 {
-                    format!("{}...", &first_line[..97])
+                    format!("{}…", &first_line[..99])
                 } else {
                     first_line.to_string()
                 }

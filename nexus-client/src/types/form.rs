@@ -541,12 +541,12 @@ impl FileTab {
         if let Some(query) = &self.search_query {
             let char_count = query.chars().count();
             if char_count > MAX_SEARCH_TAB_NAME_LENGTH {
-                // Truncate and add ellipsis (leave room for "..." which is 3 characters)
+                // Truncate and add ellipsis (leave room for "…" which is 1 character)
                 return format!(
-                    "{}...",
+                    "{}…",
                     query
                         .chars()
-                        .take(MAX_SEARCH_TAB_NAME_LENGTH - 3)
+                        .take(MAX_SEARCH_TAB_NAME_LENGTH - 1)
                         .collect::<String>()
                 );
             }
@@ -2144,9 +2144,9 @@ mod tests {
 
         // tab_name truncates long queries to MAX_SEARCH_TAB_NAME_LENGTH (20) chars with ellipsis
         let name = tab.tab_name();
-        assert_eq!(name.chars().count(), 20); // 17 chars + "..."
-        assert!(name.ends_with("..."));
-        assert_eq!(name, "this is a very lo...");
+        assert_eq!(name.chars().count(), 20); // 19 chars + "…"
+        assert!(name.ends_with("…"));
+        assert_eq!(name, "this is a very long…");
     }
 
     #[test]

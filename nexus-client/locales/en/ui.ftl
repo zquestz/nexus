@@ -20,7 +20,7 @@ button-choose-image = Choose Image
 button-clear-image = Clear
 button-overwrite = Overwrite
 button-change-password = Change Password
-button-browse = Browse...
+button-browse = Browse…
 
 # =============================================================================
 # Titles
@@ -66,7 +66,7 @@ placeholder-password-keep-current = Password
 placeholder-current-password = Current Password
 placeholder-new-password = New Password
 placeholder-confirm-password = Confirm Password
-placeholder-message = Type a message...
+placeholder-message = Type a message…
 placeholder-no-permission = No Permission
 placeholder-broadcast-message = Broadcast Message
 placeholder-server-description = Server Description
@@ -230,13 +230,13 @@ empty-select-server = Select a server from the list
 empty-no-connections = No connections
 empty-no-bookmarks = No bookmarks
 empty-no-users = No users online
-user-management-loading = Loading users...
+user-management-loading = Loading users…
 user-management-no-users = No users found
-news-loading = Loading news...
+news-loading = Loading news…
 news-no-posts = No news posts yet
 transfers-empty = No transfers
 news-updated = Updated
-files-loading = Loading files...
+files-loading = Loading files…
 files-empty = This directory is empty
 files-home = Home
 files-root = Root
@@ -245,9 +245,9 @@ files-column-name = Name
 files-column-size = Size
 files-column-modified = Modified
 files-column-path = Path
-files-search-placeholder = Search files...
+files-search-placeholder = Search files…
 files-search-breadcrumb = Search - { $query }
-files-searching = Searching...
+files-searching = Searching…
 files-no-results = No files found
 files-create-directory-title = Create New Directory
 files-directory-name-placeholder = Directory name
@@ -509,7 +509,7 @@ user-info-addresses = Addresses:
 user-info-created = Created:
 user-info-end = End of user info
 user-info-unknown = Unknown
-user-info-loading = Loading user info...
+user-info-loading = Loading user info…
 user-info-status = Status:
 
 # =============================================================================
@@ -623,7 +623,7 @@ label-port = Port:
 
 # Transfer statuses
 transfer-status-queued = Queued
-transfer-status-connecting = Connecting...
+transfer-status-connecting = Connecting…
 transfer-status-transferring = Transferring
 transfer-status-paused = Paused
 transfer-status-completed = Completed
