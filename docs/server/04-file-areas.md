@@ -168,6 +168,8 @@ File operations require specific permissions:
 | `file_copy` | Copy files/directories |
 | `file_delete` | Delete files/directories |
 | `file_root` | Access entire file root (admin) |
+| `file_search` | Search files by name |
+| `file_reindex` | Trigger index rebuild (admin) |
 
 Admins have all permissions automatically.
 
@@ -198,6 +200,56 @@ find /path/to/files -name "*.part" -mtime +7 -delete
 # Find large files
 find /path/to/files -size +100M -type f
 ```
+
+## File Search Index
+
+The server maintains a search index for fast file lookups.
+
+### Index Location
+
+| Platform | Default Path |
+|----------|--------------|
+| Linux | `~/.local/share/nexusd/files.idx` |
+| macOS | `~/Library/Application Support/nexusd/files.idx` |
+| Windows | `%APPDATA%\nexusd\files.idx` |
+
+### Automatic Rebuilds
+
+The index rebuilds automatically when:
+
+- Server starts (background rebuild)
+- Files are uploaded, deleted, renamed, moved, or copied
+- The reindex timer fires (if dirty)
+
+### Configuration
+
+Configure the reindex interval via the Server Info panel (admin only) or programmatically:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `file_reindex_interval` | 5 minutes | How often to check for changes and rebuild if dirty. Set to 0 to disable automatic rebuilds. |
+
+### Manual Rebuild
+
+Admins with `file_reindex` permission can force a rebuild:
+
+- Use the `/reindex` command in chat
+- Useful after adding files directly to the filesystem
+
+### Index Format
+
+The index is a CSV file containing:
+- File path (relative to file root)
+- File name
+- Size in bytes
+- Last modified timestamp
+- Directory flag
+
+### Notes
+
+- The index file has restrictive permissions (0600 on Unix)
+- If the index is corrupted, it's automatically deleted and rebuilt
+- Files added directly to the filesystem won't appear until the next reindex
 
 ## Security Notes
 

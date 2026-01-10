@@ -106,7 +106,7 @@ nexusd --database /path/to/nexus.db
 nexusd --file-root /path/to/files
 ```
 
-See [Configuration](configuration.md) for all options.
+See [Configuration](02-configuration.md) for all options.
 
 ## Stopping the Server
 

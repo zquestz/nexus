@@ -142,6 +142,45 @@ find /path/to/files -name "*.part" -mtime +7 -delete
 2. Archive old files
 3. Use faster storage (SSD)
 
+## File Search Index Issues
+
+### Search returns outdated results
+
+**Cause:** The search index hasn't been rebuilt after file changes.
+
+**Solutions:**
+1. Wait for automatic reindex (default: every 5 minutes when files change)
+2. Use `/reindex` command as admin to force rebuild
+3. Check `file_reindex_interval` setting in Server Info panel
+
+### Search not working at all
+
+**Possible causes:**
+- Index file is missing or corrupted
+- Index is being rebuilt
+
+**Solutions:**
+1. Check if `files.idx` exists in the data directory
+2. Run `/reindex` command to rebuild
+3. Check server logs for index errors
+
+### Recently added files not appearing in search
+
+**Cause:** Files added directly to filesystem (not through BBS upload) aren't indexed until next rebuild.
+
+**Solutions:**
+1. Run `/reindex` command after adding files via filesystem
+2. Or wait for the automatic reindex interval
+
+### Index rebuild is slow
+
+**Cause:** Large number of files in the file area.
+
+**Solutions:**
+1. This is normal for large file collections
+2. The server remains responsive during reindex (runs in background)
+3. Searches use the old index until the new one is ready
+
 ## Database Issues
 
 ### Database locked

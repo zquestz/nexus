@@ -199,6 +199,7 @@ impl UserManager {
     /// Broadcast ServerInfoUpdated to all connected users
     ///
     /// All users receive the full server info including connection/transfer limits.
+    /// file_reindex_interval is only sent to admins or users with file_reindex permission.
     /// This is called when server configuration is updated via ServerUpdate.
     ///
     /// Automatically removes users whose channels have closed (disconnected connections).
@@ -208,6 +209,14 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
+                // Only send file_reindex_interval to admins or users with file_reindex permission
+                let file_reindex_interval =
+                    if user.is_admin || user.has_permission(Permission::FileReindex) {
+                        Some(params.file_reindex_interval)
+                    } else {
+                        None
+                    };
+
                 let server_info = ServerInfo {
                     name: Some(params.name.clone()),
                     description: Some(params.description.clone()),
@@ -216,7 +225,7 @@ impl UserManager {
                     max_transfers_per_ip: Some(params.max_transfers_per_ip),
                     image: Some(params.image.clone()),
                     transfer_port: params.transfer_port,
-                    file_reindex_interval: Some(params.file_reindex_interval),
+                    file_reindex_interval,
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

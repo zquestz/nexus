@@ -187,6 +187,54 @@ This guide covers common issues and their solutions when using the Nexus BBS cli
 2. The server file may have changed since you started
 3. Disable resume by deleting the transfer and starting over
 
+## File Search Issues
+
+### Search bar not visible
+
+**Cause:** You don't have the `file_search` permission.
+
+**Solution:** Contact the server administrator to request search permission.
+
+### "Search query is too short" error
+
+**Cause:** Search requires at least 3 characters (bytes) after trimming whitespace.
+
+**Solution:** Enter a longer search query. Note that some Unicode characters (like CJK) count as 3 bytes each.
+
+### "Search query is too long" error
+
+**Cause:** Search queries are limited to 256 characters.
+
+**Solution:** Use a shorter, more specific search query.
+
+### Search returns no results
+
+**Possible causes:**
+- No files match your query
+- The search index hasn't been rebuilt yet
+- You're searching in the wrong scope (user area vs. root)
+
+**Solutions:**
+1. Try different search terms
+2. Check if the file exists by browsing manually
+3. If files were recently added, the index may need time to update
+4. Admins can use `/reindex` to force an index rebuild
+
+### Search results show deleted files
+
+**Cause:** The search index is slightly out of date.
+
+**Solutions:**
+1. Wait for the automatic reindex (default: every 5 minutes when files change)
+2. Ask an admin to run `/reindex`
+3. The file will fail to open if you click on it — this is expected
+
+### Can't search entire server
+
+**Cause:** Root-level search requires the `file_root` permission.
+
+**Solution:** Toggle the **Root** button in the toolbar (if available) or contact an admin.
+
 ## Proxy Issues
 
 ### Proxy connection fails

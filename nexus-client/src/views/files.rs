@@ -759,7 +759,49 @@ fn search_results_table<'a>(
     .width(FILE_SIZE_COLUMN_WIDTH)
     .align_x(Right);
 
-    let columns = [name_column, path_column, size_column];
+    // Modified column header (clickable for sorting)
+    let modified_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Modified {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-modified"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
+        shaped_text(t("files-column-modified"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
+    let modified_header: Element<'_, Message> = button(modified_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSearchSortBy(FileSortColumn::Modified))
+        .into();
+
+    // Modified column
+    let modified_column = table::column(modified_header, |result: &FileSearchResult| {
+        let date_text = format_timestamp(result.modified);
+        let element: Element<'_, Message> = shaped_text(date_text)
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into();
+        element
+    })
+    .width(FILE_DATE_COLUMN_WIDTH)
+    .align_x(Right);
+
+    let columns = [name_column, path_column, size_column, modified_column];
 
     table(columns, results)
         .width(Fill)
@@ -1798,7 +1840,6 @@ pub fn files_view<'a>(
         None
     };
 
-    // Content area - different handling for search mode vs normal browsing
     // Content area - different handling for search mode vs normal browsing
     let content: Element<'a, Message> = if is_searching {
         // Search mode content

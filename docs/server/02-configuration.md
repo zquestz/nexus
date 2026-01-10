@@ -95,7 +95,7 @@ files/
 └── users/      # Personal user folders (created by admin)
 ```
 
-See [File Areas](file-areas.md) for detailed configuration.
+See [File Areas](04-file-areas.md) for detailed configuration.
 
 ## Debug Logging
 
@@ -171,6 +171,7 @@ Some settings are configured at runtime by admins through the client:
 | Server image | Logo/icon (max 700KB) |
 | Max connections per IP | Limit concurrent connections (default: 5) |
 | Max transfers per IP | Limit concurrent file transfers (default: 5) |
+| File reindex interval | Minutes between search index rebuilds (default: 5, 0 to disable) |
 
 These settings are stored in the database and persist across restarts.
 

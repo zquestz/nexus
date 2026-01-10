@@ -3,10 +3,10 @@
 use iced::Task;
 use iced::widget::{Id, operation};
 use nexus_common::protocol::{ClientMessage, FileSearchResult};
-use nexus_common::validators::{self, DirNameError};
+use nexus_common::validators::{self, DirNameError, SearchQueryError, validate_search_query};
 
 use crate::NexusApp;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::types::{
     ActivePanel, ClipboardItem, ClipboardOperation, FileSortColumn, InputId, Message,
     PendingRequests, ResponseRouting, TabId,
@@ -1431,6 +1431,33 @@ impl NexusApp {
                     show_hidden,
                 );
             }
+            return Task::none();
+        }
+
+        // Validate the search query using shared validator
+        if let Err(e) = validate_search_query(&query) {
+            let error_msg = match e {
+                SearchQueryError::Empty => {
+                    // Already handled above, but included for completeness
+                    return Task::none();
+                }
+                SearchQueryError::TooShort => t_args(
+                    "files-search-query-too-short",
+                    &[("min_length", &validators::MIN_QUERY_LENGTH.to_string())],
+                ),
+                SearchQueryError::TooLong => t_args(
+                    "files-search-query-too-long",
+                    &[(
+                        "max_length",
+                        &validators::MAX_SEARCH_QUERY_LENGTH.to_string(),
+                    )],
+                ),
+                SearchQueryError::InvalidCharacters => t("files-search-query-invalid"),
+            };
+            tab.search_error = Some(error_msg);
+            tab.search_query = Some(query);
+            tab.search_results = None;
+            tab.search_loading = false;
             return Task::none();
         }
 

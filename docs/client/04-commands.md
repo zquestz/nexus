@@ -234,6 +234,21 @@ Send a private message to a user.
 
 After sending, the client switches to that user's PM tab.
 
+### /reindex
+
+Trigger a file index rebuild on the server. This is useful if files were added or modified outside of normal BBS operations.
+
+**Aliases:** None
+
+**Permission:** `file_reindex`
+
+**Usage:**
+```
+/reindex
+```
+
+The server maintains a file index for fast searching. This command forces an immediate rebuild. Under normal operation, the index rebuilds automatically when files change.
+
 ### /sinfo
 
 Show information about the connected server.
@@ -337,6 +352,7 @@ Manage chat tabs (server chat and PM conversations).
 | `/list` | `/l`, `/userlist` | `user_list` | Show connected/all users |
 | `/me` | — | None | Send an action message |
 | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
+| `/reindex` | — | `file_reindex` | Trigger file index rebuild |
 | `/sinfo` | `/si`, `/serverinfo` | None | Show server information |
 | `/status` | `/s` | None | Set or clear status message |
 | `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |

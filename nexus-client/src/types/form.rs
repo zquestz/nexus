@@ -524,7 +524,7 @@ impl FileTab {
         self.search_error = None;
         self.search_loading = false;
         self.current_search_request = None;
-        // Note: search_viewing_root is NOT cleared - it's only relevant when search_query is Some
+        self.search_viewing_root = false;
     }
 
     /// Get the tab display name
@@ -2243,10 +2243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_viewing_root_not_cleared_by_clear_search() {
-        // search_viewing_root should persist after clear_search since it's
-        // only relevant when search_query is Some, and may be needed for
-        // downloads initiated just before clearing
+    fn test_search_viewing_root_cleared_by_clear_search() {
         let mut tab = FileTab {
             search_query: Some("test".to_string()),
             search_viewing_root: true,
@@ -2255,8 +2252,8 @@ mod tests {
 
         tab.clear_search();
 
-        // search_viewing_root is NOT cleared (by design)
-        assert!(tab.search_viewing_root);
+        // search_viewing_root is reset for clean state
+        assert!(!tab.search_viewing_root);
     }
 
     #[test]

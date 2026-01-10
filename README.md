@@ -12,7 +12,7 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 ## Features
 
 - **Chat** — Real-time messaging with topics, private messages, and broadcasts
-- **Files** — Multi-tab browser with downloads, uploads, pause/resume, and queue management
+- **Files** — Multi-tab browser with search, downloads, uploads, pause/resume, and queue management
 - **News** — Bulletin board with Markdown and image support
 - **Users** — 25 granular permissions, shared accounts, guest access, custom avatars
 - **Security** — Mandatory TLS, TOFU verification, Argon2id passwords, proxy support

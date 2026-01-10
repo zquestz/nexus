@@ -1,6 +1,6 @@
 # Files
 
-This guide covers browsing, downloading, and uploading files on Nexus BBS servers.
+This guide covers browsing, searching, downloading, and uploading files on Nexus BBS servers.
 
 ## File Browser
 
@@ -51,6 +51,58 @@ Some buttons may be disabled based on your permissions or the current folder typ
 Click a column header to sort. Click again to reverse the sort order.
 
 **Note:** When sorting by Name, directories always appear first. When sorting by Size or Modified, directories and files are mixed together.
+
+## Searching Files
+
+If you have the `file_search` permission, a search bar appears below the toolbar.
+
+### Basic Search
+
+1. Type your search query in the search box
+2. Press **Enter** or click the **🔍** button
+3. Results appear in a table showing matching files and folders
+
+### Search Requirements
+
+- Minimum 3 characters (after trimming whitespace)
+- Maximum 256 characters
+- No control characters allowed
+
+### Search Results
+
+Results display in a 4-column table:
+
+| Column | Description |
+|--------|-------------|
+| **Name** | File or folder name with icon |
+| **Path** | Parent directory location |
+| **Size** | File size (folders show "—") |
+| **Modified** | Last modification date |
+
+Click any column header to sort. When sorting by Name, directories appear first.
+
+### Opening Results
+
+- **Left-click** a result to open it in a new tab
+  - Files: Opens the parent directory with the file visible
+  - Folders: Opens the folder itself
+- **Right-click** for context menu:
+  - **Download** — Download the file or folder
+  - **Info** — View detailed information
+  - **Open** — Same as left-click
+
+### Search Scope
+
+- By default, search covers your file area (personal or shared)
+- Admins with `file_root` permission can toggle **Root** mode to search the entire server
+
+### Exiting Search Mode
+
+- Clear the search box and press **Enter**
+- Click the **Home** button
+- Press **Escape**
+
+Search results are preserved per-tab, so you can switch tabs and return to your search.
 
 ### Tabs
 
@@ -247,8 +299,8 @@ Set limits to 0 for unlimited concurrent transfers.
 |----------|--------|
 | `Ctrl+Tab` (`Cmd+Tab` on macOS) | Next browser tab |
 | `Ctrl+Shift+Tab` (`Cmd+Shift+Tab` on macOS) | Previous browser tab |
-| `Escape` | Cancel cut/copy, close dialog |
-| `Enter` | Confirm dialog |
+| `Escape` | Cancel cut/copy, exit search mode, close dialog |
+| `Enter` | Confirm dialog, submit search |
 
 ## Permissions
 
@@ -266,6 +318,8 @@ Your available actions depend on server permissions:
 | `file_copy` | Copy files and directories |
 | `file_delete` | Delete files and directories |
 | `file_root` | Access entire file root (admin) |
+| `file_search` | Search files across your area |
+| `file_reindex` | Trigger file index rebuild (admin) |
 
 Admins automatically have all permissions.
 

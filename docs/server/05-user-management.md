@@ -111,6 +111,8 @@ Permissions control what actions users can perform. Admins have all permissions 
 | `file_copy` | Copy files/directories |
 | `file_delete` | Delete files/directories |
 | `file_root` | Access entire file root |
+| `file_search` | Search files by name |
+| `file_reindex` | Trigger search index rebuild |
 
 ### Ban Permissions
 
@@ -131,7 +133,7 @@ Chat and browse files:
 - `chat_receive`, `chat_send`, `chat_topic`
 - `user_list`, `user_info`, `user_message`
 - `news_list`
-- `file_list`, `file_download`
+- `file_list`, `file_download`, `file_search`
 
 ### Power User
 
