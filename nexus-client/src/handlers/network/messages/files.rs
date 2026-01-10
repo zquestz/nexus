@@ -68,12 +68,9 @@ impl NexusApp {
             // Build sorted entries cache
             tab.update_sorted_entries();
         } else {
-            // Re-lookup tab for the else branch (borrow checker)
-            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
-                tab.entries = None;
-                tab.sorted_entries = None;
-                tab.error = data.error;
-            }
+            tab.entries = None;
+            tab.sorted_entries = None;
+            tab.error = data.error;
         }
 
         // Snap scroll to beginning when directory content changes (only for active tab)

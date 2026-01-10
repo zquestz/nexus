@@ -530,12 +530,26 @@ impl FileTab {
     /// Get the tab display name
     ///
     /// Returns:
-    /// - Search query when in search mode (e.g., "report")
+    /// - Search query when in search mode (e.g., "report"), truncated if too long
     /// - Last path segment when browsing (e.g., "Documents")
     /// - "Home" or "Root" for empty path
     pub fn tab_name(&self) -> String {
-        // If searching, show the search query as the tab name
+        /// Maximum length for search query in tab name (characters)
+        const MAX_SEARCH_TAB_NAME_LENGTH: usize = 20;
+
+        // If searching, show the search query as the tab name (truncated if needed)
         if let Some(query) = &self.search_query {
+            let char_count = query.chars().count();
+            if char_count > MAX_SEARCH_TAB_NAME_LENGTH {
+                // Truncate and add ellipsis (leave room for "..." which is 3 characters)
+                return format!(
+                    "{}...",
+                    query
+                        .chars()
+                        .take(MAX_SEARCH_TAB_NAME_LENGTH - 3)
+                        .collect::<String>()
+                );
+            }
             return query.clone();
         }
 
@@ -2128,8 +2142,33 @@ mod tests {
             ..Default::default()
         };
 
-        // tab_name returns the full query (truncation is UI's responsibility)
-        assert_eq!(tab.tab_name(), "this is a very long search query");
+        // tab_name truncates long queries to MAX_SEARCH_TAB_NAME_LENGTH (20) chars with ellipsis
+        let name = tab.tab_name();
+        assert_eq!(name.chars().count(), 20); // 17 chars + "..."
+        assert!(name.ends_with("..."));
+        assert_eq!(name, "this is a very lo...");
+    }
+
+    #[test]
+    fn test_tab_name_short_search_query_not_truncated() {
+        let tab = FileTab {
+            search_query: Some("short query".to_string()),
+            ..Default::default()
+        };
+
+        // Short queries are not truncated
+        assert_eq!(tab.tab_name(), "short query");
+    }
+
+    #[test]
+    fn test_tab_name_exactly_max_length_query() {
+        // Exactly 20 characters - should not be truncated
+        let tab = FileTab {
+            search_query: Some("12345678901234567890".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(tab.tab_name(), "12345678901234567890");
     }
 
     #[test]

@@ -153,10 +153,11 @@ impl<'a> ToolbarState<'a> {
 
     /// Get the title to display in the toolbar
     ///
-    /// Returns the server name if connected and server has a name,
+    /// Returns the server name if connected and server has a non-empty name,
     /// otherwise returns the default "Nexus BBS" title.
     pub fn toolbar_title(&self) -> String {
         self.server_name
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .unwrap_or_else(|| crate::i18n::t("title-nexus-bbs"))
     }
@@ -214,8 +215,8 @@ mod tests {
             server_name: Some(""),
             ..default_toolbar_state()
         };
-        // Empty string is still Some, so it returns empty
-        assert_eq!(state.toolbar_title(), "");
+        // Empty string should fall back to default title
+        assert_eq!(state.toolbar_title(), "Nexus BBS");
     }
 
     #[test]

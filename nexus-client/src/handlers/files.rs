@@ -1048,6 +1048,9 @@ impl NexusApp {
     }
 
     /// Close a file tab by ID
+    ///
+    /// Also cleans up any pending requests associated with this tab to prevent
+    /// orphaned entries in the pending_requests map.
     pub fn handle_file_tab_close(&mut self, tab_id: crate::types::TabId) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -1055,6 +1058,22 @@ impl NexusApp {
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
+
+        // Clean up pending requests for this tab
+        conn.pending_requests.retain(|_, routing| {
+            !matches!(
+                routing,
+                ResponseRouting::PopulateFileList { tab_id: tid }
+                    | ResponseRouting::FileCreateDirResult { tab_id: tid }
+                    | ResponseRouting::FileDeleteResult { tab_id: tid }
+                    | ResponseRouting::FileInfoResult { tab_id: tid }
+                    | ResponseRouting::FileRenameResult { tab_id: tid }
+                    | ResponseRouting::FileMoveResult { tab_id: tid, .. }
+                    | ResponseRouting::FileCopyResult { tab_id: tid, .. }
+                    | ResponseRouting::FileSearchResult { tab_id: tid }
+                    if *tid == tab_id
+            )
+        });
 
         conn.files_management.close_tab_by_id(tab_id);
         Task::none()
@@ -1485,8 +1504,11 @@ impl NexusApp {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::FileInfoResult { tab_id });
             }
-            Err(_) => {
-                // Error is silently ignored - the info dialog just won't appear
+            Err(e) => {
+                // Show error in the search tab
+                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                    tab.search_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                }
             }
         }
 
