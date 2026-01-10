@@ -94,8 +94,11 @@ impl NexusApp {
     /// Toggle the files panel
     ///
     /// When opening, fetches the file list for the current path from the server.
-    /// Remembers the last viewed directory.
+    /// Remembers the last viewed directory. Focuses the search input if the user
+    /// has file_search permission.
     pub fn handle_toggle_files(&mut self) -> Task<Message> {
+        use crate::views::constants::PERMISSION_FILE_SEARCH;
+
         if self.active_panel() == ActivePanel::Files {
             return Task::none();
         }
@@ -108,6 +111,9 @@ impl NexusApp {
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
+
+        // Check if user has file_search permission (for focus)
+        let has_search = conn.has_permission(PERMISSION_FILE_SEARCH);
 
         // Initialize show_hidden from config on first open
         let show_hidden = self.config.settings.show_hidden_files;
@@ -122,7 +128,18 @@ impl NexusApp {
         tab.error = None;
 
         // Fetch the file list for the current path (or home if first time)
-        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
+        let fetch_task =
+            self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden);
+
+        // Focus search input if user has permission
+        if has_search {
+            Task::batch([
+                fetch_task,
+                operation::focus(Id::from(InputId::FileSearchInput)),
+            ])
+        } else {
+            fetch_task
+        }
     }
 
     /// Handle cancel in files panel (close the panel)
