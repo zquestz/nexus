@@ -103,6 +103,9 @@ label-chat-topic = チャットトピック:
 label-chat-topic-set-by = トピック設定者:
 label-max-connections-per-ip = IP毎の最大接続数:
 label-max-transfers-per-ip = IP毎の最大転送数:
+label-file-reindex-interval = ファイル再インデックス間隔:
+label-file-reindex-interval-value = { $minutes }分
+label-disabled = 無効
 label-avatar = アバター:
 label-server-image = サーバー画像:
 label-details = 技術詳細
@@ -176,8 +179,9 @@ tooltip-files-view-root = ルートを表示
 tooltip-files-view-home = ホームを表示
 tooltip-files-show-hidden = 隠しファイルを表示
 tooltip-files-hide-hidden = 隠しファイルを非表示
-tooltip-files-new-directory = 新規フォルダ
+tooltip-files-new-directory = 新規ディレクトリ
 tooltip-files-paste = 貼り付け
+tooltip-files-search = ファイルを検索
 tooltip-manage-users = ユーザー管理
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
@@ -211,6 +215,7 @@ tooltip-create-news = 投稿を作成
 tooltip-delete = 削除
 context-menu-download = ダウンロード
 context-menu-upload = アップロード
+context-menu-open = 開く
 
 # =============================================================================
 # Empty States
@@ -234,7 +239,12 @@ files-panel-title = ファイル
 files-column-name = 名前
 files-column-size = サイズ
 files-column-modified = 更新日時
-files-create-directory-title = 新しいフォルダを作成
+files-column-path = パス
+files-search-placeholder = ファイルを検索...
+files-search-breadcrumb = 検索 - { $query }
+files-searching = 検索中...
+files-no-results = ファイルが見つかりません
+files-create-directory-title = 新規ディレクトリの作成
 files-directory-name-placeholder = フォルダ名
 files-info = 情報
 files-rename = 名前を変更
@@ -549,6 +559,9 @@ cmd-unban-desc = IP BANを解除
 cmd-unban-usage = 使用法: /{ $command } <対象>
 cmd-bans-desc = 有効なBANを一覧表示
 cmd-bans-usage = 使用法: /{ $command }
+cmd-reindex-desc = ファイルインデックスの再構築を開始
+cmd-reindex-usage = 使用法: /{ $command }
+msg-reindex-triggered = ファイルインデックスの再構築を開始しました
 
 # =============================================================================
 # About Panel

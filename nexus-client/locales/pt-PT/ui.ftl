@@ -103,6 +103,9 @@ label-chat-topic = Tópico do Chat:
 label-chat-topic-set-by = Tópico Definido Por:
 label-max-connections-per-ip = Máx. Ligações Por IP:
 label-max-transfers-per-ip = Máx. Transferências Por IP:
+label-file-reindex-interval = Intervalo de Reindexação:
+label-file-reindex-interval-value = { $minutes } minutos
+label-disabled = Desativado
 label-avatar = Ícone:
 label-server-image = Imagem do servidor:
 label-details = Detalhes Técnicos
@@ -178,6 +181,7 @@ tooltip-files-show-hidden = Mostrar Ficheiros Ocultos
 tooltip-files-hide-hidden = Ocultar Ficheiros Ocultos
 tooltip-files-new-directory = Novo Diretório
 tooltip-files-paste = Colar
+tooltip-files-search = Pesquisar ficheiros
 tooltip-manage-users = Gerir Utilizadores
 tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
@@ -210,7 +214,8 @@ tooltip-create-user = Criar Utilizador
 tooltip-create-news = Criar Publicação
 tooltip-delete = Eliminar
 context-menu-download = Transferir
-context-menu-upload = Carregar
+context-menu-upload = Enviar
+context-menu-open = Abrir
 
 # =============================================================================
 # Empty States
@@ -234,7 +239,12 @@ files-panel-title = Ficheiros
 files-column-name = Nome
 files-column-size = Tamanho
 files-column-modified = Modificado
-files-create-directory-title = Criar Novo Directório
+files-column-path = Caminho
+files-search-placeholder = Pesquisar ficheiros...
+files-search-breadcrumb = Pesquisa - { $query }
+files-searching = A pesquisar...
+files-no-results = Nenhum ficheiro encontrado
+files-create-directory-title = Criar Nova Pasta
 files-directory-name-placeholder = Nome do diretório
 files-info = Info
 files-rename = Renomear
@@ -570,6 +580,9 @@ cmd-unban-desc = Remover um banimento de IP
 cmd-unban-usage = Uso: /{ $command } <alvo>
 cmd-bans-desc = Listar banimentos ativos
 cmd-bans-usage = Uso: /{ $command }
+cmd-reindex-desc = Acionar reconstrução do índice de ficheiros
+cmd-reindex-usage = Uso: /{ $command }
+msg-reindex-triggered = Reconstrução do índice de ficheiros acionada
 
 # =============================================================================
 # About Panel

@@ -282,6 +282,15 @@ impl NexusApp {
                         {
                             return self.update(Message::FileClearClipboard);
                         }
+                        // If in search mode, clear input and submit to exit search
+                        if let Some(conn_id) = self.active_connection
+                            && let Some(conn) = self.connections.get_mut(&conn_id)
+                            && conn.files_management.active_tab().is_searching()
+                        {
+                            // Clear input directly, then submit to trigger exit from search mode
+                            conn.files_management.active_tab_mut().search_input.clear();
+                            return self.update(Message::FileSearchSubmit);
+                        }
                         // Otherwise close panel
                         return self.update(Message::CancelFiles);
                     }

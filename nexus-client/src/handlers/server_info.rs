@@ -43,6 +43,7 @@ impl NexusApp {
             conn.max_connections_per_ip,
             conn.max_transfers_per_ip,
             &conn.server_image,
+            conn.file_reindex_interval,
         ));
 
         // Focus the name input
@@ -139,6 +140,7 @@ impl NexusApp {
             conn.max_connections_per_ip,
             conn.max_transfers_per_ip,
             &conn.server_image,
+            conn.file_reindex_interval,
         ) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -178,12 +180,20 @@ impl NexusApp {
             None
         };
 
+        let file_reindex_interval =
+            if edit_state.file_reindex_interval != conn.file_reindex_interval {
+                edit_state.file_reindex_interval
+            } else {
+                None
+            };
+
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
             max_connections_per_ip,
             max_transfers_per_ip,
             image,
+            file_reindex_interval,
         };
 
         if let Err(e) = conn.send(msg) {
@@ -252,6 +262,20 @@ impl NexusApp {
             && let Some(edit_state) = &mut conn.server_info_edit
         {
             edit_state.max_transfers_per_ip = Some(max_transfers);
+        }
+        Task::none()
+    }
+
+    /// Handle server info file reindex interval field change
+    pub fn handle_edit_server_info_file_reindex_interval_changed(
+        &mut self,
+        interval: u32,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.file_reindex_interval = Some(interval);
         }
         Task::none()
     }

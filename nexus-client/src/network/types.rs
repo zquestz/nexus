@@ -164,6 +164,7 @@ pub struct LoginInfo {
     pub chat_topic_set_by: Option<String>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
+    pub file_reindex_interval: Option<u32>,
     pub transfer_port: u16,
     pub locale: String,
 }

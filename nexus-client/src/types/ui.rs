@@ -135,6 +135,8 @@ pub enum InputId {
     EditServerInfoMaxConnections,
     /// Server info edit: Max transfers per IP input
     EditServerInfoMaxTransfers,
+    /// Server info edit: File reindex interval input
+    EditServerInfoFileReindexInterval,
     /// Broadcast panel: Message input
     BroadcastMessage,
     /// Chat: Message input
@@ -165,6 +167,8 @@ pub enum InputId {
     NewDirectoryName,
     /// Files panel: Rename name input
     RenameName,
+    /// Files panel: Search input
+    FileSearchInput,
 }
 
 impl From<InputId> for Id {
@@ -188,6 +192,9 @@ impl From<InputId> for Id {
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
             InputId::EditServerInfoMaxConnections => "InputId::EditServerInfoMaxConnections",
             InputId::EditServerInfoMaxTransfers => "InputId::EditServerInfoMaxTransfers",
+            InputId::EditServerInfoFileReindexInterval => {
+                "InputId::EditServerInfoFileReindexInterval"
+            }
             InputId::BroadcastMessage => "InputId::BroadcastMessage",
             InputId::ChatInput => "InputId::ChatInput",
             InputId::ChangePasswordCurrent => "InputId::ChangePasswordCurrent",
@@ -203,6 +210,7 @@ impl From<InputId> for Id {
             InputId::ProxyPassword => "InputId::ProxyPassword",
             InputId::NewDirectoryName => "InputId::NewDirectoryName",
             InputId::RenameName => "InputId::RenameName",
+            InputId::FileSearchInput => "InputId::FileSearchInput",
         })
     }
 }

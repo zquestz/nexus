@@ -13,7 +13,9 @@ mod file_delete;
 mod file_info;
 mod file_list;
 mod file_move;
+mod file_reindex;
 mod file_rename;
+mod file_search;
 mod handshake;
 mod login;
 mod news_create;
@@ -51,7 +53,9 @@ pub use file_delete::handle_file_delete;
 pub use file_info::handle_file_info;
 pub use file_list::handle_file_list;
 pub use file_move::handle_file_move;
+pub use file_reindex::handle_file_reindex;
 pub use file_rename::handle_file_rename;
+pub use file_search::handle_file_search;
 pub use handshake::handle_handshake;
 pub use login::{LoginRequest, handle_login};
 pub use news_create::handle_news_create;
@@ -60,7 +64,7 @@ pub use news_edit::handle_news_edit;
 pub use news_list::handle_news_list;
 pub use news_show::handle_news_show;
 pub use news_update::handle_news_update;
-pub use server_info_update::handle_server_info_update;
+pub use server_info_update::{ServerInfoUpdateRequest, handle_server_info_update};
 pub use user_away::handle_user_away;
 pub use user_back::handle_user_back;
 pub use user_create::{UserCreateRequest, handle_user_create};
@@ -90,6 +94,7 @@ use nexus_common::protocol::ServerMessage;
 use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
+use crate::files::FileIndex;
 use crate::users::UserManager;
 
 /// Context passed to all handlers with shared resources
@@ -111,6 +116,8 @@ pub struct HandlerContext<'a, W> {
     pub connection_tracker: Arc<ConnectionTracker>,
     /// In-memory ban cache for fast lookups and cache updates
     pub ban_cache: Arc<RwLock<BanCache>>,
+    /// File index for searching files
+    pub file_index: Arc<FileIndex>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

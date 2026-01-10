@@ -103,6 +103,9 @@ label-chat-topic = Chat Topic:
 label-chat-topic-set-by = Chat Topic Set By:
 label-max-connections-per-ip = Max Connections Per IP:
 label-max-transfers-per-ip = Max Transfers Per IP:
+label-file-reindex-interval = File Reindex Interval:
+label-file-reindex-interval-value = { $minutes } minutes
+label-disabled = Disabled
 label-avatar = Avatar:
 label-server-image = Server Image:
 label-details = Technical Details
@@ -183,6 +186,7 @@ tooltip-files-show-hidden = Show Hidden Files
 tooltip-files-hide-hidden = Hide Hidden Files
 tooltip-files-new-directory = New Directory
 tooltip-files-paste = Paste
+tooltip-files-search = Search files
 tooltip-manage-users = Manage Users
 tooltip-server-info = Server Info
 tooltip-about = About
@@ -216,6 +220,7 @@ tooltip-create-news = Create News Post
 tooltip-delete = Delete
 context-menu-download = Download
 context-menu-upload = Upload
+context-menu-open = Open
 
 # =============================================================================
 # Empty States
@@ -239,6 +244,11 @@ files-panel-title = Files
 files-column-name = Name
 files-column-size = Size
 files-column-modified = Modified
+files-column-path = Path
+files-search-placeholder = Search files...
+files-search-breadcrumb = Search - { $query }
+files-searching = Searching...
+files-no-results = No files found
 files-create-directory-title = Create New Directory
 files-directory-name-placeholder = Directory name
 files-info = Info
@@ -594,6 +604,9 @@ cmd-unban-desc = Remove an IP ban
 cmd-unban-usage = Usage: /{ $command } <target>
 cmd-bans-desc = List active bans
 cmd-bans-usage = Usage: /{ $command }
+cmd-reindex-desc = Trigger a file index rebuild
+cmd-reindex-usage = Usage: /{ $command }
+msg-reindex-triggered = File index rebuild triggered
 
 # =============================================================================
 # About Panel

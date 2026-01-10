@@ -103,6 +103,9 @@ label-chat-topic = Argomento Chat:
 label-chat-topic-set-by = Argomento Impostato Da:
 label-max-connections-per-ip = Max Connessioni Per IP:
 label-max-transfers-per-ip = Max Trasferimenti Per IP:
+label-file-reindex-interval = Intervallo di reindicizzazione file:
+label-file-reindex-interval-value = { $minutes } minuti
+label-disabled = Disabilitato
 label-avatar = Icona:
 label-server-image = Immagine del server:
 label-details = Dettagli Tecnici
@@ -176,8 +179,9 @@ tooltip-files-view-root = Visualizza Radice
 tooltip-files-view-home = Visualizza Home
 tooltip-files-show-hidden = Mostra File Nascosti
 tooltip-files-hide-hidden = Nascondi File Nascosti
-tooltip-files-new-directory = Nuova Cartella
+tooltip-files-new-directory = Nuova Directory
 tooltip-files-paste = Incolla
+tooltip-files-search = Cerca file
 tooltip-manage-users = Gestisci Utenti
 tooltip-server-info = Info Server
 tooltip-about = Informazioni
@@ -211,6 +215,7 @@ tooltip-create-news = Crea Pubblicazione
 tooltip-delete = Elimina
 context-menu-download = Scarica
 context-menu-upload = Carica
+context-menu-open = Apri
 
 # =============================================================================
 # Empty States
@@ -234,7 +239,12 @@ files-panel-title = File
 files-column-name = Nome
 files-column-size = Dimensione
 files-column-modified = Modificato
-files-create-directory-title = Crea Nuova Cartella
+files-column-path = Percorso
+files-search-placeholder = Cerca file...
+files-search-breadcrumb = Ricerca - { $query }
+files-searching = Ricerca in corso...
+files-no-results = Nessun file trovato
+files-create-directory-title = Crea Nuova Directory
 files-directory-name-placeholder = Nome della cartella
 files-info = Info
 files-rename = Rinomina
@@ -572,6 +582,9 @@ cmd-unban-desc = Rimuovi un ban IP
 cmd-unban-usage = Uso: /{ $command } <obiettivo>
 cmd-bans-desc = Elenca i ban attivi
 cmd-bans-usage = Uso: /{ $command }
+cmd-reindex-desc = Avvia la ricostruzione dell'indice dei file
+cmd-reindex-usage = Uso: /{ $command }
+msg-reindex-triggered = Ricostruzione dell'indice dei file avviata
 
 # =============================================================================
 # About Panel

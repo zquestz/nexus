@@ -103,6 +103,9 @@ label-chat-topic = 聊天主题：
 label-chat-topic-set-by = 主题设置者：
 label-max-connections-per-ip = 每IP最大连接数：
 label-max-transfers-per-ip = 每IP最大传输数：
+label-file-reindex-interval = 文件重索引间隔：
+label-file-reindex-interval-value = { $minutes }分钟
+label-disabled = 已禁用
 label-avatar = 头像：
 label-server-image = 服务器图片：
 label-details = 技术详情
@@ -178,6 +181,7 @@ tooltip-files-show-hidden = 显示隐藏文件
 tooltip-files-hide-hidden = 隐藏隐藏文件
 tooltip-files-new-directory = 新建文件夹
 tooltip-files-paste = 粘贴
+tooltip-files-search = 搜索文件
 tooltip-manage-users = 用户管理
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
@@ -211,6 +215,7 @@ tooltip-create-news = 创建帖子
 tooltip-delete = 删除
 context-menu-download = 下载
 context-menu-upload = 上传
+context-menu-open = 打开
 
 # =============================================================================
 # Empty States
@@ -234,6 +239,11 @@ files-panel-title = 文件
 files-column-name = 名称
 files-column-size = 大小
 files-column-modified = 更新日期
+files-column-path = 路径
+files-search-placeholder = 搜索文件...
+files-search-breadcrumb = 搜索 - { $query }
+files-searching = 搜索中...
+files-no-results = 未找到文件
 files-create-directory-title = 创建新文件夹
 files-directory-name-placeholder = 文件夹名称
 files-info = 信息
@@ -549,6 +559,9 @@ cmd-unban-desc = 解除IP封禁
 cmd-unban-usage = 用法: /{ $command } <目标>
 cmd-bans-desc = 列出有效封禁
 cmd-bans-usage = 用法: /{ $command }
+cmd-reindex-desc = 触发文件索引重建
+cmd-reindex-usage = 用法: /{ $command }
+msg-reindex-triggered = 文件索引重建已触发
 
 # =============================================================================
 # About Panel

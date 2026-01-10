@@ -208,3 +208,10 @@ err-reason-too-long = O motivo do banimento é muito longo (máximo { $max_lengt
 err-reason-invalid = O motivo do banimento contém caracteres inválidos
 err-banned-permanent = Você foi banido deste servidor
 err-banned-with-expiry = Você foi banido deste servidor (expira em { $remaining })
+
+# File Search Errors
+err-search-query-empty = A busca não pode estar vazia
+err-search-query-too-short = A busca é muito curta (mínimo { $min_length } caracteres)
+err-search-query-too-long = A busca é muito longa (máximo { $max_length } caracteres)
+err-search-query-invalid = A busca contém caracteres inválidos
+err-search-failed = A busca falhou

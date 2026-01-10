@@ -84,8 +84,10 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "file_info",
     "file_list",
     "file_move",
+    "file_reindex",
     "file_rename",
     "file_root",
+    "file_search",
     "file_upload",
     "news_create",
     "news_delete",
@@ -184,8 +186,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (29)
-        assert_eq!(ALL_PERMISSIONS.len(), 29);
+        // Verify we have the expected number of permissions (31)
+        assert_eq!(ALL_PERMISSIONS.len(), 31);
     }
 
     #[test]

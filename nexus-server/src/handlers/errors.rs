@@ -908,3 +908,40 @@ pub fn err_banned_with_expiry(locale: &str, remaining: &str) -> String {
         &[("remaining", remaining)],
     )
 }
+
+// ========================================================================
+// File Search Errors
+// ========================================================================
+
+/// Get translated "search query is empty" error
+pub fn err_search_query_empty(locale: &str) -> String {
+    t(locale, "err-search-query-empty")
+}
+
+/// Get translated "search query is too short" error
+pub fn err_search_query_too_short(locale: &str, min_length: usize) -> String {
+    t_args(
+        locale,
+        "err-search-query-too-short",
+        &[("min_length", &min_length.to_string())],
+    )
+}
+
+/// Get translated "search query is too long" error
+pub fn err_search_query_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-search-query-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "search query contains invalid characters" error
+pub fn err_search_query_invalid(locale: &str) -> String {
+    t(locale, "err-search-query-invalid")
+}
+
+/// Get translated "search failed" error
+pub fn err_search_failed(locale: &str) -> String {
+    t(locale, "err-search-failed")
+}

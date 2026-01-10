@@ -503,6 +503,9 @@ impl NexusApp {
             Message::EditServerInfoMaxTransfersChanged(max_transfers) => {
                 self.handle_edit_server_info_max_transfers_changed(max_transfers)
             }
+            Message::EditServerInfoFileReindexIntervalChanged(interval) => {
+                self.handle_edit_server_info_file_reindex_interval_changed(interval)
+            }
             Message::EditServerInfoNameChanged(name) => {
                 self.handle_edit_server_info_name_changed(name)
             }
@@ -611,6 +614,19 @@ impl NexusApp {
             Message::FileDragHovered => self.handle_file_drag_hovered(),
             Message::FileDragDropped(path) => self.handle_file_drag_dropped(path),
             Message::FileDragLeft => self.handle_file_drag_left(),
+
+            // File search
+            Message::FileSearchInputChanged(value) => self.handle_file_search_input_changed(value),
+            Message::FileSearchSubmit => self.handle_file_search_submit(),
+            Message::FileSearchResultClicked(result) => {
+                self.handle_file_search_result_clicked(result)
+            }
+            Message::FileSearchResultDownload(result) => {
+                self.handle_file_search_result_download(result)
+            }
+            Message::FileSearchResultInfo(result) => self.handle_file_search_result_info(result),
+            Message::FileSearchResultOpen(result) => self.handle_file_search_result_open(result),
+            Message::FileSearchSortBy(column) => self.handle_file_search_sort_by(column),
 
             // Transfer management
             Message::TransferProgress(event) => self.handle_transfer_progress(event),

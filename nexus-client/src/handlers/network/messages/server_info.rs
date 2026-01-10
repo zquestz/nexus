@@ -41,6 +41,10 @@ impl NexusApp {
         if server_info.max_transfers_per_ip.is_some() {
             conn.max_transfers_per_ip = server_info.max_transfers_per_ip;
         }
+        // file_reindex_interval is only sent to admins
+        if server_info.file_reindex_interval.is_some() {
+            conn.file_reindex_interval = server_info.file_reindex_interval;
+        }
         // Update server image and cached version if provided
         if let Some(image) = server_info.image {
             // Decode first using reference, then move (avoids clone)

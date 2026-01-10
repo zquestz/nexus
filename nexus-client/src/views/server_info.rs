@@ -6,7 +6,7 @@ use iced::{Center, Element, Fill, Length};
 use iced_aw::NumberInput;
 
 use super::layout::scrollable_panel;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
@@ -27,6 +27,8 @@ pub struct ServerInfoData<'a> {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
+    /// File reindex interval in minutes (admin only, 0 = disabled)
+    pub file_reindex_interval: Option<u32>,
     /// Cached server image for display (None if no image set)
     pub cached_server_image: Option<&'a CachedImage>,
     /// Whether the current user is an admin
@@ -115,6 +117,24 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 .into()
         });
 
+    // File reindex interval (admin only)
+    let reindex_row: Option<Element<'static, Message>> =
+        data.file_reindex_interval.map(|interval| {
+            let label = shaped_text(t("label-file-reindex-interval")).size(TEXT_SIZE);
+            let value = if interval == 0 {
+                shaped_text(t("label-disabled")).size(TEXT_SIZE)
+            } else {
+                shaped_text(t_args(
+                    "label-file-reindex-interval-value",
+                    &[("minutes", &interval.to_string())],
+                ))
+                .size(TEXT_SIZE)
+            };
+            row![label, Space::new().width(ELEMENT_SPACING), value]
+                .align_y(Center)
+                .into()
+        });
+
     // Buttons: Edit (admin only, secondary) and Close (primary)
     let buttons = if data.is_admin {
         row![
@@ -158,6 +178,9 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
     }
     if let Some(xfer) = max_xfer_row {
         items.push(xfer);
+    }
+    if let Some(reindex) = reindex_row {
+        items.push(reindex);
     }
     items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     items.push(buttons.into());
@@ -306,6 +329,22 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
     form_items.push(max_xfer_row.into());
+
+    // File reindex interval input using NumberInput (0-255)
+    let reindex_label = shaped_text(t("label-file-reindex-interval")).size(TEXT_SIZE);
+    let reindex_value = edit_state.file_reindex_interval.unwrap_or(5);
+    let reindex_input: Element<'static, Message> = NumberInput::new(
+        &reindex_value,
+        0..=255u32,
+        Message::EditServerInfoFileReindexIntervalChanged,
+    )
+    .id(Id::from(InputId::EditServerInfoFileReindexInterval))
+    .padding(INPUT_PADDING)
+    .into();
+    let reindex_row = row![reindex_label, reindex_input]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+    form_items.push(reindex_row.into());
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 

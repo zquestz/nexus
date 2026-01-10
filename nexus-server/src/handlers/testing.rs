@@ -7,6 +7,8 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use tempfile::TempDir;
+
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -19,6 +21,7 @@ use super::HandlerContext;
 use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
+use crate::files::FileIndex;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
 
@@ -38,6 +41,10 @@ pub struct TestContext {
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ban_cache: Arc<RwLock<BanCache>>,
+    pub file_index: Arc<FileIndex>,
+    /// Keep temp dir alive for tests that use file areas
+    #[allow(dead_code)]
+    temp_dir: TempDir,
 }
 
 impl TestContext {
@@ -56,6 +63,7 @@ impl TestContext {
             transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
             connection_tracker: self.connection_tracker.clone(),
             ban_cache: self.ban_cache.clone(),
+            file_index: self.file_index.clone(),
         }
     }
 }
@@ -102,6 +110,10 @@ pub async fn create_test_context() -> TestContext {
     // Create empty ban cache for tests
     let ban_cache = Arc::new(RwLock::new(BanCache::new()));
 
+    // Create temp directory for file index
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
+
     TestContext {
         client,
         frame_writer,
@@ -114,6 +126,8 @@ pub async fn create_test_context() -> TestContext {
         file_root: None,
         connection_tracker,
         ban_cache,
+        file_index,
+        temp_dir,
     }
 }
 

@@ -18,6 +18,7 @@ mod news_image;
 mod nickname;
 mod password;
 mod permissions;
+mod search_query;
 mod server_description;
 mod server_image;
 mod server_name;
@@ -42,6 +43,10 @@ pub use password::{
     MAX_PASSWORD_LENGTH, PasswordError, validate_password, validate_password_input,
 };
 pub use permissions::{MAX_PERMISSION_LENGTH, PermissionsError, validate_permissions};
+pub use search_query::{
+    MAX_SEARCH_QUERY_LENGTH, MIN_PRIMARY_TERM_LENGTH, MIN_QUERY_LENGTH, MIN_TERM_LENGTH,
+    SearchQueryError, extract_search_terms, validate_search_query,
+};
 pub use server_description::{
     MAX_SERVER_DESCRIPTION_LENGTH, ServerDescriptionError, validate_server_description,
 };

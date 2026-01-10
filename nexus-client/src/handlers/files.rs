@@ -2,16 +2,64 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
-use nexus_common::protocol::ClientMessage;
+use nexus_common::protocol::{ClientMessage, FileSearchResult};
 use nexus_common::validators::{self, DirNameError};
 
 use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{
-    ActivePanel, ClipboardItem, ClipboardOperation, InputId, Message, PendingRequests,
-    ResponseRouting,
+    ActivePanel, ClipboardItem, ClipboardOperation, FileSortColumn, InputId, Message,
+    PendingRequests, ResponseRouting,
 };
 use crate::views::files::build_navigate_path;
+
+/// Sort search results by the specified column and direction
+///
+/// For the Name column, directories are always sorted first.
+/// For other columns, ties are broken by name (case-insensitive, ascending).
+pub fn sort_search_results(
+    results: &mut [FileSearchResult],
+    column: FileSortColumn,
+    ascending: bool,
+) {
+    match column {
+        FileSortColumn::Name => {
+            // Sort by name, keeping directories first
+            results.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+                    if ascending { cmp } else { cmp.reverse() }
+                }
+            });
+        }
+        FileSortColumn::Path => {
+            results.sort_by(|a, b| {
+                let cmp = a.path.to_lowercase().cmp(&b.path.to_lowercase());
+                let cmp = if ascending { cmp } else { cmp.reverse() };
+                // Sub-sort by name for items in same directory
+                cmp.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+        }
+        FileSortColumn::Size => {
+            results.sort_by(|a, b| {
+                let cmp = a.size.cmp(&b.size);
+                let cmp = if ascending { cmp } else { cmp.reverse() };
+                // Sub-sort by name for items with same size
+                cmp.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+        }
+        FileSortColumn::Modified => {
+            results.sort_by(|a, b| {
+                let cmp = a.modified.cmp(&b.modified);
+                let cmp = if ascending { cmp } else { cmp.reverse() };
+                // Sub-sort by name for items with same modified time
+                cmp.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+        }
+    }
+}
 
 /// Convert a directory name validation error to a localized error message
 fn dir_name_error_message(error: DirNameError) -> String {
@@ -139,6 +187,39 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
+
+        // If in search mode, re-run the search
+        if let Some(query) = tab.search_query.clone() {
+            tab.search_loading = true;
+            tab.search_results = None;
+            tab.search_error = None;
+
+            let tab_id = tab.id;
+            let viewing_root = tab.viewing_root;
+
+            let message = ClientMessage::FileSearch {
+                query,
+                root: viewing_root,
+            };
+
+            match conn.send(message) {
+                Ok(message_id) => {
+                    conn.pending_requests
+                        .track(message_id, ResponseRouting::FileSearchResult { tab_id });
+                }
+                Err(err) => {
+                    eprintln!("Failed to send file search request: {err}");
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.search_loading = false;
+                        tab.search_error = Some(err);
+                    }
+                }
+            }
+
+            return Task::none();
+        }
+
+        // Normal browsing mode - refresh file list
         let current_path = tab.current_path.clone();
         let viewing_root = tab.viewing_root;
         let show_hidden = self.config.settings.show_hidden_files;
@@ -151,7 +232,9 @@ impl NexusApp {
 
     /// Toggle between root view and user area view
     ///
-    /// Requires file_root permission. Resets to root directory when toggling.
+    /// Requires file_root permission.
+    /// In search mode: re-runs the search with toggled scope.
+    /// In browsing mode: resets to root directory when toggling.
     pub fn handle_file_toggle_root(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
@@ -161,6 +244,40 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
+
+        // If in search mode, toggle root and re-run search
+        if let Some(query) = tab.search_query.clone() {
+            tab.viewing_root = !tab.viewing_root;
+            tab.search_loading = true;
+            tab.search_results = None;
+            tab.search_error = None;
+
+            let tab_id = tab.id;
+            let viewing_root = tab.viewing_root;
+
+            let message = ClientMessage::FileSearch {
+                query,
+                root: viewing_root,
+            };
+
+            match conn.send(message) {
+                Ok(message_id) => {
+                    conn.pending_requests
+                        .track(message_id, ResponseRouting::FileSearchResult { tab_id });
+                }
+                Err(err) => {
+                    eprintln!("Failed to send file search request: {err}");
+                    if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.search_loading = false;
+                        tab.search_error = Some(err);
+                    }
+                }
+            }
+
+            return Task::none();
+        }
+
+        // Normal browsing mode - toggle and go to root/home
         tab.toggle_root();
         let viewing_root = tab.viewing_root;
         let show_hidden = self.config.settings.show_hidden_files;
@@ -1176,6 +1293,258 @@ impl NexusApp {
         // Current directory must allow uploads
         conn.files_management.active_tab().current_dir_can_upload
     }
+
+    // ==================== File Search ====================
+
+    /// Handle search input text change
+    pub fn handle_file_search_input_changed(&mut self, value: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let tab = conn.files_management.active_tab_mut();
+        tab.search_input = value;
+
+        // Don't auto-clear search when input is emptied - let user explicitly
+        // submit (Enter or button) to exit search mode. This allows them to
+        // clear and type a new search without losing current results.
+
+        Task::none()
+    }
+
+    /// Handle search submit (Enter or button click)
+    pub fn handle_file_search_submit(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let tab = conn.files_management.active_tab_mut();
+        let query = tab.search_input.trim().to_string();
+
+        // If query is empty, exit search mode and refresh the file list
+        if query.is_empty() {
+            let was_searching = tab.is_searching();
+            tab.clear_search();
+
+            // Refresh the file list to return to where we were
+            if was_searching {
+                let current_path = tab.current_path.clone();
+                let viewing_root = tab.viewing_root;
+                let show_hidden = self.config.settings.show_hidden_files;
+                return self.send_file_list_request(
+                    conn_id,
+                    current_path,
+                    viewing_root,
+                    show_hidden,
+                );
+            }
+            return Task::none();
+        }
+
+        // Set loading state
+        tab.search_query = Some(query.clone());
+        tab.search_loading = true;
+        tab.search_results = None;
+        tab.search_error = None;
+
+        let tab_id = tab.id;
+        let viewing_root = tab.viewing_root;
+
+        // Send search request
+        let message = ClientMessage::FileSearch {
+            query,
+            root: viewing_root,
+        };
+
+        match conn.send(message) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileSearchResult { tab_id });
+            }
+            Err(err) => {
+                eprintln!("Failed to send file search request: {err}");
+                if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                    tab.search_loading = false;
+                    tab.search_error = Some(err);
+                }
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle search result click (left-click) - opens new tab
+    pub fn handle_file_search_result_clicked(
+        &mut self,
+        result: nexus_common::protocol::FileSearchResult,
+    ) -> Task<Message> {
+        self.open_search_result_in_new_tab(result)
+    }
+
+    /// Handle search result context menu - Download
+    pub fn handle_file_search_result_download(
+        &mut self,
+        result: nexus_common::protocol::FileSearchResult,
+    ) -> Task<Message> {
+        // Queue the download using the result's path
+        // Strip leading slash for the download path
+        let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+
+        if result.is_directory {
+            self.handle_file_download_all(path.to_string())
+        } else {
+            self.handle_file_download(path.to_string())
+        }
+    }
+
+    /// Handle search result context menu - Info
+    pub fn handle_file_search_result_info(
+        &mut self,
+        result: nexus_common::protocol::FileSearchResult,
+    ) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let tab_id = conn.files_management.active_tab_id();
+        let viewing_root = conn.files_management.active_tab().viewing_root;
+
+        // Strip leading slash for the path
+        let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+
+        let message = ClientMessage::FileInfo {
+            path: path.to_string(),
+            root: viewing_root,
+        };
+
+        match conn.send(message) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::FileInfoResult { tab_id });
+            }
+            Err(err) => {
+                eprintln!("Failed to send file info request: {err}");
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle search result context menu - Open (same as click)
+    pub fn handle_file_search_result_open(
+        &mut self,
+        result: nexus_common::protocol::FileSearchResult,
+    ) -> Task<Message> {
+        self.open_search_result_in_new_tab(result)
+    }
+
+    /// Open a search result in a new tab
+    ///
+    /// For directories: navigates into the directory
+    /// For files: navigates to the parent directory
+    fn open_search_result_in_new_tab(
+        &mut self,
+        result: nexus_common::protocol::FileSearchResult,
+    ) -> Task<Message> {
+        use crate::types::FileTab;
+
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Determine the target path
+        let target_path = if result.is_directory {
+            // Navigate into the directory
+            result
+                .path
+                .strip_prefix('/')
+                .unwrap_or(&result.path)
+                .to_string()
+        } else {
+            // Navigate to parent directory
+            let path = result.path.strip_prefix('/').unwrap_or(&result.path);
+            if let Some(pos) = path.rfind('/') {
+                path[..pos].to_string()
+            } else {
+                // File is at root
+                String::new()
+            }
+        };
+
+        // Get viewing_root from current search tab
+        let viewing_root = conn.files_management.active_tab().viewing_root;
+
+        // Create new tab at target path
+        let new_tab = FileTab::new_at_path(target_path.clone(), viewing_root);
+        let new_tab_id = new_tab.id;
+
+        // Add and switch to the new tab
+        conn.files_management.tabs.push(new_tab);
+        conn.files_management.active_tab = conn.files_management.tabs.len() - 1;
+
+        // Request file list for the new tab
+        let message = ClientMessage::FileList {
+            path: target_path,
+            root: viewing_root,
+            show_hidden: self.config.settings.show_hidden_files,
+        };
+
+        match conn.send(message) {
+            Ok(message_id) => {
+                conn.pending_requests.track(
+                    message_id,
+                    ResponseRouting::PopulateFileList { tab_id: new_tab_id },
+                );
+            }
+            Err(err) => {
+                eprintln!("Failed to send file list request: {err}");
+                if let Some(tab) = conn.files_management.tab_by_id_mut(new_tab_id) {
+                    tab.error = Some(err);
+                }
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Handle search results sort column click
+    pub fn handle_file_search_sort_by(&mut self, column: FileSortColumn) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        let tab = conn.files_management.active_tab_mut();
+
+        // Toggle direction if clicking same column, otherwise set new column ascending
+        if tab.search_sort_column == column {
+            tab.search_sort_ascending = !tab.search_sort_ascending;
+        } else {
+            tab.search_sort_column = column;
+            tab.search_sort_ascending = true;
+        }
+
+        // Sort the search results in place
+        if let Some(results) = &mut tab.search_results {
+            sort_search_results(results, column, tab.search_sort_ascending);
+        }
+
+        Task::none()
+    }
 }
 
 /// Sanitize a string to be safe for use as a filename
@@ -1315,5 +1684,256 @@ mod tests {
         assert_eq!(sanitize_filename("服务器", "fallback"), "服务器");
         assert_eq!(sanitize_filename("サーバー", "fallback"), "サーバー");
         assert_eq!(sanitize_filename("Сервер", "fallback"), "Сервер");
+    }
+
+    // =========================================================================
+    // sort_search_results Tests
+    // =========================================================================
+
+    fn make_search_result(
+        name: &str,
+        path: &str,
+        size: u64,
+        is_directory: bool,
+    ) -> nexus_common::protocol::FileSearchResult {
+        nexus_common::protocol::FileSearchResult {
+            path: path.to_string(),
+            name: name.to_string(),
+            size,
+            modified: 0,
+            is_directory,
+        }
+    }
+
+    #[test]
+    fn test_sort_search_results_by_name_directories_first() {
+        let mut results = vec![
+            make_search_result("zebra.txt", "/zebra.txt", 100, false),
+            make_search_result("alpha", "/alpha", 0, true),
+            make_search_result("apple.txt", "/apple.txt", 200, false),
+            make_search_result("beta", "/beta", 0, true),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Name, true);
+
+        // Directories should come first, then files, both alphabetically
+        assert_eq!(results[0].name, "alpha");
+        assert!(results[0].is_directory);
+        assert_eq!(results[1].name, "beta");
+        assert!(results[1].is_directory);
+        assert_eq!(results[2].name, "apple.txt");
+        assert!(!results[2].is_directory);
+        assert_eq!(results[3].name, "zebra.txt");
+        assert!(!results[3].is_directory);
+    }
+
+    #[test]
+    fn test_sort_search_results_by_name_descending() {
+        let mut results = vec![
+            make_search_result("apple.txt", "/apple.txt", 100, false),
+            make_search_result("zebra.txt", "/zebra.txt", 200, false),
+            make_search_result("middle.txt", "/middle.txt", 150, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Name, false);
+
+        assert_eq!(results[0].name, "zebra.txt");
+        assert_eq!(results[1].name, "middle.txt");
+        assert_eq!(results[2].name, "apple.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_by_path() {
+        let mut results = vec![
+            make_search_result("file.txt", "/z/file.txt", 100, false),
+            make_search_result("file.txt", "/a/file.txt", 100, false),
+            make_search_result("file.txt", "/m/file.txt", 100, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Path, true);
+
+        assert_eq!(results[0].path, "/a/file.txt");
+        assert_eq!(results[1].path, "/m/file.txt");
+        assert_eq!(results[2].path, "/z/file.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_by_path_subsorts_by_name() {
+        let mut results = vec![
+            make_search_result("zebra.txt", "/docs/zebra.txt", 100, false),
+            make_search_result("apple.txt", "/docs/apple.txt", 100, false),
+            make_search_result("banana.txt", "/docs/banana.txt", 100, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Path, true);
+
+        // Same path prefix, should be sub-sorted by name
+        assert_eq!(results[0].name, "apple.txt");
+        assert_eq!(results[1].name, "banana.txt");
+        assert_eq!(results[2].name, "zebra.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_by_size() {
+        let mut results = vec![
+            make_search_result("medium.txt", "/medium.txt", 500, false),
+            make_search_result("small.txt", "/small.txt", 100, false),
+            make_search_result("large.txt", "/large.txt", 1000, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Size, true);
+
+        assert_eq!(results[0].size, 100);
+        assert_eq!(results[1].size, 500);
+        assert_eq!(results[2].size, 1000);
+
+        // Descending
+        sort_search_results(&mut results, FileSortColumn::Size, false);
+
+        assert_eq!(results[0].size, 1000);
+        assert_eq!(results[1].size, 500);
+        assert_eq!(results[2].size, 100);
+    }
+
+    #[test]
+    fn test_sort_search_results_by_size_subsorts_by_name() {
+        let mut results = vec![
+            make_search_result("zebra.txt", "/zebra.txt", 100, false),
+            make_search_result("apple.txt", "/apple.txt", 100, false),
+            make_search_result("banana.txt", "/banana.txt", 100, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Size, true);
+
+        // Same size, should be sub-sorted by name
+        assert_eq!(results[0].name, "apple.txt");
+        assert_eq!(results[1].name, "banana.txt");
+        assert_eq!(results[2].name, "zebra.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_case_insensitive() {
+        let mut results = vec![
+            make_search_result("Zebra.txt", "/Zebra.txt", 100, false),
+            make_search_result("apple.txt", "/apple.txt", 100, false),
+            make_search_result("BANANA.txt", "/BANANA.txt", 100, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Name, true);
+
+        assert_eq!(results[0].name, "apple.txt");
+        assert_eq!(results[1].name, "BANANA.txt");
+        assert_eq!(results[2].name, "Zebra.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_empty() {
+        let mut results: Vec<nexus_common::protocol::FileSearchResult> = vec![];
+        // Should not panic on empty vec
+        sort_search_results(&mut results, FileSortColumn::Name, true);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_sort_search_results_single_item() {
+        let mut results = vec![make_search_result("test.txt", "/test.txt", 100, false)];
+        sort_search_results(&mut results, FileSortColumn::Name, true);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "test.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_path_case_insensitive() {
+        let mut results = vec![
+            make_search_result("file.txt", "/Zebra/file.txt", 100, false),
+            make_search_result("file.txt", "/apple/file.txt", 100, false),
+            make_search_result("file.txt", "/BANANA/file.txt", 100, false),
+        ];
+
+        sort_search_results(&mut results, FileSortColumn::Path, true);
+
+        assert_eq!(results[0].path, "/apple/file.txt");
+        assert_eq!(results[1].path, "/BANANA/file.txt");
+        assert_eq!(results[2].path, "/Zebra/file.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_modified() {
+        let mut results = vec![
+            make_search_result("old.txt", "/old.txt", 100, false),
+            make_search_result("new.txt", "/new.txt", 100, false),
+            make_search_result("mid.txt", "/mid.txt", 100, false),
+        ];
+        // Manually set modified times
+        results[0].modified = 1000;
+        results[1].modified = 3000;
+        results[2].modified = 2000;
+
+        sort_search_results(&mut results, FileSortColumn::Modified, true);
+
+        assert_eq!(results[0].modified, 1000);
+        assert_eq!(results[1].modified, 2000);
+        assert_eq!(results[2].modified, 3000);
+
+        // Descending
+        sort_search_results(&mut results, FileSortColumn::Modified, false);
+
+        assert_eq!(results[0].modified, 3000);
+        assert_eq!(results[1].modified, 2000);
+        assert_eq!(results[2].modified, 1000);
+    }
+
+    #[test]
+    fn test_sort_search_results_modified_subsorts_by_name() {
+        let mut results = vec![
+            make_search_result("zebra.txt", "/zebra.txt", 100, false),
+            make_search_result("apple.txt", "/apple.txt", 100, false),
+            make_search_result("banana.txt", "/banana.txt", 100, false),
+        ];
+        // Same modified time for all
+        results[0].modified = 1000;
+        results[1].modified = 1000;
+        results[2].modified = 1000;
+
+        sort_search_results(&mut results, FileSortColumn::Modified, true);
+
+        // Same modified time, should be sub-sorted by name
+        assert_eq!(results[0].name, "apple.txt");
+        assert_eq!(results[1].name, "banana.txt");
+        assert_eq!(results[2].name, "zebra.txt");
+    }
+
+    #[test]
+    fn test_sort_search_results_directories_always_first_for_name() {
+        let mut results = vec![
+            make_search_result("zebra", "/zebra", 0, true),
+            make_search_result("apple.txt", "/apple.txt", 100, false),
+            make_search_result("alpha", "/alpha", 0, true),
+            make_search_result("banana.txt", "/banana.txt", 200, false),
+        ];
+
+        // Ascending - dirs first, then files, both alphabetical
+        sort_search_results(&mut results, FileSortColumn::Name, true);
+
+        assert!(results[0].is_directory);
+        assert_eq!(results[0].name, "alpha");
+        assert!(results[1].is_directory);
+        assert_eq!(results[1].name, "zebra");
+        assert!(!results[2].is_directory);
+        assert_eq!(results[2].name, "apple.txt");
+        assert!(!results[3].is_directory);
+        assert_eq!(results[3].name, "banana.txt");
+
+        // Descending - dirs still first, but both groups reversed
+        sort_search_results(&mut results, FileSortColumn::Name, false);
+
+        assert!(results[0].is_directory);
+        assert_eq!(results[0].name, "zebra");
+        assert!(results[1].is_directory);
+        assert_eq!(results[1].name, "alpha");
+        assert!(!results[2].is_directory);
+        assert_eq!(results[2].name, "banana.txt");
+        assert!(!results[3].is_directory);
+        assert_eq!(results[3].name, "apple.txt");
     }
 }

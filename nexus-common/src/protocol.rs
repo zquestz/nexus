@@ -129,6 +129,9 @@ pub enum ClientMessage {
         max_transfers_per_ip: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         image: Option<String>,
+        /// File reindex interval in minutes (0 to disable automatic reindexing)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_reindex_interval: Option<u32>,
     },
     NewsList,
     NewsShow {
@@ -287,6 +290,16 @@ pub enum ClientMessage {
     },
     /// Request list of active bans
     BanList,
+    /// Search files in the file area
+    FileSearch {
+        /// Search query (minimum 3 characters, literal match, case-insensitive)
+        query: String,
+        /// If true, search entire file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
+    /// Request a file index rebuild (admin command)
+    FileReindex,
 }
 
 /// Helper for skip_serializing_if on ChatAction
@@ -672,6 +685,21 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         bans: Option<Vec<BanInfo>>,
     },
+    /// Response to FileSearch request
+    FileSearchResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Search results (max 100)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        results: Option<Vec<FileSearchResult>>,
+    },
+    /// Response to FileReindex request
+    FileReindexResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -690,6 +718,9 @@ pub struct ServerInfo {
     pub image: Option<String>,
     /// Port for file transfers (typically 7501)
     pub transfer_port: u16,
+    /// File reindex interval in minutes (0 = disabled)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_reindex_interval: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -756,6 +787,21 @@ pub struct BanInfo {
     /// Unix timestamp when the ban expires (None = permanent)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
+}
+
+/// File search result entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSearchResult {
+    /// Full path relative to user's root (e.g., "/Documents/report.pdf")
+    pub path: String,
+    /// Filename only (e.g., "report.pdf")
+    pub name: String,
+    /// File size in bytes (0 for directories)
+    pub size: u64,
+    /// Last modified time as Unix timestamp
+    pub modified: i64,
+    /// True if this is a directory
+    pub is_directory: bool,
 }
 
 /// File entry in a directory listing
@@ -943,6 +989,7 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::ServerInfoUpdate {
                 name,
                 description,
+                file_reindex_interval,
                 max_connections_per_ip,
                 max_transfers_per_ip,
                 image,
@@ -951,7 +998,8 @@ impl std::fmt::Debug for ClientMessage {
                 s.field("name", name)
                     .field("description", description)
                     .field("max_connections_per_ip", max_connections_per_ip)
-                    .field("max_transfers_per_ip", max_transfers_per_ip);
+                    .field("max_transfers_per_ip", max_transfers_per_ip)
+                    .field("file_reindex_interval", file_reindex_interval);
                 if let Some(img) = image {
                     if img.len() > 100 {
                         s.field(
@@ -1116,6 +1164,12 @@ impl std::fmt::Debug for ClientMessage {
                 f.debug_struct("BanDelete").field("target", target).finish()
             }
             ClientMessage::BanList => f.debug_struct("BanList").finish(),
+            ClientMessage::FileSearch { query, root } => f
+                .debug_struct("FileSearch")
+                .field("query", query)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileReindex => f.debug_struct("FileReindex").finish(),
         }
     }
 }
@@ -2022,6 +2076,7 @@ mod tests {
             max_transfers_per_ip: Some(3),
             image: None,
             transfer_port: 7501,
+            file_reindex_interval: Some(5),
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"max_transfers_per_ip\":3"));
@@ -2146,6 +2201,170 @@ mod tests {
                 assert_eq!(transfer_id, Some("ccdd3344".to_string()));
             }
             _ => panic!("Expected FileUploadResponse"),
+        }
+    }
+
+    // =========================================================================
+    // File Search Protocol Tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize_file_search() {
+        let msg = ClientMessage::FileSearch {
+            query: "readme".to_string(),
+            root: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileSearch\""));
+        assert!(json.contains("\"query\":\"readme\""));
+        assert!(!json.contains("\"root\":true"));
+    }
+
+    #[test]
+    fn test_serialize_file_search_with_root() {
+        let msg = ClientMessage::FileSearch {
+            query: "config".to_string(),
+            root: true,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileSearch\""));
+        assert!(json.contains("\"query\":\"config\""));
+        assert!(json.contains("\"root\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_file_search() {
+        let json = r#"{"type":"FileSearch","query":"test.txt","root":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileSearch { query, root } => {
+                assert_eq!(query, "test.txt");
+                assert!(root);
+            }
+            _ => panic!("Expected FileSearch"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_file_search_default_root() {
+        // root should default to false if omitted
+        let json = r#"{"type":"FileSearch","query":"docs"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::FileSearch { query, root } => {
+                assert_eq!(query, "docs");
+                assert!(!root);
+            }
+            _ => panic!("Expected FileSearch"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_reindex() {
+        let msg = ClientMessage::FileReindex;
+        let json = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json, r#"{"type":"FileReindex"}"#);
+    }
+
+    #[test]
+    fn test_deserialize_file_reindex() {
+        let json = r#"{"type":"FileReindex"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, ClientMessage::FileReindex));
+    }
+
+    #[test]
+    fn test_serialize_file_search_response_success() {
+        let msg = ServerMessage::FileSearchResponse {
+            success: true,
+            error: None,
+            results: Some(vec![FileSearchResult {
+                path: "/Documents/report.pdf".to_string(),
+                name: "report.pdf".to_string(),
+                size: 12345,
+                modified: 1700000000,
+                is_directory: false,
+            }]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileSearchResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"path\":\"/Documents/report.pdf\""));
+        assert!(json.contains("\"name\":\"report.pdf\""));
+        assert!(json.contains("\"size\":12345"));
+        assert!(json.contains("\"is_directory\":false"));
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_serialize_file_search_response_error() {
+        let msg = ServerMessage::FileSearchResponse {
+            success: false,
+            error: Some("Query too short".to_string()),
+            results: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Query too short\""));
+        assert!(!json.contains("\"results\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_search_response() {
+        let json = r#"{"type":"FileSearchResponse","success":true,"results":[{"path":"/test.txt","name":"test.txt","size":100,"modified":1700000000,"is_directory":false}]}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::FileSearchResponse {
+                success,
+                error,
+                results,
+            } => {
+                assert!(success);
+                assert_eq!(error, None);
+                let results = results.unwrap();
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].path, "/test.txt");
+                assert_eq!(results[0].name, "test.txt");
+                assert_eq!(results[0].size, 100);
+                assert!(!results[0].is_directory);
+            }
+            _ => panic!("Expected FileSearchResponse"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_reindex_response_success() {
+        let msg = ServerMessage::FileReindexResponse {
+            success: true,
+            error: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileReindexResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_serialize_file_reindex_response_error() {
+        let msg = ServerMessage::FileReindexResponse {
+            success: false,
+            error: Some("Reindex already in progress".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Reindex already in progress\""));
+    }
+
+    #[test]
+    fn test_deserialize_file_reindex_response() {
+        let json = r#"{"type":"FileReindexResponse","success":false,"error":"Permission denied"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::FileReindexResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some("Permission denied".to_string()));
+            }
+            _ => panic!("Expected FileReindexResponse"),
         }
     }
 

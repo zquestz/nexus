@@ -5,12 +5,14 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 
 use crate::db::{Database, Permission};
+use crate::files::FileIndex;
 
 /// Parameters for handling a transfer connection
 pub struct TransferParams {
@@ -18,6 +20,7 @@ pub struct TransferParams {
     pub db: Database,
     pub debug: bool,
     pub file_root: Option<&'static Path>,
+    pub file_index: Arc<FileIndex>,
 }
 
 /// Information about a file to transfer (for downloads)
@@ -70,6 +73,7 @@ where
     pub locale: &'a str,
     pub peer_addr: SocketAddr,
     pub debug: bool,
+    pub file_index: &'a Arc<FileIndex>,
 }
 
 /// Parameters for receiving a file upload

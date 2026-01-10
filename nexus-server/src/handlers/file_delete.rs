@@ -212,6 +212,9 @@ where
 
     match result {
         Ok(()) => {
+            // Mark file index as dirty so it gets rebuilt
+            ctx.file_index.mark_dirty();
+
             let response = ServerMessage::FileDeleteResponse {
                 success: true,
                 error: None,

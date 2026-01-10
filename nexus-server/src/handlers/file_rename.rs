@@ -229,6 +229,9 @@ where
     // Perform the rename (async to avoid blocking runtime)
     match rename_path_async(&source_path, &target_path).await {
         Ok(()) => {
+            // Mark file index as dirty so it gets rebuilt
+            ctx.file_index.mark_dirty();
+
             let response = ServerMessage::FileRenameResponse {
                 success: true,
                 error: None,

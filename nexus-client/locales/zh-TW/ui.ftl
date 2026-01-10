@@ -103,6 +103,9 @@ label-chat-topic = 聊天主題：
 label-chat-topic-set-by = 主題設定者：
 label-max-connections-per-ip = 每IP最大連線數：
 label-max-transfers-per-ip = 每IP最大傳輸數：
+label-file-reindex-interval = 檔案重新索引間隔：
+label-file-reindex-interval-value = { $minutes } 分鐘
+label-disabled = 停用
 label-avatar = 頭像：
 label-server-image = 伺服器圖片：
 label-details = 技術詳情
@@ -176,8 +179,9 @@ tooltip-files-view-root = 檢視根目錄
 tooltip-files-view-home = 檢視主目錄
 tooltip-files-show-hidden = 顯示隱藏檔案
 tooltip-files-hide-hidden = 隱藏隱藏檔案
-tooltip-files-new-directory = 新建資料夾
+tooltip-files-new-directory = 新增資料夾
 tooltip-files-paste = 貼上
+tooltip-files-search = 搜尋檔案
 tooltip-manage-users = 使用者管理
 tooltip-server-info = 伺服器資訊
 tooltip-about = 關於
@@ -211,6 +215,7 @@ tooltip-create-news = 建立貼文
 tooltip-delete = 刪除
 context-menu-download = 下載
 context-menu-upload = 上傳
+context-menu-open = 開啟
 
 # =============================================================================
 # Empty States
@@ -234,6 +239,11 @@ files-panel-title = 檔案
 files-column-name = 名稱
 files-column-size = 大小
 files-column-modified = 修改日期
+files-column-path = 路徑
+files-search-placeholder = 搜尋檔案...
+files-search-breadcrumb = 搜尋 - { $query }
+files-searching = 搜尋中...
+files-no-results = 找不到檔案
 files-create-directory-title = 建立新資料夾
 files-directory-name-placeholder = 資料夾名稱
 files-info = 資訊
@@ -549,6 +559,9 @@ cmd-unban-desc = 解除IP封鎖
 cmd-unban-usage = 用法: /{ $command } <目標>
 cmd-bans-desc = 列出有效封鎖
 cmd-bans-usage = 用法: /{ $command }
+cmd-reindex-desc = 觸發檔案索引重建
+cmd-reindex-usage = 用法: /{ $command }
+msg-reindex-triggered = 檔案索引重建已觸發
 
 # =============================================================================
 # About Panel

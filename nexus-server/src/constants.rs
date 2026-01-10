@@ -45,6 +45,17 @@ pub const CONFIG_KEY_MAX_TRANSFERS_PER_IP: &str = "max_transfers_per_ip";
 pub const DEFAULT_MAX_TRANSFERS_PER_IP: usize = 3;
 
 // =============================================================================
+// File Reindex Configuration
+// =============================================================================
+
+/// Configuration key for file reindex interval in the database
+pub const CONFIG_KEY_FILE_REINDEX_INTERVAL: &str = "file_reindex_interval";
+
+/// Default file reindex interval in minutes (matches migration default)
+/// A value of 0 disables automatic reindexing.
+pub const DEFAULT_FILE_REINDEX_INTERVAL: u32 = 5;
+
+// =============================================================================
 // Database Validation Errors (defense-in-depth, operator-facing)
 // =============================================================================
 

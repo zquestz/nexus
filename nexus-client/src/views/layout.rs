@@ -8,9 +8,9 @@ use iced::{Center, Element, Fill};
 use super::constants::{
     PERMISSION_FILE_COPY, PERMISSION_FILE_CREATE_DIR, PERMISSION_FILE_DELETE,
     PERMISSION_FILE_DOWNLOAD, PERMISSION_FILE_INFO, PERMISSION_FILE_LIST, PERMISSION_FILE_MOVE,
-    PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT, PERMISSION_FILE_UPLOAD, PERMISSION_NEWS_LIST,
-    PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE,
-    PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
+    PERMISSION_FILE_RENAME, PERMISSION_FILE_ROOT, PERMISSION_FILE_SEARCH, PERMISSION_FILE_UPLOAD,
+    PERMISSION_NEWS_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_CREATE,
+    PERMISSION_USER_DELETE, PERMISSION_USER_EDIT, PERMISSION_USER_LIST,
 };
 use super::disconnect_dialog::disconnect_dialog_view;
 use super::files::{FilePermissions, files_view};
@@ -697,6 +697,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 version: ctx.conn.server_version.clone(),
                 max_connections_per_ip: ctx.conn.max_connections_per_ip,
                 max_transfers_per_ip: ctx.conn.max_transfers_per_ip,
+                file_reindex_interval: ctx.conn.file_reindex_interval,
                 cached_server_image: ctx.conn.cached_server_image.as_ref(),
                 is_admin: ctx.conn.is_admin,
                 edit_state: ctx.conn.server_info_edit.as_ref(),
@@ -740,6 +741,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 file_copy: ctx.conn.has_permission(PERMISSION_FILE_COPY),
                 file_download: ctx.conn.has_permission(PERMISSION_FILE_DOWNLOAD),
                 file_upload: ctx.conn.has_permission(PERMISSION_FILE_UPLOAD),
+                file_search: ctx.conn.has_permission(PERMISSION_FILE_SEARCH),
             };
             stack![
                 chat,

@@ -208,3 +208,10 @@ err-reason-too-long = BAN理由が長すぎます（最大{ $max_length }文字�
 err-reason-invalid = BAN理由に無効な文字が含まれています
 err-banned-permanent = このサーバーからBANされました
 err-banned-with-expiry = このサーバーからBANされました（{ $remaining }後に解除）
+
+# File Search Errors
+err-search-query-empty = 検索クエリを空にすることはできません
+err-search-query-too-short = 検索クエリが短すぎます（最小{ $min_length }文字）
+err-search-query-too-long = 検索クエリが長すぎます（最大{ $max_length }文字）
+err-search-query-invalid = 検索クエリに無効な文字が含まれています
+err-search-failed = 検索に失敗しました

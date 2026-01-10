@@ -103,6 +103,9 @@ label-chat-topic = 채팅 주제:
 label-chat-topic-set-by = 토픽 설정자:
 label-max-connections-per-ip = IP당 최대 연결 수:
 label-max-transfers-per-ip = IP당 최대 전송 수:
+label-file-reindex-interval = 파일 재색인 간격:
+label-file-reindex-interval-value = { $minutes }분
+label-disabled = 비활성화
 label-avatar = 아바타:
 label-server-image = 서버 이미지:
 label-details = 기술 세부사항
@@ -176,8 +179,9 @@ tooltip-files-view-root = 루트 보기
 tooltip-files-view-home = 홈 보기
 tooltip-files-show-hidden = 숨김 파일 표시
 tooltip-files-hide-hidden = 숨김 파일 숨기기
-tooltip-files-new-directory = 새 폴더
+tooltip-files-new-directory = 새 디렉터리
 tooltip-files-paste = 붙여넣기
+tooltip-files-search = 파일 검색
 tooltip-manage-users = 사용자 관리
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
@@ -211,6 +215,7 @@ tooltip-create-news = 게시물 작성
 tooltip-delete = 삭제
 context-menu-download = 다운로드
 context-menu-upload = 업로드
+context-menu-open = 열기
 
 # =============================================================================
 # Empty States
@@ -234,7 +239,12 @@ files-panel-title = 파일
 files-column-name = 이름
 files-column-size = 크기
 files-column-modified = 수정일
-files-create-directory-title = 새 폴더 만들기
+files-column-path = 경로
+files-search-placeholder = 파일 검색...
+files-search-breadcrumb = 검색 - { $query }
+files-searching = 검색 중...
+files-no-results = 파일을 찾을 수 없습니다
+files-create-directory-title = 새 디렉터리 만들기
 files-directory-name-placeholder = 폴더 이름
 files-info = 정보
 files-rename = 이름 변경
@@ -549,6 +559,9 @@ cmd-unban-desc = IP 차단 해제
 cmd-unban-usage = 사용법: /{ $command } <대상>
 cmd-bans-desc = 활성 차단 목록 표시
 cmd-bans-usage = 사용법: /{ $command }
+cmd-reindex-desc = 파일 인덱스 재구축 시작
+cmd-reindex-usage = 사용법: /{ $command }
+msg-reindex-triggered = 파일 인덱스 재구축이 시작되었습니다
 
 # =============================================================================
 # About Panel

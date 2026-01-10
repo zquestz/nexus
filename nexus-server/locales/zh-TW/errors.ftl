@@ -208,3 +208,10 @@ err-reason-too-long = 封鎖原因過長（最多 { $max_length } 個字元）
 err-reason-invalid = 封鎖原因包含無效字元
 err-banned-permanent = 您已被此伺服器封鎖
 err-banned-with-expiry = 您已被此伺服器封鎖（{ $remaining } 後解除）
+
+# File Search Errors
+err-search-query-empty = 搜尋查詢不能為空
+err-search-query-too-short = 搜尋查詢太短（最少 { $min_length } 個字元）
+err-search-query-too-long = 搜尋查詢太長（最多 { $max_length } 個字元）
+err-search-query-invalid = 搜尋查詢包含無效字元
+err-search-failed = 搜尋失敗

@@ -14,6 +14,7 @@ pub struct ServerInfoBroadcastParams {
     pub max_transfers_per_ip: u32,
     pub image: String,
     pub transfer_port: u16,
+    pub file_reindex_interval: u32,
 }
 
 impl UserManager {
@@ -215,6 +216,7 @@ impl UserManager {
                     max_transfers_per_ip: Some(params.max_transfers_per_ip),
                     image: Some(params.image.clone()),
                     transfer_port: params.transfer_port,
+                    file_reindex_interval: Some(params.file_reindex_interval),
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

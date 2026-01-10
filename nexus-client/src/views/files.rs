@@ -8,10 +8,10 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, Right, alignment};
 use iced_aw::ContextMenu;
-use nexus_common::protocol::{FileEntry, FileInfoDetails};
+use nexus_common::protocol::{FileEntry, FileInfoDetails, FileSearchResult};
 
 use super::layout::scrollable_panel;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
     BREADCRUMB_MAX_SEGMENT_LENGTH, BUTTON_PADDING, CLOSE_BUTTON_PADDING, CONTENT_MAX_WIDTH,
@@ -47,6 +47,7 @@ pub struct FilePermissions {
     pub file_copy: bool,
     pub file_download: bool,
     pub file_upload: bool,
+    pub file_search: bool,
 }
 
 /// State needed to render the files toolbar
@@ -63,6 +64,7 @@ pub struct ToolbarState<'a> {
     pub can_upload: bool,
     pub current_path: &'a str,
     pub is_loading: bool,
+    pub is_searching: bool,
 }
 
 // ============================================================================
@@ -310,8 +312,8 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     .gap(TOOLTIP_GAP)
     .padding(TOOLTIP_PADDING);
 
-    // Up button - enabled only when not at home
-    let up_button: Element<'a, Message> = if state.can_go_up {
+    // Up button - enabled only when not at home and not searching
+    let up_button: Element<'a, Message> = if state.can_go_up && !state.is_searching {
         tooltip(
             button(icon::up_dir().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
@@ -363,41 +365,24 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     // Refresh button
     toolbar_row = toolbar_row.push(refresh_button);
 
-    // Hidden files toggle button
-    let hidden_tooltip = if state.show_hidden {
-        t("tooltip-files-hide-hidden")
-    } else {
-        t("tooltip-files-show-hidden")
-    };
+    // Hidden files toggle button - disabled during search (index includes all files)
     let hidden_icon = if state.show_hidden {
         icon::eye()
     } else {
         icon::eye_off()
     };
-    let hidden_toggle_button = tooltip(
-        button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
-            .style(transparent_icon_button_style)
-            .on_press(Message::FileToggleHidden),
-        container(shaped_text(hidden_tooltip).size(TOOLTIP_TEXT_SIZE))
-            .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(tooltip_container_style),
-        tooltip::Position::Bottom,
-    )
-    .gap(TOOLTIP_GAP)
-    .padding(TOOLTIP_PADDING);
-
-    toolbar_row = toolbar_row.push(hidden_toggle_button);
-
-    // Download All button - downloads current directory recursively
-    let download_all_button: Element<'a, Message> = if state.has_file_download && !state.is_loading
-    {
+    let hidden_toggle_button: Element<'a, Message> = if !state.is_searching {
+        let hidden_tooltip = if state.show_hidden {
+            t("tooltip-files-hide-hidden")
+        } else {
+            t("tooltip-files-show-hidden")
+        };
         tooltip(
-            button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+            button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
-                .on_press(Message::FileDownloadAll(state.current_path.to_string())),
-            container(shaped_text(t("tooltip-download-all")).size(TOOLTIP_TEXT_SIZE))
+                .on_press(Message::FileToggleHidden),
+            container(shaped_text(hidden_tooltip).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(tooltip_container_style),
             tooltip::Position::Bottom,
@@ -406,18 +391,45 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         .padding(TOOLTIP_PADDING)
         .into()
     } else {
-        // Disabled download button (shown but not clickable)
-        button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+        button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
             .padding(FILE_TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
             .into()
     };
 
+    toolbar_row = toolbar_row.push(hidden_toggle_button);
+
+    // Download All button - downloads current directory recursively
+    // Disabled during search (no current directory to download)
+    let download_all_button: Element<'a, Message> =
+        if state.has_file_download && !state.is_loading && !state.is_searching {
+            tooltip(
+                button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::FileDownloadAll(state.current_path.to_string())),
+                container(shaped_text(t("tooltip-download-all")).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        } else {
+            // Disabled download button (shown but not clickable)
+            button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(disabled_icon_button_style)
+                .into()
+        };
+
     toolbar_row = toolbar_row.push(download_all_button);
 
     // Upload button - enabled if user has file_upload permission AND current dir allows upload
+    // Disabled during search (no destination directory)
     let upload_button: Element<'a, Message> =
-        if state.has_file_upload && state.can_upload && !state.is_loading {
+        if state.has_file_upload && state.can_upload && !state.is_loading && !state.is_searching {
             tooltip(
                 button(icon::upload().size(FILE_TOOLBAR_ICON_SIZE))
                     .padding(FILE_TOOLBAR_BUTTON_PADDING)
@@ -445,39 +457,84 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     toolbar_row = toolbar_row.push(upload_button);
 
     // New Directory button - enabled if user has file_create_dir permission OR current dir allows upload
-    // Disabled while loading
-    let new_dir_button: Element<'a, Message> = if state.can_create_dir && !state.is_loading {
-        tooltip(
+    // Disabled while loading or searching (no parent directory)
+    let new_dir_button: Element<'a, Message> =
+        if state.can_create_dir && !state.is_loading && !state.is_searching {
+            tooltip(
+                button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
+                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::FileNewDirectoryClicked),
+                container(shaped_text(t("tooltip-files-new-directory")).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        } else {
+            // Disabled new directory button
             button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
-                .style(transparent_icon_button_style)
-                .on_press(Message::FileNewDirectoryClicked),
-            container(shaped_text(t("tooltip-files-new-directory")).size(TOOLTIP_TEXT_SIZE))
-                .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(tooltip_container_style),
-            tooltip::Position::Bottom,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING)
-        .into()
-    } else {
-        // Disabled new directory button
-        button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
-            .style(disabled_icon_button_style)
-            .into()
-    };
+                .style(disabled_icon_button_style)
+                .into()
+        };
 
     toolbar_row = toolbar_row.push(new_dir_button);
 
     // Paste button - enabled if clipboard has content and not loading
-    let paste_button: Element<'a, Message> = if state.has_clipboard && !state.is_loading {
-        tooltip(
+    // Disabled during search (no destination directory)
+    let paste_button: Element<'a, Message> =
+        if state.has_clipboard && !state.is_loading && !state.is_searching {
+            tooltip(
+                button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
+                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::FilePaste),
+                container(shaped_text(t("tooltip-files-paste")).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        } else {
+            // Disabled paste button
             button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
                 .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                .style(disabled_icon_button_style)
+                .into()
+        };
+
+    toolbar_row = toolbar_row.push(paste_button);
+
+    toolbar_row.into()
+}
+
+/// Build the search input row
+fn search_input_row<'a>(search_input: &str, search_loading: bool) -> Element<'a, Message> {
+    let input = text_input(&t("files-search-placeholder"), search_input)
+        .id(InputId::FileSearchInput)
+        .on_input(Message::FileSearchInputChanged)
+        .on_submit(Message::FileSearchSubmit)
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .width(Fill);
+
+    let search_button: Element<'_, Message> = if search_loading {
+        button(icon::search().size(FILE_TOOLBAR_ICON_SIZE))
+            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            .style(disabled_icon_button_style)
+            .into()
+    } else {
+        tooltip(
+            button(icon::search().size(FILE_TOOLBAR_ICON_SIZE))
+                .padding(FILE_TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
-                .on_press(Message::FilePaste),
-            container(shaped_text(t("tooltip-files-paste")).size(TOOLTIP_TEXT_SIZE))
+                .on_press(Message::FileSearchSubmit),
+            container(shaped_text(t("tooltip-files-search")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(tooltip_container_style),
             tooltip::Position::Bottom,
@@ -485,17 +542,287 @@ fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         .gap(TOOLTIP_GAP)
         .padding(TOOLTIP_PADDING)
         .into()
-    } else {
-        // Disabled paste button
-        button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
-            .style(disabled_icon_button_style)
-            .into()
     };
 
-    toolbar_row = toolbar_row.push(paste_button);
+    row![input, search_button]
+        .spacing(SMALL_SPACING)
+        .align_y(Center)
+        .into()
+}
 
-    toolbar_row.into()
+/// Build the search breadcrumb (shows "Search - {query}")
+fn search_breadcrumb<'a>(query: &str) -> Element<'a, Message> {
+    let breadcrumb_text = t_args("files-search-breadcrumb", &[("query", query)]);
+    container(
+        shaped_text(breadcrumb_text)
+            .size(TEXT_SIZE)
+            .style(muted_text_style),
+    )
+    .padding([SPACER_SIZE_SMALL, NO_SPACING])
+    .into()
+}
+
+/// Extract the parent directory path from a full file path
+fn parent_path(path: &str) -> String {
+    // Remove leading slash if present for processing
+    let path = path.strip_prefix('/').unwrap_or(path);
+
+    if let Some(pos) = path.rfind('/') {
+        // Return everything before the last slash (with leading slash)
+        format!("/{}", &path[..pos])
+    } else {
+        // No parent, return root
+        String::new()
+    }
+}
+
+/// Build search results table
+fn search_results_table<'a>(
+    results: &'a [FileSearchResult],
+    perms: FilePermissions,
+    sort_column: FileSortColumn,
+    sort_ascending: bool,
+) -> Element<'a, Message> {
+    // Name column header (clickable for sorting)
+    let name_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Name {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-name"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
+        shaped_text(t("files-column-name"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
+    let name_header: Element<'_, Message> = button(name_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSearchSortBy(FileSortColumn::Name))
+        .into();
+
+    // Name column with icon - clickable to navigate
+    let name_column = table::column(name_header, move |result: &FileSearchResult| {
+        let is_directory = result.is_directory;
+
+        // Icon based on type
+        let icon_element: Element<'_, Message> = if is_directory {
+            icon::folder().size(FILE_LIST_ICON_SIZE).into()
+        } else {
+            file_icon_for_extension(&result.name)
+                .size(FILE_LIST_ICON_SIZE)
+                .into()
+        };
+
+        let name_text = shaped_text(&result.name)
+            .size(TEXT_SIZE)
+            .wrapping(Wrapping::WordOrGlyph);
+
+        let name_content: Element<'_, Message> = row![
+            icon_element,
+            Space::new().width(FILE_LIST_ICON_SPACING),
+            name_text,
+        ]
+        .align_y(Center)
+        .into();
+
+        // Left-click: open in new tab
+        let row_element: Element<'_, Message> = button(name_content)
+            .padding(NO_SPACING)
+            .style(transparent_icon_button_style)
+            .on_press(Message::FileSearchResultClicked(result.clone()))
+            .into();
+
+        // Build context menu - always show since Open is always available
+        let result_clone = result.clone();
+        let element: Element<'_, Message> = ContextMenu::new(row_element, move || {
+            build_search_result_context_menu(&result_clone, perms)
+        })
+        .into();
+        element
+    })
+    .width(Fill);
+
+    // Path column header (clickable for sorting)
+    let path_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Path {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-path"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
+        shaped_text(t("files-column-path"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
+    let path_header: Element<'_, Message> = button(path_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSearchSortBy(FileSortColumn::Path))
+        .into();
+
+    // Path column - shows parent directory
+    let path_column = table::column(path_header, |result: &FileSearchResult| {
+        let display_path = parent_path(&result.path);
+
+        // Show "/" for root, otherwise show the path
+        let display = if display_path.is_empty() {
+            "/".to_string()
+        } else {
+            display_path
+        };
+
+        let element: Element<'_, Message> = shaped_text(display)
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .wrapping(Wrapping::WordOrGlyph)
+            .into();
+        element
+    })
+    .width(FILE_SIZE_COLUMN_WIDTH * 2.0); // Wider than size column
+
+    // Size column header (clickable for sorting)
+    let size_header_content: Element<'_, Message> = if sort_column == FileSortColumn::Size {
+        let sort_icon = if sort_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        row![
+            shaped_text(t("files-column-size"))
+                .size(TEXT_SIZE)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into()
+    } else {
+        shaped_text(t("files-column-size"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
+    let size_header: Element<'_, Message> = button(size_header_content)
+        .padding(NO_SPACING)
+        .width(Fill)
+        .style(transparent_icon_button_style)
+        .on_press(Message::FileSearchSortBy(FileSortColumn::Size))
+        .into();
+
+    // Size column
+    let size_column = table::column(size_header, |result: &FileSearchResult| {
+        let size_text = if result.is_directory {
+            String::from("—")
+        } else {
+            format_size(result.size)
+        };
+        let element: Element<'_, Message> = shaped_text(size_text)
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into();
+        element
+    })
+    .width(FILE_SIZE_COLUMN_WIDTH)
+    .align_x(Right);
+
+    let columns = [name_column, path_column, size_column];
+
+    table(columns, results)
+        .width(Fill)
+        .padding_x(SPACER_SIZE_SMALL)
+        .padding_y(SPACER_SIZE_SMALL)
+        .separator_x(NO_SPACING)
+        .separator_y(SEPARATOR_HEIGHT)
+        .into()
+}
+
+/// Build context menu for search results
+fn build_search_result_context_menu<'a>(
+    result: &FileSearchResult,
+    perms: FilePermissions,
+) -> Element<'a, Message> {
+    let mut menu_items: Vec<Element<'_, Message>> = vec![];
+    let mut has_download = false;
+
+    // Download (if permission)
+    if perms.file_download {
+        menu_items.push(
+            button(shaped_text(t("context-menu-download")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(context_menu_button_style)
+                .on_press(Message::FileSearchResultDownload(result.clone()))
+                .into(),
+        );
+        has_download = true;
+    }
+
+    // Separator before Info/Open section (Open is always available)
+    if has_download {
+        menu_items.push(
+            container(Space::new())
+                .width(Fill)
+                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                .style(separator_style)
+                .into(),
+        );
+    }
+
+    // Info (if permission)
+    if perms.file_info {
+        menu_items.push(
+            button(shaped_text(t("files-info")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(context_menu_button_style)
+                .on_press(Message::FileSearchResultInfo(result.clone()))
+                .into(),
+        );
+    }
+
+    // Open (always available - same as left-click)
+    menu_items.push(
+        button(shaped_text(t("context-menu-open")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(context_menu_button_style)
+            .on_press(Message::FileSearchResultOpen(result.clone()))
+            .into(),
+    );
+
+    container(
+        iced::widget::Column::with_children(menu_items).spacing(CONTEXT_MENU_SEPARATOR_MARGIN),
+    )
+    .width(CONTEXT_MENU_MIN_WIDTH)
+    .padding(CONTEXT_MENU_PADDING)
+    .style(context_menu_container_style)
+    .into()
 }
 
 /// Build the delete confirmation dialog
@@ -1419,8 +1746,15 @@ pub fn files_view<'a>(
     let (tab_row, has_multiple_tabs) = build_file_tab_bar(files_management);
     let tab_bar = tab_row.wrap();
 
-    // Breadcrumb navigation
-    let breadcrumbs = breadcrumb_bar(&tab.current_path, viewing_root);
+    // Check if in search mode
+    let is_searching = tab.is_searching();
+
+    // Breadcrumb navigation (or search breadcrumb when searching)
+    let breadcrumbs: Element<'_, Message> = if let Some(query) = &tab.search_query {
+        search_breadcrumb(query)
+    } else {
+        breadcrumb_bar(&tab.current_path, viewing_root)
+    };
 
     // Determine if user can create directories here
     // User can create if they have file_create_dir permission OR current directory allows upload
@@ -1445,27 +1779,25 @@ pub fn files_view<'a>(
         can_upload: tab.current_dir_can_upload,
         current_path: &tab.current_path,
         is_loading,
+        is_searching,
     };
     let toolbar = toolbar(&toolbar_state);
 
-    // Content area (table or status message)
-    // Priority: error > entries > loading
-    let content: Element<'a, Message> = if let Some(error) = &tab.error {
-        // Error state
-        container(
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .style(error_text_style),
-        )
-        .width(Fill)
-        .center_x(Fill)
-        .padding(SPACER_SIZE_SMALL)
-        .into()
-    } else if let Some(entries) = &tab.sorted_entries {
-        if entries.is_empty() {
-            // Empty directory
+    // Search input row (only shown if user has file_search permission)
+    let search_row: Option<Element<'_, Message>> = if perms.file_search {
+        Some(search_input_row(&tab.search_input, tab.search_loading))
+    } else {
+        None
+    };
+
+    // Content area - different handling for search mode vs normal browsing
+    // Content area - different handling for search mode vs normal browsing
+    let content: Element<'a, Message> = if is_searching {
+        // Search mode content
+        if tab.search_loading {
+            // Searching state
             container(
-                shaped_text(t("files-empty"))
+                shaped_text(t("files-searching"))
                     .size(TEXT_SIZE)
                     .style(muted_text_style),
             )
@@ -1473,43 +1805,120 @@ pub fn files_view<'a>(
             .center_x(Fill)
             .padding(SPACER_SIZE_SMALL)
             .into()
-        } else {
-            // File table
-            file_table(
-                entries,
-                &tab.current_path,
-                perms,
-                &files_management.clipboard,
-                tab.sort_column,
-                tab.sort_ascending,
+        } else if let Some(error) = &tab.search_error {
+            // Search error state
+            container(
+                shaped_text_wrapped(error)
+                    .size(TEXT_SIZE)
+                    .style(error_text_style),
             )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
+        } else if let Some(results) = &tab.search_results {
+            if results.is_empty() {
+                // No results
+                container(
+                    shaped_text(t("files-no-results"))
+                        .size(TEXT_SIZE)
+                        .style(muted_text_style),
+                )
+                .width(Fill)
+                .center_x(Fill)
+                .padding(SPACER_SIZE_SMALL)
+                .into()
+            } else {
+                // Search results table
+                search_results_table(
+                    results,
+                    perms,
+                    tab.search_sort_column,
+                    tab.search_sort_ascending,
+                )
+            }
+        } else {
+            // Should not happen, but handle gracefully
+            container(
+                shaped_text(t("files-searching"))
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
         }
     } else {
-        // Loading state
-        container(
-            shaped_text(t("files-loading"))
-                .size(TEXT_SIZE)
-                .style(muted_text_style),
-        )
-        .width(Fill)
-        .center_x(Fill)
-        .padding(SPACER_SIZE_SMALL)
-        .into()
+        // Normal browsing mode
+        // Priority: error > entries > loading
+        if let Some(error) = &tab.error {
+            // Error state
+            container(
+                shaped_text_wrapped(error)
+                    .size(TEXT_SIZE)
+                    .style(error_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
+        } else if let Some(entries) = &tab.sorted_entries {
+            if entries.is_empty() {
+                // Empty directory
+                container(
+                    shaped_text(t("files-empty"))
+                        .size(TEXT_SIZE)
+                        .style(muted_text_style),
+                )
+                .width(Fill)
+                .center_x(Fill)
+                .padding(SPACER_SIZE_SMALL)
+                .into()
+            } else {
+                // File table
+                file_table(
+                    entries,
+                    &tab.current_path,
+                    perms,
+                    &files_management.clipboard,
+                    tab.sort_column,
+                    tab.sort_ascending,
+                )
+            }
+        } else {
+            // Loading state
+            container(
+                shaped_text(t("files-loading"))
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
+        }
     };
 
     // Build the form with max_width constraint
     // Breadcrumbs and toolbar stay fixed, only content scrolls
-    let form = column![
-        title_row,
-        breadcrumbs,
-        toolbar,
-        container(scrollable(content).id(ScrollableId::FilesContent)).height(Fill),
-    ]
-    .spacing(SPACER_SIZE_SMALL)
-    .align_x(Center)
-    .padding(CONTENT_PADDING)
-    .max_width(CONTENT_MAX_WIDTH)
-    .height(Fill);
+    let mut form_column = column![title_row, breadcrumbs, toolbar,];
+
+    // Add search row if user has permission
+    if let Some(search) = search_row {
+        form_column = form_column.push(search);
+    }
+
+    // Add scrollable content
+    form_column = form_column
+        .push(container(scrollable(content).id(ScrollableId::FilesContent)).height(Fill));
+
+    let form = form_column
+        .spacing(SPACER_SIZE_SMALL)
+        .align_x(Center)
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH)
+        .height(Fill);
 
     // Center the form horizontally
     let centered_form = container(form).width(Fill).center_x(Fill);
@@ -1916,5 +2325,52 @@ mod tests {
         let _ = file_icon_for_extension("PHOTO.PNG");
         let _ = file_icon_for_extension("Photo.Png");
         let _ = file_icon_for_extension("photo.PNG");
+    }
+
+    // =========================================================================
+    // parent_path Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parent_path_file_in_root() {
+        assert_eq!(parent_path("/file.txt"), "");
+    }
+
+    #[test]
+    fn test_parent_path_file_in_subdirectory() {
+        assert_eq!(parent_path("/Documents/file.txt"), "/Documents");
+    }
+
+    #[test]
+    fn test_parent_path_file_deeply_nested() {
+        assert_eq!(
+            parent_path("/Documents/Work/2024/report.pdf"),
+            "/Documents/Work/2024"
+        );
+    }
+
+    #[test]
+    fn test_parent_path_directory_in_root() {
+        assert_eq!(parent_path("/Documents"), "");
+    }
+
+    #[test]
+    fn test_parent_path_directory_nested() {
+        assert_eq!(parent_path("/Documents/Work"), "/Documents");
+    }
+
+    #[test]
+    fn test_parent_path_no_leading_slash() {
+        assert_eq!(parent_path("Documents/file.txt"), "/Documents");
+    }
+
+    #[test]
+    fn test_parent_path_single_segment_no_slash() {
+        assert_eq!(parent_path("file.txt"), "");
+    }
+
+    #[test]
+    fn test_parent_path_empty() {
+        assert_eq!(parent_path(""), "");
     }
 }

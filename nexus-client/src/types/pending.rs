@@ -78,6 +78,8 @@ pub enum ResponseRouting {
         tab_id: TabId,
         destination_dir: String,
     },
+    /// File search result (populate search results in tab)
+    FileSearchResult { tab_id: TabId },
     /// Away command result - contains optional status message for display
     AwayResult(Option<String>),
     /// Back command result

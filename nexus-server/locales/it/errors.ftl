@@ -208,3 +208,10 @@ err-reason-too-long = Il motivo del ban è troppo lungo (max { $max_length } car
 err-reason-invalid = Il motivo del ban contiene caratteri non validi
 err-banned-permanent = Sei stato bannato da questo server
 err-banned-with-expiry = Sei stato bannato da questo server (scade tra { $remaining })
+
+# File Search Errors
+err-search-query-empty = La query di ricerca non può essere vuota
+err-search-query-too-short = La query di ricerca è troppo corta (min { $min_length } caratteri)
+err-search-query-too-long = La query di ricerca è troppo lunga (max { $max_length } caratteri)
+err-search-query-invalid = La query di ricerca contiene caratteri non validi
+err-search-failed = Ricerca fallita

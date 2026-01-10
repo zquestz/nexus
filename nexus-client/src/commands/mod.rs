@@ -49,6 +49,7 @@ mod help;
 mod list;
 mod me;
 mod message;
+mod reindex;
 mod server_info;
 mod status;
 mod topic;
@@ -68,8 +69,8 @@ use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_TOPIC,
-    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_USER_BROADCAST, PERMISSION_USER_INFO,
-    PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
+    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_FILE_REINDEX, PERMISSION_USER_BROADCAST,
+    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
 
 /// Command handler function type
@@ -227,6 +228,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_USER_MESSAGE],
         },
         handler: message::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "reindex",
+            aliases: &[],
+            description_key: "cmd-reindex-desc",
+            usage_key: "cmd-reindex-usage",
+            permissions: &[PERMISSION_FILE_REINDEX],
+        },
+        handler: reindex::execute,
     },
     CommandRegistration {
         info: CommandInfo {

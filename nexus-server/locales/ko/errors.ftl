@@ -208,3 +208,10 @@ err-reason-too-long = 차단 사유가 너무 깁니다 (최대 { $max_length }�
 err-reason-invalid = 차단 사유에 잘못된 문자가 포함되어 있습니다
 err-banned-permanent = 이 서버에서 차단되었습니다
 err-banned-with-expiry = 이 서버에서 차단되었습니다 ({ $remaining } 후 해제)
+
+# File Search Errors
+err-search-query-empty = 검색어를 입력해주세요
+err-search-query-too-short = 검색어가 너무 짧습니다 (최소 { $min_length }자)
+err-search-query-too-long = 검색어가 너무 깁니다 (최대 { $max_length }자)
+err-search-query-invalid = 검색어에 잘못된 문자가 포함되어 있습니다
+err-search-failed = 검색에 실패했습니다

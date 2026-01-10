@@ -373,6 +373,18 @@ impl NexusApp {
                 bans,
             } => self.handle_ban_list_response(connection_id, success, error, bans),
 
+            ServerMessage::FileReindexResponse { success, error } => {
+                self.handle_file_reindex_response(connection_id, success, error)
+            }
+
+            ServerMessage::FileSearchResponse {
+                success,
+                error,
+                results,
+            } => {
+                self.handle_file_search_response(connection_id, message_id, success, error, results)
+            }
+
             // Catch-all for any unhandled message types
             _ => Task::none(),
         }

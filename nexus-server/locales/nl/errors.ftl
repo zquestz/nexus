@@ -208,3 +208,10 @@ err-reason-too-long = Verbanningsreden is te lang (max { $max_length } tekens)
 err-reason-invalid = Verbanningsreden bevat ongeldige tekens
 err-banned-permanent = U bent verbannen van deze server
 err-banned-with-expiry = U bent verbannen van deze server (verloopt over { $remaining })
+
+# File Search Errors
+err-search-query-empty = Zoekopdracht mag niet leeg zijn
+err-search-query-too-short = Zoekopdracht is te kort (minimaal { $min_length } tekens)
+err-search-query-too-long = Zoekopdracht is te lang (maximaal { $max_length } tekens)
+err-search-query-invalid = Zoekopdracht bevat ongeldige tekens
+err-search-failed = Zoekopdracht mislukt

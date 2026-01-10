@@ -128,6 +128,8 @@ pub struct ServerConnectionParams {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
+    /// File reindex interval in minutes (admin only, 0 = disabled)
+    pub file_reindex_interval: Option<u32>,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -187,6 +189,8 @@ pub struct ServerConnection {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only, from ServerInfo)
     pub max_transfers_per_ip: Option<u32>,
+    /// File reindex interval in minutes (admin only, from ServerInfo, 0 = disabled)
+    pub file_reindex_interval: Option<u32>,
     /// Active chat tab
     pub active_chat_tab: ChatTab,
     /// Chat message history for server chat
@@ -297,6 +301,7 @@ impl ServerConnection {
             chat_topic_set_by: params.chat_topic_set_by,
             max_connections_per_ip: params.max_connections_per_ip,
             max_transfers_per_ip: params.max_transfers_per_ip,
+            file_reindex_interval: params.file_reindex_interval,
             active_chat_tab: ChatTab::Server,
             chat_messages: Vec::new(),
             user_messages: HashMap::new(),
@@ -365,6 +370,8 @@ pub struct NetworkConnection {
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
+    /// File reindex interval in minutes (admin only, 0 = disabled)
+    pub file_reindex_interval: Option<u32>,
     /// Locale accepted by the server
     pub locale: String,
     /// Connection info (address, port, auth info)

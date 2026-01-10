@@ -51,6 +51,10 @@ pub enum Permission {
     FileUpload,
     /// Permission to list files and directories
     FileList,
+    /// Permission to search files
+    FileSearch,
+    /// Permission to trigger file index rebuild
+    FileReindex,
     /// Permission to browse entire file area from root
     FileRoot,
     /// Permission to create directories anywhere in file area
@@ -111,6 +115,8 @@ impl Permission {
             "file_info" => Some(Permission::FileInfo),
             "file_upload" => Some(Permission::FileUpload),
             "file_list" => Some(Permission::FileList),
+            "file_search" => Some(Permission::FileSearch),
+            "file_reindex" => Some(Permission::FileReindex),
             "file_move" => Some(Permission::FileMove),
             "file_rename" => Some(Permission::FileRename),
             "file_root" => Some(Permission::FileRoot),
@@ -215,6 +221,8 @@ mod tests {
         assert_eq!(Permission::FileInfo.as_str(), "file_info");
         assert_eq!(Permission::FileList.as_str(), "file_list");
         assert_eq!(Permission::FileUpload.as_str(), "file_upload");
+        assert_eq!(Permission::FileSearch.as_str(), "file_search");
+        assert_eq!(Permission::FileReindex.as_str(), "file_reindex");
         assert_eq!(Permission::FileMove.as_str(), "file_move");
         assert_eq!(Permission::FileRename.as_str(), "file_rename");
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
@@ -284,6 +292,14 @@ mod tests {
         assert_eq!(
             Permission::parse("file_upload"),
             Some(Permission::FileUpload)
+        );
+        assert_eq!(
+            Permission::parse("file_search"),
+            Some(Permission::FileSearch)
+        );
+        assert_eq!(
+            Permission::parse("file_reindex"),
+            Some(Permission::FileReindex)
         );
         assert_eq!(Permission::parse("file_move"), Some(Permission::FileMove));
         assert_eq!(
@@ -374,6 +390,8 @@ mod tests {
             Permission::FileList,
             Permission::FileMove,
             Permission::FileUpload,
+            Permission::FileSearch,
+            Permission::FileReindex,
             Permission::FileRename,
             Permission::FileRoot,
             Permission::NewsCreate,

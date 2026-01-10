@@ -103,6 +103,9 @@ label-chat-topic = Chat-Thema:
 label-chat-topic-set-by = Chat-Thema gesetzt von:
 label-max-connections-per-ip = Max. Verbindungen pro IP:
 label-max-transfers-per-ip = Max. Übertragungen pro IP:
+label-file-reindex-interval = Datei-Neuindizierungsintervall:
+label-file-reindex-interval-value = { $minutes } Minuten
+label-disabled = Deaktiviert
 label-avatar = Avatar:
 label-server-image = Serverbild:
 label-details = Technische Details
@@ -178,6 +181,7 @@ tooltip-files-show-hidden = Versteckte Dateien anzeigen
 tooltip-files-hide-hidden = Versteckte Dateien ausblenden
 tooltip-files-new-directory = Neues Verzeichnis
 tooltip-files-paste = Einfügen
+tooltip-files-search = Dateien suchen
 tooltip-manage-users = Benutzer verwalten
 tooltip-server-info = Server-Info
 tooltip-about = Über
@@ -211,6 +215,7 @@ tooltip-create-news = Beitrag erstellen
 tooltip-delete = Löschen
 context-menu-download = Herunterladen
 context-menu-upload = Hochladen
+context-menu-open = Öffnen
 
 # =============================================================================
 # Empty States
@@ -233,7 +238,12 @@ files-panel-title = Dateien
 files-column-name = Name
 files-column-size = Größe
 files-column-modified = Geändert
-files-create-directory-title = Neues Verzeichnis erstellen
+files-column-path = Pfad
+files-search-placeholder = Dateien suchen...
+files-search-breadcrumb = Suche - { $query }
+files-searching = Suche läuft...
+files-no-results = Keine Dateien gefunden
+files-create-directory-title = Neuer Ordner erstellen
 files-directory-name-placeholder = Verzeichnisname
 files-info = Info
 files-rename = Umbenennen
@@ -569,6 +579,9 @@ cmd-unban-desc = IP-Sperre aufheben
 cmd-unban-usage = Verwendung: /{ $command } <ziel>
 cmd-bans-desc = Aktive Sperren anzeigen
 cmd-bans-usage = Verwendung: /{ $command }
+cmd-reindex-desc = Datei-Neuindizierung auslösen
+cmd-reindex-usage = Verwendung: /{ $command }
+msg-reindex-triggered = Datei-Neuindizierung wurde ausgelöst
 
 
 # =============================================================================

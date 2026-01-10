@@ -139,6 +139,11 @@ where
         }
     }
 
+    // Mark file index as dirty on successful upload so it gets rebuilt
+    if transfer_success {
+        ctx.file_index.mark_dirty();
+    }
+
     // Close connection
     let _ = ctx.frame_writer.get_mut().shutdown().await;
 
@@ -497,7 +502,7 @@ fn is_file_already_complete(
     }
 }
 
-/// Check for concurrent upload conflict (different uploader)
+/// Check for concurrent upload conflict (different uploader) and offset mismatch
 fn check_resume_conflict(
     offset: u64,
     existing_size: u64,
@@ -508,6 +513,17 @@ fn check_resume_conflict(
     // Return an error instead of overwriting - the original uploader can still resume.
     if offset == 0 && existing_size > 0 {
         return Err(TransferError::conflict(err_upload_conflict(locale)));
+    }
+
+    // SECURITY: Verify client's claimed offset matches actual .part file size.
+    // A malicious client could claim offset=1000 when .part is only 500 bytes,
+    // causing corrupt data (server would append, resulting in wrong file content).
+    // The offset is derived from: offset = file_size - incoming_bytes
+    // For a valid resume, this must equal the existing .part file size.
+    if offset > 0 && offset != existing_size {
+        return Err(TransferError::protocol_error(err_upload_protocol_error(
+            locale,
+        )));
     }
     Ok(())
 }
@@ -993,6 +1009,26 @@ mod tests {
 
         let err = result.unwrap_err();
         assert_eq!(err.kind, ERROR_KIND_CONFLICT);
+    }
+
+    #[test]
+    fn test_resume_conflict_offset_mismatch() {
+        use nexus_common::ERROR_KIND_PROTOCOL_ERROR;
+
+        // Resume with mismatched offset - client claims offset 1000 but .part is 500 bytes
+        // This could be malicious attempt to corrupt the file
+        let result = check_resume_conflict(1000, 500, TEST_LOCALE);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert_eq!(err.kind, ERROR_KIND_PROTOCOL_ERROR);
+    }
+
+    #[test]
+    fn test_resume_conflict_offset_matches() {
+        // Valid resume - client's offset matches .part file size
+        let result = check_resume_conflict(500, 500, TEST_LOCALE);
+        assert!(result.is_ok());
     }
 
     // =========================================================================

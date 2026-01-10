@@ -41,7 +41,8 @@ use crate::handlers::err_file_area_not_configured;
 use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
 use download::handle_download;
 use helpers::send_error_and_close;
-use types::{TransferContext, TransferRequest};
+use types::TransferContext;
+use types::TransferRequest;
 use upload::handle_upload;
 
 // Re-export public types
@@ -58,6 +59,7 @@ pub async fn handle_transfer_connection(
         db,
         debug,
         file_root,
+        file_index,
     } = params;
 
     // Perform TLS handshake (mandatory, same cert as main port)
@@ -136,6 +138,7 @@ pub async fn handle_transfer_connection(
         locale: &locale,
         peer_addr,
         debug,
+        file_index: &file_index,
     };
 
     // Dispatch to appropriate handler

@@ -321,6 +321,8 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::BanCreate { .. } => "BanCreate",
         ClientMessage::BanDelete { .. } => "BanDelete",
         ClientMessage::BanList => "BanList",
+        ClientMessage::FileSearch { .. } => "FileSearch",
+        ClientMessage::FileReindex => "FileReindex",
     }
 }
 
@@ -378,6 +380,8 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::BanCreateResponse { .. } => "BanCreateResponse",
         ServerMessage::BanDeleteResponse { .. } => "BanDeleteResponse",
         ServerMessage::BanListResponse { .. } => "BanListResponse",
+        ServerMessage::FileSearchResponse { .. } => "FileSearchResponse",
+        ServerMessage::FileReindexResponse { .. } => "FileReindexResponse",
     }
 }
 

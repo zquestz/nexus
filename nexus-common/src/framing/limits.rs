@@ -30,12 +30,12 @@ const USER_UPDATE_BASE: usize = 758;
 const USER_EDIT_RESPONSE_BASE: usize = 154;
 
 /// Base overhead for LoginResponse message (without permissions array)
-/// Includes ServerInfo with transfer_port and max_transfers_per_ip fields
-const LOGIN_RESPONSE_BASE: usize = 700965;
+/// Includes ServerInfo with transfer_port, max_transfers_per_ip, and file_reindex_interval fields
+const LOGIN_RESPONSE_BASE: usize = 701000;
 
 /// Base overhead for PermissionsUpdated message (without permissions array)
-/// Includes ServerInfo with transfer_port and max_transfers_per_ip fields
-const PERMISSIONS_UPDATED_BASE: usize = 700903;
+/// Includes ServerInfo with transfer_port, max_transfers_per_ip, and file_reindex_interval fields
+const PERMISSIONS_UPDATED_BASE: usize = 700938;
 
 /// Maximum payload sizes for each message type
 ///
@@ -78,7 +78,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserAway", 160); // status (128) + overhead
     m.insert("UserBack", 19);
     m.insert("UserStatus", 161); // status (128) + overhead
-    m.insert("ServerInfoUpdate", 700455); // includes image field (700000 + overhead) + max_transfers_per_ip
+    m.insert("ServerInfoUpdate", 700490); // includes image field (700000 + overhead) + max_transfers_per_ip + file_reindex_interval
 
     // Ban client messages
     m.insert("BanCreate", 2400); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
@@ -103,6 +103,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
     m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
     m.insert("FileUpload", 4180); // destination (4096) + file_count (u64) + total_size (u64) + root + overhead
+    m.insert("FileSearch", 305); // query (256 max) + root bool + overhead
+    m.insert("FileReindex", 22); // just type name + overhead
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 bytes), adding ~700011 bytes
@@ -117,7 +119,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         PERMISSIONS_UPDATED_BASE as u64 + perm_size,
     );
     m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 700539); // includes ServerInfo with image + transfer_port + max_transfers_per_ip
+    m.insert("ServerInfoUpdated", 700574); // includes ServerInfo with image + transfer_port + max_transfers_per_ip + file_reindex_interval
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176515); // includes is_away + status (128)
     m.insert("UserCreateResponse", 614);
@@ -167,6 +169,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
     m.insert("FileDownloadResponse", 2186); // success + error (2048) + error_kind (64) + overhead
     m.insert("FileUploadResponse", 2200); // success + error (2048) + error_kind (64) + transfer_id + overhead
+    m.insert("FileSearchResponse", 0); // unlimited (server-trusted, can have up to 100 results with long paths)
+    m.insert("FileReindexResponse", 2150); // success + error (2048) + overhead
 
     // Transfer messages (shared type names, used in both directions)
     m.insert("FileStart", 4235); // path (4096) + size (u64 max 20 digits) + sha256 (64 hex) + overhead
@@ -214,8 +218,8 @@ mod tests {
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHAT_TOPIC_LENGTH,
         MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH,
         MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
-        MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
-        MAX_STATUS_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
+        MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -254,8 +258,8 @@ mod tests {
         //
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 39; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban client messages
-        const SERVER_MESSAGE_COUNT: usize = 50; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban server messages
+        const CLIENT_MESSAGE_COUNT: usize = 41; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 2 FileSearch client messages
+        const SERVER_MESSAGE_COUNT: usize = 52; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 2 FileSearch server messages
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -517,6 +521,7 @@ mod tests {
             max_connections_per_ip: Some(u32::MAX),
             max_transfers_per_ip: Some(u32::MAX),
             image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
+            file_reindex_interval: Some(u32::MAX),
         };
         assert_eq!(
             json_size(&msg),
@@ -620,6 +625,7 @@ mod tests {
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
+                file_reindex_interval: Some(u32::MAX),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -648,6 +654,7 @@ mod tests {
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
+                file_reindex_interval: Some(u32::MAX),
             }),
             chat_info: Some(ChatInfo {
                 topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
@@ -671,6 +678,7 @@ mod tests {
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
+                file_reindex_interval: Some(u32::MAX),
             },
         };
         assert_eq!(
@@ -991,6 +999,61 @@ mod tests {
     fn test_limit_ban_list_response() {
         // BanListResponse is unlimited (0) since it can have many bans
         assert_eq!(max_payload_for_type("BanListResponse"), 0);
+    }
+
+    // =========================================================================
+    // File search message size tests
+    // =========================================================================
+
+    #[test]
+    fn test_limit_file_search() {
+        let msg = ClientMessage::FileSearch {
+            query: str_of_len(MAX_SEARCH_QUERY_LENGTH),
+            root: false,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("FileSearch") as usize;
+        assert!(
+            size <= limit,
+            "FileSearch size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_file_reindex() {
+        let msg = ClientMessage::FileReindex;
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("FileReindex") as usize;
+        assert!(
+            size <= limit,
+            "FileReindex size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_file_search_response() {
+        // FileSearchResponse is unlimited (0) since it can have many results with long paths
+        assert_eq!(max_payload_for_type("FileSearchResponse"), 0);
+    }
+
+    #[test]
+    fn test_limit_file_reindex_response() {
+        let msg = ServerMessage::FileReindexResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("FileReindexResponse") as usize;
+        assert!(
+            size <= limit,
+            "FileReindexResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
     }
 
     // =========================================================================

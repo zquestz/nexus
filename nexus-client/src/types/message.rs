@@ -5,6 +5,7 @@ use iced::widget::{markdown, text_editor};
 use uuid::Uuid;
 
 use nexus_common::framing::MessageId;
+use nexus_common::protocol::FileSearchResult;
 
 use super::form::{FileSortColumn, SettingsTab, TabId};
 use super::{ChatTab, NetworkConnection, ServerMessage};
@@ -119,6 +120,8 @@ pub enum Message {
     EditServerInfoMaxConnectionsChanged(u32),
     /// Server info edit: Max transfers per IP field changed
     EditServerInfoMaxTransfersChanged(u32),
+    /// Server info edit: File reindex interval field changed
+    EditServerInfoFileReindexIntervalChanged(u32),
     /// Server info edit: Name field changed
     EditServerInfoNameChanged(String),
     /// Server info edit: Edit button pressed (enter edit mode)
@@ -426,6 +429,22 @@ pub enum Message {
     FileDragDropped(std::path::PathBuf),
     /// Files: Drag left window (drag-and-drop cancelled)
     FileDragLeft,
+
+    // ==================== File Search ====================
+    /// Files: Search input text changed
+    FileSearchInputChanged(String),
+    /// Files: Search submitted (Enter pressed or 🔍 button clicked)
+    FileSearchSubmit,
+    /// Files: Search result clicked (opens new tab)
+    FileSearchResultClicked(FileSearchResult),
+    /// Files: Search result context menu - Download
+    FileSearchResultDownload(FileSearchResult),
+    /// Files: Search result context menu - Info
+    FileSearchResultInfo(FileSearchResult),
+    /// Files: Search result context menu - Open (same as click)
+    FileSearchResultOpen(FileSearchResult),
+    /// Files: Search results sort by column clicked
+    FileSearchSortBy(FileSortColumn),
 
     // ==================== Files Settings ====================
     /// Settings panel: Browse download path button pressed

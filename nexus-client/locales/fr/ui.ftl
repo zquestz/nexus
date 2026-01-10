@@ -104,6 +104,9 @@ label-chat-topic = Sujet du Chat :
 label-chat-topic-set-by = Sujet Défini Par :
 label-max-connections-per-ip = Max. Connexions Par IP :
 label-max-transfers-per-ip = Max. Transferts Par IP :
+label-file-reindex-interval = Intervalle de réindexation :
+label-file-reindex-interval-value = { $minutes } minutes
+label-disabled = Désactivé
 label-avatar = Icône :
 label-server-image = Image du serveur :
 label-details = Détails techniques
@@ -179,6 +182,7 @@ tooltip-files-show-hidden = Afficher les Fichiers Cachés
 tooltip-files-hide-hidden = Masquer les Fichiers Cachés
 tooltip-files-new-directory = Nouveau Dossier
 tooltip-files-paste = Coller
+tooltip-files-search = Rechercher des fichiers
 tooltip-manage-users = Gérer les Utilisateurs
 tooltip-server-info = Infos Serveur
 tooltip-about = À propos
@@ -212,6 +216,7 @@ tooltip-create-news = Créer une Publication
 tooltip-delete = Supprimer
 context-menu-download = Télécharger
 context-menu-upload = Téléverser
+context-menu-open = Ouvrir
 
 # =============================================================================
 # Empty States
@@ -235,7 +240,12 @@ files-panel-title = Fichiers
 files-column-name = Nom
 files-column-size = Taille
 files-column-modified = Modifié
-files-create-directory-title = Créer un Nouveau Dossier
+files-column-path = Chemin
+files-search-placeholder = Rechercher des fichiers...
+files-search-breadcrumb = Recherche - { $query }
+files-searching = Recherche en cours...
+files-no-results = Aucun fichier trouvé
+files-create-directory-title = Créer un Nouveau Répertoire
 files-directory-name-placeholder = Nom du dossier
 files-info = Info
 files-rename = Renommer
@@ -570,6 +580,9 @@ cmd-unban-desc = Supprimer un bannissement IP
 cmd-unban-usage = Utilisation: /{ $command } <cible>
 cmd-bans-desc = Lister les bannissements actifs
 cmd-bans-usage = Utilisation: /{ $command }
+cmd-reindex-desc = Déclencher une reconstruction de l'index des fichiers
+cmd-reindex-usage = Utilisation: /{ $command }
+msg-reindex-triggered = Reconstruction de l'index des fichiers déclenchée
 
 # =============================================================================
 # About Panel

@@ -10,13 +10,14 @@ use sqlx::SqlitePool;
 
 use super::sql::{SQL_GET_CONFIG, SQL_SET_CONFIG};
 use crate::constants::{
-    CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
-    CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE, CONFIG_KEY_SERVER_NAME,
-    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_SERVER_DESCRIPTION,
-    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_SERVER_DESC_INVALID_CHARS,
-    ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT,
-    ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY,
-    ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
+    CONFIG_KEY_FILE_REINDEX_INTERVAL, CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
+    CONFIG_KEY_MAX_TRANSFERS_PER_IP, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
+    CONFIG_KEY_SERVER_NAME, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
+    DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE,
+    DEFAULT_SERVER_NAME, ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES,
+    ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE,
+    ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS,
+    ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
 };
 
 /// Database interface for server configuration
@@ -201,6 +202,38 @@ impl ConfigDb {
         sqlx::query(SQL_SET_CONFIG)
             .bind(image)
             .bind(CONFIG_KEY_SERVER_IMAGE)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Get the file reindex interval in minutes
+    ///
+    /// Returns the configured value, or 5 (the default) if not found or invalid.
+    /// A value of 0 means automatic reindexing is disabled.
+    pub async fn get_file_reindex_interval(&self) -> u32 {
+        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
+            .fetch_one(&self.pool)
+            .await
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_FILE_REINDEX_INTERVAL)
+    }
+
+    /// Set the file reindex interval in minutes
+    ///
+    /// A value of 0 disables automatic reindexing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
+        sqlx::query(SQL_SET_CONFIG)
+            .bind(value.to_string())
+            .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -448,5 +481,41 @@ mod tests {
         let result = config_db.set_server_image(&large_image).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too large"));
+    }
+
+    // =========================================================================
+    // File Reindex Interval Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_file_reindex_interval_default() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Migration sets default to 5 minutes
+        let interval = config_db.get_file_reindex_interval().await;
+        assert_eq!(interval, 5);
+    }
+
+    #[tokio::test]
+    async fn test_set_file_reindex_interval() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Set to new value
+        config_db.set_file_reindex_interval(10).await.unwrap();
+        let interval = config_db.get_file_reindex_interval().await;
+        assert_eq!(interval, 10);
+    }
+
+    #[tokio::test]
+    async fn test_set_file_reindex_interval_zero_disables() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // 0 disables automatic reindexing
+        config_db.set_file_reindex_interval(0).await.unwrap();
+        let interval = config_db.get_file_reindex_interval().await;
+        assert_eq!(interval, 0);
     }
 }

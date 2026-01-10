@@ -103,6 +103,9 @@ label-chat-topic = Тема чата:
 label-chat-topic-set-by = Тема Установлена:
 label-max-connections-per-ip = Макс. Подключений На IP:
 label-max-transfers-per-ip = Макс. Передач На IP:
+label-file-reindex-interval = Интервал переиндексации файлов:
+label-file-reindex-interval-value = { $minutes } минут
+label-disabled = Отключено
 label-avatar = Аватар:
 label-server-image = Изображение сервера:
 label-details = Технические Детали
@@ -175,10 +178,11 @@ tooltip-files-refresh = Обновить
 tooltip-files-view-root = Показать корень
 tooltip-files-view-home = Показать главную
 tooltip-files-show-hidden = Показать скрытые файлы
-tooltip-files-hide-hidden = Скрыть скрытые файлы
-tooltip-files-new-directory = Новая папка
+tooltip-files-hide-hidden = Скрыть Скрытые Файлы
+tooltip-files-new-directory = Новая Папка
 tooltip-files-paste = Вставить
-tooltip-manage-users = Управление пользователями
+tooltip-files-search = Поиск файлов
+tooltip-manage-users = Управление Пользователями
 tooltip-server-info = Информация о сервере
 tooltip-about = О программе
 tooltip-transfers = Передачи
@@ -211,6 +215,7 @@ tooltip-create-news = Создать публикацию
 tooltip-delete = Удалить
 context-menu-download = Скачать
 context-menu-upload = Загрузить
+context-menu-open = Открыть
 
 # =============================================================================
 # Empty States
@@ -234,6 +239,11 @@ files-panel-title = Файлы
 files-column-name = Имя
 files-column-size = Размер
 files-column-modified = Изменён
+files-column-path = Путь
+files-search-placeholder = Поиск файлов...
+files-search-breadcrumb = Поиск - { $query }
+files-searching = Поиск...
+files-no-results = Файлы не найдены
 files-create-directory-title = Создать Новую Папку
 files-directory-name-placeholder = Имя папки
 files-info = Информация
@@ -577,6 +587,9 @@ cmd-unban-desc = Снять IP-бан
 cmd-unban-usage = Использование: /{ $command } <цель>
 cmd-bans-desc = Показать активные баны
 cmd-bans-usage = Использование: /{ $command }
+cmd-reindex-desc = Запустить перестроение индекса файлов
+cmd-reindex-usage = Использование: /{ $command }
+msg-reindex-triggered = Перестроение индекса файлов запущено
 
 # =============================================================================
 # About Panel

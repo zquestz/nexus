@@ -205,3 +205,10 @@ err-reason-too-long = Ban reason is too long (max { $max_length } characters)
 err-reason-invalid = Ban reason contains invalid characters
 err-banned-permanent = You have been banned from this server
 err-banned-with-expiry = You have been banned from this server (expires in { $remaining })
+
+# File Search Errors
+err-search-query-empty = Search query cannot be empty
+err-search-query-too-short = Search query is too short (min { $min_length } characters)
+err-search-query-too-long = Search query is too long (max { $max_length } characters)
+err-search-query-invalid = Search query contains invalid characters
+err-search-failed = Search failed

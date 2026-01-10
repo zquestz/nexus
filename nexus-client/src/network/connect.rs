@@ -159,6 +159,9 @@ async fn perform_login(
             max_transfers_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_transfers_per_ip),
+            file_reindex_interval: server_info
+                .as_ref()
+                .and_then(|info| info.file_reindex_interval),
             transfer_port: server_info
                 .map(|info| info.transfer_port)
                 .unwrap_or(DEFAULT_TRANSFER_PORT),

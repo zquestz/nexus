@@ -1,12 +1,16 @@
 //! File response handlers
 
+use crate::i18n::t;
+use crate::types::ChatMessage;
+
 use iced::widget::{Id, scrollable};
 use iced::{Task, widget::operation};
 use nexus_common::ErrorKind;
 use nexus_common::framing::MessageId;
-use nexus_common::protocol::{FileEntry, FileInfoDetails};
+use nexus_common::protocol::{FileEntry, FileInfoDetails, FileSearchResult};
 
 use crate::NexusApp;
+use crate::handlers::files::sort_search_results;
 use crate::types::{InputId, Message, PendingOverwrite, ResponseRouting, ScrollableId};
 
 /// Data from a FileListResponse message
@@ -521,5 +525,67 @@ impl NexusApp {
                 }
             }
         }
+    }
+
+    /// Handle FileReindexResponse from server
+    pub fn handle_file_reindex_response(
+        &mut self,
+        connection_id: usize,
+        success: bool,
+        error: Option<String>,
+    ) -> Task<Message> {
+        if success {
+            let msg = t("msg-reindex-triggered");
+            self.add_chat_message(connection_id, ChatMessage::info(msg))
+        } else {
+            let error_msg = error.unwrap_or_else(|| t("err-unknown"));
+            self.add_chat_message(connection_id, ChatMessage::error(error_msg))
+        }
+    }
+
+    /// Handle FileSearchResponse from server
+    pub fn handle_file_search_response(
+        &mut self,
+        connection_id: usize,
+        message_id: MessageId,
+        success: bool,
+        error: Option<String>,
+        results: Option<Vec<FileSearchResult>>,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if this was a tracked request
+        let routing = conn.pending_requests.remove(&message_id);
+
+        // Only handle if this was a tracked file search request
+        let tab_id = match routing {
+            Some(ResponseRouting::FileSearchResult { tab_id }) => tab_id,
+            _ => return Task::none(),
+        };
+
+        // Find the tab by ID (it may have been closed)
+        let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
+            return Task::none();
+        };
+
+        // Update search state
+        tab.search_loading = false;
+
+        if success {
+            // Sort results based on current sort settings
+            let mut sorted_results = results;
+            if let Some(ref mut results) = sorted_results {
+                sort_search_results(results, tab.search_sort_column, tab.search_sort_ascending);
+            }
+            tab.search_results = sorted_results;
+            tab.search_error = None;
+        } else {
+            tab.search_results = None;
+            tab.search_error = error;
+        }
+
+        Task::none()
     }
 }

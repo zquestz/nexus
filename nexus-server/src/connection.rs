@@ -21,6 +21,7 @@ use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
+use crate::files::FileIndex;
 use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
@@ -36,6 +37,7 @@ pub struct ConnectionParams {
     pub transfer_port: u16,
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ban_cache: Arc<RwLock<BanCache>>,
+    pub file_index: Arc<FileIndex>,
 }
 
 /// Connection state for a single client
@@ -84,6 +86,7 @@ where
         transfer_port,
         connection_tracker,
         ban_cache,
+        file_index,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -135,6 +138,7 @@ where
                             transfer_port,
                             connection_tracker: connection_tracker.clone(),
                             ban_cache: ban_cache.clone(),
+                            file_index: file_index.clone(),
                         };
 
                         if let Err(e) = handle_client_message(
@@ -331,17 +335,18 @@ where
             max_connections_per_ip,
             max_transfers_per_ip,
             image,
+            file_reindex_interval,
         } => {
-            handlers::handle_server_info_update(
+            let request = handlers::ServerInfoUpdateRequest {
                 name,
                 description,
                 max_connections_per_ip,
                 max_transfers_per_ip,
                 image,
-                conn_state.session_id,
-                ctx,
-            )
-            .await?;
+                file_reindex_interval,
+                session_id: conn_state.session_id,
+            };
+            handlers::handle_server_info_update(request, ctx).await?;
         }
         ClientMessage::NewsList => {
             handlers::handle_news_list(conn_state.session_id, ctx).await?;
@@ -448,6 +453,12 @@ where
         }
         ClientMessage::BanList => {
             handlers::handle_ban_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::FileSearch { query, root } => {
+            handlers::handle_file_search(query, root, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::FileReindex => {
+            handlers::handle_file_reindex(conn_state.session_id, ctx).await?;
         }
     }
 

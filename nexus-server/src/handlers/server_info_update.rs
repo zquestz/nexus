@@ -21,19 +21,35 @@ use super::{
     err_server_name_too_long,
 };
 
+/// Request parameters for ServerInfoUpdate command
+pub struct ServerInfoUpdateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub max_connections_per_ip: Option<u32>,
+    pub max_transfers_per_ip: Option<u32>,
+    pub image: Option<String>,
+    pub file_reindex_interval: Option<u32>,
+    pub session_id: Option<u32>,
+}
+
 /// Handle ServerInfoUpdate command
 pub async fn handle_server_info_update<W>(
-    name: Option<String>,
-    description: Option<String>,
-    max_connections_per_ip: Option<u32>,
-    max_transfers_per_ip: Option<u32>,
-    image: Option<String>,
-    session_id: Option<u32>,
+    request: ServerInfoUpdateRequest,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
+    let ServerInfoUpdateRequest {
+        name,
+        description,
+        max_connections_per_ip,
+        max_transfers_per_ip,
+        image,
+        file_reindex_interval,
+        session_id,
+    } = request;
+
     // Verify authentication first (before revealing validation errors to unauthenticated users)
     let Some(id) = session_id else {
         eprintln!("ServerInfoUpdate from {} without login", ctx.peer_addr);
@@ -69,6 +85,7 @@ where
         && max_connections_per_ip.is_none()
         && max_transfers_per_ip.is_none()
         && image.is_none()
+        && file_reindex_interval.is_none()
     {
         return ctx
             .send_error(
@@ -180,12 +197,23 @@ where
             .await;
     }
 
+    if let Some(interval) = file_reindex_interval
+        && let Err(e) = ctx.db.config.set_file_reindex_interval(interval).await
+    {
+        eprintln!("Database error setting file_reindex_interval: {}", e);
+        return ctx
+            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .await;
+    }
+    // Note: The timer task reads from config each cycle, so no runtime update needed
+
     // Fetch current server info for broadcast
     let current_name = ctx.db.config.get_server_name().await;
     let current_description = ctx.db.config.get_server_description().await;
     let current_max_connections = ctx.db.config.get_max_connections_per_ip().await as u32;
     let current_max_transfers = ctx.db.config.get_max_transfers_per_ip().await as u32;
     let current_image = ctx.db.config.get_server_image().await;
+    let current_file_reindex_interval = ctx.db.config.get_file_reindex_interval().await;
     let server_version = env!("CARGO_PKG_VERSION").to_string();
 
     // Broadcast ServerInfoUpdated to all connected users
@@ -198,6 +226,7 @@ where
             max_transfers_per_ip: current_max_transfers,
             image: current_image,
             transfer_port: ctx.transfer_port,
+            file_reindex_interval: current_file_reindex_interval,
         })
         .await;
 
@@ -220,16 +249,16 @@ mod tests {
     async fn test_server_info_update_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        let result = handle_server_info_update(
-            Some("New Name".to_string()),
-            None,
-            None,
-            None,
-            None,
-            None,
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some("New Name".to_string()),
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: None,
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -250,16 +279,16 @@ mod tests {
         // Login as non-admin user
         let session_id = login_user(&mut test_ctx, "testuser", "password", &[], false).await;
 
-        let result = handle_server_info_update(
-            Some("New Name".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some("New Name".to_string()),
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -280,16 +309,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -310,16 +339,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            Some("".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some("".to_string()),
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -341,16 +370,16 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let long_name = "a".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
-        let result = handle_server_info_update(
-            Some(long_name),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some(long_name),
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -372,16 +401,16 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let long_desc = "a".repeat(validators::MAX_SERVER_DESCRIPTION_LENGTH + 1);
-        let result = handle_server_info_update(
-            None,
-            Some(long_desc),
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: Some(long_desc),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -403,16 +432,16 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // 0 means unlimited - should succeed
-        let result = handle_server_info_update(
-            None,
-            None,
-            Some(0),
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: Some(0),
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -437,16 +466,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            Some("My New Server".to_string()),
-            None,
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some("My Custom Server".to_string()),
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -461,7 +490,7 @@ mod tests {
 
         // Verify name was saved
         let saved_name = test_ctx.db.config.get_server_name().await;
-        assert_eq!(saved_name, "My New Server");
+        assert_eq!(saved_name, "My Custom Server");
     }
 
     #[tokio::test]
@@ -471,16 +500,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            None,
-            Some("Welcome to my server!".to_string()),
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: Some("Welcome to my server!".to_string()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -505,16 +534,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            Some(10),
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: Some(10),
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -539,16 +568,16 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_server_info_update(
-            Some("Full Update Server".to_string()),
-            Some("All fields updated".to_string()),
-            Some(15),
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: Some("Full Update Server".to_string()),
+            description: Some("All fields updated".to_string()),
+            max_connections_per_ip: Some(15),
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -588,16 +617,16 @@ mod tests {
             .unwrap();
 
         // Then clear it
-        let result = handle_server_info_update(
-            None,
-            Some("".to_string()),
-            None,
-            None,
-            None,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: Some("".to_string()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -629,16 +658,16 @@ mod tests {
         // Create a test image (minimal valid PNG data URI)
         let test_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            Some(test_image.to_string()),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: Some(test_image.to_string()),
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -672,16 +701,16 @@ mod tests {
             .unwrap();
 
         // Then clear it
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            Some("".to_string()),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: Some("".to_string()),
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -711,16 +740,16 @@ mod tests {
         let padding = "A".repeat(validators::MAX_SERVER_IMAGE_DATA_URI_LENGTH);
         let large_image = format!("{}{}", prefix, padding);
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            Some(large_image),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: Some(large_image),
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -744,16 +773,16 @@ mod tests {
         // Invalid format (not a data URI)
         let invalid_image = "not a data uri";
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            Some(invalid_image.to_string()),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: Some(invalid_image.to_string()),
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -780,16 +809,16 @@ mod tests {
         // Unsupported image type (GIF)
         let unsupported_image = "data:image/gif;base64,R0lGODlh";
 
-        let result = handle_server_info_update(
-            None,
-            None,
-            None,
-            None,
-            Some(unsupported_image.to_string()),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: Some(unsupported_image.to_string()),
+            file_reindex_interval: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -804,5 +833,78 @@ mod tests {
             }
             _ => panic!("Expected Error message, got {:?}", response),
         }
+    }
+
+    // =========================================================================
+    // File Reindex Interval Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_server_info_update_file_reindex_interval_success() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: Some(10),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify interval was saved
+        let saved_interval = test_ctx.db.config.get_file_reindex_interval().await;
+        assert_eq!(saved_interval, 10);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_file_reindex_interval_zero_disables() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // 0 means disabled - should succeed
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: Some(0),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx.client).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify 0 was saved (means disabled)
+        let saved_interval = test_ctx.db.config.get_file_reindex_interval().await;
+        assert_eq!(saved_interval, 0);
     }
 }

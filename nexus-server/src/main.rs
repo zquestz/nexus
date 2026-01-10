@@ -18,6 +18,7 @@ use std::io::{self, BufReader};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use clap::Parser;
 use sha2::{Digest, Sha256};
@@ -31,6 +32,7 @@ use ban_cache::BanCache;
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
+use files::FileIndex;
 use transfers::TransferParams;
 use users::UserManager;
 
@@ -98,6 +100,20 @@ async fn main() {
     // Leak the PathBuf to get a 'static reference - it lives for the program lifetime anyway
     let file_root: &'static Path = Box::leak(file_root.into_boxed_path());
 
+    // Setup file index for searching
+    let data_dir = db_path
+        .parent()
+        .expect("database path should have parent directory");
+    let file_index = Arc::new(FileIndex::new(data_dir, file_root));
+
+    // Trigger initial index build in background
+    file_index.trigger_reindex();
+
+    // Clone for the timer task
+    let file_index_for_timer = file_index.clone();
+    let database_for_timer = database.clone();
+    let debug_for_timer = args.debug;
+
     // Main server loops - accept incoming connections on both ports
     let debug = args.debug;
     tokio::select! {
@@ -140,6 +156,7 @@ async fn main() {
                             transfer_port,
                             connection_tracker: connection_tracker.clone(),
                             ban_cache: ban_cache.clone(),
+                            file_index: file_index.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
@@ -201,6 +218,7 @@ async fn main() {
                             db: database.clone(),
                             debug,
                             file_root: Some(file_root),
+                            file_index: file_index.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
@@ -235,6 +253,30 @@ async fn main() {
                     Err(e) => {
                         eprintln!("{}{}", ERR_ACCEPT, e);
                     }
+                }
+            }
+        } => {}
+        // File reindex timer task - checks config each minute
+        _ = async {
+            loop {
+                // Re-read interval from DB each cycle (allows runtime changes)
+                let interval_minutes = database_for_timer.config.get_file_reindex_interval().await;
+
+                if interval_minutes == 0 {
+                    // Disabled - sleep for 1 minute then check again
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    continue;
+                }
+
+                // Sleep for the configured interval
+                tokio::time::sleep(Duration::from_secs(u64::from(interval_minutes) * 60)).await;
+
+                // Check if dirty and not already reindexing
+                if file_index_for_timer.is_dirty() && !file_index_for_timer.is_reindexing() {
+                    if debug_for_timer {
+                        eprintln!("File index is dirty, triggering reindex");
+                    }
+                    file_index_for_timer.trigger_reindex();
                 }
             }
         } => {}

@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 5c312805e4d0d016b2b3c27124b0fb95e07c7e38a693c7daa3323e6d6f07bab2
+// 7192d6a497cd0124589189812628cb9338496911a68d62703a3388a854c3bef6
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -160,6 +160,10 @@ pub fn plus<'a>() -> Text<'a> {
 
 pub fn refresh<'a>() -> Text<'a> {
     icon("\u{E760}")
+}
+
+pub fn search<'a>() -> Text<'a> {
+    icon("\u{1F50D}")
 }
 
 pub fn server<'a>() -> Text<'a> {

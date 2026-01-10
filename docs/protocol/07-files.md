@@ -82,6 +82,28 @@ Client                                        Server
    │                                             │
 ```
 
+### Searching Files
+
+```
+Client                          Server
+  |                               |
+  |-- FileSearch ---------------->|
+  |                               | Search index
+  |<-- FileSearchResponse --------|
+  |                               |
+```
+
+### Reindexing Files (Admin)
+
+```
+Client                          Server
+  |                               |
+  |-- FileReindex --------------->|
+  |                               | Trigger rebuild
+  |<-- FileReindexResponse -------|
+  |                               |
+```
+
 ### Deleting a File/Directory
 
 ```
@@ -503,6 +525,109 @@ Response after deletion.
 }
 ```
 
+### FileSearch (Client → Server)
+
+Search for files and directories by name.
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Search query (3-256 bytes, see Search Behavior) |
+| `root` | bool | No | Search entire file root (default: false) |
+
+**Example - search user's area:**
+```json
+{
+  "type": "FileSearch",
+  "query": "report"
+}
+```
+
+**Example - search entire file root (admin):**
+```json
+{
+  "type": "FileSearch",
+  "query": "report",
+  "root": true
+}
+```
+
+### FileSearchResponse (Server → Client)
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | bool | Whether search succeeded |
+| `error` | string? | Error message if failed |
+| `results` | array? | Search results (max 100) |
+
+**Example - success:**
+```json
+{
+  "type": "FileSearchResponse",
+  "success": true,
+  "results": [
+    {
+      "path": "/Documents/report.pdf",
+      "name": "report.pdf",
+      "size": 12345,
+      "modified": 1700000000,
+      "is_directory": false
+    },
+    {
+      "path": "/Archives/old-reports",
+      "name": "old-reports",
+      "size": 0,
+      "modified": 1699000000,
+      "is_directory": true
+    }
+  ]
+}
+```
+
+**Example - error:**
+```json
+{
+  "type": "FileSearchResponse",
+  "success": false,
+  "error": "Search query is too short (min 3 characters)"
+}
+```
+
+### FileReindex (Client → Server)
+
+Trigger a file index rebuild. Requires `file_reindex` permission.
+
+**Fields:** None (unit message)
+
+**Example:**
+```json
+{
+  "type": "FileReindex"
+}
+```
+
+### FileReindexResponse (Server → Client)
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | bool | Whether reindex was triggered |
+| `error` | string? | Error message if failed |
+
+**Example - success:**
+```json
+{
+  "type": "FileReindexResponse",
+  "success": true
+}
+```
+
+**Note:** Returns success even if a reindex is already in progress.
+
 ## Data Structures
 
 ### FileEntry
@@ -514,6 +639,18 @@ Response after deletion.
 | `modified` | integer | Last modified time (Unix timestamp) |
 | `dir_type` | string or null | Directory type (null for files, see below) |
 | `can_upload` | boolean | Whether uploads are allowed here |
+
+### FileSearchResult
+
+Represents a single search result.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Full path relative to user's root |
+| `name` | string | Filename only |
+| `size` | u64 | File size in bytes (0 for directories) |
+| `modified` | i64 | Last modified time (Unix timestamp) |
+| `is_directory` | bool | True if directory |
 
 ### FileInfoDetails
 
@@ -581,6 +718,8 @@ When `root: true`, paths are relative to the file root instead of the user's are
 | `file_move` | Move files and directories |
 | `file_rename` | Rename files and directories |
 | `file_root` | Access entire file root (admin) |
+| `file_search` | Search files by name |
+| `file_reindex` | Trigger file index rebuild |
 
 Admins have all permissions automatically.
 
@@ -590,6 +729,7 @@ Admins have all permissions automatically.
 |-----------|-----------------|----------------------------------|----------------------------|
 | Move | `file_move` | `file_delete` | `file_root` |
 | Copy | `file_copy` | `file_delete` | `file_root` |
+| Search | `file_search` | - | `file_root` |
 
 ## Path Validation
 
@@ -633,6 +773,60 @@ The `error_kind` field in move/copy responses allows programmatic handling:
 - Operations on symlinks affect the link, not the target
 - Directory listings follow symlinks transparently
 - `is_symlink` field indicates when an entry is a symlink
+
+## File Search
+
+### Index
+
+The server maintains a CSV index of all files for fast searching:
+
+| Aspect | Value |
+|--------|-------|
+| Location | `~/.local/share/nexusd/files.idx` |
+| Format | CSV: `path,name,size,modified,is_directory` |
+| Rebuild | On startup, on dirty flag, via `/reindex` command |
+
+### Search Behavior
+
+| Setting | Value |
+|---------|-------|
+| Max results | 100 |
+| Min query length | 3 bytes total (after trimming) |
+| Max query length | 256 bytes |
+| Case sensitivity | Case-insensitive |
+| Search type | Literal (regex chars escaped) |
+
+**Search modes:**
+
+- **AND mode**: If ANY term is 3+ bytes → include all 2+ byte terms, AND logic
+- **Literal mode**: If ALL terms are < 3 bytes → treat entire query as literal phrase
+
+Note: Length is measured in bytes, not characters. ASCII characters are 1 byte each,
+but Unicode characters vary (e.g., CJK characters are typically 3 bytes each).
+
+**Examples:**
+
+| Query | Mode | Terms Used |
+|-------|------|------------|
+| `test file` | AND | "test", "file" |
+| `mr carter` | AND | "mr", "carter" |
+| `a test b` | AND | "test" only (single-char filtered) |
+| `mr dj` | Literal | "mr dj" (entire phrase) |
+| `a b c` | Literal | "a b c" (entire phrase) |
+| `ab` | Invalid | Too short (< 3 bytes) |
+
+### Reindex Triggers
+
+| Event | Action |
+|-------|--------|
+| Server start | Background reindex |
+| File upload | Mark dirty |
+| File delete | Mark dirty |
+| File rename/move/copy | Mark dirty |
+| Timer interval | Rebuild if dirty |
+| `/reindex` command | Force rebuild |
+
+The reindex interval is configurable via `ServerInfoUpdate` (default: 5 minutes, 0 to disable).
 
 ## Notes
 

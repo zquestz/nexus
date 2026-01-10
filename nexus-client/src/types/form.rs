@@ -279,6 +279,8 @@ pub enum FileSortColumn {
     Size,
     /// Sort by modified date - full sort, mixes dirs and files
     Modified,
+    /// Sort by path - for search results only
+    Path,
 }
 
 /// Clipboard operation type (cut or copy)
@@ -379,6 +381,20 @@ pub struct FileTab {
     pub rename_error: Option<String>,
     /// Pending overwrite confirmation (when destination exists)
     pub pending_overwrite: Option<PendingOverwrite>,
+    /// Current text in search input field
+    pub search_input: String,
+    /// Active search query (None = normal browsing, Some = showing search results)
+    pub search_query: Option<String>,
+    /// Search results (None = no search or loading, Some = results loaded)
+    pub search_results: Option<Vec<nexus_common::protocol::FileSearchResult>>,
+    /// Search error message
+    pub search_error: Option<String>,
+    /// Whether a search is in progress
+    pub search_loading: bool,
+    /// Sort column for search results (separate from browsing sort)
+    pub search_sort_column: FileSortColumn,
+    /// Sort ascending for search results (separate from browsing sort)
+    pub search_sort_ascending: bool,
 }
 
 impl Default for FileTab {
@@ -403,6 +419,13 @@ impl Default for FileTab {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            search_input: String::new(),
+            search_query: None,
+            search_results: None,
+            search_error: None,
+            search_loading: false,
+            search_sort_column: FileSortColumn::Name,
+            search_sort_ascending: true,
         }
     }
 }
@@ -433,11 +456,76 @@ impl FileTab {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            search_input: String::new(),
+            search_query: None,
+            search_results: None,
+            search_error: None,
+            search_loading: false,
+            search_sort_column: FileSortColumn::Name,
+            search_sort_ascending: true,
         }
     }
 
-    /// Get the tab display name (last path segment, or translated "Home"/"Root" for empty path)
+    /// Create a new tab navigated to a specific path
+    ///
+    /// Used when clicking search results to open in a new tab.
+    pub fn new_at_path(path: String, viewing_root: bool) -> Self {
+        Self {
+            id: next_tab_id(),
+            current_path: path,
+            entries: None, // Will be loaded fresh
+            error: None,
+            viewing_root,
+            current_dir_can_upload: false,
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+            sorted_entries: None,
+            creating_directory: false,
+            new_directory_name: String::new(),
+            new_directory_error: None,
+            pending_delete: None,
+            delete_error: None,
+            pending_info: None,
+            pending_rename: None,
+            rename_name: String::new(),
+            rename_error: None,
+            pending_overwrite: None,
+            search_input: String::new(),
+            search_query: None,
+            search_results: None,
+            search_error: None,
+            search_loading: false,
+            search_sort_column: FileSortColumn::Name,
+            search_sort_ascending: true,
+        }
+    }
+
+    /// Check if this tab is in search mode
+    pub fn is_searching(&self) -> bool {
+        self.search_query.is_some()
+    }
+
+    /// Clear search state and return to normal browsing
+    pub fn clear_search(&mut self) {
+        self.search_input.clear();
+        self.search_query = None;
+        self.search_results = None;
+        self.search_error = None;
+        self.search_loading = false;
+    }
+
+    /// Get the tab display name
+    ///
+    /// Returns:
+    /// - Search query when in search mode (e.g., "report")
+    /// - Last path segment when browsing (e.g., "Documents")
+    /// - "Home" or "Root" for empty path
     pub fn tab_name(&self) -> String {
+        // If searching, show the search query as the tab name
+        if let Some(query) = &self.search_query {
+            return query.clone();
+        }
+
         if self.current_path.is_empty() {
             if self.viewing_root {
                 t("files-root")
@@ -465,12 +553,13 @@ impl FileTab {
         self.error = None;
     }
 
-    /// Navigate to home directory (preserves viewing_root state)
+    /// Navigate to home directory (preserves viewing_root state, clears search)
     pub fn navigate_home(&mut self) {
         self.current_path = String::new();
         self.entries = None;
         self.sorted_entries = None;
         self.error = None;
+        self.clear_search();
     }
 
     /// Toggle between root view and user area view
@@ -565,6 +654,25 @@ impl FileTab {
                             cmp
                         } else {
                             cmp.reverse()
+                        }
+                    });
+                }
+                FileSortColumn::Path => {
+                    // Path is only for search results; for file entries, fall back to Name
+                    sorted.sort_by(|a, b| {
+                        let a_is_dir = a.dir_type.is_some();
+                        let b_is_dir = b.dir_type.is_some();
+                        match (a_is_dir, b_is_dir) {
+                            (true, false) => std::cmp::Ordering::Less,
+                            (false, true) => std::cmp::Ordering::Greater,
+                            _ => {
+                                let cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+                                if self.sort_ascending {
+                                    cmp
+                                } else {
+                                    cmp.reverse()
+                                }
+                            }
                         }
                     });
                 }
@@ -1066,6 +1174,8 @@ pub struct ServerInfoEditState {
     pub max_transfers_per_ip: Option<u32>,
     /// Server image data URI (editable, empty string means no image)
     pub image: String,
+    /// File reindex interval in minutes (editable, 0 = disabled)
+    pub file_reindex_interval: Option<u32>,
     /// Cached image for preview (decoded from image field)
     pub cached_image: Option<CachedImage>,
     /// Error message to display
@@ -1081,6 +1191,7 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("max_connections_per_ip", &self.max_connections_per_ip)
             .field("max_transfers_per_ip", &self.max_transfers_per_ip)
             .field("image", &format!("<{} bytes>", self.image.len()))
+            .field("file_reindex_interval", &self.file_reindex_interval)
             .field(
                 "cached_image",
                 &self.cached_image.as_ref().map(|_| "<cached>"),
@@ -1098,6 +1209,7 @@ impl ServerInfoEditState {
         max_connections_per_ip: Option<u32>,
         max_transfers_per_ip: Option<u32>,
         image: &str,
+        file_reindex_interval: Option<u32>,
     ) -> Self {
         // Decode image for preview
         let cached_image = if image.is_empty() {
@@ -1112,6 +1224,7 @@ impl ServerInfoEditState {
             max_connections_per_ip,
             max_transfers_per_ip,
             image: image.to_string(),
+            file_reindex_interval,
             cached_image,
             error: None,
         }
@@ -1125,13 +1238,20 @@ impl ServerInfoEditState {
         original_max_connections: Option<u32>,
         original_max_transfers: Option<u32>,
         original_image: &str,
+        original_file_reindex_interval: Option<u32>,
     ) -> bool {
         let name_changed = self.name != original_name.unwrap_or("");
         let desc_changed = self.description != original_description.unwrap_or("");
         let max_conn_changed = self.max_connections_per_ip != original_max_connections;
         let max_xfer_changed = self.max_transfers_per_ip != original_max_transfers;
         let image_changed = self.image != original_image;
-        name_changed || desc_changed || max_conn_changed || max_xfer_changed || image_changed
+        let reindex_changed = self.file_reindex_interval != original_file_reindex_interval;
+        name_changed
+            || desc_changed
+            || max_conn_changed
+            || max_xfer_changed
+            || image_changed
+            || reindex_changed
     }
 }
 
@@ -1405,6 +1525,13 @@ mod tests {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            search_input: String::new(),
+            search_query: None,
+            search_results: None,
+            search_error: None,
+            search_loading: false,
+            search_sort_column: FileSortColumn::Name,
+            search_sort_ascending: true,
         };
 
         tab.close_new_directory_dialog();
@@ -1723,5 +1850,275 @@ mod tests {
             FilesManagementState::display_name("Files [NEXUS-UL] backup"),
             "Files [NEXUS-UL] backup"
         );
+    }
+
+    // =========================================================================
+    // FileTab Search Tests
+    // =========================================================================
+
+    #[test]
+    fn test_file_tab_is_searching_false_by_default() {
+        let tab = FileTab::default();
+        assert!(!tab.is_searching());
+    }
+
+    #[test]
+    fn test_file_tab_is_searching_true_when_query_set() {
+        let mut tab = FileTab::default();
+        tab.search_query = Some("test".to_string());
+        assert!(tab.is_searching());
+    }
+
+    #[test]
+    fn test_file_tab_clear_search() {
+        let mut tab = FileTab::default();
+        tab.search_input = "test query".to_string();
+        tab.search_query = Some("test query".to_string());
+        tab.search_loading = true;
+        tab.search_error = Some("error".to_string());
+
+        tab.clear_search();
+
+        assert!(tab.search_input.is_empty());
+        assert!(tab.search_query.is_none());
+        assert!(tab.search_results.is_none());
+        assert!(tab.search_error.is_none());
+        assert!(!tab.search_loading);
+    }
+
+    #[test]
+    fn test_file_tab_tab_name_shows_search_query() {
+        let mut tab = FileTab::default();
+        tab.search_query = Some("report".to_string());
+        assert_eq!(tab.tab_name(), "report");
+    }
+
+    #[test]
+    fn test_file_tab_tab_name_shows_path_when_not_searching() {
+        let mut tab = FileTab::default();
+        tab.current_path = "/Documents/Work".to_string();
+        assert_eq!(tab.tab_name(), "Work");
+    }
+
+    #[test]
+    fn test_file_tab_new_at_path() {
+        let tab = FileTab::new_at_path("/Documents/Test".to_string(), true);
+        assert_eq!(tab.current_path, "/Documents/Test");
+        assert!(tab.viewing_root);
+        assert!(!tab.is_searching());
+    }
+
+    #[test]
+    fn test_file_tab_new_at_path_empty() {
+        let tab = FileTab::new_at_path(String::new(), false);
+        assert!(tab.current_path.is_empty());
+        assert!(!tab.viewing_root);
+    }
+
+    #[test]
+    fn test_search_state_persists_across_tab_switch() {
+        let mut state = FilesManagementState::default();
+
+        // Set up search state in first tab
+        let tab0_id = state.active_tab().id;
+        {
+            let tab = state.active_tab_mut();
+            tab.search_input = "test query".to_string();
+            tab.search_query = Some("test query".to_string());
+            tab.search_results = Some(vec![]);
+        }
+
+        // Create and switch to a new tab
+        state.new_tab();
+        let tab1_id = state.active_tab().id;
+        assert_ne!(tab0_id, tab1_id);
+
+        // New tab should not have search state
+        assert!(!state.active_tab().is_searching());
+        assert!(state.active_tab().search_input.is_empty());
+
+        // Switch back to first tab - search state should be preserved
+        state.switch_to_tab_by_id(tab0_id);
+        assert!(state.active_tab().is_searching());
+        assert_eq!(
+            state.active_tab().search_query,
+            Some("test query".to_string())
+        );
+        assert!(state.active_tab().search_results.is_some());
+    }
+
+    #[test]
+    fn test_new_tab_from_location_does_not_copy_search_state() {
+        // Set up a tab with search state
+        let mut source_tab = FileTab::default();
+        source_tab.current_path = "/Documents".to_string();
+        source_tab.viewing_root = true;
+        source_tab.search_input = "report".to_string();
+        source_tab.search_query = Some("report".to_string());
+        source_tab.search_results = Some(vec![]);
+        source_tab.search_loading = true;
+
+        // Create a new tab from that location
+        let new_tab = FileTab::new_from_location(&source_tab);
+
+        // Path and viewing_root should be copied
+        assert_eq!(new_tab.current_path, "/Documents");
+        assert!(new_tab.viewing_root);
+
+        // Search state should NOT be copied
+        assert!(new_tab.search_input.is_empty());
+        assert!(new_tab.search_query.is_none());
+        assert!(new_tab.search_results.is_none());
+        assert!(!new_tab.search_loading);
+        assert!(!new_tab.is_searching());
+    }
+
+    #[test]
+    fn test_new_at_path_does_not_have_search_state() {
+        // Create a new tab at a specific path
+        let tab = FileTab::new_at_path("/Documents/Reports".to_string(), true);
+
+        // Should have the path set
+        assert_eq!(tab.current_path, "/Documents/Reports");
+        assert!(tab.viewing_root);
+
+        // Should not have any search state
+        assert!(tab.search_input.is_empty());
+        assert!(tab.search_query.is_none());
+        assert!(tab.search_results.is_none());
+        assert!(tab.search_error.is_none());
+        assert!(!tab.search_loading);
+        assert!(!tab.is_searching());
+    }
+
+    #[test]
+    fn test_clear_search_resets_all_search_state() {
+        let mut tab = FileTab::default();
+
+        // Set all search-related state
+        tab.search_input = "test query".to_string();
+        tab.search_query = Some("test query".to_string());
+        tab.search_results = Some(vec![]);
+        tab.search_error = Some("some error".to_string());
+        tab.search_loading = true;
+
+        // Clear search
+        tab.clear_search();
+
+        // All search state should be reset
+        assert!(tab.search_input.is_empty());
+        assert!(tab.search_query.is_none());
+        assert!(tab.search_results.is_none());
+        assert!(tab.search_error.is_none());
+        assert!(!tab.search_loading);
+        assert!(!tab.is_searching());
+    }
+
+    #[test]
+    fn test_navigate_home_clears_search() {
+        let mut tab = FileTab::default();
+        tab.current_path = "/some/path".to_string();
+        tab.search_query = Some("test".to_string());
+        tab.search_results = Some(vec![]);
+
+        tab.navigate_home();
+
+        assert!(tab.current_path.is_empty());
+        assert!(!tab.is_searching());
+        assert!(tab.search_query.is_none());
+    }
+
+    #[test]
+    fn test_navigate_to_does_not_clear_search() {
+        let mut tab = FileTab::default();
+        tab.search_query = Some("test".to_string());
+        tab.search_results = Some(vec![]);
+
+        tab.navigate_to("/new/path".to_string());
+
+        // navigate_to does NOT clear search (by design)
+        // search state is separate from navigation state
+        assert_eq!(tab.current_path, "/new/path");
+        assert!(tab.is_searching());
+    }
+
+    #[test]
+    fn test_search_sort_settings_independent_of_browse_sort() {
+        let mut tab = FileTab::default();
+
+        // Set browse sort settings
+        tab.sort_column = FileSortColumn::Size;
+        tab.sort_ascending = false;
+
+        // Set search sort settings
+        tab.search_sort_column = FileSortColumn::Path;
+        tab.search_sort_ascending = true;
+
+        // They should be independent
+        assert_eq!(tab.sort_column, FileSortColumn::Size);
+        assert!(!tab.sort_ascending);
+        assert_eq!(tab.search_sort_column, FileSortColumn::Path);
+        assert!(tab.search_sort_ascending);
+    }
+
+    #[test]
+    fn test_default_search_sort_settings() {
+        let tab = FileTab::default();
+
+        // Default search sort should be Name ascending
+        assert_eq!(tab.search_sort_column, FileSortColumn::Name);
+        assert!(tab.search_sort_ascending);
+    }
+
+    #[test]
+    fn test_is_searching_with_empty_results() {
+        let mut tab = FileTab::default();
+
+        // With query but no results yet (loading)
+        tab.search_query = Some("test".to_string());
+        tab.search_results = None;
+        assert!(tab.is_searching());
+
+        // With query and empty results
+        tab.search_results = Some(vec![]);
+        assert!(tab.is_searching());
+    }
+
+    #[test]
+    fn test_tab_name_truncates_long_search_query() {
+        let mut tab = FileTab::default();
+        tab.search_query = Some("this is a very long search query".to_string());
+
+        // tab_name returns the full query (truncation is UI's responsibility)
+        assert_eq!(tab.tab_name(), "this is a very long search query");
+    }
+
+    #[test]
+    fn test_clear_search_preserves_browsing_state() {
+        let mut tab = FileTab::default();
+
+        // Set up browsing state
+        tab.current_path = "/Documents/Work".to_string();
+        tab.viewing_root = true;
+        tab.sort_column = FileSortColumn::Size;
+        tab.sort_ascending = false;
+
+        // Enter search mode
+        tab.search_input = "report".to_string();
+        tab.search_query = Some("report".to_string());
+        tab.search_results = Some(vec![]);
+
+        // Clear search
+        tab.clear_search();
+
+        // Browsing state should be preserved
+        assert_eq!(tab.current_path, "/Documents/Work");
+        assert!(tab.viewing_root);
+        assert_eq!(tab.sort_column, FileSortColumn::Size);
+        assert!(!tab.sort_ascending);
+
+        // Search state should be cleared
+        assert!(!tab.is_searching());
+        assert!(tab.search_input.is_empty());
     }
 }

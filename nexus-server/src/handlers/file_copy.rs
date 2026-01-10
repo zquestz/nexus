@@ -352,6 +352,9 @@ where
     // Perform the copy (async to avoid blocking runtime for large directories)
     match copy_path_recursive_async(&resolved_source, &target_path).await {
         Ok(()) => {
+            // Mark file index as dirty so it gets rebuilt
+            ctx.file_index.mark_dirty();
+
             let response = ServerMessage::FileCopyResponse {
                 success: true,
                 error: None,

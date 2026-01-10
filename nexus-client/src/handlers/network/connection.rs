@@ -312,6 +312,7 @@ impl NexusApp {
             chat_topic_set_by: conn.chat_topic_set_by.clone(),
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
+            file_reindex_interval: conn.file_reindex_interval,
             tx: conn.tx,
             shutdown_handle,
         });

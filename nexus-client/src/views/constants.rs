@@ -94,6 +94,14 @@ pub(crate) const PERMISSION_FILE_DOWNLOAD: &str = "file_download";
 /// Permission to upload files
 pub(crate) const PERMISSION_FILE_UPLOAD: &str = "file_upload";
 
+/// Permission to search files
+#[allow(dead_code)]
+pub(crate) const PERMISSION_FILE_SEARCH: &str = "file_search";
+
+/// Permission to trigger file index rebuild
+#[allow(dead_code)]
+pub(crate) const PERMISSION_FILE_REINDEX: &str = "file_reindex";
+
 // === Ban Permissions ===
 
 /// Permission to create/update bans

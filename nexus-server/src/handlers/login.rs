@@ -405,6 +405,7 @@ where
     // Fetch max connections and transfers per IP (visible to all users)
     let max_connections_per_ip = Some(ctx.db.config.get_max_connections_per_ip().await as u32);
     let max_transfers_per_ip = Some(ctx.db.config.get_max_transfers_per_ip().await as u32);
+    let file_reindex_interval = Some(ctx.db.config.get_file_reindex_interval().await);
 
     let server_info = Some(ServerInfo {
         name: Some(name),
@@ -414,6 +415,7 @@ where
         max_transfers_per_ip,
         image: Some(image),
         transfer_port: ctx.transfer_port,
+        file_reindex_interval,
     });
 
     // Fetch chat info only if user has ChatTopic permission

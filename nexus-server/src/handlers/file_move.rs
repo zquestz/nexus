@@ -353,6 +353,9 @@ where
     // Uses async wrapper to avoid blocking the runtime
     match rename_path_async(&resolved_source, &target_path).await {
         Ok(()) => {
+            // Mark file index as dirty so it gets rebuilt
+            ctx.file_index.mark_dirty();
+
             let response = ServerMessage::FileMoveResponse {
                 success: true,
                 error: None,

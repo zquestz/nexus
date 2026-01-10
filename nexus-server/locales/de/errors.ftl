@@ -208,3 +208,10 @@ err-reason-too-long = Sperrgrund ist zu lang (maximal { $max_length } Zeichen)
 err-reason-invalid = Sperrgrund enthält ungültige Zeichen
 err-banned-permanent = Sie wurden von diesem Server gesperrt
 err-banned-with-expiry = Sie wurden von diesem Server gesperrt (läuft ab in { $remaining })
+
+# File Search Errors
+err-search-query-empty = Suchanfrage darf nicht leer sein
+err-search-query-too-short = Suchanfrage ist zu kurz (mindestens { $min_length } Zeichen)
+err-search-query-too-long = Suchanfrage ist zu lang (maximal { $max_length } Zeichen)
+err-search-query-invalid = Suchanfrage enthält ungültige Zeichen
+err-search-failed = Suche fehlgeschlagen

@@ -103,6 +103,9 @@ label-chat-topic = Tópico do Chat:
 label-chat-topic-set-by = Tópico Definido Por:
 label-max-connections-per-ip = Máx. Conexões Por IP:
 label-max-transfers-per-ip = Máx. Transferências Por IP:
+label-file-reindex-interval = Intervalo de Reindexação de Arquivos:
+label-file-reindex-interval-value = { $minutes } minutos
+label-disabled = Desativado
 label-avatar = Ícone:
 label-server-image = Imagem do servidor:
 label-details = Detalhes Técnicos
@@ -178,6 +181,7 @@ tooltip-files-show-hidden = Mostrar Arquivos Ocultos
 tooltip-files-hide-hidden = Ocultar Arquivos Ocultos
 tooltip-files-new-directory = Novo Diretório
 tooltip-files-paste = Colar
+tooltip-files-search = Pesquisar arquivos
 tooltip-manage-users = Gerenciar Usuários
 tooltip-server-info = Info do Servidor
 tooltip-about = Sobre
@@ -211,6 +215,7 @@ tooltip-create-news = Criar Publicação
 tooltip-delete = Excluir
 context-menu-download = Baixar
 context-menu-upload = Enviar
+context-menu-open = Abrir
 
 # =============================================================================
 # Empty States
@@ -234,6 +239,11 @@ files-panel-title = Arquivos
 files-column-name = Nome
 files-column-size = Tamanho
 files-column-modified = Modificado
+files-column-path = Caminho
+files-search-placeholder = Pesquisar arquivos...
+files-search-breadcrumb = Pesquisa - { $query }
+files-searching = Pesquisando...
+files-no-results = Nenhum arquivo encontrado
 files-create-directory-title = Criar Novo Diretório
 files-directory-name-placeholder = Nome do diretório
 files-info = Info
@@ -569,6 +579,9 @@ cmd-unban-desc = Remover um banimento de IP
 cmd-unban-usage = Uso: /{ $command } <alvo>
 cmd-bans-desc = Listar banimentos ativos
 cmd-bans-usage = Uso: /{ $command }
+cmd-reindex-desc = Acionar reconstrução do índice de arquivos
+cmd-reindex-usage = Uso: /{ $command }
+msg-reindex-triggered = Reconstrução do índice de arquivos acionada
 
 # =============================================================================
 # About Panel

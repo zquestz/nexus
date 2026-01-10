@@ -104,6 +104,9 @@ label-chat-topic = Chat Onderwerp:
 label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
 label-max-transfers-per-ip = Max Overdrachten Per IP:
+label-file-reindex-interval = Bestand Herindexering Interval:
+label-file-reindex-interval-value = { $minutes } minuten
+label-disabled = Uitgeschakeld
 label-avatar = Avatar:
 label-server-image = Serverafbeelding:
 label-details = Technische Details
@@ -179,6 +182,7 @@ tooltip-files-show-hidden = Verborgen Bestanden Tonen
 tooltip-files-hide-hidden = Verborgen Bestanden Verbergen
 tooltip-files-new-directory = Nieuwe Map
 tooltip-files-paste = Plakken
+tooltip-files-search = Bestanden zoeken
 tooltip-manage-users = Gebruikers Beheren
 tooltip-server-info = Server Info
 tooltip-about = Over
@@ -212,6 +216,7 @@ tooltip-create-news = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
 context-menu-download = Downloaden
 context-menu-upload = Uploaden
+context-menu-open = Openen
 
 # =============================================================================
 # Empty States
@@ -235,7 +240,12 @@ files-panel-title = Bestanden
 files-column-name = Naam
 files-column-size = Grootte
 files-column-modified = Gewijzigd
-files-create-directory-title = Nieuwe Map Aanmaken
+files-column-path = Pad
+files-search-placeholder = Bestanden zoeken...
+files-search-breadcrumb = Zoeken - { $query }
+files-searching = Zoeken...
+files-no-results = Geen bestanden gevonden
+files-create-directory-title = Nieuwe Map Maken
 files-directory-name-placeholder = Mapnaam
 files-info = Info
 files-rename = Hernoemen
@@ -570,6 +580,9 @@ cmd-unban-desc = Verwijder een IP-ban
 cmd-unban-usage = Gebruik: /{ $command } <doel>
 cmd-bans-desc = Toon actieve bans
 cmd-bans-usage = Gebruik: /{ $command }
+cmd-reindex-desc = Start herindexering van bestanden
+cmd-reindex-usage = Gebruik: /{ $command }
+msg-reindex-triggered = Herindexering van bestanden gestart
 
 # =============================================================================
 # About Panel
