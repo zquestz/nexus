@@ -215,3 +215,7 @@ err-search-query-too-short = 검색어가 너무 짧습니다 (최소 { $min_len
 err-search-query-too-long = 검색어가 너무 깁니다 (최대 { $max_length }자)
 err-search-query-invalid = 검색어에 잘못된 문자가 포함되어 있습니다
 err-search-failed = 검색에 실패했습니다
+# Trust System Errors
+err-trust-invalid-target = 잘못된 대상입니다 (닉네임, IP 주소 또는 CIDR 범위를 사용하세요)
+err-trust-invalid-duration = 잘못된 기간 형식입니다 (10m, 4h, 7d 또는 영구적으로 0을 사용하세요)
+err-trust-not-found = '{ $target }'에 대한 신뢰 항목을 찾을 수 없습니다

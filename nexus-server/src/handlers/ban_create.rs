@@ -7,15 +7,17 @@ use ipnet::IpNet;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
+use nexus_common::time::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 use nexus_common::validators::{self, BanReasonError};
 
+use super::duration::parse_duration;
 use super::{
     HandlerContext, err_authentication, err_ban_admin_by_ip, err_ban_admin_by_nickname,
     err_ban_invalid_duration, err_ban_invalid_target, err_ban_self, err_database,
     err_not_logged_in, err_permission_denied, err_reason_invalid, err_reason_too_long,
 };
-use crate::ban_cache::parse_ip_or_cidr;
 use crate::db::Permission;
+use crate::ip_rule_cache::parse_ip_or_cidr;
 use crate::users::UserManager;
 use crate::users::manager::DisconnectedSession;
 
@@ -230,23 +232,36 @@ where
         }
     }
 
-    // Update the ban cache
+    // Update the IP rule cache
     {
-        let mut cache = ctx.ban_cache.write().expect("ban cache lock poisoned");
+        let mut cache = ctx
+            .ip_rule_cache
+            .write()
+            .expect("ip rule cache lock poisoned");
         for target_str in &banned_targets {
-            cache.add(target_str, expires_at);
+            cache.add_ban(target_str, expires_at);
         }
     }
 
     // Disconnect affected sessions and broadcast UserDisconnected to other clients
+    // Note: Trusted IPs are skipped - they should remain connected even if banned
+    // because trust bypasses ban checks on reconnection.
     if is_cidr {
         // For CIDR ranges, disconnect all sessions whose IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
             let disconnected = ctx
                 .user_manager
-                .disconnect_sessions_in_range(&net, |user_locale| {
-                    build_ban_disconnect_message(user_locale, expires_at)
-                })
+                .disconnect_sessions_in_range(
+                    &net,
+                    |user_locale| build_ban_disconnect_message(user_locale, expires_at),
+                    |ip| {
+                        // Skip trusted IPs - they should stay connected
+                        ctx.ip_rule_cache
+                            .read()
+                            .expect("ip rule cache lock poisoned")
+                            .is_trusted_read_only(*ip)
+                    },
+                )
                 .await;
 
             broadcast_disconnections(ctx.user_manager, disconnected).await;
@@ -256,9 +271,17 @@ where
         for ip in &banned_targets {
             let disconnected = ctx
                 .user_manager
-                .disconnect_sessions_by_ip(ip, |user_locale| {
-                    build_ban_disconnect_message(user_locale, expires_at)
-                })
+                .disconnect_sessions_by_ip(
+                    ip,
+                    |user_locale| build_ban_disconnect_message(user_locale, expires_at),
+                    |ip| {
+                        // Skip trusted IPs - they should stay connected
+                        ctx.ip_rule_cache
+                            .read()
+                            .expect("ip rule cache lock poisoned")
+                            .is_trusted_read_only(*ip)
+                    },
+                )
                 .await;
 
             broadcast_disconnections(ctx.user_manager, disconnected).await;
@@ -358,41 +381,6 @@ where
     Err(TargetResolutionError::InvalidTarget)
 }
 
-/// Parse duration string into expiry timestamp
-///
-/// Formats: "10m", "4h", "7d", "0" (permanent), None (permanent)
-fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
-    let Some(d) = duration else {
-        return Ok(None); // No duration = permanent
-    };
-
-    let d = d.trim();
-    if d.is_empty() || d == "0" {
-        return Ok(None); // Empty or "0" = permanent
-    }
-
-    let (num_str, unit) = d.split_at(d.len() - 1);
-    let num: u64 = num_str.parse().map_err(|_| ())?;
-
-    if num == 0 {
-        return Ok(None); // "0m", "0h", "0d" = permanent
-    }
-
-    let seconds = match unit {
-        "m" => num * 60,
-        "h" => num * 60 * 60,
-        "d" => num * 60 * 60 * 24,
-        _ => return Err(()),
-    };
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system time before Unix epoch")
-        .as_secs();
-
-    Ok(Some((now + seconds) as i64))
-}
-
 /// Build disconnect message for banned user
 fn build_ban_disconnect_message(locale: &str, expires_at: Option<i64>) -> ServerMessage {
     use super::err_banned_permanent;
@@ -420,9 +408,9 @@ fn format_duration_remaining(expires_at: i64) -> String {
 
     let remaining_secs = (expires_at - now).max(0);
 
-    let days = remaining_secs / 86400;
-    let hours = (remaining_secs % 86400) / 3600;
-    let minutes = (remaining_secs % 3600) / 60;
+    let days = remaining_secs / SECONDS_PER_DAY as i64;
+    let hours = (remaining_secs % SECONDS_PER_DAY as i64) / SECONDS_PER_HOUR as i64;
+    let minutes = (remaining_secs % SECONDS_PER_HOUR as i64) / SECONDS_PER_MINUTE as i64;
 
     if days > 0 {
         format!("{}d {}h", days, hours)
@@ -968,7 +956,7 @@ mod tests {
 
         // Verify ban is in cache and blocks IPs in range
         {
-            let mut cache = test_ctx.ban_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
             assert!(cache.is_banned("2001:db8::1".parse().unwrap()));
             assert!(cache.is_banned("2001:db8:1234::5678".parse().unwrap()));
             assert!(!cache.is_banned("2001:db9::1".parse().unwrap()));
@@ -988,6 +976,145 @@ mod tests {
         // Whitespace should be trimmed
         assert_eq!(parse_duration(&Some("  0  ".to_string())), Ok(None));
         assert_eq!(parse_duration(&Some(" ".to_string())), Ok(None));
+    }
+
+    // =========================================================================
+    // Trusted IP protection tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_bancreate_cidr_skips_trusted_ips() {
+        use crate::handlers::testing::login_user_from_ip;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a user from an IP that will be trusted
+        let _alice_session = login_user_from_ip(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[],
+            false,
+            "192.168.1.100",
+        )
+        .await;
+
+        // Create a user from an IP that will NOT be trusted
+        let bob_session = login_user_from_ip(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[],
+            false,
+            "192.168.1.200",
+        )
+        .await;
+
+        // Trust alice's IP before banning the range
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_trust("192.168.1.100", None);
+        }
+        test_ctx
+            .db
+            .trusts
+            .create_or_update_trust("192.168.1.100", Some("alice"), None, "admin", None)
+            .await
+            .unwrap();
+
+        // Ban the entire /24 range
+        let result = handle_ban_create(
+            "192.168.1.0/24".to_string(),
+            None,
+            Some("Range ban".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Alice (trusted) should still be connected
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(_alice_session)
+                .await
+                .is_some(),
+            "Alice should still be connected (trusted IP)"
+        );
+
+        // Bob (not trusted) should have been disconnected
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_none(),
+            "Bob should have been disconnected (not trusted)"
+        );
+
+        // Verify ban exists in cache
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            assert!(cache.is_banned("192.168.1.100".parse().unwrap()));
+            assert!(cache.is_banned("192.168.1.200".parse().unwrap()));
+            // But trusted IP should be allowed despite ban
+            assert!(cache.is_trusted("192.168.1.100".parse().unwrap()));
+            assert!(cache.should_allow("192.168.1.100".parse().unwrap()));
+            assert!(!cache.should_allow("192.168.1.200".parse().unwrap()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bancreate_single_ip_skips_if_trusted() {
+        use crate::handlers::testing::login_user_from_ip;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a user from an IP that will be trusted
+        let _alice_session =
+            login_user_from_ip(&mut test_ctx, "alice", "password", &[], false, "10.0.0.50").await;
+
+        // Trust alice's IP before banning it
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_trust("10.0.0.50", None);
+        }
+        test_ctx
+            .db
+            .trusts
+            .create_or_update_trust("10.0.0.50", Some("alice"), None, "admin", None)
+            .await
+            .unwrap();
+
+        // Ban alice's specific IP
+        let result = handle_ban_create(
+            "10.0.0.50".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Alice should still be connected because her IP is trusted
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(_alice_session)
+                .await
+                .is_some(),
+            "Alice should still be connected (trusted IP)"
+        );
     }
 
     // =========================================================================

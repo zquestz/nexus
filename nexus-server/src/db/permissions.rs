@@ -13,6 +13,12 @@ pub enum Permission {
     BanDelete,
     /// Permission to view list of active bans
     BanList,
+    /// Permission to create/update trusted IPs
+    TrustCreate,
+    /// Permission to remove trusted IPs
+    TrustDelete,
+    /// Permission to view list of trusted IPs
+    TrustList,
     /// Permission to use UserList command
     UserList,
     /// Permission to use UserInfo command
@@ -92,6 +98,9 @@ impl Permission {
             "ban_create" => Some(Permission::BanCreate),
             "ban_delete" => Some(Permission::BanDelete),
             "ban_list" => Some(Permission::BanList),
+            "trust_create" => Some(Permission::TrustCreate),
+            "trust_delete" => Some(Permission::TrustDelete),
+            "trust_list" => Some(Permission::TrustList),
             "user_list" => Some(Permission::UserList),
             "user_info" => Some(Permission::UserInfo),
             "chat_send" => Some(Permission::ChatSend),
@@ -226,6 +235,9 @@ mod tests {
         assert_eq!(Permission::FileMove.as_str(), "file_move");
         assert_eq!(Permission::FileRename.as_str(), "file_rename");
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
+        assert_eq!(Permission::TrustCreate.as_str(), "trust_create");
+        assert_eq!(Permission::TrustDelete.as_str(), "trust_delete");
+        assert_eq!(Permission::TrustList.as_str(), "trust_list");
     }
 
     #[test]
@@ -307,6 +319,15 @@ mod tests {
             Some(Permission::FileRename)
         );
         assert_eq!(Permission::parse("file_root"), Some(Permission::FileRoot));
+        assert_eq!(
+            Permission::parse("trust_create"),
+            Some(Permission::TrustCreate)
+        );
+        assert_eq!(
+            Permission::parse("trust_delete"),
+            Some(Permission::TrustDelete)
+        );
+        assert_eq!(Permission::parse("trust_list"), Some(Permission::TrustList));
     }
 
     #[test]
@@ -398,6 +419,9 @@ mod tests {
             Permission::NewsDelete,
             Permission::NewsEdit,
             Permission::NewsList,
+            Permission::TrustCreate,
+            Permission::TrustDelete,
+            Permission::TrustList,
             Permission::UserBroadcast,
             Permission::UserCreate,
             Permission::UserDelete,

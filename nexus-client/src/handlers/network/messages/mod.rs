@@ -14,6 +14,10 @@ mod files;
 mod news;
 mod permissions;
 mod server_info;
+mod time_format;
+mod trust_create;
+mod trust_delete;
+mod trust_list;
 mod user_admin;
 mod user_connection;
 mod user_info;
@@ -372,6 +376,26 @@ impl NexusApp {
                 error,
                 bans,
             } => self.handle_ban_list_response(connection_id, success, error, bans),
+
+            ServerMessage::TrustCreateResponse {
+                success,
+                error,
+                ips,
+                nickname,
+            } => self.handle_trust_create_response(connection_id, success, error, ips, nickname),
+
+            ServerMessage::TrustDeleteResponse {
+                success,
+                error,
+                ips,
+                nickname,
+            } => self.handle_trust_delete_response(connection_id, success, error, ips, nickname),
+
+            ServerMessage::TrustListResponse {
+                success,
+                error,
+                entries,
+            } => self.handle_trust_list_response(connection_id, success, error, entries),
 
             ServerMessage::FileReindexResponse { success, error } => {
                 self.handle_file_reindex_response(connection_id, success, error)

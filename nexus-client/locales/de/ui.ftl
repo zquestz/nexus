@@ -155,13 +155,18 @@ permission-file_delete = Datei Löschen
 permission-file_download = Datei Herunterladen
 permission-file_info = Datei Info
 permission-file_list = Dateiliste
-permission-file_move = Datei Verschieben
+permission-file_move = Datei verschieben
 permission-file_rename = Datei umbenennen
+permission-file_reindex = Datei-Neuindizierung
 permission-file_root = Datei-Root
+permission-file_search = Dateisuche
 permission-file_upload = Datei hochladen
 permission-ban_create = Sperre erstellen
 permission-ban_delete = Sperre aufheben
 permission-ban_list = Sperrliste
+permission-trust_create = Vertrauen erstellen
+permission-trust_delete = Vertrauen aufheben
+permission-trust_list = Vertrauensliste
 
 # =============================================================================
 # Tooltips
@@ -585,6 +590,12 @@ cmd-bans-usage = Verwendung: /{ $command }
 cmd-reindex-desc = Datei-Neuindizierung auslösen
 cmd-reindex-usage = Verwendung: /{ $command }
 msg-reindex-triggered = Datei-Neuindizierung wurde ausgelöst
+cmd-trust-desc = IP, CIDR-Bereich oder Nickname vertrauen, um Sperren zu umgehen
+cmd-trust-usage = Verwendung: /{ $command } <ziel> [dauer] [grund]
+cmd-untrust-desc = Vertrauenswürdigen IP-Eintrag entfernen
+cmd-untrust-usage = Verwendung: /{ $command } <ziel>
+cmd-trusted-desc = Vertrauenswürdige IPs anzeigen
+cmd-trusted-usage = Verwendung: /{ $command }
 
 
 # =============================================================================
@@ -796,3 +807,31 @@ msg-ban-remaining = { $time } verbleibend
 msg-ban-remaining-days = { $days }T { $hours }Std
 msg-ban-remaining-hours = { $hours }Std { $minutes }Min
 msg-ban-remaining-minutes = { $minutes }Min
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } vertraut
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) vertraut
+msg-trusted-ips = { $count } IPs vertraut
+msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) vertraut
+msg-trust-created = Vertrauenseintrag erfolgreich erstellt
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } nicht mehr vertraut
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) nicht mehr vertraut
+msg-untrusted-ips = { $count } IPs nicht mehr vertraut
+msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) nicht mehr vertraut
+msg-untrusted-success = Vertrauenseintrag erfolgreich entfernt
+
+# Trust list messages
+msg-trust-list-header = Vertrauenswürdige IPs:
+msg-trust-list-empty = Keine vertrauenswürdigen IPs
+msg-trust-permanent = dauerhaft
+msg-trust-expired = abgelaufen
+msg-trust-remaining = { $time } verbleibend
+msg-trust-remaining-days = { $days }T { $hours }Std
+msg-trust-remaining-hours = { $hours }Std { $minutes }Min
+msg-trust-remaining-minutes = { $minutes }Min

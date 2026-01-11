@@ -122,6 +122,16 @@ Permissions control what actions users can perform. Admins have all permissions 
 | `ban_delete` | Remove bans |
 | `ban_list` | View active bans |
 
+### Trust Permissions
+
+| Permission | Allows |
+|------------|--------|
+| `trust_create` | Trust IPs to bypass ban checks |
+| `trust_delete` | Remove trusted IPs |
+| `trust_list` | View trusted IPs |
+
+**Note:** Trusted IPs bypass the ban list entirely. This enables whitelist-only server configurations by banning all IPs and selectively trusting specific ones.
+
 ## Permission Presets
 
 Common permission combinations:

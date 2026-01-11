@@ -2,6 +2,7 @@
 
 use iced::Task;
 
+use super::time_format::{TimeFormatContext, format_remaining_time};
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
@@ -61,7 +62,7 @@ fn format_ban_entry(ban: &nexus_common::protocol::BanInfo) -> String {
 
     // Duration remaining
     if let Some(expires_at) = ban.expires_at {
-        let remaining = format_remaining_time(expires_at);
+        let remaining = format_remaining_time(expires_at, TimeFormatContext::Ban);
         parts.push(t_args("msg-ban-remaining", &[("time", &remaining)]));
     } else {
         parts.push(t("msg-ban-permanent"));
@@ -73,42 +74,4 @@ fn format_ban_entry(ban: &nexus_common::protocol::BanInfo) -> String {
     }
 
     parts.join(" ")
-}
-
-/// Format remaining time in terse format (e.g., "2h 30m", "7d 0h")
-fn format_remaining_time(expires_at: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    let remaining_secs = expires_at.saturating_sub(now);
-    if remaining_secs <= 0 {
-        return t("msg-ban-expired");
-    }
-
-    let remaining_secs = remaining_secs as u64;
-    let days = remaining_secs / 86400;
-    let hours = (remaining_secs % 86400) / 3600;
-    let minutes = (remaining_secs % 3600) / 60;
-
-    if days > 0 {
-        t_args(
-            "msg-ban-remaining-days",
-            &[("days", &days.to_string()), ("hours", &hours.to_string())],
-        )
-    } else if hours > 0 {
-        t_args(
-            "msg-ban-remaining-hours",
-            &[
-                ("hours", &hours.to_string()),
-                ("minutes", &minutes.to_string()),
-            ],
-        )
-    } else {
-        t_args(
-            "msg-ban-remaining-minutes",
-            &[("minutes", &minutes.to_string())],
-        )
-    }
 }

@@ -215,3 +215,7 @@ err-search-query-too-short = Zoekopdracht is te kort (minimaal { $min_length } t
 err-search-query-too-long = Zoekopdracht is te lang (maximaal { $max_length } tekens)
 err-search-query-invalid = Zoekopdracht bevat ongeldige tekens
 err-search-failed = Zoekopdracht mislukt
+# Trust System Errors
+err-trust-invalid-target = Ongeldig doel (gebruik nickname, IP-adres of CIDR-bereik)
+err-trust-invalid-duration = Ongeldig duurformaat (gebruik 10m, 4h, 7d, of 0 voor permanent)
+err-trust-not-found = Geen vertrouwde invoer gevonden voor '{ $target }'

@@ -157,11 +157,16 @@ permission-file_info = 파일 정보
 permission-file_list = 파일 목록
 permission-file_move = 파일 이동
 permission-file_rename = 파일 이름 변경
+permission-file_reindex = 파일 재인덱스
 permission-file_root = 파일 루트
+permission-file_search = 파일 검색
 permission-file_upload = 파일 업로드
 permission-ban_create = 차단 생성
 permission-ban_delete = 차단 삭제
 permission-ban_list = 차단 목록
+permission-trust_create = 신뢰 생성
+permission-trust_delete = 신뢰 삭제
+permission-trust_list = 신뢰 목록
 
 # =============================================================================
 # Tooltips
@@ -565,6 +570,12 @@ cmd-bans-usage = 사용법: /{ $command }
 cmd-reindex-desc = 파일 인덱스 재구축 시작
 cmd-reindex-usage = 사용법: /{ $command }
 msg-reindex-triggered = 파일 인덱스 재구축이 시작되었습니다
+cmd-trust-desc = IP, CIDR 범위 또는 닉네임을 신뢰하여 차단 우회
+cmd-trust-usage = 사용법: /{ $command } <대상> [기간] [사유]
+cmd-untrust-desc = 신뢰된 IP 항목 제거
+cmd-untrust-usage = 사용법: /{ $command } <대상>
+cmd-trusted-desc = 신뢰된 IP 목록 표시
+cmd-trusted-usage = 사용법: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -772,3 +783,31 @@ msg-ban-remaining = { $time } 남음
 msg-ban-remaining-days = { $days }일 { $hours }시간
 msg-ban-remaining-hours = { $hours }시간 { $minutes }분
 msg-ban-remaining-minutes = { $minutes }분
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } 신뢰됨
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) 신뢰됨
+msg-trusted-ips = { $count }개 IP 신뢰됨
+msg-trusted-ips-nickname = { $count }개 IP ({ $nickname }) 신뢰됨
+msg-trust-created = 신뢰 항목이 성공적으로 생성됨
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } 신뢰 해제됨
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) 신뢰 해제됨
+msg-untrusted-ips = { $count }개 IP 신뢰 해제됨
+msg-untrusted-ips-nickname = { $count }개 IP ({ $nickname }) 신뢰 해제됨
+msg-untrusted-success = 신뢰 항목이 성공적으로 제거됨
+
+# Trust list messages
+msg-trust-list-header = 신뢰된 IP:
+msg-trust-list-empty = 신뢰된 IP 없음
+msg-trust-permanent = 영구
+msg-trust-expired = 만료됨
+msg-trust-remaining = { $time } 남음
+msg-trust-remaining-days = { $days }일 { $hours }시간
+msg-trust-remaining-hours = { $hours }시간 { $minutes }분
+msg-trust-remaining-minutes = { $minutes }분

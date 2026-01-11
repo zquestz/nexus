@@ -158,11 +158,16 @@ permission-file_info = Bestand Info
 permission-file_list = Bestandslijst
 permission-file_move = Bestand Verplaatsen
 permission-file_rename = Bestand Hernoemen
+permission-file_reindex = Bestanden Herindexeren
 permission-file_root = Bestandsroot
+permission-file_search = Bestanden Zoeken
 permission-file_upload = Bestand Uploaden
 permission-ban_create = Ban Aanmaken
 permission-ban_delete = Ban Verwijderen
 permission-ban_list = Banlijst
+permission-trust_create = Vertrouwen Aanmaken
+permission-trust_delete = Vertrouwen Verwijderen
+permission-trust_list = Vertrouwenslijst
 
 # =============================================================================
 # Tooltips
@@ -586,6 +591,12 @@ cmd-bans-usage = Gebruik: /{ $command }
 cmd-reindex-desc = Start herindexering van bestanden
 cmd-reindex-usage = Gebruik: /{ $command }
 msg-reindex-triggered = Herindexering van bestanden gestart
+cmd-trust-desc = Vertrouw een IP, CIDR-bereik of bijnaam om bans te omzeilen
+cmd-trust-usage = Gebruik: /{ $command } <doel> [duur] [reden]
+cmd-untrust-desc = Verwijder een vertrouwde IP-invoer
+cmd-untrust-usage = Gebruik: /{ $command } <doel>
+cmd-trusted-desc = Toon vertrouwde IPs
+cmd-trusted-usage = Gebruik: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -793,3 +804,31 @@ msg-ban-remaining = { $time } resterend
 msg-ban-remaining-days = { $days }d { $hours }u
 msg-ban-remaining-hours = { $hours }u { $minutes }m
 msg-ban-remaining-minutes = { $minutes }m
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } vertrouwd
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) vertrouwd
+msg-trusted-ips = { $count } IPs vertrouwd
+msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) vertrouwd
+msg-trust-created = Vertrouwensinvoer succesvol aangemaakt
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } niet meer vertrouwd
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) niet meer vertrouwd
+msg-untrusted-ips = { $count } IPs niet meer vertrouwd
+msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) niet meer vertrouwd
+msg-untrusted-success = Vertrouwensinvoer succesvol verwijderd
+
+# Trust list messages
+msg-trust-list-header = Vertrouwde IPs:
+msg-trust-list-empty = Geen vertrouwde IPs
+msg-trust-permanent = permanent
+msg-trust-expired = verlopen
+msg-trust-remaining = { $time } resterend
+msg-trust-remaining-days = { $days }d { $hours }u
+msg-trust-remaining-hours = { $hours }u { $minutes }m
+msg-trust-remaining-minutes = { $minutes }m

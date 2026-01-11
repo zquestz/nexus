@@ -910,6 +910,25 @@ pub fn err_banned_with_expiry(locale: &str, remaining: &str) -> String {
 }
 
 // ========================================================================
+// Trust Errors
+// ========================================================================
+
+/// Get translated "invalid trust target" error
+pub fn err_trust_invalid_target(locale: &str) -> String {
+    t(locale, "err-trust-invalid-target")
+}
+
+/// Get translated "invalid trust duration" error
+pub fn err_trust_invalid_duration(locale: &str) -> String {
+    t(locale, "err-trust-invalid-duration")
+}
+
+/// Get translated "trust not found" error
+pub fn err_trust_not_found(locale: &str, target: &str) -> String {
+    t_args(locale, "err-trust-not-found", &[("target", target)])
+}
+
+// ========================================================================
 // File Search Errors
 // ========================================================================
 

@@ -155,13 +155,18 @@ permission-file_delete = 删除文件
 permission-file_download = 文件下载
 permission-file_info = 文件信息
 permission-file_list = 文件列表
-permission-file_move = 文件移动
+permission-file_move = 移动文件
 permission-file_rename = 重命名文件
+permission-file_reindex = 文件重建索引
 permission-file_root = 文件根目录
-permission-file_upload = 文件上传
+permission-file_search = 文件搜索
+permission-file_upload = 上传文件
 permission-ban_create = 创建封禁
 permission-ban_delete = 删除封禁
 permission-ban_list = 封禁列表
+permission-trust_create = 创建信任
+permission-trust_delete = 删除信任
+permission-trust_list = 信任列表
 
 # =============================================================================
 # Tooltips
@@ -565,6 +570,12 @@ cmd-bans-usage = 用法: /{ $command }
 cmd-reindex-desc = 触发文件索引重建
 cmd-reindex-usage = 用法: /{ $command }
 msg-reindex-triggered = 文件索引重建已触发
+cmd-trust-desc = 信任IP、CIDR范围或昵称以绕过封禁
+cmd-trust-usage = 用法: /{ $command } <目标> [时长] [原因]
+cmd-untrust-desc = 移除受信任的IP条目
+cmd-untrust-usage = 用法: /{ $command } <目标>
+cmd-trusted-desc = 列出受信任的IP
+cmd-trusted-usage = 用法: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -772,3 +783,31 @@ msg-ban-remaining = 剩余 { $time }
 msg-ban-remaining-days = { $days }天 { $hours }小时
 msg-ban-remaining-hours = { $hours }小时 { $minutes }分钟
 msg-ban-remaining-minutes = { $minutes }分钟
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = 已信任 { $ip }
+msg-trusted-ip-nickname = 已信任 { $ip } ({ $nickname })
+msg-trusted-ips = 已信任 { $count } 个IP
+msg-trusted-ips-nickname = 已信任 { $count } 个IP ({ $nickname })
+msg-trust-created = 信任条目创建成功
+
+# Untrust success messages
+msg-untrusted-ip = 已取消信任 { $ip }
+msg-untrusted-ip-nickname = 已取消信任 { $ip } ({ $nickname })
+msg-untrusted-ips = 已取消信任 { $count } 个IP
+msg-untrusted-ips-nickname = 已取消信任 { $count } 个IP ({ $nickname })
+msg-untrusted-success = 信任条目移除成功
+
+# Trust list messages
+msg-trust-list-header = 受信任的IP：
+msg-trust-list-empty = 无受信任的IP
+msg-trust-permanent = 永久
+msg-trust-expired = 已过期
+msg-trust-remaining = 剩余 { $time }
+msg-trust-remaining-days = { $days }天 { $hours }小时
+msg-trust-remaining-hours = { $hours }小时 { $minutes }分钟
+msg-trust-remaining-minutes = { $minutes }分钟

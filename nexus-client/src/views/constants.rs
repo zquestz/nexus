@@ -110,3 +110,12 @@ pub(crate) const PERMISSION_BAN_DELETE: &str = "ban_delete";
 
 /// Permission to view ban list
 pub(crate) const PERMISSION_BAN_LIST: &str = "ban_list";
+
+/// Permission to create/update trusted IPs
+pub(crate) const PERMISSION_TRUST_CREATE: &str = "trust_create";
+
+/// Permission to remove trusted IPs
+pub(crate) const PERMISSION_TRUST_DELETE: &str = "trust_delete";
+
+/// Permission to view trusted IP list
+pub(crate) const PERMISSION_TRUST_LIST: &str = "trust_list";

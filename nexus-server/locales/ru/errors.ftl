@@ -215,3 +215,7 @@ err-search-query-too-short = Поисковый запрос слишком ко
 err-search-query-too-long = Поисковый запрос слишком длинный (максимум { $max_length } символов)
 err-search-query-invalid = Поисковый запрос содержит недопустимые символы
 err-search-failed = Ошибка поиска
+# Trust System Errors
+err-trust-invalid-target = Недопустимая цель (используйте никнейм, IP-адрес или диапазон CIDR)
+err-trust-invalid-duration = Недопустимый формат продолжительности (используйте 10m, 4h, 7d или 0 для постоянного)
+err-trust-not-found = Доверенная запись для '{ $target }' не найдена

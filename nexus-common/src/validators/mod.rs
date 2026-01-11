@@ -11,6 +11,7 @@ mod data_uri;
 mod dir_name;
 mod features;
 mod file_path;
+mod ip_rule_reason;
 mod locale;
 mod message;
 mod news_body;
@@ -24,6 +25,7 @@ mod server_image;
 mod server_name;
 mod sha256;
 mod status;
+mod trust_reason;
 mod username;
 mod version;
 
@@ -34,6 +36,7 @@ pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_u
 pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};
+pub use ip_rule_reason::{IpRuleReasonError, MAX_IP_RULE_REASON_LENGTH, validate_ip_rule_reason};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};
 pub use message::{MAX_MESSAGE_LENGTH, MessageError, validate_message};
 pub use news_body::{MAX_NEWS_BODY_LENGTH, NewsBodyError, validate_news_body};
@@ -54,5 +57,6 @@ pub use server_image::{MAX_SERVER_IMAGE_DATA_URI_LENGTH, ServerImageError, valid
 pub use server_name::{MAX_SERVER_NAME_LENGTH, ServerNameError, validate_server_name};
 pub use sha256::{SHA256_HEX_LENGTH, Sha256Error, validate_sha256};
 pub use status::{MAX_STATUS_LENGTH, StatusError, validate_status};
+pub use trust_reason::{MAX_TRUST_REASON_LENGTH, TrustReasonError, validate_trust_reason};
 pub use username::{MAX_USERNAME_LENGTH, UsernameError, validate_username};
 pub use version::{MAX_VERSION_LENGTH, VersionError, validate_version};

@@ -215,3 +215,7 @@ err-search-query-too-short = 搜尋查詢太短（最少 { $min_length } 個字�
 err-search-query-too-long = 搜尋查詢太長（最多 { $max_length } 個字元）
 err-search-query-invalid = 搜尋查詢包含無效字元
 err-search-failed = 搜尋失敗
+# Trust System Errors
+err-trust-invalid-target = 無效的目標（請使用暱稱、IP 位址或 CIDR 範圍）
+err-trust-invalid-duration = 無效的期限格式（請使用 10m、4h、7d，或 0 表示永久）
+err-trust-not-found = 找不到 '{ $target }' 的信任項目

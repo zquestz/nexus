@@ -85,6 +85,11 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("BanDelete", 80); // target (32 nickname or 45 IP) + overhead
     m.insert("BanList", 18);
 
+    // Trust client messages
+    m.insert("TrustCreate", 2400); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
+    m.insert("TrustDelete", 80); // target (32 nickname or 45 IP) + overhead
+    m.insert("TrustList", 20); // {"type":"TrustList"} = 20 bytes
+
     // News client messages
     m.insert("NewsList", 19);
     m.insert("NewsShow", 32);
@@ -145,6 +150,11 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("BanCreateResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
     m.insert("BanDeleteResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
     m.insert("BanListResponse", 0); // unlimited (server-trusted, can have many bans)
+
+    // Trust server messages
+    m.insert("TrustCreateResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("TrustDeleteResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("TrustListResponse", 0); // unlimited (server-trusted, can have many trusts)
 
     // News server messages
     m.insert("NewsListResponse", 0); // unlimited (server-trusted, can have many items)
@@ -219,7 +229,8 @@ mod tests {
         MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH,
         MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
         MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-        MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH,
+        MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -258,8 +269,8 @@ mod tests {
         //
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 41; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 2 FileSearch client messages
-        const SERVER_MESSAGE_COUNT: usize = 52; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 2 FileSearch server messages
+        const CLIENT_MESSAGE_COUNT: usize = 44; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch client messages
+        const SERVER_MESSAGE_COUNT: usize = 55; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch server messages
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -999,6 +1010,94 @@ mod tests {
     fn test_limit_ban_list_response() {
         // BanListResponse is unlimited (0) since it can have many bans
         assert_eq!(max_payload_for_type("BanListResponse"), 0);
+    }
+
+    // =========================================================================
+    // Trust message size tests
+    // =========================================================================
+
+    #[test]
+    fn test_limit_trust_create() {
+        // Max size: target (32 nickname) + duration (10) + reason (2048) + overhead
+        let msg = ClientMessage::TrustCreate {
+            target: str_of_len(MAX_NICKNAME_LENGTH),
+            duration: Some(str_of_len(10)),
+            reason: Some(str_of_len(MAX_TRUST_REASON_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrustCreate") as usize;
+        assert!(
+            size <= limit,
+            "TrustCreate size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_trust_delete() {
+        // Max size: target (32 nickname or 45 IP) + overhead
+        let msg = ClientMessage::TrustDelete {
+            target: str_of_len(45), // IPv6 max length
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrustDelete") as usize;
+        assert!(
+            size <= limit,
+            "TrustDelete size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_trust_list() {
+        let msg = ClientMessage::TrustList;
+        assert_eq!(json_size(&msg), max_payload_for_type("TrustList") as usize);
+    }
+
+    #[test]
+    fn test_limit_trust_create_response() {
+        // Max size: success + error (2048) + ips array + nickname (32) + overhead
+        let msg = ServerMessage::TrustCreateResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+            ips: Some(vec![str_of_len(45)]), // One IPv6 address
+            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrustCreateResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrustCreateResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_trust_delete_response() {
+        // Max size: success + error (2048) + ips array + nickname (32) + overhead
+        let msg = ServerMessage::TrustDeleteResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+            ips: Some(vec![str_of_len(45)]), // One IPv6 address
+            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrustDeleteResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrustDeleteResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_trust_list_response() {
+        // TrustListResponse is unlimited (0) since it can have many trusts
+        assert_eq!(max_payload_for_type("TrustListResponse"), 0);
     }
 
     // =========================================================================

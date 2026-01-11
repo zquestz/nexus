@@ -432,3 +432,99 @@ pub const SQL_SELECT_ACTIVE_BANS: &str = "
 pub const SQL_DELETE_EXPIRED_BANS: &str = "
     DELETE FROM ip_bans
     WHERE expires_at IS NOT NULL AND expires_at <= ?";
+
+// =============================================================================
+// IP Trusted
+// =============================================================================
+
+/// Insert or update a trusted IP entry (upsert)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address or CIDR range
+/// 2. `nickname: Option<&str>` - Nickname annotation (if trusted by nickname)
+/// 3. `reason: Option<&str>` - Reason for trusting
+/// 4. `created_by: &str` - Username of admin who created the trust
+/// 5. `created_at: i64` - Unix timestamp of creation
+/// 6. `expires_at: Option<i64>` - Unix timestamp when trust expires (NULL = permanent)
+pub const SQL_UPSERT_TRUST: &str = "
+    INSERT INTO ip_trusted (ip_address, nickname, reason, created_by, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(ip_address) DO UPDATE SET
+        nickname = excluded.nickname,
+        reason = excluded.reason,
+        created_by = excluded.created_by,
+        created_at = excluded.created_at,
+        expires_at = excluded.expires_at";
+
+/// Select a trusted IP entry by IP address (only if not expired)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+/// 2. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+#[cfg(test)]
+pub const SQL_SELECT_TRUST_BY_IP: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_trusted
+    WHERE ip_address = ?
+    AND (expires_at IS NULL OR expires_at > ?)";
+
+/// Select a trusted IP entry by IP address (regardless of expiry status)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_trusted
+    WHERE ip_address = ?";
+
+/// Delete a trusted IP entry by IP address
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to untrust
+pub const SQL_DELETE_TRUST_BY_IP: &str = "DELETE FROM ip_trusted WHERE ip_address = ?";
+
+/// Select all IP addresses with a given nickname annotation (trusted)
+///
+/// **Parameters:**
+/// 1. `nickname: &str` - Nickname to look up
+pub const SQL_SELECT_TRUSTED_IPS_BY_NICKNAME: &str = "
+    SELECT ip_address FROM ip_trusted WHERE nickname = ?";
+
+/// Delete all trusted IP entries with a given nickname annotation
+///
+/// **Parameters:**
+/// 1. `nickname: &str` - Nickname to delete trusts for
+pub const SQL_DELETE_TRUSTS_BY_NICKNAME: &str = "DELETE FROM ip_trusted WHERE nickname = ?";
+
+/// Count trusted IP entries with a given nickname annotation
+///
+/// **Returns:** `(count: i64)`
+pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_trusted WHERE nickname = ?";
+
+/// Select all active (non-expired) trusted IP entries
+///
+/// **Parameters:**
+/// 1. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// Results are sorted by creation time (newest first).
+pub const SQL_SELECT_ACTIVE_TRUSTS: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_trusted
+    WHERE expires_at IS NULL OR expires_at > ?
+    ORDER BY created_at DESC";
+
+/// Delete all expired trusted IP entries
+///
+/// **Parameters:**
+/// 1. `now: i64` - Current Unix timestamp
+///
+/// **Note:** Only deletes trusts with a non-null expires_at that is <= now.
+/// Called on server startup to clean up stale entries.
+pub const SQL_DELETE_EXPIRED_TRUSTS: &str = "
+    DELETE FROM ip_trusted
+    WHERE expires_at IS NOT NULL AND expires_at <= ?";

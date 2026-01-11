@@ -201,10 +201,15 @@ err-ban-admin-by-ip = Cannot ban this IP
 err-ban-invalid-target = Invalid target (use nickname, IP address, or CIDR range)
 err-ban-invalid-duration = Invalid duration format (use 10m, 4h, 7d, or 0 for permanent)
 err-ban-not-found = No ban found for '{ $target }'
-err-reason-too-long = Ban reason is too long (max { $max_length } characters)
-err-reason-invalid = Ban reason contains invalid characters
+err-reason-too-long = Reason is too long (max { $max_length } characters)
+err-reason-invalid = Reason contains invalid characters
 err-banned-permanent = You have been banned from this server
 err-banned-with-expiry = You have been banned from this server (expires in { $remaining })
+
+# Trust System Errors
+err-trust-invalid-target = Invalid target (use nickname, IP address, or CIDR range)
+err-trust-invalid-duration = Invalid duration format (use 10m, 4h, 7d, or 0 for permanent)
+err-trust-not-found = No trusted entry found for '{ $target }'
 
 # File Search Errors
 err-search-query-empty = Search query cannot be empty

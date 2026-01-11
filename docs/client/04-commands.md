@@ -249,6 +249,42 @@ Trigger a file index rebuild on the server. This is useful if files were added o
 
 The server maintains a file index for fast searching. This command forces an immediate rebuild. Under normal operation, the index rebuilds automatically when files change.
 
+### /trust
+
+Trust a user by IP address, CIDR range, or online nickname. Trusted IPs bypass the ban list, allowing them to connect even if they fall within a banned range.
+
+**Aliases:** None
+
+**Permission:** `trust_create`
+
+**Usage:**
+```
+/trust alice                       # Permanent trust, no reason
+/trust alice 30d                   # 30 day trust
+/trust alice 0 office network      # Permanent trust with reason
+/trust alice 30d contractor        # 30 day trust with reason
+/trust 192.168.1.100               # Trust single IP
+/trust 192.168.1.0/24              # Trust CIDR range permanently
+```
+
+**Duration format:** `<number><unit>` where unit is `m` (minutes), `h` (hours), `d` (days). Use `0` for permanent when followed by a reason.
+
+**Use case:** Create a whitelist-only server by banning all IPs (`/ban 0.0.0.0/0` and `/ban ::/0`) then selectively trusting specific IPs or users.
+
+### /trusted
+
+List all trusted IPs on the server.
+
+**Aliases:** `/trustlist`
+
+**Permission:** `trust_list`
+
+**Usage:**
+```
+/trusted
+/trustlist
+```
+
 ### /sinfo
 
 Show information about the connected server.
@@ -316,6 +352,23 @@ Remove an IP ban.
 
 **Note:** When unbanning a CIDR range, any single IPs or smaller ranges within it are also removed.
 
+### /untrust
+
+Remove a trusted IP entry.
+
+**Aliases:** None
+
+**Permission:** `trust_delete`
+
+**Usage:**
+```
+/untrust alice                   # Untrust by nickname (removes all IPs for that user)
+/untrust 192.168.1.100           # Untrust single IP
+/untrust 192.168.1.0/24          # Untrust CIDR range (also removes contained IPs)
+```
+
+**Note:** When untrusting a CIDR range, any single IPs or smaller ranges within it are also removed.
+
 ### /window
 
 Manage chat tabs (server chat and PM conversations).
@@ -356,7 +409,10 @@ Manage chat tabs (server chat and PM conversations).
 | `/sinfo` | `/si`, `/serverinfo` | None | Show server information |
 | `/status` | `/s` | None | Set or clear status message |
 | `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |
+| `/trust` | — | `trust_create` | Trust a user by IP, CIDR, or nickname |
+| `/trusted` | `/trustlist` | `trust_list` | List trusted IPs |
 | `/unban` | — | `ban_delete` | Remove an IP ban |
+| `/untrust` | — | `trust_delete` | Remove a trusted IP entry |
 | `/window` | `/w` | None | Manage chat tabs |
 
 ## Keyboard Shortcuts

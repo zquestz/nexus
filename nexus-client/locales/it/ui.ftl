@@ -154,14 +154,19 @@ permission-file_create_dir = Directory Crea
 permission-file_delete = Elimina File
 permission-file_download = Scarica File
 permission-file_info = Info File
-permission-file_list = Elenco File
+permission-file_list = Lista File
 permission-file_move = Sposta File
 permission-file_rename = Rinomina File
+permission-file_reindex = Reindicizza File
 permission-file_root = Root File
+permission-file_search = Cerca File
 permission-file_upload = Carica File
 permission-ban_create = Crea Ban
 permission-ban_delete = Elimina Ban
 permission-ban_list = Lista Ban
+permission-trust_create = Crea Fiducia
+permission-trust_delete = Elimina Fiducia
+permission-trust_list = Lista Fiducia
 
 # =============================================================================
 # Tooltips
@@ -588,6 +593,12 @@ cmd-bans-usage = Uso: /{ $command }
 cmd-reindex-desc = Avvia la ricostruzione dell'indice dei file
 cmd-reindex-usage = Uso: /{ $command }
 msg-reindex-triggered = Ricostruzione dell'indice dei file avviata
+cmd-trust-desc = Considera attendibile un IP, range CIDR o nickname per ignorare i ban
+cmd-trust-usage = Uso: /{ $command } <obiettivo> [durata] [motivo]
+cmd-untrust-desc = Rimuovi una voce IP attendibile
+cmd-untrust-usage = Uso: /{ $command } <obiettivo>
+cmd-trusted-desc = Elenca gli IP attendibili
+cmd-trusted-usage = Uso: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -795,3 +806,31 @@ msg-ban-remaining = { $time } rimanente
 msg-ban-remaining-days = { $days }g { $hours }h
 msg-ban-remaining-hours = { $hours }h { $minutes }m
 msg-ban-remaining-minutes = { $minutes }m
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } considerato attendibile
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) considerato attendibile
+msg-trusted-ips = { $count } IP considerati attendibili
+msg-trusted-ips-nickname = { $count } IP ({ $nickname }) considerati attendibili
+msg-trust-created = Voce di attendibilità creata con successo
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } rimosso dagli attendibili
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) rimosso dagli attendibili
+msg-untrusted-ips = { $count } IP rimossi dagli attendibili
+msg-untrusted-ips-nickname = { $count } IP ({ $nickname }) rimossi dagli attendibili
+msg-untrusted-success = Voce di attendibilità rimossa con successo
+
+# Trust list messages
+msg-trust-list-header = IP attendibili:
+msg-trust-list-empty = Nessun IP attendibile
+msg-trust-permanent = permanente
+msg-trust-expired = scaduto
+msg-trust-remaining = { $time } rimanente
+msg-trust-remaining-days = { $days }g { $hours }h
+msg-trust-remaining-hours = { $hours }h { $minutes }m
+msg-trust-remaining-minutes = { $minutes }m

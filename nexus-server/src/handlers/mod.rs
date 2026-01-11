@@ -6,6 +6,7 @@ mod ban_list;
 mod broadcast;
 mod chat;
 mod chat_topic_update;
+mod duration;
 pub mod errors;
 mod file_copy;
 mod file_create_dir;
@@ -25,6 +26,9 @@ mod news_list;
 mod news_show;
 mod news_update;
 mod server_info_update;
+mod trust_create;
+mod trust_delete;
+mod trust_list;
 mod user_away;
 mod user_back;
 mod user_create;
@@ -65,6 +69,9 @@ pub use news_list::handle_news_list;
 pub use news_show::handle_news_show;
 pub use news_update::handle_news_update;
 pub use server_info_update::{ServerInfoUpdateRequest, handle_server_info_update};
+pub use trust_create::handle_trust_create;
+pub use trust_delete::handle_trust_delete;
+pub use trust_list::handle_trust_list;
 pub use user_away::handle_user_away;
 pub use user_back::handle_user_back;
 pub use user_create::{UserCreateRequest, handle_user_create};
@@ -91,10 +98,10 @@ use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
-use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::files::FileIndex;
+use crate::ip_rule_cache::IpRuleCache;
 use crate::users::UserManager;
 
 /// Context passed to all handlers with shared resources
@@ -114,8 +121,8 @@ pub struct HandlerContext<'a, W> {
     pub transfer_port: u16,
     /// Connection tracker for both main and transfer connections
     pub connection_tracker: Arc<ConnectionTracker>,
-    /// In-memory ban cache for fast lookups and cache updates
-    pub ban_cache: Arc<RwLock<BanCache>>,
+    /// In-memory IP rule cache for fast lookups and cache updates (bans and trusts)
+    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     /// File index for searching files
     pub file_index: Arc<FileIndex>,
 }

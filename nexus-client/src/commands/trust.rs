@@ -1,4 +1,4 @@
-//! /ban command implementation - ban users by IP, CIDR range, or nickname
+//! /trust command implementation - trust users by IP, CIDR range, or nickname
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
@@ -8,28 +8,29 @@ use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 
-/// Execute the /ban command
+/// Execute the /trust command
 ///
-/// Bans a user by IP address, CIDR range, or online nickname.
+/// Trusts a user by IP address, CIDR range, or online nickname.
+/// Trusted IPs bypass the ban list.
 ///
-/// Usage: /ban <target> [duration] [reason]
+/// Usage: /trust <target> [duration] [reason]
 ///
 /// Examples:
-///   /ban Spammer                     - permanent ban, no reason
-///   /ban Spammer 1h                  - 1 hour ban, no reason
-///   /ban Spammer 0 flooding chat     - permanent ban with reason
-///   /ban Spammer 1h flooding chat    - 1 hour ban with reason
-///   /ban 192.168.1.100               - ban single IP
-///   /ban 192.168.1.0/24 7d           - ban CIDR range for 7 days
+///   /trust alice                     - permanent trust, no reason
+///   /trust alice 30d                 - 30 day trust, no reason
+///   /trust alice 0 office network    - permanent trust with reason
+///   /trust alice 30d contractor      - 30 day trust with reason
+///   /trust 192.168.1.100             - trust single IP
+///   /trust 192.168.1.0/24            - trust CIDR range permanently
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // /ban requires at least 1 argument (target)
+    // /trust requires at least 1 argument (target)
     if args.is_empty() {
-        let error_msg = t_args("cmd-ban-usage", &[("command", invoked_name)]);
+        let error_msg = t_args("cmd-trust-usage", &[("command", invoked_name)]);
         return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
     }
 
@@ -65,7 +66,7 @@ pub fn execute(
         (None, None)
     };
 
-    let msg = ClientMessage::BanCreate {
+    let msg = ClientMessage::TrustCreate {
         target,
         duration,
         reason,

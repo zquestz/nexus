@@ -215,3 +215,7 @@ err-search-query-too-short = La requête de recherche est trop courte (min { $mi
 err-search-query-too-long = La requête de recherche est trop longue (max { $max_length } caractères)
 err-search-query-invalid = La requête de recherche contient des caractères invalides
 err-search-failed = La recherche a échoué
+# Trust System Errors
+err-trust-invalid-target = Cible invalide (utilisez un pseudo, une adresse IP ou une plage CIDR)
+err-trust-invalid-duration = Format de durée invalide (utilisez 10m, 4h, 7d, ou 0 pour permanent)
+err-trust-not-found = Aucune entrée de confiance trouvée pour '{ $target }'

@@ -131,3 +131,4 @@ Current version: `0.5.0`
 | [09-admin.md](09-admin.md) | User and server administration |
 | [10-errors.md](10-errors.md) | Error handling |
 | [11-bans.md](11-bans.md) | IP bans and CIDR ranges |
+| [12-trusts.md](12-trusts.md) | IP trust list (ban bypass) |

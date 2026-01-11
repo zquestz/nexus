@@ -290,6 +290,24 @@ pub enum ClientMessage {
     },
     /// Request list of active bans
     BanList,
+    /// Add an IP to the trusted list (bypasses ban checks)
+    TrustCreate {
+        /// Target: nickname, IP address, or CIDR range
+        target: String,
+        /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        duration: Option<String>,
+        /// Reason for the trust entry (admin notes)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// Remove an IP from the trusted list
+    TrustDelete {
+        /// Target: nickname (removes all IPs with that annotation) or IP address
+        target: String,
+    },
+    /// Request list of trusted IPs
+    TrustList,
     /// Search files in the file area
     FileSearch {
         /// Search query (minimum 3 characters, literal match, case-insensitive)
@@ -685,6 +703,38 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         bans: Option<Vec<BanInfo>>,
     },
+    /// Response to TrustCreate request
+    TrustCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were trusted (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if trusted by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to TrustDelete request
+    TrustDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were untrusted (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if untrusted by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to TrustList request
+    TrustListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entries: Option<Vec<TrustInfo>>,
+    },
     /// Response to FileSearch request
     FileSearchResponse {
         success: bool,
@@ -785,6 +835,26 @@ pub struct BanInfo {
     /// Unix timestamp when the ban was created
     pub created_at: i64,
     /// Unix timestamp when the ban expires (None = permanent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+}
+
+/// Information about a trusted IP entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustInfo {
+    /// The trusted IP address or CIDR range (e.g., "192.168.1.100" or "192.168.1.0/24")
+    pub ip_address: String,
+    /// Nickname annotation (if trusted by nickname)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
+    /// Reason for the trust entry (admin notes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Username of the admin who created the trust entry
+    pub created_by: String,
+    /// Unix timestamp when the trust entry was created
+    pub created_at: i64,
+    /// Unix timestamp when the trust entry expires (None = permanent)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
 }
@@ -1164,6 +1234,21 @@ impl std::fmt::Debug for ClientMessage {
                 f.debug_struct("BanDelete").field("target", target).finish()
             }
             ClientMessage::BanList => f.debug_struct("BanList").finish(),
+            ClientMessage::TrustCreate {
+                target,
+                duration,
+                reason,
+            } => f
+                .debug_struct("TrustCreate")
+                .field("target", target)
+                .field("duration", duration)
+                .field("reason", reason)
+                .finish(),
+            ClientMessage::TrustDelete { target } => f
+                .debug_struct("TrustDelete")
+                .field("target", target)
+                .finish(),
+            ClientMessage::TrustList => f.debug_struct("TrustList").finish(),
             ClientMessage::FileSearch { query, root } => f
                 .debug_struct("FileSearch")
                 .field("query", query)

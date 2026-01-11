@@ -17,7 +17,6 @@ use nexus_common::io::{
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
-use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
@@ -25,6 +24,7 @@ use crate::files::FileIndex;
 use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
+use crate::ip_rule_cache::IpRuleCache;
 use crate::users::UserManager;
 
 /// Parameters for handling a connection
@@ -36,7 +36,7 @@ pub struct ConnectionParams {
     pub file_root: Option<&'static Path>,
     pub transfer_port: u16,
     pub connection_tracker: Arc<ConnectionTracker>,
-    pub ban_cache: Arc<RwLock<BanCache>>,
+    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     pub file_index: Arc<FileIndex>,
 }
 
@@ -85,7 +85,7 @@ where
         file_root,
         transfer_port,
         connection_tracker,
-        ban_cache,
+        ip_rule_cache,
         file_index,
     } = params;
 
@@ -137,7 +137,7 @@ where
                             file_root,
                             transfer_port,
                             connection_tracker: connection_tracker.clone(),
-                            ban_cache: ban_cache.clone(),
+                            ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
                         };
 
@@ -453,6 +453,20 @@ where
         }
         ClientMessage::BanList => {
             handlers::handle_ban_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrustCreate {
+            target,
+            duration,
+            reason,
+        } => {
+            handlers::handle_trust_create(target, duration, reason, conn_state.session_id, ctx)
+                .await?;
+        }
+        ClientMessage::TrustDelete { target } => {
+            handlers::handle_trust_delete(target, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrustList => {
+            handlers::handle_trust_list(conn_state.session_id, ctx).await?;
         }
         ClientMessage::FileSearch { query, root } => {
             handlers::handle_file_search(query, root, conn_state.session_id, ctx).await?;

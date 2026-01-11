@@ -155,14 +155,19 @@ permission-file_create_dir = Répertoire Créer
 permission-file_delete = Supprimer Fichier
 permission-file_download = Télécharger Fichier
 permission-file_info = Info Fichier
-permission-file_list = Liste des Fichiers
+permission-file_list = Liste Fichiers
 permission-file_move = Déplacer Fichier
 permission-file_rename = Renommer Fichier
+permission-file_reindex = Réindexation Fichiers
 permission-file_root = Racine Fichiers
+permission-file_search = Recherche Fichiers
 permission-file_upload = Téléverser Fichier
 permission-ban_create = Créer Bannissement
 permission-ban_delete = Supprimer Bannissement
 permission-ban_list = Liste des Bannissements
+permission-trust_create = Créer Confiance
+permission-trust_delete = Supprimer Confiance
+permission-trust_list = Liste de Confiance
 
 # =============================================================================
 # Tooltips
@@ -586,6 +591,12 @@ cmd-bans-usage = Utilisation: /{ $command }
 cmd-reindex-desc = Déclencher une reconstruction de l'index des fichiers
 cmd-reindex-usage = Utilisation: /{ $command }
 msg-reindex-triggered = Reconstruction de l'index des fichiers déclenchée
+cmd-trust-desc = Faire confiance à une IP, un bloc CIDR ou un pseudo pour contourner les bannissements
+cmd-trust-usage = Utilisation: /{ $command } <cible> [durée] [raison]
+cmd-untrust-desc = Supprimer une entrée IP de confiance
+cmd-untrust-usage = Utilisation: /{ $command } <cible>
+cmd-trusted-desc = Lister les IPs de confiance
+cmd-trusted-usage = Utilisation: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -793,3 +804,31 @@ msg-ban-remaining = { $time } restant
 msg-ban-remaining-days = { $days }j { $hours }h
 msg-ban-remaining-hours = { $hours }h { $minutes }m
 msg-ban-remaining-minutes = { $minutes }m
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } ajouté à la liste de confiance
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) ajouté à la liste de confiance
+msg-trusted-ips = { $count } IPs ajoutées à la liste de confiance
+msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) ajoutées à la liste de confiance
+msg-trust-created = Entrée de confiance créée avec succès
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } retiré de la liste de confiance
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) retiré de la liste de confiance
+msg-untrusted-ips = { $count } IPs retirées de la liste de confiance
+msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) retirées de la liste de confiance
+msg-untrusted-success = Entrée de confiance supprimée avec succès
+
+# Trust list messages
+msg-trust-list-header = IPs de confiance :
+msg-trust-list-empty = Aucune IP de confiance
+msg-trust-permanent = permanent
+msg-trust-expired = expiré
+msg-trust-remaining = { $time } restant
+msg-trust-remaining-days = { $days }j { $hours }h
+msg-trust-remaining-hours = { $hours }h { $minutes }m
+msg-trust-remaining-minutes = { $minutes }m

@@ -321,6 +321,9 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
         ClientMessage::BanCreate { .. } => "BanCreate",
         ClientMessage::BanDelete { .. } => "BanDelete",
         ClientMessage::BanList => "BanList",
+        ClientMessage::TrustCreate { .. } => "TrustCreate",
+        ClientMessage::TrustDelete { .. } => "TrustDelete",
+        ClientMessage::TrustList => "TrustList",
         ClientMessage::FileSearch { .. } => "FileSearch",
         ClientMessage::FileReindex => "FileReindex",
     }
@@ -380,6 +383,9 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::BanCreateResponse { .. } => "BanCreateResponse",
         ServerMessage::BanDeleteResponse { .. } => "BanDeleteResponse",
         ServerMessage::BanListResponse { .. } => "BanListResponse",
+        ServerMessage::TrustCreateResponse { .. } => "TrustCreateResponse",
+        ServerMessage::TrustDeleteResponse { .. } => "TrustDeleteResponse",
+        ServerMessage::TrustListResponse { .. } => "TrustListResponse",
         ServerMessage::FileSearchResponse { .. } => "FileSearchResponse",
         ServerMessage::FileReindexResponse { .. } => "FileReindexResponse",
     }

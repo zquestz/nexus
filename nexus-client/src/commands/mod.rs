@@ -44,6 +44,7 @@ mod ban;
 mod bans;
 mod broadcast;
 mod clear;
+mod duration;
 mod focus;
 mod help;
 mod list;
@@ -53,7 +54,10 @@ mod reindex;
 mod server_info;
 mod status;
 mod topic;
+mod trust;
+mod trusted;
 mod unban;
+mod untrust;
 mod user_info;
 mod user_kick;
 mod window;
@@ -69,7 +73,8 @@ use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_TOPIC,
-    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_FILE_REINDEX, PERMISSION_USER_BROADCAST,
+    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_FILE_REINDEX, PERMISSION_TRUST_CREATE,
+    PERMISSION_TRUST_DELETE, PERMISSION_TRUST_LIST, PERMISSION_USER_BROADCAST,
     PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
 
@@ -271,6 +276,26 @@ static COMMANDS: &[CommandRegistration] = &[
     },
     CommandRegistration {
         info: CommandInfo {
+            name: "trust",
+            aliases: &[],
+            description_key: "cmd-trust-desc",
+            usage_key: "cmd-trust-usage",
+            permissions: &[PERMISSION_TRUST_CREATE],
+        },
+        handler: trust::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "trusted",
+            aliases: &["trustlist"],
+            description_key: "cmd-trusted-desc",
+            usage_key: "cmd-trusted-usage",
+            permissions: &[PERMISSION_TRUST_LIST],
+        },
+        handler: trusted::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
             name: "unban",
             aliases: &[],
             description_key: "cmd-unban-desc",
@@ -278,6 +303,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_BAN_DELETE],
         },
         handler: unban::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "untrust",
+            aliases: &[],
+            description_key: "cmd-untrust-desc",
+            usage_key: "cmd-untrust-usage",
+            permissions: &[PERMISSION_TRUST_DELETE],
+        },
+        handler: untrust::execute,
     },
     CommandRegistration {
         info: CommandInfo {

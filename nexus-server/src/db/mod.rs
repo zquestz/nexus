@@ -7,6 +7,7 @@ pub mod news;
 pub mod password;
 pub mod permissions;
 pub mod sql;
+pub mod trusts;
 pub mod users;
 
 #[cfg(test)]
@@ -18,6 +19,7 @@ pub use config::ConfigDb;
 pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
+pub use trusts::TrustDb;
 pub use users::UserDb;
 
 use std::path::{Path, PathBuf};
@@ -34,6 +36,7 @@ pub struct Database {
     pub chat: ChatDb,
     pub news: NewsDb,
     pub bans: BanDb,
+    pub trusts: TrustDb,
 }
 
 impl Database {
@@ -44,7 +47,8 @@ impl Database {
             config: ConfigDb::new(pool.clone()),
             chat: ChatDb::new(pool.clone()),
             news: NewsDb::new(pool.clone()),
-            bans: BanDb::new(pool),
+            bans: BanDb::new(pool.clone()),
+            trusts: TrustDb::new(pool),
         }
     }
 }

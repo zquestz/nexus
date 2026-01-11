@@ -215,3 +215,7 @@ err-search-query-too-short = 検索クエリが短すぎます（最小{ $min_le
 err-search-query-too-long = 検索クエリが長すぎます（最大{ $max_length }文字）
 err-search-query-invalid = 検索クエリに無効な文字が含まれています
 err-search-failed = 検索に失敗しました
+# Trust System Errors
+err-trust-invalid-target = 無効なターゲットです（ニックネーム、IPアドレス、またはCIDRレンジを使用してください）
+err-trust-invalid-duration = 無効な期間形式です（10m、4h、7d、または永続の場合は0を使用してください）
+err-trust-not-found = '{ $target }' の信頼エントリが見つかりません

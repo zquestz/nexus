@@ -1,7 +1,6 @@
 //! Nexus BBS Server
 
 mod args;
-mod ban_cache;
 mod connection;
 mod connection_tracker;
 mod constants;
@@ -9,6 +8,7 @@ mod db;
 mod files;
 mod handlers;
 mod i18n;
+mod ip_rule_cache;
 mod transfers;
 mod upnp;
 mod users;
@@ -28,11 +28,11 @@ use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
 
 use args::Args;
-use ban_cache::BanCache;
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
 use files::FileIndex;
+use ip_rule_cache::IpRuleCache;
 use transfers::TransferParams;
 use users::UserManager;
 
@@ -46,8 +46,8 @@ async fn main() {
     // Setup database
     let (database, user_manager, db_path) = setup_db(args.database).await;
 
-    // Setup ban cache - cleanup expired bans, then load active ones
-    let expired_count = database
+    // Setup IP rule cache - cleanup expired entries, then load active ones
+    let expired_bans = database
         .bans
         .cleanup_expired_bans()
         .await
@@ -55,8 +55,19 @@ async fn main() {
             eprintln!("Failed to cleanup expired bans: {}", e);
             0
         });
-    if expired_count > 0 && args.debug {
-        eprintln!("Cleaned up {} expired ban(s)", expired_count);
+    let expired_trusts = database
+        .trusts
+        .cleanup_expired_trusts()
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to cleanup expired trusts: {}", e);
+            0
+        });
+    if (expired_bans > 0 || expired_trusts > 0) && args.debug {
+        eprintln!(
+            "Cleaned up {} expired ban(s), {} expired trust(s)",
+            expired_bans, expired_trusts
+        );
     }
 
     let ban_records = database
@@ -67,10 +78,25 @@ async fn main() {
             eprintln!("Failed to load bans: {}", e);
             Vec::new()
         });
+    let trust_records = database
+        .trusts
+        .load_all_active_trusts()
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to load trusts: {}", e);
+            Vec::new()
+        });
     let ban_count = ban_records.len();
-    let ban_cache = Arc::new(RwLock::new(BanCache::from_records(ban_records)));
-    if ban_count > 0 && args.debug {
-        eprintln!("Loaded {} active ban(s) into cache", ban_count);
+    let trust_count = trust_records.len();
+    let ip_rule_cache = Arc::new(RwLock::new(IpRuleCache::from_records(
+        ban_records,
+        trust_records,
+    )));
+    if (ban_count > 0 || trust_count > 0) && args.debug {
+        eprintln!(
+            "Loaded {} active ban(s), {} active trust(s) into cache",
+            ban_count, trust_count
+        );
     }
 
     // Setup file area
@@ -155,27 +181,42 @@ async fn main() {
                             file_root: Some(file_root),
                             transfer_port,
                             connection_tracker: connection_tracker.clone(),
-                            ban_cache: ban_cache.clone(),
+                            ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
-                        // Clone ban cache for pre-TLS check
-                        let ban_cache_for_check = ban_cache.clone();
+                        // Clone IP rule cache for pre-TLS check
+                        let ip_rule_cache_for_check = ip_rule_cache.clone();
 
                         // Spawn a new task to handle this connection
                         tokio::spawn(async move {
                             // Hold guard until connection ends to track active connections
                             let _guard = connection_guard;
 
-                            // Check if IP is banned BEFORE TLS handshake (saves resources)
-                            let is_banned = ban_cache_for_check
-                                .write()
-                                .expect("ban cache lock poisoned")
-                                .is_banned(peer_addr.ip());
+                            // Check IP rules BEFORE TLS handshake (saves resources)
+                            // Trust list bypasses ban list
+                            //
+                            // Optimization: Use read lock for the check, only upgrade to
+                            // write lock if expired entries need to be cleaned up.
+                            let should_allow = {
+                                let cache = ip_rule_cache_for_check
+                                    .read()
+                                    .expect("ip rule cache lock poisoned");
+                                if cache.needs_rebuild() {
+                                    // Drop read lock before acquiring write lock
+                                    drop(cache);
+                                    ip_rule_cache_for_check
+                                        .write()
+                                        .expect("ip rule cache lock poisoned")
+                                        .should_allow(peer_addr.ip())
+                                } else {
+                                    cache.should_allow_read_only(peer_addr.ip())
+                                }
+                            };
 
-                            if is_banned {
-                                // IP is banned - silently close connection
+                            if !should_allow {
+                                // IP is banned (and not trusted) - silently close connection
                                 // No TLS, no error message, no resources wasted
                                 if debug {
                                     eprintln!("Rejected banned IP: {}", peer_addr.ip());
@@ -222,20 +263,35 @@ async fn main() {
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
-                        // Clone ban cache for pre-TLS check
-                        let ban_cache_for_check = ban_cache.clone();
+                        // Clone IP rule cache for pre-TLS check
+                        let ip_rule_cache_for_check = ip_rule_cache.clone();
 
                         tokio::spawn(async move {
                             let _guard = transfer_guard;
 
-                            // Check if IP is banned BEFORE TLS handshake (saves resources)
-                            let is_banned = ban_cache_for_check
-                                .write()
-                                .expect("ban cache lock poisoned")
-                                .is_banned(peer_addr.ip());
+                            // Check IP rules BEFORE TLS handshake (saves resources)
+                            // Trust list bypasses ban list
+                            //
+                            // Optimization: Use read lock for the check, only upgrade to
+                            // write lock if expired entries need to be cleaned up.
+                            let should_allow = {
+                                let cache = ip_rule_cache_for_check
+                                    .read()
+                                    .expect("ip rule cache lock poisoned");
+                                if cache.needs_rebuild() {
+                                    // Drop read lock before acquiring write lock
+                                    drop(cache);
+                                    ip_rule_cache_for_check
+                                        .write()
+                                        .expect("ip rule cache lock poisoned")
+                                        .should_allow(peer_addr.ip())
+                                } else {
+                                    cache.should_allow_read_only(peer_addr.ip())
+                                }
+                            };
 
-                            if is_banned {
-                                // IP is banned - silently close connection
+                            if !should_allow {
+                                // IP is banned (and not trusted) - silently close connection
                                 if debug {
                                     eprintln!("Rejected banned IP on transfer port: {}", peer_addr.ip());
                                 }

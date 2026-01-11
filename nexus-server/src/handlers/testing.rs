@@ -18,10 +18,10 @@ use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::HandlerContext;
-use crate::ban_cache::BanCache;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::files::FileIndex;
+use crate::ip_rule_cache::IpRuleCache;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
 
@@ -40,7 +40,7 @@ pub struct TestContext {
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
-    pub ban_cache: Arc<RwLock<BanCache>>,
+    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     pub file_index: Arc<FileIndex>,
     /// Keep temp dir alive for tests that use file areas
     #[allow(dead_code)]
@@ -62,7 +62,7 @@ impl TestContext {
             file_root: self.file_root,
             transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
             connection_tracker: self.connection_tracker.clone(),
-            ban_cache: self.ban_cache.clone(),
+            ip_rule_cache: self.ip_rule_cache.clone(),
             file_index: self.file_index.clone(),
         }
     }
@@ -107,8 +107,8 @@ pub async fn create_test_context() -> TestContext {
     // Create connection tracker for tests (unlimited by default)
     let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));
 
-    // Create empty ban cache for tests
-    let ban_cache = Arc::new(RwLock::new(BanCache::new()));
+    // Create empty IP rule cache for tests
+    let ip_rule_cache = Arc::new(RwLock::new(IpRuleCache::new()));
 
     // Create temp directory for file index
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -125,7 +125,7 @@ pub async fn create_test_context() -> TestContext {
         message_id,
         file_root: None,
         connection_tracker,
-        ban_cache,
+        ip_rule_cache,
         file_index,
         temp_dir,
     }

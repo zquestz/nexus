@@ -157,11 +157,16 @@ permission-file_info = ファイル情報
 permission-file_list = ファイル一覧
 permission-file_move = ファイル移動
 permission-file_rename = ファイル名変更
+permission-file_reindex = ファイル再インデックス
 permission-file_root = ファイルルート
+permission-file_search = ファイル検索
 permission-file_upload = ファイルアップロード
 permission-ban_create = BAN作成
 permission-ban_delete = BAN削除
 permission-ban_list = BANリスト
+permission-trust_create = 信頼作成
+permission-trust_delete = 信頼削除
+permission-trust_list = 信頼リスト
 
 # =============================================================================
 # Tooltips
@@ -565,6 +570,12 @@ cmd-bans-usage = 使用法: /{ $command }
 cmd-reindex-desc = ファイルインデックスの再構築を開始
 cmd-reindex-usage = 使用法: /{ $command }
 msg-reindex-triggered = ファイルインデックスの再構築を開始しました
+cmd-trust-desc = IP、CIDRレンジ、またはニックネームを信頼してBANを回避
+cmd-trust-usage = 使用法: /{ $command } <対象> [期間] [理由]
+cmd-untrust-desc = 信頼済みIPエントリを削除
+cmd-untrust-usage = 使用法: /{ $command } <対象>
+cmd-trusted-desc = 信頼済みIPを一覧表示
+cmd-trusted-usage = 使用法: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -772,3 +783,31 @@ msg-ban-remaining = 残り { $time }
 msg-ban-remaining-days = { $days }日 { $hours }時間
 msg-ban-remaining-hours = { $hours }時間 { $minutes }分
 msg-ban-remaining-minutes = { $minutes }分
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } を信頼済みに設定
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) を信頼済みに設定
+msg-trusted-ips = { $count } 件のIPを信頼済みに設定
+msg-trusted-ips-nickname = { $count } 件のIP ({ $nickname }) を信頼済みに設定
+msg-trust-created = 信頼エントリを作成しました
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } の信頼を解除
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) の信頼を解除
+msg-untrusted-ips = { $count } 件のIPの信頼を解除
+msg-untrusted-ips-nickname = { $count } 件のIP ({ $nickname }) の信頼を解除
+msg-untrusted-success = 信頼エントリを削除しました
+
+# Trust list messages
+msg-trust-list-header = 信頼済みIP:
+msg-trust-list-empty = 信頼済みIPはありません
+msg-trust-permanent = 永続
+msg-trust-expired = 期限切れ
+msg-trust-remaining = 残り { $time }
+msg-trust-remaining-days = { $days }日 { $hours }時間
+msg-trust-remaining-hours = { $hours }時間 { $minutes }分
+msg-trust-remaining-minutes = { $minutes }分

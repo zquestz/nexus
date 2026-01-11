@@ -7,6 +7,7 @@ pub mod framing;
 pub mod hash;
 pub mod io;
 pub mod protocol;
+pub mod time;
 pub mod validators;
 pub mod version;
 
@@ -93,6 +94,9 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "news_delete",
     "news_edit",
     "news_list",
+    "trust_create",
+    "trust_delete",
+    "trust_list",
     "user_broadcast",
     "user_create",
     "user_delete",
@@ -186,8 +190,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (31)
-        assert_eq!(ALL_PERMISSIONS.len(), 31);
+        // Verify we have the expected number of permissions (34)
+        assert_eq!(ALL_PERMISSIONS.len(), 34);
     }
 
     #[test]

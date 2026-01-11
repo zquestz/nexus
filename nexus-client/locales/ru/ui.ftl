@@ -155,13 +155,18 @@ permission-file_delete = Удалить Файл
 permission-file_download = Загрузка Файла
 permission-file_info = Информация о Файле
 permission-file_list = Список Файлов
-permission-file_move = Перемещение Файла
+permission-file_move = Переместить Файл
 permission-file_rename = Переименовать Файл
+permission-file_reindex = Переиндексация Файлов
 permission-file_root = Корень Файлов
-permission-file_upload = Загрузка Файла
+permission-file_search = Поиск Файлов
+permission-file_upload = Загрузить Файл
 permission-ban_create = Создать Бан
 permission-ban_delete = Удалить Бан
 permission-ban_list = Список Банов
+permission-trust_create = Создать Доверие
+permission-trust_delete = Удалить Доверие
+permission-trust_list = Список Доверенных
 
 # =============================================================================
 # Tooltips
@@ -593,6 +598,12 @@ cmd-bans-usage = Использование: /{ $command }
 cmd-reindex-desc = Запустить перестроение индекса файлов
 cmd-reindex-usage = Использование: /{ $command }
 msg-reindex-triggered = Перестроение индекса файлов запущено
+cmd-trust-desc = Добавить IP, диапазон CIDR или никнейм в доверенные для обхода банов
+cmd-trust-usage = Использование: /{ $command } <цель> [длительность] [причина]
+cmd-untrust-desc = Удалить запись из доверенных IP
+cmd-untrust-usage = Использование: /{ $command } <цель>
+cmd-trusted-desc = Показать доверенные IP
+cmd-trusted-usage = Использование: /{ $command }
 
 # =============================================================================
 # About Panel
@@ -800,3 +811,31 @@ msg-ban-remaining = { $time } осталось
 msg-ban-remaining-days = { $days }д { $hours }ч
 msg-ban-remaining-hours = { $hours }ч { $minutes }м
 msg-ban-remaining-minutes = { $minutes }м
+
+# =============================================================================
+# Trust System
+# =============================================================================
+
+# Trust success messages
+msg-trusted-ip = { $ip } добавлен в доверенные
+msg-trusted-ip-nickname = { $ip } ({ $nickname }) добавлен в доверенные
+msg-trusted-ips = { $count } IP добавлено в доверенные
+msg-trusted-ips-nickname = { $count } IP ({ $nickname }) добавлено в доверенные
+msg-trust-created = Запись доверия успешно создана
+
+# Untrust success messages
+msg-untrusted-ip = { $ip } удалён из доверенных
+msg-untrusted-ip-nickname = { $ip } ({ $nickname }) удалён из доверенных
+msg-untrusted-ips = { $count } IP удалено из доверенных
+msg-untrusted-ips-nickname = { $count } IP ({ $nickname }) удалено из доверенных
+msg-untrusted-success = Запись доверия успешно удалена
+
+# Trust list messages
+msg-trust-list-header = Доверенные IP:
+msg-trust-list-empty = Нет доверенных IP
+msg-trust-permanent = постоянно
+msg-trust-expired = истёк
+msg-trust-remaining = { $time } осталось
+msg-trust-remaining-days = { $days }д { $hours }ч
+msg-trust-remaining-hours = { $hours }ч { $minutes }м
+msg-trust-remaining-minutes = { $minutes }м

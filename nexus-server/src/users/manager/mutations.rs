@@ -1,6 +1,7 @@
 //! Mutation methods for UserManager
 
 use std::collections::HashSet;
+use std::net::IpAddr;
 
 use ipnet::IpNet;
 use nexus_common::protocol::ServerMessage;
@@ -183,16 +184,28 @@ impl UserManager {
     /// which receives the user's locale to generate a properly localized message.
     /// Used by the ban system to disconnect users when their IP is banned.
     ///
+    /// The `skip_ip` predicate can be used to skip certain IPs (e.g., trusted IPs).
+    /// If `skip_ip` returns true for an IP, sessions from that IP will NOT be disconnected.
+    ///
     /// Returns information about disconnected sessions so the caller can broadcast
     /// UserDisconnected messages to update other clients' user lists.
-    pub async fn disconnect_sessions_by_ip<F>(
+    pub async fn disconnect_sessions_by_ip<F, S>(
         &self,
         ip: &str,
         build_message: F,
+        skip_ip: S,
     ) -> Vec<DisconnectedSession>
     where
         F: Fn(&str) -> ServerMessage,
+        S: Fn(&IpAddr) -> bool,
     {
+        // Check if this IP should be skipped (e.g., trusted)
+        if let Ok(parsed_ip) = ip.parse::<IpAddr>()
+            && skip_ip(&parsed_ip)
+        {
+            return Vec::new();
+        }
+
         // First, collect session IDs to disconnect
         let session_ids: Vec<u32> = {
             let users = self.users.read().await;
@@ -233,22 +246,31 @@ impl UserManager {
     /// which receives the user's locale to generate a properly localized message.
     /// Used by the ban system to disconnect users when a CIDR range is banned.
     ///
+    /// The `skip_ip` predicate can be used to skip certain IPs (e.g., trusted IPs).
+    /// If `skip_ip` returns true for an IP, sessions from that IP will NOT be disconnected,
+    /// even if the IP falls within the banned range.
+    ///
     /// Returns information about disconnected sessions so the caller can broadcast
     /// UserDisconnected messages to update other clients' user lists.
-    pub async fn disconnect_sessions_in_range<F>(
+    pub async fn disconnect_sessions_in_range<F, S>(
         &self,
         range: &IpNet,
         build_message: F,
+        skip_ip: S,
     ) -> Vec<DisconnectedSession>
     where
         F: Fn(&str) -> ServerMessage,
+        S: Fn(&IpAddr) -> bool,
     {
-        // First, collect session IDs to disconnect
+        // First, collect session IDs to disconnect (excluding skipped IPs like trusted)
         let session_ids: Vec<u32> = {
             let users = self.users.read().await;
             users
                 .values()
-                .filter(|u| range.contains(&u.address.ip()))
+                .filter(|u| {
+                    let ip = u.address.ip();
+                    range.contains(&ip) && !skip_ip(&ip)
+                })
                 .map(|u| u.session_id)
                 .collect()
         };
