@@ -234,7 +234,7 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user};
+    use crate::handlers::testing::{create_test_context, get_cached_password_hash, login_user};
 
     #[tokio::test]
     async fn test_userlist_requires_login() {
@@ -379,7 +379,7 @@ mod tests {
 
         // Create user with avatar
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
         let account = test_ctx
@@ -443,7 +443,7 @@ mod tests {
 
         // Create user
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
         let account = test_ctx
@@ -534,7 +534,7 @@ mod tests {
 
         // Create user without avatar
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
         let account = test_ctx
@@ -683,7 +683,7 @@ mod tests {
 
         // Create a user in the database (not logged in)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
         test_ctx
             .db
@@ -803,7 +803,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account in the database
-        let hashed = crate::db::hash_password("sharedpass").unwrap();
+        let hashed = get_cached_password_hash("sharedpass");
         test_ctx
             .db
             .users
@@ -862,7 +862,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
 
         // Create regular users
@@ -965,7 +965,7 @@ mod tests {
         // Create users with names that would be out of order if not sorted
         // Using different cases to verify case-insensitive sorting
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
 
         // Create users in non-alphabetical order
@@ -1044,7 +1044,7 @@ mod tests {
 
         // Create user
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
         let account = test_ctx
@@ -1136,7 +1136,7 @@ mod tests {
 
         // Create shared account
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
         let account = test_ctx

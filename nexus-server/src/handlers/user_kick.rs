@@ -172,8 +172,8 @@ mod tests {
     use crate::db;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, login_shared_user, login_user,
-        read_server_message,
+        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, login_shared_user,
+        login_user, read_server_message,
     };
 
     #[tokio::test]
@@ -522,7 +522,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account in the database
-        let hashed = db::hash_password("password").unwrap();
+        let hashed = get_cached_password_hash("password");
         test_ctx
             .db
             .users
@@ -601,7 +601,7 @@ mod tests {
         use crate::handlers::login::{LoginRequest, handle_login};
 
         // Create a shared account in the database with kick permission
-        let hashed = db::hash_password("password").unwrap();
+        let hashed = get_cached_password_hash("password");
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserKick);
         test_ctx

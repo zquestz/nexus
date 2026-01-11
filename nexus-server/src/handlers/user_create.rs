@@ -274,7 +274,9 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, get_cached_password_hash, login_user, read_server_message,
+    };
     use crate::users::user::NewSessionParams;
 
     #[tokio::test]
@@ -391,7 +393,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let admin = test_ctx
             .db
             .users
@@ -717,7 +719,7 @@ mod tests {
 
         // Create first admin
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let _admin = test_ctx
             .db
             .users
@@ -791,7 +793,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let _admin = test_ctx
             .db
             .users

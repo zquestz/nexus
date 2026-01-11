@@ -3,9 +3,10 @@
 /// Default locale for tests
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use tempfile::TempDir;
 
@@ -27,6 +28,55 @@ use crate::users::user::NewSessionParams;
 
 /// Type alias for the write half used in tests
 type TestWriteHalf = tokio::net::tcp::OwnedWriteHalf;
+
+// ========================================================================
+// Cached Password Hashes for Test Performance
+// ========================================================================
+//
+// Argon2 password hashing is intentionally slow (~1 second per hash) for security.
+// However, this makes tests extremely slow since handler tests call login_user()
+// ~460 times. Pre-computing and caching hashes for common test passwords provides
+// a ~10x speedup for the test suite.
+//
+// The cache is populated lazily - the first test to use a password pays the
+// hashing cost, but all subsequent tests reuse the cached hash.
+
+/// Global cache for pre-computed password hashes.
+///
+/// This dramatically speeds up tests by avoiding repeated Argon2 computations.
+/// The cache is thread-safe and lazily populated.
+static PASSWORD_HASH_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Get a cached password hash, computing and caching it if not already present.
+///
+/// This function provides a ~1000x speedup for repeated password hashing in tests
+/// by caching the Argon2 hash for each unique password. Since most tests use the
+/// same password ("password"), this effectively eliminates password hashing
+/// overhead after the first test.
+///
+/// # Thread Safety
+///
+/// Uses a read-write lock for concurrent access. Multiple tests can read cached
+/// hashes simultaneously; writes only occur for new passwords.
+pub fn get_cached_password_hash(password: &str) -> String {
+    // Try to read from cache first (fast path)
+    {
+        let cache = PASSWORD_HASH_CACHE.read().unwrap();
+        if let Some(hash) = cache.get(password) {
+            return hash.clone();
+        }
+    }
+
+    // Cache miss - compute hash and store it
+    let hash = crate::db::hash_password(password).expect("Password hashing failed in test");
+
+    {
+        let mut cache = PASSWORD_HASH_CACHE.write().unwrap();
+        // Double-check in case another thread computed it while we were hashing
+        cache.entry(password.to_string()).or_insert(hash).clone()
+    }
+}
 
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
@@ -153,10 +203,10 @@ pub async fn login_user_from_ip(
     is_admin: bool,
     ip: &str,
 ) -> u32 {
-    use crate::db::{Permissions, hash_password};
+    use crate::db::Permissions;
 
-    // Hash password
-    let hashed = hash_password(password).unwrap();
+    // Get cached password hash (fast path for repeated passwords)
+    let hashed = get_cached_password_hash(password);
 
     // Build permissions
     let mut perms = Permissions::new();
@@ -208,10 +258,10 @@ pub async fn login_user_with_features(
     is_admin: bool,
     features: Vec<String>,
 ) -> u32 {
-    use crate::db::{Permissions, hash_password};
+    use crate::db::Permissions;
 
-    // Hash password
-    let hashed = hash_password(password).unwrap();
+    // Get cached password hash (fast path for repeated passwords)
+    let hashed = get_cached_password_hash(password);
 
     // Build permissions
     let mut perms = Permissions::new();
@@ -259,10 +309,10 @@ pub async fn login_shared_user(
     nickname: &str,
     permissions: &[crate::db::Permission],
 ) -> u32 {
-    use crate::db::{Permissions, hash_password};
+    use crate::db::Permissions;
 
-    // Hash password
-    let hashed = hash_password(password).unwrap();
+    // Get cached password hash (fast path for repeated passwords)
+    let hashed = get_cached_password_hash(password);
 
     // Build permissions
     let mut perms = Permissions::new();

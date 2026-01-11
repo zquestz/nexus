@@ -2120,7 +2120,7 @@ mod tests {
             .users
             .create_user(
                 "shared_acct",
-                &db::hash_password("sharedpass").unwrap(),
+                &get_cached_password_hash("sharedpass"),
                 false,
                 true,
                 true,
@@ -2196,7 +2196,7 @@ mod tests {
             .users
             .create_user(
                 "shared_acct",
-                &db::hash_password("sharedpass").unwrap(),
+                &get_cached_password_hash("sharedpass"),
                 false,
                 true,
                 true,
@@ -2253,7 +2253,7 @@ mod tests {
             .users
             .create_user(
                 "shared_acct",
-                &db::hash_password("sharedpass").unwrap(),
+                &get_cached_password_hash("sharedpass"),
                 false,
                 true,
                 true,

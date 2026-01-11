@@ -490,7 +490,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::testing::{DEFAULT_TEST_LOCALE, create_test_context, read_server_message};
+    use crate::handlers::testing::{
+        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, read_server_message,
+    };
 
     #[tokio::test]
     async fn test_login_requires_handshake() {
@@ -582,7 +584,7 @@ mod tests {
         // Pre-create a user
         // Create a user account with permissions
         let password = "mypassword";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         use std::collections::HashSet;
         perms.permissions = {
@@ -660,7 +662,7 @@ mod tests {
 
         // Pre-create a user
         let password = "correctpassword";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -694,7 +696,7 @@ mod tests {
 
         // Create a user first (so we're not the first user who would auto-register)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -738,7 +740,7 @@ mod tests {
 
         // Create an admin user first
         let admin_password = "adminpass";
-        let admin_hashed = db::hash_password(admin_password).unwrap();
+        let admin_hashed = get_cached_password_hash(admin_password);
         let _admin = test_ctx
             .db
             .users
@@ -755,7 +757,7 @@ mod tests {
 
         // Create a non-admin user with specific permissions
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         use std::collections::HashSet;
         perms.permissions = {
@@ -842,7 +844,7 @@ mod tests {
 
         // Create user first
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -901,7 +903,7 @@ mod tests {
 
         // Create user with ChatTopic permission
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.permissions.insert(Permission::ChatTopic);
         test_ctx
@@ -978,7 +980,7 @@ mod tests {
 
         // Create user without ChatTopic permission
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -1062,7 +1064,7 @@ mod tests {
 
         // Create admin user (no explicit ChatTopic permission needed)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -1130,7 +1132,7 @@ mod tests {
 
         // Create a user first (so we're not the first user)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -1196,7 +1198,7 @@ mod tests {
 
         // Create a user first (so we're not the first user)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -1251,7 +1253,7 @@ mod tests {
 
         // Create a user first (so we're not the first user)
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         test_ctx
             .db
             .users
@@ -1499,7 +1501,7 @@ mod tests {
 
         // Create a shared account in the database
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // First create a regular admin so we can create the shared account
         test_ctx
@@ -1565,7 +1567,7 @@ mod tests {
 
         // Create shared account
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         test_ctx
             .db
@@ -1651,7 +1653,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // Create regular user "alice"
         test_ctx
@@ -1702,7 +1704,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // Create regular user "Alice"
         test_ctx
@@ -1753,7 +1755,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // Create admin first
         test_ctx
@@ -1827,7 +1829,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // Create admin first
         test_ctx
@@ -1913,7 +1915,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         test_ctx
             .db
@@ -1959,7 +1961,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         test_ctx
             .db
@@ -2005,7 +2007,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         test_ctx
             .db
@@ -2054,7 +2056,7 @@ mod tests {
         let handshake_complete = true;
 
         let password = "password123";
-        let hashed = db::hash_password(password).expect("hash should succeed");
+        let hashed = get_cached_password_hash(password);
 
         // Create regular user "alice" and login
         test_ctx
@@ -2432,7 +2434,7 @@ mod tests {
 
         // Create user in database
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let account = test_ctx
             .db
             .users
@@ -2517,7 +2519,7 @@ mod tests {
 
         // Create shared account in database
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let account = test_ctx
             .db
             .users
@@ -2600,7 +2602,7 @@ mod tests {
 
         // Create user in database
         let password = "password";
-        let hashed = db::hash_password(password).unwrap();
+        let hashed = get_cached_password_hash(password);
         let account = test_ctx
             .db
             .users

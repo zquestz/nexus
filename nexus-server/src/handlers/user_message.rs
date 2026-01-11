@@ -169,8 +169,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_shared_user, login_user, read_channel_response,
-        read_server_message,
+        create_test_context, get_cached_password_hash, login_shared_user, login_user,
+        read_channel_response, read_server_message,
     };
 
     #[tokio::test]
@@ -520,7 +520,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account in the database
-        let hashed = db::hash_password("password").unwrap();
+        let hashed = get_cached_password_hash("password");
         test_ctx
             .db
             .users
@@ -593,7 +593,7 @@ mod tests {
         let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account with message permission
-        let hashed = db::hash_password("password").unwrap();
+        let hashed = get_cached_password_hash("password");
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserMessage);
         test_ctx
@@ -656,7 +656,7 @@ mod tests {
         let _target_id = login_user(&mut test_ctx, "target", "password", &[], false).await;
 
         // Create a shared account with message permission
-        let hashed = db::hash_password("password").unwrap();
+        let hashed = get_cached_password_hash("password");
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserMessage);
         test_ctx
