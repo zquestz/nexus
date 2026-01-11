@@ -412,7 +412,7 @@ where
                 };
                 return ctx.send_message(&response).await;
             }
-            match hash_password(password) {
+            match hash_password(password, false) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
                     eprintln!("Database error updating user {}: {}", request.username, e);
@@ -2303,7 +2303,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password).expect("hash should work");
+        let hashed = hash_password(password, true).expect("hash should work");
         test_ctx
             .db
             .users
@@ -2372,7 +2372,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password).expect("hash should work");
+        let hashed = hash_password(password, true).expect("hash should work");
         test_ctx
             .db
             .users
@@ -2437,7 +2437,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password).expect("hash should work");
+        let hashed = hash_password(password, true).expect("hash should work");
         test_ctx
             .db
             .users
@@ -2505,7 +2505,7 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password).expect("hash should work");
+        let hashed = hash_password(password, true).expect("hash should work");
         test_ctx
             .db
             .users

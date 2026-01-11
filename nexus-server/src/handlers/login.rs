@@ -207,7 +207,7 @@ where
         }
     } else {
         // User doesn't exist - try to create as first user (atomic operation)
-        let hashed_password = match db::hash_password(&password) {
+        let hashed_password = match db::hash_password(&password, false) {
             Ok(hash) => hash,
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);

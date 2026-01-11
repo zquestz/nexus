@@ -355,7 +355,7 @@ mod tests {
 
         // Create offline user in database (not logged in)
         use crate::db::{Permissions, hash_password};
-        let hashed = hash_password("password").unwrap();
+        let hashed = hash_password("password", true).unwrap();
         let perms = Permissions::new();
         test_ctx
             .db

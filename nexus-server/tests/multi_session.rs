@@ -19,7 +19,7 @@ async fn test_multi_session_partial_disconnect() {
     let user_manager = UserManager::new();
 
     // Create a user in database with user_list permission
-    let hashed_password = db::hash_password("password").unwrap();
+    let hashed_password = db::hash_password("password", true).unwrap();
     let mut perms = Permissions::new();
     perms.add(Permission::UserList);
     let alice = db
@@ -139,7 +139,7 @@ async fn test_broadcast_respects_user_list_permission() {
     let user_manager = UserManager::new();
 
     // Create admin (has all permissions)
-    let hashed = db::hash_password("password").unwrap();
+    let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
         .create_user("admin", &hashed, true, false, true, &Permissions::new())
@@ -247,7 +247,7 @@ async fn test_broadcast_excludes_specified_session() {
     let user_manager = UserManager::new();
 
     // Create users with user_list permission
-    let hashed = db::hash_password("password").unwrap();
+    let hashed = db::hash_password("password", true).unwrap();
     let mut perms = Permissions::new();
     perms.add(Permission::UserList);
 
@@ -322,7 +322,7 @@ async fn test_broadcast_detects_closed_channels() {
     let user_manager = UserManager::new();
 
     // Create users with permission
-    let hashed = db::hash_password("password").unwrap();
+    let hashed = db::hash_password("password", true).unwrap();
     let mut perms = Permissions::new();
     perms.add(Permission::ChatReceive);
 

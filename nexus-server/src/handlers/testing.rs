@@ -69,7 +69,7 @@ pub fn get_cached_password_hash(password: &str) -> String {
     }
 
     // Cache miss - compute hash and store it
-    let hash = crate::db::hash_password(password).expect("Password hashing failed in test");
+    let hash = crate::db::hash_password(password, true).expect("Password hashing failed in test");
 
     {
         let mut cache = PASSWORD_HASH_CACHE.write().unwrap();

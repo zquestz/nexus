@@ -206,7 +206,7 @@ async fn test_file_download_permission_in_db() {
     let db = create_test_db().await;
 
     // Create user with file_download permission
-    let hashed = db::hash_password("password").unwrap();
+    let hashed = db::hash_password("password", true).unwrap();
     let mut perms = Permissions::new();
     perms.add(Permission::FileDownload);
     perms.add(Permission::FileList);
@@ -230,7 +230,7 @@ async fn test_admin_has_implicit_permissions() {
     let db = create_test_db().await;
 
     // Create admin with no explicit permissions
-    let hashed = db::hash_password("password").unwrap();
+    let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
         .create_user("admin", &hashed, true, false, true, &Permissions::new())
@@ -888,7 +888,7 @@ async fn test_file_upload_permission_in_db() {
     let db = create_test_db().await;
 
     // Create user with file_upload permission
-    let hashed = db::hash_password("pass123").unwrap();
+    let hashed = db::hash_password("pass123", true).unwrap();
     let mut perms = Permissions::new();
     perms.add(Permission::FileUpload);
     perms.add(Permission::FileList);
@@ -912,7 +912,7 @@ async fn test_admin_has_implicit_upload_permission() {
     let db = create_test_db().await;
 
     // Create admin user (no explicit permissions needed)
-    let hashed = db::hash_password("adminpass").unwrap();
+    let hashed = db::hash_password("adminpass", true).unwrap();
     let admin = db
         .users
         .create_user(

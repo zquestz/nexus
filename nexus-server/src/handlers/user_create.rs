@@ -228,7 +228,7 @@ where
     }
 
     // Hash password for secure storage
-    let password_hash = match hash_password(&password) {
+    let password_hash = match hash_password(&password, false) {
         Ok(hash) => hash,
         Err(e) => {
             eprintln!("Password hashing error: {}", e);
