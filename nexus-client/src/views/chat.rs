@@ -21,6 +21,8 @@ use crate::style::{
 };
 use crate::types::{ChatTab, InputId, Message, MessageType, ScrollableId, ServerConnection};
 
+const CONSOLE_TAB_TOOLTIP_KEY: &str = "console-tab";
+
 // ============================================================================
 // Timestamp Settings
 // ============================================================================
@@ -272,12 +274,23 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
                 .into()
         }
         ChatTab::Console => {
-            // Console tab (no close button)
-            button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
-                .on_press(Message::SwitchChatTab(tab))
-                .padding(INPUT_PADDING)
-                .style(chat_tab_active_style())
-                .into()
+            // Console tab (icon-only)
+            let tooltip_text = t(CONSOLE_TAB_TOOLTIP_KEY);
+            let icon = crate::icon::terminal().size(CHAT_MESSAGE_SIZE);
+
+            tooltip(
+                button(icon)
+                    .on_press(Message::SwitchChatTab(tab))
+                    .padding(INPUT_PADDING)
+                    .style(chat_tab_active_style()),
+                container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
         }
     }
 }
@@ -288,18 +301,41 @@ fn create_inactive_tab_button(
     label: String,
     has_unread: bool,
 ) -> Element<'static, Message> {
-    let tab_text = if has_unread {
-        // Bold if there are unread messages
-        shaped_text(label).size(CHAT_MESSAGE_SIZE).font(BOLD_FONT)
-    } else {
-        shaped_text(label).size(CHAT_MESSAGE_SIZE)
-    };
+    match &tab {
+        ChatTab::Console => {
+            // Console tab (icon-only)
+            let tooltip_text = t(CONSOLE_TAB_TOOLTIP_KEY);
+            let icon = crate::icon::terminal().size(CHAT_MESSAGE_SIZE);
 
-    button(tab_text)
-        .on_press(Message::SwitchChatTab(tab))
-        .style(iced::widget::button::secondary)
-        .padding(INPUT_PADDING)
-        .into()
+            tooltip(
+                button(icon)
+                    .on_press(Message::SwitchChatTab(tab))
+                    .padding(INPUT_PADDING)
+                    .style(iced::widget::button::secondary),
+                container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into()
+        }
+        _ => {
+            let tab_text = if has_unread {
+                // Bold if there are unread messages
+                shaped_text(label).size(CHAT_MESSAGE_SIZE).font(BOLD_FONT)
+            } else {
+                shaped_text(label).size(CHAT_MESSAGE_SIZE)
+            };
+
+            button(tab_text)
+                .on_press(Message::SwitchChatTab(tab))
+                .style(iced::widget::button::secondary)
+                .padding(INPUT_PADDING)
+                .into()
+        }
+    }
 }
 
 // ============================================================================

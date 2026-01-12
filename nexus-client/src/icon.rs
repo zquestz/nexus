@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 7192d6a497cd0124589189812628cb9338496911a68d62703a3388a854c3bef6
+// 274b099e380d8e52bbb0facd6aa99778d84642f1183490f5d6a5c7564a057fa6
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -168,6 +168,10 @@ pub fn search<'a>() -> Text<'a> {
 
 pub fn server<'a>() -> Text<'a> {
     icon("\u{F233}")
+}
+
+pub fn terminal<'a>() -> Text<'a> {
+    icon("\u{F120}")
 }
 
 pub fn trash<'a>() -> Text<'a> {
