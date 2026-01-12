@@ -394,13 +394,13 @@ View or set the current channel's topic.
 
 **Aliases:** `/t`
 
-**Permission:** `chat_topic` (view), `chat_topic_edit` (set)
+**Permission:** `chat_topic` (view), `chat_topic_edit` (set/clear)
 
 **Usage:**
 ```
 /topic                           # View current topic
-/topic Welcome to my BBS!        # Set a new topic
-/topic                           # With no text, clears the topic
+/topic set Welcome to my BBS!    # Set a new topic
+/topic clear                     # Clear the topic
 ```
 
 Only works in a channel tab. The topic is displayed when joining a channel.

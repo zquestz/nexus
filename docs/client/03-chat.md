@@ -82,12 +82,12 @@ Secret channels are hidden unless you're a member or an admin.
 View or change the channel topic:
 
 ```
-/topic                       # View current topic
-/topic Welcome to my BBS     # Set a new topic
-/topic                       # With empty text clears the topic
+/topic                           # View current topic
+/topic set Welcome to my BBS     # Set a new topic
+/topic clear                     # Clear the topic
 ```
 
-Viewing topics requires `chat_topic` permission. Setting topics requires `chat_topic_edit` permission.
+Viewing topics requires `chat_topic` permission. Setting/clearing topics requires `chat_topic_edit` permission.
 
 ### Secret Channels
 
@@ -271,7 +271,7 @@ If you're logged in from multiple devices:
 | `/join #channel` | Join or create a channel |
 | `/leave` | Leave current channel |
 | `/channels` | List available channels |
-| `/topic [text]` | View or set channel topic |
+| `/topic [set text\|clear]` | View or set channel topic |
 | `/secret [on\|off]` | Toggle secret mode (admin) |
 | `/msg user message` | Send private message |
 | `/me action` | Send action message |

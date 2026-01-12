@@ -592,7 +592,7 @@ pub fn chat_view<'a>(
     let font_size = chat_font_size as f32;
 
     // Build tab bar
-    let (tab_row, has_pm_tabs) = build_tab_bar(conn);
+    let (tab_row, has_closeable_tabs) = build_tab_bar(conn);
     let tab_bar = tab_row.wrap();
 
     // Build message list
@@ -618,8 +618,8 @@ pub fn chat_view<'a>(
     .height(Fill)
     .style(content_background_style);
 
-    // Only show tab bar if there are PM tabs (more than just the main chat channel tab)
-    if has_pm_tabs {
+    // Only show tab bar if there are closeable tabs (channels or PMs)
+    if has_closeable_tabs {
         column![
             container(tab_bar).padding(SMALL_PADDING).width(Fill),
             chat_content,

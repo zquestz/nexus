@@ -172,6 +172,8 @@ Some settings are configured at runtime by admins through the client:
 | Max connections per IP | Limit concurrent connections (default: 5) |
 | Max transfers per IP | Limit concurrent file transfers (default: 5) |
 | File reindex interval | Minutes between search index rebuilds (default: 5, 0 to disable) |
+| Persistent channels | Space-separated channel names that survive restart (default: `#nexus`) |
+| Auto-join channels | Space-separated channels users join on login (default: `#nexus`) |
 
 These settings are stored in the database and persist across restarts.
 
