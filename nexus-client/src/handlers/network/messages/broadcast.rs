@@ -41,7 +41,7 @@ impl NexusApp {
         );
 
         // username == nickname for broadcasters (shared accounts can't broadcast)
-        self.add_chat_message(connection_id, ChatMessage::broadcast(username, message))
+        self.add_console_message(connection_id, ChatMessage::broadcast(username, message))
     }
 
     /// Handle user broadcast response (success/failure of sending a broadcast)

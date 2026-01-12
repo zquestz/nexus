@@ -136,7 +136,9 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user_with_features, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, login_user_with_features, read_server_message,
+    };
 
     #[tokio::test]
     async fn test_chat_requires_login() {
@@ -198,7 +200,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Create message at exactly MAX_MESSAGE_LENGTH characters
         let max_message = "a".repeat(validators::MAX_MESSAGE_LENGTH);
@@ -337,7 +343,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Try to send chat without permission
         let result = handle_chat_send(
@@ -401,7 +411,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Send valid chat message
         let result = handle_chat_send(
@@ -458,7 +472,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Admin should be able to send chat
         let result = handle_chat_send(
@@ -493,7 +511,11 @@ mod tests {
         .await;
 
         // Create channel but don't join it
-        test_ctx.channel_manager.join("#general", 999).await.unwrap(); // Someone else creates it
+        test_ctx
+            .channel_manager
+            .join("#general", 999)
+            .await
+            .unwrap(); // Someone else creates it
 
         // Try to send to channel user is not a member of
         let result = handle_chat_send(
@@ -554,7 +576,11 @@ mod tests {
         .await;
 
         // Join #general channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Send to #general channel
         let result = handle_chat_send(

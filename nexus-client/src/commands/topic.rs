@@ -2,11 +2,11 @@
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, ChatTopicError, DEFAULT_CHANNEL};
+use nexus_common::validators::{self, ChatTopicError};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
+use crate::types::{ChatMessage, ChatTab, Message};
 use crate::views::constants::PERMISSION_CHAT_TOPIC_EDIT;
 
 /// Execute the /topic command
@@ -21,9 +21,24 @@ pub fn execute(
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
+    // /topic only works on channel tabs, not console or PM
+    let Some(conn) = app.connections.get(&connection_id) else {
+        return Task::none();
+    };
+
+    let channel = match &conn.active_chat_tab {
+        ChatTab::Channel(ch) => ch.clone(),
+        ChatTab::Console | ChatTab::UserMessage(_) => {
+            return app.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(t("err-topic-no-channel")),
+            );
+        }
+    };
+
     if args.is_empty() {
         // /topic - show current topic
-        return show_topic(app, connection_id);
+        return show_topic(app, connection_id, &channel);
     }
 
     // Get translated subcommand keywords
@@ -34,7 +49,7 @@ pub fn execute(
     if arg == set_keyword {
         // Check chat_topic_edit permission
         if !has_topic_edit_permission(app, connection_id) {
-            return app.add_chat_message(
+            return app.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("cmd-topic-permission-denied")),
             );
@@ -42,7 +57,7 @@ pub fn execute(
 
         if args.len() < 2 {
             let error_msg = t_args("cmd-topic-set-usage", &[("command", invoked_name)]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
         let topic = args[1..].join(" ");
 
@@ -59,30 +74,30 @@ pub fn execute(
                 ChatTopicError::ContainsNewlines => t("err-message-contains-newlines"),
                 ChatTopicError::InvalidCharacters => t("err-message-invalid-characters"),
             };
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
 
-        set_topic(app, connection_id, topic)
+        set_topic(app, connection_id, &channel, topic)
     } else if arg == clear_keyword {
         // /topic clear takes no additional arguments
         if args.len() > 1 {
             let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
 
         // Check chat_topic_edit permission
         if !has_topic_edit_permission(app, connection_id) {
-            return app.add_chat_message(
+            return app.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("cmd-topic-permission-denied")),
             );
         }
 
-        set_topic(app, connection_id, String::new())
+        set_topic(app, connection_id, &channel, String::new())
     } else {
         // Unknown subcommand - show usage
         let error_msg = t_args("cmd-topic-usage", &[("command", invoked_name)]);
-        app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+        app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
     }
 }
 
@@ -97,14 +112,23 @@ fn has_topic_edit_permission(app: &NexusApp, connection_id: usize) -> bool {
     })
 }
 
-/// Show the current topic
-fn show_topic(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
+/// Show the current topic for a channel
+fn show_topic(app: &mut NexusApp, connection_id: usize, channel: &str) -> Task<Message> {
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };
 
-    let topic = conn.chat_topic.as_deref().unwrap_or("");
-    let set_by = conn.chat_topic_set_by.as_deref().unwrap_or("");
+    let channel_lower = channel.to_lowercase();
+    let (topic, set_by) = conn
+        .channels
+        .get(&channel_lower)
+        .map(|ch| {
+            (
+                ch.topic.as_deref().unwrap_or(""),
+                ch.topic_set_by.as_deref().unwrap_or(""),
+            )
+        })
+        .unwrap_or(("", ""));
 
     let message = if topic.is_empty() {
         ChatMessage::info(t("cmd-topic-none"))
@@ -117,24 +141,28 @@ fn show_topic(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
         ChatMessage::info(t_args("msg-topic-display", &[("topic", topic)]))
     };
 
-    app.add_chat_message(connection_id, message)
+    app.add_active_tab_message(connection_id, message)
 }
 
-/// Set or clear the topic
-fn set_topic(app: &mut NexusApp, connection_id: usize, topic: String) -> Task<Message> {
+/// Set or clear the topic for a channel
+fn set_topic(
+    app: &mut NexusApp,
+    connection_id: usize,
+    channel: &str,
+    topic: String,
+) -> Task<Message> {
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };
 
-    // TODO: Use actual active channel from chat tab once multi-channel UI is implemented
     let msg = ClientMessage::ChatTopicUpdate {
         topic,
-        channel: DEFAULT_CHANNEL.to_string(),
+        channel: channel.to_string(),
     };
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

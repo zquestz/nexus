@@ -214,22 +214,22 @@ where
         if let Some(user) = user_manager.get_user_by_session_id(id).await {
             let channel_names = channel_manager.remove_from_all(id).await;
 
-                // Broadcast ChatUserLeft to remaining members of each channel
-                for channel_name in channel_names {
-                    // Get remaining members (if channel still exists)
-                    if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
-                        let leave_msg = ServerMessage::ChatUserLeft {
-                            channel: channel_name,
-                            nickname: user.nickname.clone(),
-                        };
+            // Broadcast ChatUserLeft to remaining members of each channel
+            for channel_name in channel_names {
+                // Get remaining members (if channel still exists)
+                if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
+                    let leave_msg = ServerMessage::ChatUserLeft {
+                        channel: channel_name,
+                        nickname: user.nickname.clone(),
+                    };
 
-                        for member_session_id in remaining_members {
-                            user_manager
-                                .send_to_session(member_session_id, leave_msg.clone())
-                                .await;
-                        }
+                    for member_session_id in remaining_members {
+                        user_manager
+                            .send_to_session(member_session_id, leave_msg.clone())
+                            .await;
                     }
                 }
+            }
         }
 
         // Now remove from UserManager and broadcast UserDisconnected

@@ -347,6 +347,14 @@ fn build_user_info_content<'a>(
         content = content.push(info_row(t("user-info-status"), status.clone(), None));
     }
 
+    // Channels (if present and not empty)
+    if let Some(channels) = &user.channels
+        && !channels.is_empty()
+    {
+        let channels_value = channels.join(", ");
+        content = content.push(info_row(t("user-info-channels"), channels_value, None));
+    }
+
     // Account created
     let created = chrono::DateTime::from_timestamp(user.created_at, 0)
         .map(|dt| dt.format(DATETIME_FORMAT).to_string())

@@ -319,6 +319,7 @@ impl NexusApp {
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
             Message::ChatTabComplete => self.handle_chat_tab_complete(),
             Message::ChatScrolled(viewport) => self.handle_chat_scrolled(viewport),
+            Message::CloseChannelTab(channel) => self.handle_close_channel_tab(channel),
             Message::CloseUserMessageTab(nickname) => self.handle_close_user_message_tab(nickname),
             Message::SendMessagePressed => self.handle_send_message_pressed(),
             Message::SwitchChatTab(tab) => self.handle_switch_chat_tab(tab),
@@ -423,6 +424,9 @@ impl NexusApp {
             Message::ConnectionNotificationsToggled(enabled) => {
                 self.handle_connection_notifications_toggled(enabled)
             }
+            Message::ChannelNotificationsToggled(enabled) => {
+                self.handle_channel_notifications_toggled(enabled)
+            }
             Message::AvatarLoaded(result) => self.handle_avatar_loaded(result),
             Message::PickAvatarPressed => self.handle_pick_avatar_pressed(),
             Message::SaveSettings => self.handle_save_settings(),
@@ -508,6 +512,12 @@ impl NexusApp {
             }
             Message::EditServerInfoNameChanged(name) => {
                 self.handle_edit_server_info_name_changed(name)
+            }
+            Message::EditServerInfoPersistentChannelsChanged(channels) => {
+                self.handle_edit_server_info_persistent_channels_changed(channels)
+            }
+            Message::EditServerInfoAutoJoinChannelsChanged(channels) => {
+                self.handle_edit_server_info_auto_join_channels_changed(channels)
             }
             Message::EditServerInfoPressed => self.handle_edit_server_info_pressed(),
             Message::PickServerImagePressed => self.handle_pick_server_image_pressed(),
@@ -767,6 +777,7 @@ impl NexusApp {
         let config = ViewConfig {
             theme: self.theme(),
             show_connection_notifications: self.config.settings.show_connection_notifications,
+            show_channel_notifications: self.config.settings.show_channel_notifications,
             chat_font_size: self.config.settings.chat_font_size,
             show_timestamps: self.config.settings.show_timestamps,
             use_24_hour_time: self.config.settings.use_24_hour_time,

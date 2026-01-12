@@ -78,8 +78,10 @@ impl NexusApp {
 
         // Show in chat (from /info command)
         if !success {
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         let Some(user) = user else {
@@ -196,6 +198,17 @@ impl NexusApp {
             }
         }
 
+        // Channels (if present and not empty)
+        if let Some(channels) = &user.channels
+            && !channels.is_empty()
+        {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-channels").to_lowercase(),
+                channels.join(", ")
+            ));
+        }
+
         // Account created (last field)
         lines.push(format!(
             "{INFO_INDENT}{} {}",
@@ -209,12 +222,12 @@ impl NexusApp {
         let timestamp = Local::now();
         let mut task = Task::none();
         for line in lines {
-            task = self.add_chat_message(
+            task = self.add_active_tab_message(
                 connection_id,
                 ChatMessage::info_with_timestamp(line, timestamp),
             );
         }
-        // Last add_chat_message will handle auto-scroll
+        // Last add_active_tab_message will handle auto-scroll
         task
     }
 
@@ -302,7 +315,8 @@ impl NexusApp {
         users: Vec<ProtocolUserInfo>,
     ) -> Task<Message> {
         if users.is_empty() {
-            return self.add_chat_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
+            return self
+                .add_active_tab_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
         }
 
         // Build IRC-style user list: @admin user1 user2
@@ -326,7 +340,7 @@ impl NexusApp {
             &[("users", &user_list), ("count", &user_count.to_string())],
         );
 
-        self.add_chat_message(connection_id, ChatMessage::info(message))
+        self.add_active_tab_message(connection_id, ChatMessage::info(message))
     }
 
     /// Handle user updated notification

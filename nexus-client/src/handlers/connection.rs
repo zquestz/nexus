@@ -3,7 +3,7 @@
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, MessageError, DEFAULT_CHANNEL};
+use nexus_common::validators::{self, MessageError};
 
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
@@ -259,6 +259,41 @@ impl NexusApp {
         Some(viewport.relative_offset().y)
     }
 
+    /// Close a channel tab by sending ChatLeave to server
+    ///
+    /// The tab is removed when the server responds with ChatLeaveResponse.
+    pub fn handle_close_channel_tab(&mut self, channel: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        // Prevent double-send
+        if conn.pending_channel_leave.is_some() {
+            return self.add_active_tab_message(
+                conn_id,
+                ChatMessage::error(t("err-leave-already-pending")),
+            );
+        }
+
+        // Send ChatLeave to server
+        let msg = ClientMessage::ChatLeave {
+            channel: channel.clone(),
+        };
+
+        if let Err(e) = conn.send(msg) {
+            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
+            return self.add_active_tab_message(conn_id, ChatMessage::error(error_msg));
+        }
+
+        // Track pending leave
+        conn.pending_channel_leave = Some(channel);
+
+        Task::none()
+    }
+
     /// Close a user message tab
     ///
     /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
@@ -266,6 +301,10 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
+            // Remove from tab list
+            conn.user_message_tabs.retain(|n| n != &nickname);
+
+            // Remove message history
             conn.user_messages.remove(&nickname);
 
             let tab = ChatTab::UserMessage(nickname);
@@ -273,7 +312,14 @@ impl NexusApp {
             conn.scroll_states.remove(&tab);
 
             if conn.active_chat_tab == tab {
-                conn.active_chat_tab = ChatTab::Server;
+                // Move to previous tab in list (user message tabs are at the end)
+                // Fall back to last channel tab, or console if no channels
+                let prev_tab = if let Some(last_channel) = conn.channel_tabs.last() {
+                    ChatTab::Channel(last_channel.clone())
+                } else {
+                    ChatTab::Console
+                };
+                conn.active_chat_tab = prev_tab;
                 return self.handle_show_chat_view();
             }
 
@@ -393,9 +439,15 @@ impl NexusApp {
                 commands::execute_command(self, conn_id, command)
             }
             ParseResult::Message(message, action) => {
+                // Console tab doesn't allow plain text - show specific error
+                if conn.active_chat_tab == ChatTab::Console {
+                    return self.add_chat_error(conn_id, t("err-console-no-send"));
+                }
+
                 // Check permission before sending
                 let has_permission = match &conn.active_chat_tab {
-                    ChatTab::Server => conn.has_permission(PERMISSION_CHAT_SEND),
+                    ChatTab::Console => unreachable!(), // Handled above
+                    ChatTab::Channel(_) => conn.has_permission(PERMISSION_CHAT_SEND),
                     ChatTab::UserMessage(_) => conn.has_permission(PERMISSION_USER_MESSAGE),
                 };
 
@@ -425,13 +477,13 @@ impl NexusApp {
                     return Task::none();
                 };
 
-                // TODO: Use actual active channel from chat tab once multi-channel UI is implemented
                 let (msg, pm_nickname) = match &conn.active_chat_tab {
-                    ChatTab::Server => (
+                    ChatTab::Console => unreachable!(), // Handled at start of Message branch
+                    ChatTab::Channel(channel) => (
                         ClientMessage::ChatSend {
                             message,
                             action,
-                            channel: DEFAULT_CHANNEL.to_string(),
+                            channel: channel.clone(),
                         },
                         None,
                     ),
@@ -569,6 +621,6 @@ impl NexusApp {
 
     /// Add an error message to the chat
     fn add_chat_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
-        self.add_chat_message(connection_id, ChatMessage::error(message))
+        self.add_active_tab_message(connection_id, ChatMessage::error(message))
     }
 }

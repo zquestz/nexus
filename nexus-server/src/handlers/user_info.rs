@@ -152,12 +152,31 @@ where
         .map(|s| s.address.to_string())
         .collect();
 
+    // Collect channels for all sessions of the target user
+    // Secret channels are only visible to admins
+    let mut all_channels = std::collections::HashSet::new();
+    for session in &target_sessions {
+        let session_channels = ctx
+            .channel_manager
+            .get_channels_for_session(session.session_id, requesting_user.is_admin)
+            .await;
+        all_channels.extend(session_channels);
+    }
+    let mut channels: Vec<String> = all_channels.into_iter().collect();
+    channels.sort_by_key(|a| a.to_lowercase());
+    let channels = if channels.is_empty() {
+        None
+    } else {
+        Some(channels)
+    };
+
     // Use the actual username from the database (preserves original casing)
     let actual_username = target_account.username.clone();
 
     // Build response with appropriate visibility level
     // is_admin is visible to everyone (same as in user list)
     // addresses are only visible to admins
+    // channels are visible to everyone (secret channels filtered above based on admin status)
     let user_info = if requesting_user.is_admin {
         // Admin gets all fields including addresses
         UserInfoDetailed {
@@ -174,6 +193,7 @@ where
             addresses: Some(addresses),
             is_away,
             status,
+            channels,
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -191,6 +211,7 @@ where
             addresses: None,
             is_away,
             status,
+            channels,
         }
     };
 
@@ -1185,6 +1206,219 @@ mod tests {
                 assert_eq!(
                     user_info.nickname, user_info.username,
                     "Regular account should have nickname == username"
+                );
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_includes_channels() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user with UserInfo permission
+        let target_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserInfo],
+            false,
+        )
+        .await;
+
+        // Initialize channels
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![
+                crate::channels::Channel::new("#general".to_string()),
+                crate::channels::Channel::new("#support".to_string()),
+            ])
+            .await;
+
+        // Alice joins two channels
+        test_ctx
+            .channel_manager
+            .join("#general", target_id)
+            .await
+            .expect("Alice should join #general");
+        test_ctx
+            .channel_manager
+            .join("#support", target_id)
+            .await
+            .expect("Alice should join #support");
+
+        // Request user info as admin
+        let result = handle_user_info(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert!(user_info.channels.is_some(), "Should include channels");
+                let channels = user_info.channels.unwrap();
+                assert_eq!(channels.len(), 2, "Alice should be in 2 channels");
+                // Channels should be sorted case-insensitively
+                assert!(
+                    channels.contains(&"#general".to_string()),
+                    "Should include #general"
+                );
+                assert!(
+                    channels.contains(&"#support".to_string()),
+                    "Should include #support"
+                );
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_hides_secret_channels_from_non_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create non-admin user with UserInfo permission to make requests
+        let requester_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::UserInfo],
+            false,
+        )
+        .await;
+
+        // Create target user
+        let target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // Initialize channels
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![
+                crate::channels::Channel::new("#public".to_string()),
+                crate::channels::Channel::new("#secret".to_string()),
+            ])
+            .await;
+
+        // Alice joins both channels
+        test_ctx
+            .channel_manager
+            .join("#public", target_id)
+            .await
+            .expect("Alice should join #public");
+        test_ctx
+            .channel_manager
+            .join("#secret", target_id)
+            .await
+            .expect("Alice should join #secret");
+
+        // Make #secret channel secret
+        let _ = test_ctx.channel_manager.set_secret("#secret", true).await;
+
+        // Request user info as non-admin (Bob is not in #secret)
+        let result = handle_user_info(
+            "alice".to_string(),
+            Some(requester_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert!(user_info.channels.is_some(), "Should include channels");
+                let channels = user_info.channels.unwrap();
+                // Non-admin should only see public channel
+                assert_eq!(
+                    channels.len(),
+                    1,
+                    "Non-admin should only see 1 channel (secret hidden)"
+                );
+                assert!(
+                    channels.contains(&"#public".to_string()),
+                    "Should include #public"
+                );
+                assert!(
+                    !channels.contains(&"#secret".to_string()),
+                    "Should NOT include #secret for non-admin"
+                );
+            }
+            _ => panic!("Expected UserInfoResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_shows_secret_channels_to_admin() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user to make requests
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create target user
+        let target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // Initialize channels
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![
+                crate::channels::Channel::new("#public".to_string()),
+                crate::channels::Channel::new("#secret".to_string()),
+            ])
+            .await;
+
+        // Alice joins both channels
+        test_ctx
+            .channel_manager
+            .join("#public", target_id)
+            .await
+            .expect("Alice should join #public");
+        test_ctx
+            .channel_manager
+            .join("#secret", target_id)
+            .await
+            .expect("Alice should join #secret");
+
+        // Make #secret channel secret
+        let _ = test_ctx.channel_manager.set_secret("#secret", true).await;
+
+        // Request user info as admin
+        let result = handle_user_info(
+            "alice".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user_info = user.unwrap();
+                assert!(user_info.channels.is_some(), "Should include channels");
+                let channels = user_info.channels.unwrap();
+                // Admin should see both channels including secret
+                assert_eq!(channels.len(), 2, "Admin should see all 2 channels");
+                assert!(
+                    channels.contains(&"#public".to_string()),
+                    "Should include #public"
+                );
+                assert!(
+                    channels.contains(&"#secret".to_string()),
+                    "Admin should see #secret"
                 );
             }
             _ => panic!("Expected UserInfoResponse"),

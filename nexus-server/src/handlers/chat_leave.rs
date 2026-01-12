@@ -86,6 +86,25 @@ where
             .await;
     }
 
+    // Broadcast ChatLeft to user's OTHER sessions (multi-session sync)
+    // This lets other sessions of the same user know they've left a channel
+    let other_session_ids = ctx
+        .user_manager
+        .get_session_ids_for_user(&user.username)
+        .await;
+    if other_session_ids.len() > 1 {
+        let chat_left = ServerMessage::ChatLeft {
+            channel: channel.clone(),
+        };
+        for other_session_id in other_session_ids {
+            if other_session_id != session_id {
+                ctx.user_manager
+                    .send_to_session(other_session_id, chat_left.clone())
+                    .await;
+            }
+        }
+    }
+
     // Send success response
     let response = ServerMessage::ChatLeaveResponse {
         success: true,
@@ -152,8 +171,6 @@ mod tests {
             _ => panic!("Expected ChatLeaveResponse, got {:?}", response),
         }
     }
-
-
 
     #[tokio::test]
     async fn test_chat_leave_success() {

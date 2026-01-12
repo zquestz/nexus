@@ -19,7 +19,7 @@ pub fn execute(
     // /clear takes no arguments
     if !args.is_empty() {
         let error_msg = t_args("cmd-clear-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get_mut(&connection_id) else {
@@ -27,8 +27,14 @@ pub fn execute(
     };
 
     match &conn.active_chat_tab {
-        ChatTab::Server => {
-            conn.chat_messages.clear();
+        ChatTab::Console => {
+            conn.console_messages.clear();
+        }
+        ChatTab::Channel(channel) => {
+            let channel_lower = channel.to_lowercase();
+            if let Some(channel_state) = conn.channels.get_mut(&channel_lower) {
+                channel_state.messages.clear();
+            }
         }
         ChatTab::UserMessage(nickname) => {
             if let Some(messages) = conn.user_messages.get_mut(nickname) {

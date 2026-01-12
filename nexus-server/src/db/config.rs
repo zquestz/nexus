@@ -272,9 +272,7 @@ impl ConfigDb {
                 ChannelListError::InvalidCharacters => {
                     "Persistent channels list contains invalid characters"
                 }
-                ChannelListError::ContainsNewlines => {
-                    "Persistent channels list contains newlines"
-                }
+                ChannelListError::ContainsNewlines => "Persistent channels list contains newlines",
             };
             return Err(io::Error::other(msg));
         }

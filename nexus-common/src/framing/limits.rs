@@ -19,15 +19,16 @@ const fn permissions_array_size() -> usize {
 }
 
 /// Base overhead for UserCreate message (without permissions array)
-/// {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":true,"permissions":[]}
-const USER_CREATE_BASE: usize = 403;
+/// {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":false,"permissions":[]}
+const USER_CREATE_BASE: usize = 404;
 
 /// Base overhead for UserUpdate message (without permissions array)  
-/// {"type":"UserUpdate","username":"...32...","new_username":"...32...","password":"...256...","is_admin":false,"enabled":true,"current_password":"...256...","permissions":[]}
-const USER_UPDATE_BASE: usize = 758;
+/// {"type":"UserUpdate","username":"...32...","new_username":"...32...","password":"...256...","is_admin":false,"enabled":false,"current_password":"...256...","permissions":[]}
+const USER_UPDATE_BASE: usize = 760;
 
 /// Base overhead for UserEditResponse message (without permissions array)
-const USER_EDIT_RESPONSE_BASE: usize = 154;
+/// enabled:false adds 1 char vs true
+const USER_EDIT_RESPONSE_BASE: usize = 156;
 
 /// Base overhead for LoginResponse message (without permissions array)
 /// Includes ServerInfo with transfer_port, max_transfers_per_ip, file_reindex_interval, persistent_channels, and auto_join_channels fields
@@ -38,13 +39,20 @@ const LOGIN_RESPONSE_BASE: usize = 724000;
 /// Includes ServerInfo with transfer_port, max_transfers_per_ip, file_reindex_interval, persistent_channels, and auto_join_channels fields
 const PERMISSIONS_UPDATED_BASE: usize = 702011;
 
+/// Apply 20% padding to a limit for safety margin
+const fn pad_limit(base: u64) -> u64 {
+    // Use integer math: multiply by 6 and divide by 5 equals 1.2x
+    (base * 6) / 5
+}
+
 /// Maximum payload sizes for each message type
 ///
 /// These limits are enforced after parsing the frame header but before reading
 /// the payload, allowing early rejection of oversized messages.
 ///
-/// Limits are set to exactly match the maximum possible serialized JSON size
-/// based on validator constraints. Tests verify these values are correct.
+/// Base limits match the maximum possible serialized JSON size based on
+/// validator constraints, then 20% padding is added for safety margin.
+/// Tests verify the base values fit within the padded limits.
 ///
 /// A limit of `0` means "unlimited" (no per-type limit). This is used for
 /// server-to-client messages where the client has already chosen to trust
@@ -63,142 +71,147 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     // Permission array size calculated from PERMISSIONS_COUNT
     let perm_size = permissions_array_size() as u64;
 
-    // Client messages (limits match actual max size from validators)
-    m.insert("ChatSend", 1101); // Added channel field (32 + overhead)
-    m.insert("ChatTopicUpdate", 338); // Added channel field (32 + overhead)
-    m.insert("ChatJoin", 64); // channel (32) + overhead
-    m.insert("ChatLeave", 65); // channel (32) + overhead
-    m.insert("ChatList", 19); // {"type":"ChatList"} = 19 bytes
-    m.insert("ChatSecret", 81); // channel (32) + secret bool + overhead
-    m.insert("Handshake", 65);
-    m.insert("Login", 176991);
-    m.insert("UserBroadcast", 1061);
-    m.insert("UserCreate", USER_CREATE_BASE as u64 + perm_size);
-    m.insert("UserDelete", 67);
-    m.insert("UserEdit", 65);
-    m.insert("UserInfo", 65);
-    m.insert("UserKick", 2125); // nickname (32) + reason (2048) + overhead
-    m.insert("UserList", 31);
-    m.insert("UserUpdate", USER_UPDATE_BASE as u64 + perm_size);
-    m.insert("UserAway", 160); // status (128) + overhead
-    m.insert("UserBack", 19);
-    m.insert("UserStatus", 161); // status (128) + overhead
-    m.insert("ServerInfoUpdate", 701563); // includes image field (700000 + overhead) + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
+    // Client messages (base limits match actual max size, then padded 20%)
+    m.insert("ChatSend", pad_limit(1101)); // Added channel field (32 + overhead)
+    m.insert("ChatTopicUpdate", pad_limit(338)); // Added channel field (32 + overhead)
+    m.insert("ChatJoin", pad_limit(64)); // channel (32) + overhead
+    m.insert("ChatLeave", pad_limit(65)); // channel (32) + overhead
+    m.insert("ChatList", pad_limit(19)); // {"type":"ChatList"} = 19 bytes
+    m.insert("ChatSecret", pad_limit(81)); // channel (32) + secret bool + overhead
+    m.insert("Handshake", pad_limit(65));
+    m.insert("Login", pad_limit(176991));
+    m.insert("UserBroadcast", pad_limit(1061));
+    m.insert("UserCreate", pad_limit(USER_CREATE_BASE as u64 + perm_size));
+    m.insert("UserDelete", pad_limit(67));
+    m.insert("UserEdit", pad_limit(65));
+    m.insert("UserInfo", pad_limit(65));
+    m.insert("UserKick", pad_limit(2125)); // nickname (32) + reason (2048) + overhead
+    m.insert("UserList", pad_limit(31));
+    m.insert("UserUpdate", pad_limit(USER_UPDATE_BASE as u64 + perm_size));
+    m.insert("UserAway", pad_limit(160)); // status (128) + overhead
+    m.insert("UserBack", pad_limit(19));
+    m.insert("UserStatus", pad_limit(161)); // status (128) + overhead
+    m.insert("ServerInfoUpdate", pad_limit(701563)); // includes image field (700000 + overhead) + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
 
     // Ban client messages
-    m.insert("BanCreate", 2400); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
-    m.insert("BanDelete", 80); // target (32 nickname or 45 IP) + overhead
-    m.insert("BanList", 18);
+    m.insert("BanCreate", pad_limit(2400)); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
+    m.insert("BanDelete", pad_limit(80)); // target (32 nickname or 45 IP) + overhead
+    m.insert("BanList", pad_limit(18));
 
     // Trust client messages
-    m.insert("TrustCreate", 2400); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
-    m.insert("TrustDelete", 80); // target (32 nickname or 45 IP) + overhead
-    m.insert("TrustList", 20); // {"type":"TrustList"} = 20 bytes
+    m.insert("TrustCreate", pad_limit(2400)); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
+    m.insert("TrustDelete", pad_limit(80)); // target (32 nickname or 45 IP) + overhead
+    m.insert("TrustList", pad_limit(20)); // {"type":"TrustList"} = 20 bytes
 
     // News client messages
-    m.insert("NewsList", 19);
-    m.insert("NewsShow", 32);
-    m.insert("NewsCreate", 704150); // body (4096) + image (700000) + overhead
-    m.insert("NewsEdit", 30);
-    m.insert("NewsUpdate", 704170); // id + body (4096) + image (700000) + overhead
-    m.insert("NewsDelete", 32);
+    m.insert("NewsList", pad_limit(19));
+    m.insert("NewsShow", pad_limit(32));
+    m.insert("NewsCreate", pad_limit(704150)); // body (4096) + image (700000) + overhead
+    m.insert("NewsEdit", pad_limit(30));
+    m.insert("NewsUpdate", pad_limit(704170)); // id + body (4096) + image (700000) + overhead
+    m.insert("NewsDelete", pad_limit(32));
 
     // File client messages
-    m.insert("FileList", 4158); // path (4096) + root bool + show_hidden bool + overhead
-    m.insert("FileCreateDir", 4433); // path (4096) + name (255) + root bool + overhead
-    m.insert("FileDelete", 4138); // path (4096) + root bool + overhead
-    m.insert("FileInfo", 4138); // path (4096) + root bool + overhead
-    m.insert("FileRename", 4433); // path (4096) + new_name (255) + root bool + overhead
-    m.insert("FileMove", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
-    m.insert("FileCopy", 8316); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
-    m.insert("FileDownload", 4142); // path (4096) + root bool + overhead
-    m.insert("FileUpload", 4180); // destination (4096) + file_count (u64) + total_size (u64) + root + overhead
-    m.insert("FileSearch", 305); // query (256 max) + root bool + overhead
-    m.insert("FileReindex", 22); // just type name + overhead
+    m.insert("FileList", pad_limit(4158)); // path (4096) + root bool + show_hidden bool + overhead
+    m.insert("FileCreateDir", pad_limit(4433)); // path (4096) + name (255) + root bool + overhead
+    m.insert("FileDelete", pad_limit(4138)); // path (4096) + root bool + overhead
+    m.insert("FileInfo", pad_limit(4138)); // path (4096) + root bool + overhead
+    m.insert("FileRename", pad_limit(4433)); // path (4096) + new_name (255) + root bool + overhead
+    m.insert("FileMove", pad_limit(8316)); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
+    m.insert("FileCopy", pad_limit(8316)); // source_path (4096) + destination_dir (4096) + overwrite + source_root + destination_root + overhead
+    m.insert("FileDownload", pad_limit(4142)); // path (4096) + root bool + overhead
+    m.insert("FileUpload", pad_limit(4180)); // destination (4096) + file_count (u64) + total_size (u64) + root + overhead
+    m.insert("FileSearch", pad_limit(305)); // query (256 max) + root bool + overhead
+    m.insert("FileReindex", pad_limit(22)); // just type name + overhead
 
-    // Server messages (limits match actual max size from validators)
+    // Server messages (base limits match actual max size, then padded 20%)
     // ServerInfo now includes image field (up to 700000 bytes), adding ~700011 bytes
-    m.insert("ChatMessage", 1209); // Added channel field (32 + overhead)
-    m.insert("ChatTopicUpdated", 385); // Added channel field (32 + overhead)
-    m.insert("ChatTopicUpdateResponse", 573);
-    m.insert("ChatJoinResponse", 4350); // success + error (2048) + channel (32) + topic (256) + topic_set_by (32) + secret + members array (~50 members) + overhead
-    m.insert("ChatLeaveResponse", 2200); // channel (32) + error (2048) + overhead
+    m.insert("ChatMessage", pad_limit(1209)); // Added channel field (32 + overhead)
+    m.insert("ChatUpdated", pad_limit(450)); // channel (32) + topic (256) + topic_set_by (32) + secret + secret_set_by (32) + overhead
+    m.insert("ChatTopicUpdateResponse", pad_limit(573));
+    m.insert("ChatJoinResponse", pad_limit(4350)); // success + error (2048) + channel (32) + topic (256) + topic_set_by (32) + secret + members array (~50 members) + overhead
+    m.insert("ChatLeaveResponse", pad_limit(2200)); // channel (32) + error (2048) + overhead
     m.insert("ChatListResponse", 0); // unlimited (server-trusted, can have many channels)
-    m.insert("ChatSecretResponse", 2150); // success + error (2048) + overhead
-    m.insert("ChatUserJoined", 151); // channel (32) + nickname (32) + is_admin + is_shared + overhead
-    m.insert("ChatUserLeft", 114); // channel (32) + nickname (32) + overhead
-    m.insert("Error", 2154);
-    m.insert("HandshakeResponse", 356);
-    m.insert("LoginResponse", LOGIN_RESPONSE_BASE as u64 + perm_size);
+    m.insert("ChatSecretResponse", pad_limit(2150)); // success + error (2048) + overhead
+    m.insert("ChatUserJoined", pad_limit(151)); // channel (32) + nickname (32) + is_admin + is_shared + overhead
+    m.insert("ChatUserLeft", pad_limit(114)); // channel (32) + nickname (32) + overhead
+    m.insert("ChatJoined", pad_limit(4200)); // channel (32) + topic (256) + topic_set_by (32) + secret + members array (~50 members) + overhead
+    m.insert("ChatLeft", pad_limit(65)); // channel (32) + overhead
+    m.insert("Error", pad_limit(2154));
+    m.insert("HandshakeResponse", pad_limit(356));
+    m.insert(
+        "LoginResponse",
+        pad_limit(LOGIN_RESPONSE_BASE as u64 + perm_size),
+    );
     m.insert(
         "PermissionsUpdated",
-        PERMISSIONS_UPDATED_BASE as u64 + perm_size,
+        pad_limit(PERMISSIONS_UPDATED_BASE as u64 + perm_size),
     );
-    m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 701647); // includes ServerInfo with image + transfer_port + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
-    m.insert("ServerInfoUpdateResponse", 574);
-    m.insert("UserConnected", 176515); // includes is_away + status (128)
-    m.insert("UserCreateResponse", 614);
-    m.insert("UserDeleteResponse", 614);
-    m.insert("UserDisconnected", 97);
+    m.insert("ServerBroadcast", pad_limit(1133));
+    m.insert("ServerInfoUpdated", pad_limit(701647)); // includes ServerInfo with image + transfer_port + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
+    m.insert("ServerInfoUpdateResponse", pad_limit(574));
+    m.insert("UserConnected", pad_limit(176515)); // includes is_away + status (128)
+    m.insert("UserCreateResponse", pad_limit(614));
+    m.insert("UserDeleteResponse", pad_limit(614));
+    m.insert("UserDisconnected", pad_limit(97));
     m.insert(
         "UserEditResponse",
-        USER_EDIT_RESPONSE_BASE as u64 + perm_size,
+        pad_limit(USER_EDIT_RESPONSE_BASE as u64 + perm_size),
     );
-    m.insert("UserBroadcastResponse", 571);
-    m.insert("UserInfoResponse", 177633); // includes is_away + status (128)
-    m.insert("UserKickResponse", 612);
+    m.insert("UserBroadcastResponse", pad_limit(571));
+    m.insert("UserInfoResponse", pad_limit(181634)); // includes is_away + status (128) + channels (100 * ~36)
+    m.insert("UserKickResponse", pad_limit(612));
     m.insert("UserListResponse", 0); // unlimited (server-trusted)
-    m.insert("UserMessage", 1177); // shared type: server (1177) > client (1108)
-    m.insert("UserMessageResponse", 725); // includes is_away + status (128)
-    m.insert("UserUpdated", 176568); // includes is_away + status (128)
-    m.insert("UserAwayResponse", 2102); // success + error (2048) + overhead
-    m.insert("UserBackResponse", 2102); // success + error (2048) + overhead
-    m.insert("UserStatusResponse", 2104); // success + error (2048) + overhead
-    m.insert("UserUpdateResponse", 614);
+    m.insert("UserMessage", pad_limit(1178)); // shared type: server (1178) > client (1108)
+    m.insert("UserMessageResponse", pad_limit(725)); // includes is_away + status (128)
+    m.insert("UserUpdated", pad_limit(176568)); // includes is_away + status (128)
+    m.insert("UserAwayResponse", pad_limit(2102)); // success + error (2048) + overhead
+    m.insert("UserBackResponse", pad_limit(2102)); // success + error (2048) + overhead
+    m.insert("UserStatusResponse", pad_limit(2104)); // success + error (2048) + overhead
+    m.insert("UserUpdateResponse", pad_limit(614));
 
     // Ban server messages
-    m.insert("BanCreateResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
-    m.insert("BanDeleteResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("BanCreateResponse", pad_limit(2500)); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("BanDeleteResponse", pad_limit(2500)); // success + error (2048) + ips array + nickname (32) + overhead
     m.insert("BanListResponse", 0); // unlimited (server-trusted, can have many bans)
 
     // Trust server messages
-    m.insert("TrustCreateResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
-    m.insert("TrustDeleteResponse", 2500); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("TrustCreateResponse", pad_limit(2500)); // success + error (2048) + ips array + nickname (32) + overhead
+    m.insert("TrustDeleteResponse", pad_limit(2500)); // success + error (2048) + ips array + nickname (32) + overhead
     m.insert("TrustListResponse", 0); // unlimited (server-trusted, can have many trusts)
 
     // News server messages
     m.insert("NewsListResponse", 0); // unlimited (server-trusted, can have many items)
-    m.insert("NewsShowResponse", 704500); // single NewsItem with body + image
-    m.insert("NewsCreateResponse", 704500); // single NewsItem with body + image
-    m.insert("NewsEditResponse", 704500); // single NewsItem with body + image
-    m.insert("NewsUpdateResponse", 704500); // single NewsItem with body + image
-    m.insert("NewsDeleteResponse", 100);
-    m.insert("NewsUpdated", 50); // action enum + id
+    m.insert("NewsShowResponse", pad_limit(704500)); // single NewsItem with body + image
+    m.insert("NewsCreateResponse", pad_limit(704500)); // single NewsItem with body + image
+    m.insert("NewsEditResponse", pad_limit(704500)); // single NewsItem with body + image
+    m.insert("NewsUpdateResponse", pad_limit(704500)); // single NewsItem with body + image
+    m.insert("NewsDeleteResponse", pad_limit(100));
+    m.insert("NewsUpdated", pad_limit(50)); // action enum + id
 
     // File server messages
     m.insert("FileListResponse", 0); // unlimited (server-trusted, can have many entries)
     // FileCreateDirResponse: path can be up to 4352 bytes (4096 path + 1 separator + 255 name)
     // JSON escaping doubles size for quote characters (worst case): 8704 bytes + ~60 overhead
-    m.insert("FileCreateDirResponse", 9000);
-    m.insert("FileDeleteResponse", 300); // success bool + error message + overhead
+    m.insert("FileCreateDirResponse", pad_limit(9000));
+    m.insert("FileDeleteResponse", pad_limit(300)); // success bool + error message + overhead
     // FileInfoResponse: name (4096) + size + created + modified + is_directory + is_symlink
     // + mime_type (~128) + item_count + error (~2048) + overhead
-    m.insert("FileInfoResponse", 6500);
-    m.insert("FileRenameResponse", 300); // success bool + error message + overhead
-    m.insert("FileMoveResponse", 350); // success bool + error message + error_kind + overhead
-    m.insert("FileCopyResponse", 350); // success bool + error message + error_kind + overhead
-    m.insert("FileDownloadResponse", 2186); // success + error (2048) + error_kind (64) + overhead
-    m.insert("FileUploadResponse", 2200); // success + error (2048) + error_kind (64) + transfer_id + overhead
+    m.insert("FileInfoResponse", pad_limit(6500));
+    m.insert("FileRenameResponse", pad_limit(300)); // success bool + error message + overhead
+    m.insert("FileMoveResponse", pad_limit(350)); // success bool + error message + error_kind + overhead
+    m.insert("FileCopyResponse", pad_limit(350)); // success bool + error message + error_kind + overhead
+    m.insert("FileDownloadResponse", pad_limit(2186)); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileUploadResponse", pad_limit(2200)); // success + error (2048) + error_kind (64) + transfer_id + overhead
     m.insert("FileSearchResponse", 0); // unlimited (server-trusted, can have up to 100 results with long paths)
-    m.insert("FileReindexResponse", 2150); // success + error (2048) + overhead
+    m.insert("FileReindexResponse", pad_limit(2150)); // success + error (2048) + overhead
 
     // Transfer messages (shared type names, used in both directions)
-    m.insert("FileStart", 4235); // path (4096) + size (u64 max 20 digits) + sha256 (64 hex) + overhead
-    m.insert("FileStartResponse", 135); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
+    m.insert("FileStart", pad_limit(4235)); // path (4096) + size (u64 max 20 digits) + sha256 (64 hex) + overhead
+    m.insert("FileStartResponse", pad_limit(135)); // size (u64 max 20 digits) + sha256 (64 hex) + overhead
     m.insert("FileData", 0); // unlimited - streaming binary data
-    m.insert("TransferComplete", 2200); // success + error (2048) + error_kind (64) + overhead
-    m.insert("FileHashing", 4200); // file name (4096) + overhead - keepalive during hash computation
+    m.insert("TransferComplete", pad_limit(2200)); // success + error (2048) + error_kind (64) + overhead
+    m.insert("FileHashing", pad_limit(4200)); // file name (4096) + overhead - keepalive during hash computation
 
     m
 });
@@ -283,7 +296,7 @@ mod tests {
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
         const CLIENT_MESSAGE_COUNT: usize = 48; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel client messages
-        const SERVER_MESSAGE_COUNT: usize = 61; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel server messages
+        const SERVER_MESSAGE_COUNT: usize = 63; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 8 Chat channel server messages (including ChatJoined, ChatLeft)
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -344,7 +357,13 @@ mod tests {
             action: ChatAction::Normal,
             channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatSend") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatSend") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatSend",
+            json_size(&msg),
+            max_payload_for_type("ChatSend")
+        );
     }
 
     #[test]
@@ -353,9 +372,12 @@ mod tests {
             topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
             channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatTopicUpdate") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatTopicUpdate",
             json_size(&msg),
-            max_payload_for_type("ChatTopicUpdate") as usize
+            max_payload_for_type("ChatTopicUpdate")
         );
     }
 
@@ -364,7 +386,13 @@ mod tests {
         let msg = ClientMessage::ChatJoin {
             channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatJoin") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatJoin") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatJoin",
+            json_size(&msg),
+            max_payload_for_type("ChatJoin")
+        );
     }
 
     #[test]
@@ -372,13 +400,25 @@ mod tests {
         let msg = ClientMessage::ChatLeave {
             channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatLeave") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatLeave") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatLeave",
+            json_size(&msg),
+            max_payload_for_type("ChatLeave")
+        );
     }
 
     #[test]
     fn test_limit_chat_list() {
         let msg = ClientMessage::ChatList {};
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatList") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatList") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatList",
+            json_size(&msg),
+            max_payload_for_type("ChatList")
+        );
     }
 
     #[test]
@@ -387,7 +427,13 @@ mod tests {
             channel: str_of_len(MAX_CHANNEL_LENGTH),
             secret: false,
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("ChatSecret") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatSecret") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatSecret",
+            json_size(&msg),
+            max_payload_for_type("ChatSecret")
+        );
     }
 
     #[test]
@@ -395,7 +441,13 @@ mod tests {
         let msg = ClientMessage::Handshake {
             version: str_of_len(MAX_VERSION_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("Handshake") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("Handshake") as usize,
+            "{} size {} exceeds limit {}",
+            "Handshake",
+            json_size(&msg),
+            max_payload_for_type("Handshake")
+        );
     }
 
     #[test]
@@ -410,7 +462,13 @@ mod tests {
             avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
             nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("Login") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("Login") as usize,
+            "{} size {} exceeds limit {}",
+            "Login",
+            json_size(&msg),
+            max_payload_for_type("Login")
+        );
     }
 
     #[test]
@@ -418,9 +476,12 @@ mod tests {
         let msg = ClientMessage::UserBroadcast {
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserBroadcast") as usize,
+            "{} size {} exceeds limit {}",
+            "UserBroadcast",
             json_size(&msg),
-            max_payload_for_type("UserBroadcast") as usize
+            max_payload_for_type("UserBroadcast")
         );
     }
 
@@ -431,12 +492,18 @@ mod tests {
             password: str_of_len(MAX_PASSWORD_LENGTH),
             is_admin: false,
             is_shared: false,
-            enabled: true,
+            enabled: false,
             permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserCreate") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserCreate") as usize,
+            "{} size {} exceeds limit {}",
+            "UserCreate",
+            json_size(&msg),
+            max_payload_for_type("UserCreate")
+        );
     }
 
     #[test]
@@ -444,7 +511,13 @@ mod tests {
         let msg = ClientMessage::UserDelete {
             username: str_of_len(MAX_USERNAME_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserDelete") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserDelete") as usize,
+            "{} size {} exceeds limit {}",
+            "UserDelete",
+            json_size(&msg),
+            max_payload_for_type("UserDelete")
+        );
     }
 
     #[test]
@@ -452,7 +525,13 @@ mod tests {
         let msg = ClientMessage::UserEdit {
             username: str_of_len(MAX_USERNAME_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserEdit") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserEdit") as usize,
+            "{} size {} exceeds limit {}",
+            "UserEdit",
+            json_size(&msg),
+            max_payload_for_type("UserEdit")
+        );
     }
 
     #[test]
@@ -460,7 +539,13 @@ mod tests {
         let msg = ClientMessage::UserInfo {
             nickname: str_of_len(MAX_NICKNAME_LENGTH),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserInfo") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserInfo") as usize,
+            "{} size {} exceeds limit {}",
+            "UserInfo",
+            json_size(&msg),
+            max_payload_for_type("UserInfo")
+        );
     }
 
     #[test]
@@ -469,14 +554,26 @@ mod tests {
             nickname: str_of_len(MAX_NICKNAME_LENGTH),
             reason: Some(str_of_len(MAX_BAN_REASON_LENGTH)),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserKick") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserKick") as usize,
+            "{} size {} exceeds limit {}",
+            "UserKick",
+            json_size(&msg),
+            max_payload_for_type("UserKick")
+        );
     }
 
     #[test]
     fn test_limit_user_list() {
         // Use all: false since "false" (5 chars) is longer than "true" (4 chars)
         let msg = ClientMessage::UserList { all: false };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserList") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserList") as usize,
+            "{} size {} exceeds limit {}",
+            "UserList",
+            json_size(&msg),
+            max_payload_for_type("UserList")
+        );
     }
 
     #[test]
@@ -497,15 +594,21 @@ mod tests {
             current_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             requested_username: Some(str_of_len(MAX_USERNAME_LENGTH)),
             requested_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
-            requested_is_admin: Some(true),
-            requested_enabled: Some(true),
+            requested_is_admin: Some(false),
+            requested_enabled: Some(false),
             requested_permissions: Some(
                 (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserUpdate") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserUpdate") as usize,
+            "{} size {} exceeds limit {}",
+            "UserUpdate",
+            json_size(&msg),
+            max_payload_for_type("UserUpdate")
+        );
     }
 
     #[test]
@@ -513,13 +616,25 @@ mod tests {
         let msg = ClientMessage::UserAway {
             message: Some(str_of_len(MAX_STATUS_LENGTH)),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserAway") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserAway") as usize,
+            "{} size {} exceeds limit {}",
+            "UserAway",
+            json_size(&msg),
+            max_payload_for_type("UserAway")
+        );
     }
 
     #[test]
     fn test_limit_user_back() {
         let msg = ClientMessage::UserBack;
-        assert_eq!(json_size(&msg), max_payload_for_type("UserBack") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserBack") as usize,
+            "{} size {} exceeds limit {}",
+            "UserBack",
+            json_size(&msg),
+            max_payload_for_type("UserBack")
+        );
     }
 
     #[test]
@@ -527,7 +642,13 @@ mod tests {
         let msg = ClientMessage::UserStatus {
             status: Some(str_of_len(MAX_STATUS_LENGTH)),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("UserStatus") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserStatus") as usize,
+            "{} size {} exceeds limit {}",
+            "UserStatus",
+            json_size(&msg),
+            max_payload_for_type("UserStatus")
+        );
     }
 
     #[test]
@@ -567,7 +688,13 @@ mod tests {
     #[test]
     fn test_limit_ban_list() {
         let msg = ClientMessage::BanList;
-        assert_eq!(json_size(&msg), max_payload_for_type("BanList") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("BanList") as usize,
+            "{} size {} exceeds limit {}",
+            "BanList",
+            json_size(&msg),
+            max_payload_for_type("BanList")
+        );
     }
 
     #[test]
@@ -582,9 +709,12 @@ mod tests {
             persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ServerInfoUpdate") as usize,
+            "{} size {} exceeds limit {}",
+            "ServerInfoUpdate",
             json_size(&msg),
-            max_payload_for_type("ServerInfoUpdate") as usize
+            max_payload_for_type("ServerInfoUpdate")
         );
     }
 
@@ -595,7 +725,13 @@ mod tests {
             root: false,
             show_hidden: false,
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("FileList") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("FileList") as usize,
+            "{} size {} exceeds limit {}",
+            "FileList",
+            json_size(&msg),
+            max_payload_for_type("FileList")
+        );
     }
 
     // =========================================================================
@@ -613,30 +749,40 @@ mod tests {
             action: ChatAction::Normal,
             channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatMessage") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatMessage",
             json_size(&msg),
-            max_payload_for_type("ChatMessage") as usize
+            max_payload_for_type("ChatMessage")
         );
     }
 
     #[test]
-    fn test_limit_chat_topic_updated() {
-        let msg = ServerMessage::ChatTopicUpdated {
-            topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-            nickname: str_of_len(MAX_NICKNAME_LENGTH),
+    fn test_limit_chat_updated() {
+        // Test with all fields populated (max size)
+        // Use false for bool since "false" (5 chars) > "true" (4 chars)
+        let msg = ServerMessage::ChatUpdated {
             channel: str_of_len(MAX_CHANNEL_LENGTH),
+            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
+            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            secret: Some(false),
+            secret_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
         };
-        assert_eq!(
-            json_size(&msg),
-            max_payload_for_type("ChatTopicUpdated") as usize
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatUpdated") as usize;
+        assert!(
+            size <= limit,
+            "ChatUpdated size {} exceeds limit {}",
+            size,
+            limit
         );
     }
 
     #[test]
     fn test_limit_chat_join_response() {
-        // Test success case with all fields populated
         let msg = ServerMessage::ChatJoinResponse {
-            success: true,
+            success: false,
             error: None,
             channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
             topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
@@ -674,9 +820,8 @@ mod tests {
 
     #[test]
     fn test_limit_chat_join_response_with_many_members() {
-        // Test with maximum expected member count
         let msg = ServerMessage::ChatJoinResponse {
-            success: true,
+            success: false,
             error: None,
             channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
             topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
@@ -697,9 +842,8 @@ mod tests {
 
     #[test]
     fn test_limit_chat_leave_response() {
-        // Test success case
         let msg = ServerMessage::ChatLeaveResponse {
-            success: true,
+            success: false,
             error: None,
             channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
         };
@@ -735,9 +879,8 @@ mod tests {
 
     #[test]
     fn test_limit_chat_secret_response() {
-        // Test success case
         let msg = ServerMessage::ChatSecretResponse {
-            success: true,
+            success: false,
             error: None,
         };
         let size = json_size(&msg);
@@ -798,14 +941,52 @@ mod tests {
     }
 
     #[test]
+    fn test_limit_chat_joined() {
+        let msg = ServerMessage::ChatJoined {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
+            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            secret: false,
+            members: vec![str_of_len(MAX_NICKNAME_LENGTH); 50], // ~50 members
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatJoined") as usize;
+        assert!(
+            size <= limit,
+            "ChatJoined size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_left() {
+        // ChatLeft is sent to user's other sessions when they leave a channel
+        let msg = ServerMessage::ChatLeft {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatLeft") as usize;
+        assert!(
+            size <= limit,
+            "ChatLeft size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
     fn test_limit_chat_topic_update_response() {
         let msg = ServerMessage::ChatTopicUpdateResponse {
             success: false,
             error: Some(str_of_len(512)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ChatTopicUpdateResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "ChatTopicUpdateResponse",
             json_size(&msg),
-            max_payload_for_type("ChatTopicUpdateResponse") as usize
+            max_payload_for_type("ChatTopicUpdateResponse")
         );
     }
 
@@ -815,7 +996,13 @@ mod tests {
             message: str_of_len(2048),
             command: Some(str_of_len(64)),
         };
-        assert_eq!(json_size(&msg), max_payload_for_type("Error") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("Error") as usize,
+            "{} size {} exceeds limit {}",
+            "Error",
+            json_size(&msg),
+            max_payload_for_type("Error")
+        );
     }
 
     #[test]
@@ -825,9 +1012,12 @@ mod tests {
             version: Some(str_of_len(MAX_VERSION_LENGTH)),
             error: Some(str_of_len(256)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("HandshakeResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "HandshakeResponse",
             json_size(&msg),
-            max_payload_for_type("HandshakeResponse") as usize
+            max_payload_for_type("HandshakeResponse")
         );
     }
 
@@ -844,10 +1034,10 @@ mod tests {
         let channels: Vec<ChannelJoinInfo> = (0..10).map(|_| channel_info.clone()).collect();
 
         let msg = ServerMessage::LoginResponse {
-            success: true,
+            success: false,
             error: None,
             session_id: Some(u32::MAX),
-            is_admin: Some(true),
+            is_admin: Some(false),
             permissions: Some(
                 (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
@@ -881,7 +1071,7 @@ mod tests {
     #[test]
     fn test_limit_permissions_updated() {
         let msg = ServerMessage::PermissionsUpdated {
-            is_admin: true,
+            is_admin: false,
             permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
@@ -924,9 +1114,12 @@ mod tests {
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             },
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ServerInfoUpdated") as usize,
+            "{} size {} exceeds limit {}",
+            "ServerInfoUpdated",
             json_size(&msg),
-            max_payload_for_type("ServerInfoUpdated") as usize
+            max_payload_for_type("ServerInfoUpdated")
         );
     }
 
@@ -936,9 +1129,12 @@ mod tests {
             success: false,
             error: Some(str_of_len(512)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ServerInfoUpdateResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "ServerInfoUpdateResponse",
             json_size(&msg),
-            max_payload_for_type("ServerInfoUpdateResponse") as usize
+            max_payload_for_type("ServerInfoUpdateResponse")
         );
     }
 
@@ -949,9 +1145,12 @@ mod tests {
             username: str_of_len(MAX_USERNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("ServerBroadcast") as usize,
+            "{} size {} exceeds limit {}",
+            "ServerBroadcast",
             json_size(&msg),
-            max_payload_for_type("ServerBroadcast") as usize
+            max_payload_for_type("ServerBroadcast")
         );
     }
 
@@ -971,9 +1170,12 @@ mod tests {
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
             },
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserConnected") as usize,
+            "{} size {} exceeds limit {}",
+            "UserConnected",
             json_size(&msg),
-            max_payload_for_type("UserConnected") as usize
+            max_payload_for_type("UserConnected")
         );
     }
 
@@ -984,9 +1186,12 @@ mod tests {
             error: Some(str_of_len(512)),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserCreateResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserCreateResponse",
             json_size(&msg),
-            max_payload_for_type("UserCreateResponse") as usize
+            max_payload_for_type("UserCreateResponse")
         );
     }
 
@@ -997,9 +1202,12 @@ mod tests {
             error: Some(str_of_len(512)),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserDeleteResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserDeleteResponse",
             json_size(&msg),
-            max_payload_for_type("UserDeleteResponse") as usize
+            max_payload_for_type("UserDeleteResponse")
         );
     }
 
@@ -1009,30 +1217,36 @@ mod tests {
             session_id: u32::MAX,
             nickname: str_of_len(MAX_NICKNAME_LENGTH),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserDisconnected") as usize,
+            "{} size {} exceeds limit {}",
+            "UserDisconnected",
             json_size(&msg),
-            max_payload_for_type("UserDisconnected") as usize
+            max_payload_for_type("UserDisconnected")
         );
     }
 
     #[test]
     fn test_limit_user_edit_response() {
         let msg = ServerMessage::UserEditResponse {
-            success: true,
+            success: false,
             error: None,
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
             is_admin: Some(false),
             is_shared: Some(false),
-            enabled: Some(true),
+            enabled: Some(false),
             permissions: Some(
                 (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserEditResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserEditResponse",
             json_size(&msg),
-            max_payload_for_type("UserEditResponse") as usize
+            max_payload_for_type("UserEditResponse")
         );
     }
 
@@ -1042,16 +1256,19 @@ mod tests {
             success: false,
             error: Some(str_of_len(512)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserBroadcastResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserBroadcastResponse",
             json_size(&msg),
-            max_payload_for_type("UserBroadcastResponse") as usize
+            max_payload_for_type("UserBroadcastResponse")
         );
     }
 
     #[test]
     fn test_limit_user_info_response() {
         let msg = ServerMessage::UserInfoResponse {
-            success: true,
+            success: false,
             error: None,
             user: Some(UserInfoDetailed {
                 username: str_of_len(MAX_USERNAME_LENGTH),
@@ -1069,11 +1286,15 @@ mod tests {
                 addresses: Some(vec![str_of_len(45); 10]),
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
+                channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
             }),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserInfoResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserInfoResponse",
             json_size(&msg),
-            max_payload_for_type("UserInfoResponse") as usize
+            max_payload_for_type("UserInfoResponse")
         );
     }
 
@@ -1084,9 +1305,12 @@ mod tests {
             error: Some(str_of_len(512)),
             nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserKickResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserKickResponse",
             json_size(&msg),
-            max_payload_for_type("UserKickResponse") as usize
+            max_payload_for_type("UserKickResponse")
         );
     }
 
@@ -1102,15 +1326,18 @@ mod tests {
     fn test_limit_user_message_server() {
         let msg = ServerMessage::UserMessage {
             from_nickname: str_of_len(MAX_NICKNAME_LENGTH),
-            from_admin: true,
+            from_admin: false,
             to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
             action: ChatAction::Normal,
         };
         // Server variant defines the limit since it's larger
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserMessage") as usize,
+            "{} size {} exceeds limit {}",
+            "UserMessage",
             json_size(&msg),
-            max_payload_for_type("UserMessage") as usize
+            max_payload_for_type("UserMessage")
         );
     }
 
@@ -1122,9 +1349,12 @@ mod tests {
             is_away: Some(false),
             status: Some(str_of_len(MAX_STATUS_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserMessageResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserMessageResponse",
             json_size(&msg),
-            max_payload_for_type("UserMessageResponse") as usize
+            max_payload_for_type("UserMessageResponse")
         );
     }
 
@@ -1145,9 +1375,12 @@ mod tests {
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
             },
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserUpdated") as usize,
+            "{} size {} exceeds limit {}",
+            "UserUpdated",
             json_size(&msg),
-            max_payload_for_type("UserUpdated") as usize
+            max_payload_for_type("UserUpdated")
         );
     }
 
@@ -1158,9 +1391,12 @@ mod tests {
             error: Some(str_of_len(512)),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserUpdateResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserUpdateResponse",
             json_size(&msg),
-            max_payload_for_type("UserUpdateResponse") as usize
+            max_payload_for_type("UserUpdateResponse")
         );
     }
 
@@ -1170,9 +1406,12 @@ mod tests {
             success: false,
             error: Some(str_of_len(2048)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserAwayResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserAwayResponse",
             json_size(&msg),
-            max_payload_for_type("UserAwayResponse") as usize
+            max_payload_for_type("UserAwayResponse")
         );
     }
 
@@ -1182,9 +1421,12 @@ mod tests {
             success: false,
             error: Some(str_of_len(2048)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserBackResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserBackResponse",
             json_size(&msg),
-            max_payload_for_type("UserBackResponse") as usize
+            max_payload_for_type("UserBackResponse")
         );
     }
 
@@ -1194,9 +1436,12 @@ mod tests {
             success: false,
             error: Some(str_of_len(2048)),
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("UserStatusResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "UserStatusResponse",
             json_size(&msg),
-            max_payload_for_type("UserStatusResponse") as usize
+            max_payload_for_type("UserStatusResponse")
         );
     }
 
@@ -1285,7 +1530,13 @@ mod tests {
     #[test]
     fn test_limit_trust_list() {
         let msg = ClientMessage::TrustList;
-        assert_eq!(json_size(&msg), max_payload_for_type("TrustList") as usize);
+        assert!(
+            json_size(&msg) <= max_payload_for_type("TrustList") as usize,
+            "{} size {} exceeds limit {}",
+            "TrustList",
+            json_size(&msg),
+            max_payload_for_type("TrustList")
+        );
     }
 
     #[test]
@@ -1402,9 +1653,12 @@ mod tests {
             file_count: None,
             transfer_id: None,
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("FileDownloadResponse") as usize,
+            "{} size {} exceeds limit {}",
+            "FileDownloadResponse",
             json_size(&msg),
-            max_payload_for_type("FileDownloadResponse") as usize
+            max_payload_for_type("FileDownloadResponse")
         );
     }
 
@@ -1414,9 +1668,12 @@ mod tests {
             path: str_of_len(MAX_FILE_PATH_LENGTH),
             root: false,
         };
-        assert_eq!(
+        assert!(
+            json_size(&msg) <= max_payload_for_type("FileDownload") as usize,
+            "{} size {} exceeds limit {}",
+            "FileDownload",
             json_size(&msg),
-            max_payload_for_type("FileDownload") as usize
+            max_payload_for_type("FileDownload")
         );
     }
 

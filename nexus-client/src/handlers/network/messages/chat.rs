@@ -7,13 +7,15 @@ use crate::NexusApp;
 use crate::config::events::EventType;
 use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
-use crate::types::{ChatMessage, Message};
+use crate::types::{ChatMessage, ChatTab, Message};
 
 impl NexusApp {
-    /// Handle incoming chat message
+    /// Handle incoming chat message from a channel
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_chat_message(
         &mut self,
         connection_id: usize,
+        channel: String,
         nickname: String,
         message: String,
         is_admin: bool,
@@ -44,7 +46,8 @@ impl NexusApp {
                     .with_connection_id(connection_id)
                     .with_username(&nickname)
                     .with_message(&message)
-                    .with_is_from_self(is_from_self),
+                    .with_is_from_self(is_from_self)
+                    .with_channel(&channel),
             );
 
             // Also emit ChatMention if our nickname is mentioned (only for others' messages)
@@ -58,7 +61,8 @@ impl NexusApp {
                     EventContext::new()
                         .with_connection_id(connection_id)
                         .with_username(&nickname)
-                        .with_message(&message),
+                        .with_message(&message)
+                        .with_channel(&channel),
                 );
             }
         }
@@ -71,39 +75,75 @@ impl NexusApp {
             is_shared,
             action,
         );
-        self.add_chat_message(connection_id, chat_message)
+        self.add_channel_message(connection_id, &channel, chat_message)
     }
 
-    /// Handle chat topic change notification
-    pub fn handle_chat_topic(
+    /// Handle channel property change notification (topic, secret mode)
+    ///
+    /// Only changed fields are included in the message. Displays appropriate
+    /// system messages in the channel for each change.
+    pub fn handle_chat_updated(
         &mut self,
         connection_id: usize,
-        topic: String,
-        username: String,
+        channel: String,
+        topic: Option<String>,
+        topic_set_by: Option<String>,
+        secret: Option<bool>,
+        secret_set_by: Option<String>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
-        // Build message first using references (before moving values)
-        let message = if topic.is_empty() {
-            t_args("msg-topic-cleared", &[("username", &username)])
-        } else {
-            t_args(
-                "msg-topic-set",
-                &[("username", &username), ("topic", &topic)],
-            )
-        };
+        let channel_lower = channel.to_lowercase();
+        let mut messages: Vec<String> = Vec::new();
 
-        // Store values by moving (no clones needed)
-        conn.chat_topic = if topic.is_empty() { None } else { Some(topic) };
-        conn.chat_topic_set_by = if username.is_empty() {
-            None
-        } else {
-            Some(username)
-        };
+        // Handle topic change
+        if let Some(new_topic) = &topic {
+            let username = topic_set_by.as_deref().unwrap_or("");
+            let message = if new_topic.is_empty() {
+                t_args("msg-topic-cleared", &[("username", username)])
+            } else {
+                t_args(
+                    "msg-topic-set",
+                    &[("username", username), ("topic", new_topic)],
+                )
+            };
+            messages.push(message);
 
-        self.add_chat_message(connection_id, ChatMessage::system(message))
+            // Update channel state
+            if let Some(channel_state) = conn.channels.get_mut(&channel_lower) {
+                channel_state.topic = if new_topic.is_empty() {
+                    None
+                } else {
+                    Some(new_topic.clone())
+                };
+                channel_state.topic_set_by = topic_set_by;
+            }
+        }
+
+        // Handle secret mode change
+        if let Some(new_secret) = secret {
+            let username = secret_set_by.as_deref().unwrap_or("");
+            let message = if new_secret {
+                t_args("msg-secret-set", &[("username", username)])
+            } else {
+                t_args("msg-secret-cleared", &[("username", username)])
+            };
+            messages.push(message);
+
+            // Update channel state
+            if let Some(channel_state) = conn.channels.get_mut(&channel_lower) {
+                channel_state.secret = new_secret;
+            }
+        }
+
+        // Add system messages to the channel
+        let mut task = Task::none();
+        for message in messages {
+            task = self.add_channel_message(connection_id, &channel, ChatMessage::system(message));
+        }
+        task
     }
 
     /// Handle chat topic update response
@@ -113,6 +153,10 @@ impl NexusApp {
         success: bool,
         error: Option<String>,
     ) -> Task<Message> {
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return Task::none();
+        };
+
         let message = if success {
             ChatMessage::info(t("msg-topic-updated"))
         } else {
@@ -121,7 +165,15 @@ impl NexusApp {
                 &[("error", &error.unwrap_or_default())],
             ))
         };
-        self.add_chat_message(connection_id, message)
+
+        // Route response to the active channel, or console if not on a channel
+        match &conn.active_chat_tab {
+            ChatTab::Channel(channel) => {
+                let channel = channel.clone();
+                self.add_channel_message(connection_id, &channel, message)
+            }
+            _ => self.add_active_tab_message(connection_id, message),
+        }
     }
 }
 

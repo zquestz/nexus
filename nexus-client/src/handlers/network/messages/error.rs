@@ -47,7 +47,7 @@ impl NexusApp {
         }
 
         // For other errors (including UserDelete), show in chat
-        self.add_chat_message(connection_id, ChatMessage::error(message))
+        self.add_active_tab_message(connection_id, ChatMessage::error(message))
     }
 
     /// Check if error should be shown in user edit form

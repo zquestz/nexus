@@ -70,6 +70,9 @@ pub struct EventContext {
     /// Whether this event was triggered by the current user's own action
     /// When true, notifications are suppressed but sounds can still play
     pub is_from_self: bool,
+
+    /// Channel name (for channel events)
+    pub channel: Option<String>,
 }
 
 impl EventContext {
@@ -123,6 +126,12 @@ impl EventContext {
     /// Set whether this event is from the current user
     pub fn with_is_from_self(mut self, is_from_self: bool) -> Self {
         self.is_from_self = is_from_self;
+        self
+    }
+
+    /// Set the channel name (for channel events)
+    pub fn with_channel(mut self, channel: impl Into<String>) -> Self {
+        self.channel = Some(channel.into());
         self
     }
 }
@@ -199,6 +208,7 @@ pub fn build_test_notification_content(
         error: Some("Connection timeout".to_string()),
         is_upload: Some(false),
         is_from_self: false,
+        channel: Some("#general".to_string()),
     };
 
     build_notification_content(event_type, &context, content_level)
@@ -229,13 +239,14 @@ fn should_show_notification(app: &NexusApp, event_type: EventType, context: &Eve
             !app.window_focused
         }
         EventType::ChatMention => {
-            // Don't notify if window is focused AND viewing server chat on this connection
+            // Don't notify if window is focused AND viewing that specific channel
             if app.window_focused
                 && let Some(event_conn_id) = context.connection_id
                 && let Some(active_conn_id) = app.active_connection
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
-                && conn.active_chat_tab == ChatTab::Server
+                && let Some(ref channel) = context.channel
+                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
                 && conn.active_panel == ActivePanel::None
             {
                 return false;
@@ -255,13 +266,14 @@ fn should_show_notification(app: &NexusApp, event_type: EventType, context: &Eve
             true
         }
         EventType::ChatMessage => {
-            // Don't notify if window is focused AND viewing server chat on this connection
+            // Don't notify if window is focused AND viewing that specific channel
             if app.window_focused
                 && let Some(event_conn_id) = context.connection_id
                 && let Some(active_conn_id) = app.active_connection
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
-                && conn.active_chat_tab == ChatTab::Server
+                && let Some(ref channel) = context.channel
+                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
                 && conn.active_panel == ActivePanel::None
             {
                 return false;
@@ -302,6 +314,21 @@ fn should_show_notification(app: &NexusApp, event_type: EventType, context: &Eve
             // Don't notify if window is focused - user will see the kick message
             !app.window_focused
         }
+        EventType::ChatJoin | EventType::ChatLeave => {
+            // Don't notify if window is focused AND viewing that channel on this connection
+            if app.window_focused
+                && let Some(event_conn_id) = context.connection_id
+                && let Some(active_conn_id) = app.active_connection
+                && event_conn_id == active_conn_id
+                && let Some(conn) = app.connections.get(&event_conn_id)
+                && let Some(ref channel) = context.channel
+                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
+                && conn.active_panel == ActivePanel::None
+            {
+                return false;
+            }
+            true
+        }
     }
 }
 
@@ -313,6 +340,8 @@ fn build_notification_content(
 ) -> (String, Option<String>) {
     match event_type {
         EventType::Broadcast => build_broadcast_notification(context, content_level),
+        EventType::ChatJoin => build_chat_join_notification(context, content_level),
+        EventType::ChatLeave => build_chat_leave_notification(context, content_level),
         EventType::ChatMessage => build_chat_message_notification(context, content_level),
         EventType::ChatMention => build_chat_mention_notification(context, content_level),
         EventType::ConnectionLost => build_connection_lost_notification(context, content_level),
@@ -716,6 +745,62 @@ fn build_user_kicked_notification(
             // Body contains the kick message/reason
             let body = context.message.clone();
             (summary, body)
+        }
+    }
+}
+
+/// Build notification content for chat join events
+fn build_chat_join_notification(
+    context: &EventContext,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    match content_level {
+        NotificationContent::EventOnly => {
+            // "User joined channel"
+            (t("notification-chat-join"), None)
+        }
+        NotificationContent::WithContext | NotificationContent::WithPreview => {
+            // "Alice joined #general"
+            let summary = match (&context.username, &context.channel) {
+                (Some(username), Some(channel)) => t_args(
+                    "notification-chat-join-details",
+                    &[("username", username), ("channel", channel)],
+                ),
+                (Some(username), None) => t_args(
+                    "notification-user-connected-name",
+                    &[("username", username)],
+                ),
+                _ => t("notification-chat-join"),
+            };
+            (summary, None)
+        }
+    }
+}
+
+/// Build notification content for chat leave events
+fn build_chat_leave_notification(
+    context: &EventContext,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    match content_level {
+        NotificationContent::EventOnly => {
+            // "User left channel"
+            (t("notification-chat-leave"), None)
+        }
+        NotificationContent::WithContext | NotificationContent::WithPreview => {
+            // "Alice left #general"
+            let summary = match (&context.username, &context.channel) {
+                (Some(username), Some(channel)) => t_args(
+                    "notification-chat-leave-details",
+                    &[("username", username), ("channel", channel)],
+                ),
+                (Some(username), None) => t_args(
+                    "notification-user-disconnected-name",
+                    &[("username", username)],
+                ),
+                _ => t("notification-chat-leave"),
+            };
+            (summary, None)
         }
     }
 }

@@ -136,13 +136,15 @@ where
         .unwrap_or_default();
 
     // Build the topic update message
-    let topic_message = ServerMessage::ChatTopicUpdated {
-        topic: topic.clone(),
-        nickname: user.nickname.clone(),
+    let topic_message = ServerMessage::ChatUpdated {
         channel,
+        topic: Some(topic.clone()),
+        topic_set_by: Some(user.nickname.clone()),
+        secret: None,
+        secret_set_by: None,
     };
 
-    // Broadcast ChatTopicUpdated to all channel members with chat feature and ChatTopic permission
+    // Broadcast ChatUpdated to all channel members with chat feature and ChatTopic permission
     for member_session_id in members {
         if let Some(member) = ctx
             .user_manager
@@ -250,7 +252,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         let result = handle_chat_topic_update(
             "Test topic".to_string(),
@@ -288,7 +294,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         let result = handle_chat_topic_update(
             "Test topic".to_string(),
@@ -326,7 +336,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Create topic that's too long (> 256 chars)
         let long_topic = "a".repeat(257);
@@ -376,7 +390,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Create topic at exactly 256 chars
         let topic = "a".repeat(256);
@@ -417,7 +435,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         let result = handle_chat_topic_update(
             "".to_string(),
@@ -455,7 +477,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         // Test with \n
         let result = handle_chat_topic_update(
@@ -494,7 +520,11 @@ mod tests {
         .await;
 
         // Join a channel
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         let result = handle_chat_topic_update(
             "Admin topic".to_string(),
@@ -611,7 +641,11 @@ mod tests {
         .await;
 
         // Join #general channel (ephemeral)
-        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
 
         let result = handle_chat_topic_update(
             "General topic".to_string(),

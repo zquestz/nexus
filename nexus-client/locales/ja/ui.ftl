@@ -50,6 +50,7 @@ title-news = ニュース
 title-transfers = 転送
 title-news-create = 投稿を作成
 title-news-edit = 投稿を編集
+title-channel-members = メンバー
 
 # =============================================================================
 # Placeholders
@@ -77,6 +78,8 @@ placeholder-proxy-port = 9050
 placeholder-proxy-username = ユーザー名（任意）
 placeholder-proxy-password = パスワード（任意）
 placeholder-download-location = ダウンロード場所が設定されていません
+placeholder-persistent-channels = #チャンネル1 #チャンネル2（スペース区切り）
+placeholder-auto-join-channels = #チャンネル1 #チャンネル2（スペース区切り）
 
 # =============================================================================
 # Labels
@@ -93,6 +96,7 @@ label-received-fingerprint = 受信したフィンガープリント:
 label-theme = テーマ
 label-chat-font-size = フォントサイズ:
 label-show-connection-notifications = 接続通知を表示
+label-show-channel-notifications = チャンネル参加/退出通知を表示
 label-show-timestamps = タイムスタンプを表示
 label-use-24-hour-time = 24時間形式を使用
 label-show-seconds = 秒を表示
@@ -119,15 +123,19 @@ label-news-image = 画像:
 label-identity = アイデンティティ
 label-nickname = ニックネーム:
 label-network = ネットワーク
+label-none = なし
 label-use-socks5-proxy = SOCKS5プロキシを使用
 label-proxy-address = アドレス:
 label-proxy-port = ポート:
 label-proxy-username = ユーザー名:
 label-proxy-password = パスワード:
 label-download-location = ダウンロード場所:
-label-queue-transfers = 転送をキューに入れる
+label-queue-transfers = 転送をキューに追加
 label-download-limit = ダウンロード制限:
 label-upload-limit = アップロード制限:
+label-persistent-channels = 常設チャンネル:
+label-auto-join-channels = 自動参加チャンネル:
+label-channels = チャンネル
 
 # =============================================================================
 # Permission Display Names
@@ -137,6 +145,9 @@ permission-user_list = ユーザーリスト
 permission-user_info = ユーザー情報
 permission-chat_send = チャット送信
 permission-chat_receive = チャット受信
+permission-chat_join = チャンネル参加
+permission-chat_list = チャンネル一覧
+permission-chat_secret = チャンネル秘密設定
 permission-chat_topic = チャットトピック
 permission-chat_topic_edit = チャットトピック編集
 permission-user_broadcast = ユーザーブロードキャスト
@@ -230,6 +241,7 @@ empty-select-server = リストからサーバーを選択してください
 empty-no-connections = 接続なし
 empty-no-bookmarks = ブックマークなし
 empty-no-users = オンラインユーザーなし
+empty-no-channel-members = チャンネルにメンバーがいません
 user-management-loading = ユーザーを読み込み中…
 user-management-no-users = ユーザーが見つかりません
 news-loading = ニュースを読み込み中…
@@ -306,7 +318,7 @@ tab-files = ファイル
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #サーバー
+console-tab = コンソール
 
 # =============================================================================
 # System Message Usernames
@@ -328,6 +340,13 @@ chat-prefix-broadcast = [BROADCAST]
 
 msg-user-kicked-success = ユーザーを正常にキックしました
 msg-user-kicked-success-name = ユーザー '{ $nickname }' を正常にキックしました
+msg-chat-join = { $nickname } がチャンネルに参加しました
+msg-chat-leave = { $nickname } がチャンネルを退出しました
+msg-channel-is-secret = このチャンネルは秘密です
+msg-channel-list-header = 利用可能なチャンネル:
+msg-no-channels = 利用可能なチャンネルがありません
+msg-channel-member-count = { $count } メンバー
+channel-secret = シークレット
 msg-broadcast-sent = ブロードキャストを正常に送信しました
 msg-user-created = ユーザーを正常に作成しました
 msg-user-created-name = ユーザー '{ $username }' を正常に作成しました
@@ -354,8 +373,10 @@ msg-user-is-away-status = { $nickname } は離席中です: { $status }
 # Dynamic Messages (with parameters)
 # =============================================================================
 
-msg-topic-cleared = { $username } がトピックをクリアしました
-msg-topic-set = { $username } がトピックを設定しました: { $topic }
+msg-topic-cleared = { $username } によってトピックがクリアされました
+msg-topic-set = { $username } によってトピックが設定されました: { $topic }
+msg-secret-set = { $username } によってシークレットモードが有効化されました
+msg-secret-cleared = { $username } によってシークレットモードが無効化されました
 msg-server-info-updated = サーバー設定が更新されました
 msg-topic-display = トピック: { $topic }
 confirm-delete-user = ユーザー '{ $username }' を削除してもよろしいですか？
@@ -372,6 +393,7 @@ msg-connection-cancelled = 証明書の不一致のため接続がキャンセ�
 err-connection-broken = 接続エラー
 err-failed-update-server-info = サーバー情報の更新に失敗しました: { $error }
 err-user-kick-failed = ユーザーのキックに失敗しました
+err-unknown = 不明なエラー
 err-no-shutdown-handle = 接続エラー: シャットダウンハンドルがありません
 err-userlist-failed = ユーザーリストの更新に失敗しました
 err-port-invalid = ポートは有効な数字である必要があります（1-65535）
@@ -388,6 +410,7 @@ err-could-not-determine-config-dir = 設定ディレクトリを特定できま�
 err-message-too-long = メッセージが長すぎます（{ $length }文字、最大{ $max }文字）
 err-send-failed = メッセージの送信に失敗しました
 err-no-chat-permission = メッセージを送信する権限がありません
+err-console-no-send = /joinでチャンネルに参加するか、/msgでユーザーにメッセージを送信してください
 err-broadcast-too-long = ブロードキャストが長すぎます（{ $length }文字、最大{ $max }文字）
 err-broadcast-send-failed = ブロードキャストの送信に失敗しました
 err-name-required = ブックマーク名は必須です
@@ -495,6 +518,7 @@ user-info-end = ユーザー情報の終わり
 user-info-unknown = 不明
 user-info-loading = ユーザー情報を読み込み中…
 user-info-status = ステータス:
+user-info-channels = チャンネル:
 
 # =============================================================================
 # Time Duration
@@ -515,6 +539,7 @@ cmd-help-desc = 利用可能なコマンドを表示
 cmd-help-escape-hint = ヒント: / で始まるメッセージを送信するには // を使用してください
 cmd-me-desc = アクションメッセージを送信（例：/me 手を振る）
 cmd-me-usage = 使用方法: /{ $command } <アクション>
+err-me-no-target = /joinでチャンネルに参加するか、/msgでユーザーにアクションを送信してください
 cmd-message-desc = ユーザーにメッセージを送信
 cmd-message-usage = 使用方法: /{ $command } <ユーザー名> <メッセージ>
 cmd-userinfo-desc = ユーザーの情報を表示
@@ -567,10 +592,28 @@ cmd-unban-desc = IP BANを解除
 cmd-unban-usage = 使用法: /{ $command } <対象>
 cmd-bans-desc = 有効なBANを一覧表示
 cmd-bans-usage = 使用法: /{ $command }
-cmd-reindex-desc = ファイルインデックスの再構築を開始
+cmd-reindex-desc = ファイルインデックスの再構築をトリガー
 cmd-reindex-usage = 使用法: /{ $command }
-msg-reindex-triggered = ファイルインデックスの再構築を開始しました
-cmd-trust-desc = IP、CIDRレンジ、またはニックネームを信頼してBANを回避
+msg-reindex-triggered = ファイルインデックスの再構築がトリガーされました
+cmd-join-desc = チャンネルに参加または作成
+cmd-join-usage = 使用法: /{ $command } #チャンネル
+cmd-leave-desc = チャンネルを退出
+cmd-leave-usage = 使用法: /{ $command } [#チャンネル]
+cmd-channels-desc = 利用可能なチャンネルを一覧表示
+cmd-channels-usage = 使用法: /{ $command }
+cmd-secret-desc = 現在のチャンネルのシークレットモードを切り替え
+cmd-secret-usage = 使用法: /{ $command } [オン|オフ]
+cmd-secret-arg-on = オン
+cmd-secret-arg-off = オフ
+err-secret-no-channel = このコマンドはチャンネル内でのみ機能します
+err-secret-permission-denied = チャンネルのシークレットモードを変更する権限がありません
+msg-secret-already-on = チャンネルは既にシークレットです
+msg-secret-already-off = チャンネルは既にパブリックです
+msg-secret-enabled = チャンネルがシークレットになりました
+msg-secret-disabled = チャンネルがパブリックになりました
+msg-secret-status-on = このチャンネルは秘密です
+msg-secret-status-off = このチャンネルは公開です
+cmd-trust-desc = IPアドレス、CIDRレンジ、またはニックネームを信頼してBANをバイパス
 cmd-trust-usage = 使用法: /{ $command } <対象> [期間] [理由]
 cmd-untrust-desc = 信頼済みIPエントリを削除
 cmd-untrust-usage = 使用法: /{ $command } <対象>
@@ -600,6 +643,18 @@ err-proxy-address-required = プロキシが有効な場合、プロキシアド
 err-proxy-port-invalid = プロキシポートは1から65535の間である必要があります
 err-news-image-too-large = 画像が大きすぎます（最大512KB）
 err-news-image-unsupported-type = 未対応の画像形式です（PNG、WebP、JPEG、SVGのみ対応）
+err-topic-no-channel = このコマンドはチャンネル内でのみ動作します
+err-join-channel = チャンネルに参加できませんでした: { $error }
+err-leave-channel = チャンネルを退出できませんでした: { $error }
+err-list-channels = チャンネル一覧を取得できませんでした: { $error }
+err-channel-empty = チャンネル名は空にできません
+err-channel-too-short = チャンネル名は#の後に少なくとも1文字必要です
+err-channel-too-long = チャンネル名が長すぎます（最大{ $max }文字）
+err-channel-missing-prefix = チャンネル名は#で始まる必要があります
+err-channel-invalid-characters = チャンネル名に無効な文字が含まれています
+err-leave-no-channel = 引数なしで/leaveを使用するにはチャンネルにいる必要があります
+err-not-in-channel = チャンネル { $channel } にいません
+err-leave-already-pending = すでにサーバーからの応答を待っています
 
 label-port = ポート:
 
@@ -675,6 +730,8 @@ event-user-connected = ユーザー接続
 event-user-disconnected = ユーザー切断
 event-user-kicked = ユーザーキック
 event-user-message = ユーザーメッセージ
+event-chat-join = チャット参加
+event-chat-leave = チャット退出
 
 # Notification content levels
 notification-content-simple = シンプル
@@ -731,6 +788,10 @@ notification-user-kicked = キックされました
 notification-user-kicked-from = {$server}からキックされました
 notification-user-message = 新しいユーザーメッセージ
 notification-user-message-from = {$username}からのメッセージ
+notification-chat-join = ユーザーがチャンネルに参加
+notification-chat-join-details = {$username}が{$channel}に参加しました
+notification-chat-leave = ユーザーがチャンネルを退出
+notification-chat-leave-details = {$username}が{$channel}を退出しました
 
 # Fallback values
 unknown-server = 不明なサーバー

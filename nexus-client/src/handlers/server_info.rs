@@ -14,7 +14,7 @@ use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::style::SERVER_IMAGE_MAX_SIZE;
-use crate::types::{InputId, Message, ServerInfoEditState};
+use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoParams};
 
 impl NexusApp {
     // ==================== Panel Actions ====================
@@ -37,14 +37,16 @@ impl NexusApp {
         }
 
         // Create edit state with current values
-        conn.server_info_edit = Some(ServerInfoEditState::new(
-            conn.server_name.as_deref(),
-            conn.server_description.as_deref(),
-            conn.max_connections_per_ip,
-            conn.max_transfers_per_ip,
-            &conn.server_image,
-            conn.file_reindex_interval,
-        ));
+        conn.server_info_edit = Some(ServerInfoEditState::new(ServerInfoParams {
+            name: conn.server_name.as_deref(),
+            description: conn.server_description.as_deref(),
+            max_connections_per_ip: conn.max_connections_per_ip,
+            max_transfers_per_ip: conn.max_transfers_per_ip,
+            image: &conn.server_image,
+            file_reindex_interval: conn.file_reindex_interval,
+            persistent_channels: conn.persistent_channels.as_deref(),
+            auto_join_channels: conn.auto_join_channels.as_deref(),
+        }));
 
         // Focus the name input
         operation::focus(Id::from(InputId::EditServerInfoName))
@@ -134,14 +136,16 @@ impl NexusApp {
         }
 
         // Check if there are any changes
-        if !edit_state.has_changes(
-            conn.server_name.as_deref(),
-            conn.server_description.as_deref(),
-            conn.max_connections_per_ip,
-            conn.max_transfers_per_ip,
-            &conn.server_image,
-            conn.file_reindex_interval,
-        ) {
+        if !edit_state.has_changes(&ServerInfoParams {
+            name: conn.server_name.as_deref(),
+            description: conn.server_description.as_deref(),
+            max_connections_per_ip: conn.max_connections_per_ip,
+            max_transfers_per_ip: conn.max_transfers_per_ip,
+            image: &conn.server_image,
+            file_reindex_interval: conn.file_reindex_interval,
+            persistent_channels: conn.persistent_channels.as_deref(),
+            auto_join_channels: conn.auto_join_channels.as_deref(),
+        }) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
             return Task::none();
@@ -187,6 +191,21 @@ impl NexusApp {
                 None
             };
 
+        let persistent_channels = if edit_state.persistent_channels
+            != conn.persistent_channels.as_deref().unwrap_or("")
+        {
+            Some(edit_state.persistent_channels.clone())
+        } else {
+            None
+        };
+
+        let auto_join_channels =
+            if edit_state.auto_join_channels != conn.auto_join_channels.as_deref().unwrap_or("") {
+                Some(edit_state.auto_join_channels.clone())
+            } else {
+                None
+            };
+
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
@@ -194,8 +213,8 @@ impl NexusApp {
             max_transfers_per_ip,
             image,
             file_reindex_interval,
-            persistent_channels: None, // TODO: Add UI for editing persistent channels
-            auto_join_channels: None,  // TODO: Add UI for editing auto-join channels
+            persistent_channels,
+            auto_join_channels,
         };
 
         if let Err(e) = conn.send(msg) {
@@ -278,6 +297,34 @@ impl NexusApp {
             && let Some(edit_state) = &mut conn.server_info_edit
         {
             edit_state.file_reindex_interval = Some(interval);
+        }
+        Task::none()
+    }
+
+    /// Handle server info persistent channels field change
+    pub fn handle_edit_server_info_persistent_channels_changed(
+        &mut self,
+        persistent_channels: String,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.persistent_channels = persistent_channels;
+        }
+        Task::none()
+    }
+
+    /// Handle server info auto-join channels field change
+    pub fn handle_edit_server_info_auto_join_channels_changed(
+        &mut self,
+        auto_join_channels: String,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.auto_join_channels = auto_join_channels;
         }
         Task::none()
     }

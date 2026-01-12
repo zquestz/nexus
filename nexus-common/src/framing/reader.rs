@@ -572,8 +572,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_frame_reader_payload_exceeds_type_max() {
-        // ChatSend has a limit of 1056 bytes, try to send more
-        // Create a payload that claims to be 2000 bytes
+        // ChatSend has a base limit of 1101 bytes, padded 20% to 1321
+        // Create a payload that claims to be 2000 bytes (well over limit)
         let data = b"NX|8|ChatSend|a1b2c3d4e5f6|2000|";
         let cursor = Cursor::new(data.as_slice());
         let buf_reader = BufReader::new(cursor);
@@ -585,7 +585,7 @@ mod tests {
             Err(FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
                 length: 2000,
-                max: 1101
+                max: 1321  // 1101 * 1.2 = 1321
             }) if message_type == "ChatSend"
         ));
     }
@@ -615,27 +615,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_frame_reader_payload_at_type_limit() {
-        // Handshake has a limit of 65 bytes
-        // Create exactly 65 bytes of payload
-        let payload = format!("{{\"version\":\"{}\"}}", "x".repeat(65 - 14));
-        assert_eq!(payload.len(), 65);
-        let data = format!("NX|9|Handshake|a1b2c3d4e5f6|65|{}\n", payload);
+        // Handshake has a base limit of 65 bytes, padded 20% to 78
+        // Create exactly 78 bytes of payload (at the padded limit)
+        let payload = format!("{{\"version\":\"{}\"}}", "x".repeat(78 - 14));
+        assert_eq!(payload.len(), 78);
+        let data = format!("NX|9|Handshake|a1b2c3d4e5f6|78|{}\n", payload);
 
         let cursor = Cursor::new(data.as_bytes());
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
         let frame = reader.read_frame().await.unwrap().unwrap();
-        assert_eq!(frame.payload.len(), 65);
+        assert_eq!(frame.payload.len(), 78);
     }
 
     #[tokio::test]
     async fn test_frame_reader_payload_one_over_type_limit() {
-        // Handshake has a limit of 65 bytes
-        // Create 66 bytes of payload (one over limit)
-        let payload = format!("{{\"version\":\"{}\"}}", "x".repeat(66 - 14));
-        assert_eq!(payload.len(), 66);
-        let data = format!("NX|9|Handshake|a1b2c3d4e5f6|66|{}\n", payload);
+        // Handshake has a base limit of 65 bytes, padded 20% to 78
+        // Create 79 bytes of payload (one over padded limit)
+        let payload = format!("{{\"version\":\"{}\"}}", "x".repeat(79 - 14));
+        assert_eq!(payload.len(), 79);
+        let data = format!("NX|9|Handshake|a1b2c3d4e5f6|79|{}\n", payload);
 
         let cursor = Cursor::new(data.as_bytes());
         let buf_reader = BufReader::new(cursor);
@@ -646,8 +646,8 @@ mod tests {
             result,
             Err(FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
-                length: 66,
-                max: 65
+                length: 79,
+                max: 78  // 65 * 1.2 = 78
             }) if message_type == "Handshake"
         ));
     }

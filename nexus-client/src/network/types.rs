@@ -9,6 +9,7 @@ use tokio_rustls::rustls::ClientConnection;
 use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::protocol::ChannelJoinInfo;
 
 /// SOCKS5 proxy configuration for connections
 #[derive(Clone)]
@@ -160,11 +161,15 @@ pub struct LoginInfo {
     pub server_description: Option<String>,
     pub server_version: Option<String>,
     pub server_image: String,
-    pub chat_topic: Option<String>,
-    pub chat_topic_set_by: Option<String>,
+    /// Channels the user was auto-joined to on login
+    pub channels: Vec<ChannelJoinInfo>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated, admin only)
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    pub auto_join_channels: Option<String>,
     pub transfer_port: u16,
     pub locale: String,
 }

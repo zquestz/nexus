@@ -10,7 +10,8 @@ use crate::types::{ChatMessage, ChatTab, Message};
 ///
 /// Switches focus to a chat tab.
 /// Usage:
-/// - `/focus` or `/f` - Switch to server chat
+/// - `/focus` or `/f` - Switch to console
+/// - `/focus #channel` or `/f #channel` - Switch to a channel tab
 /// - `/focus <nickname>` or `/f <nickname>` - Switch to (or open) a user's PM tab
 pub fn execute(
     app: &mut NexusApp,
@@ -21,20 +22,42 @@ pub fn execute(
     // /focus takes 0 or 1 argument
     if args.len() > 1 {
         let error_msg = t_args("cmd-focus-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };
 
-    // No args = focus server tab
+    // No args = focus console tab
     if args.is_empty() {
-        return Task::done(Message::SwitchChatTab(ChatTab::Server));
+        return Task::done(Message::SwitchChatTab(ChatTab::Console));
     }
 
     let target = &args[0];
     let target_lower = target.to_lowercase();
+
+    // Check if target is a channel (starts with #)
+    if target.starts_with('#') {
+        // Check if we're a member of this channel
+        if conn.channels.contains_key(&target_lower) {
+            // Find the original casing from channel_tabs
+            let channel_name = conn
+                .channel_tabs
+                .iter()
+                .find(|c| c.to_lowercase() == target_lower)
+                .cloned()
+                .unwrap_or_else(|| target.clone());
+            return Task::done(Message::SwitchChatTab(ChatTab::Channel(channel_name)));
+        } else {
+            // Not a member of this channel
+            let error_msg = t_args(
+                "cmd-focus-channel-not-joined",
+                &[("channel", target.as_str())],
+            );
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+        }
+    }
 
     // Check if target matches a PM tab (case-insensitive)
     let matching_user = conn
@@ -63,5 +86,5 @@ pub fn execute(
 
     // User not found
     let error_msg = t_args("cmd-focus-not-found", &[("name", target.as_str())]);
-    app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+    app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
 }

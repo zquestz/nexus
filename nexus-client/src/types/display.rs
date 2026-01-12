@@ -4,12 +4,19 @@ use chrono::{DateTime, Local};
 use nexus_common::protocol::ChatAction;
 
 /// Chat tab type - represents different chat windows
+///
+/// Tab order in UI: Console → Channels (join order) → User messages (creation order)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ChatTab {
-    /// Server chat (main channel)
+    /// Console tab - always present, cannot be closed
+    /// Receives system messages, errors, broadcasts, and command output
     #[default]
-    Server,
+    Console,
+    /// Channel tab (e.g., "#nexus", "#support")
+    /// X button sends ChatLeave, closes on success
+    Channel(String),
     /// User message conversation (1-on-1)
+    /// X button hides tab, history preserved, reappears on new message
     UserMessage(String),
 }
 

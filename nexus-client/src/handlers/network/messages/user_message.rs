@@ -90,6 +90,11 @@ impl NexusApp {
             .or_default()
             .push(chat_msg);
 
+        // Add to user_message_tabs if not already present (creates the tab in UI)
+        if !conn.user_message_tabs.contains(&other_user) {
+            conn.user_message_tabs.push(other_user.clone());
+        }
+
         // Mark as unread if not currently viewing this tab
         let pm_tab = ChatTab::UserMessage(other_user);
         if conn.active_chat_tab != pm_tab {
@@ -185,12 +190,12 @@ impl NexusApp {
                     Task::none()
                 } else {
                     // Tab was closed, fall back to server chat
-                    self.add_chat_message(connection_id, error_msg)
+                    self.add_active_tab_message(connection_id, error_msg)
                 }
             }
             _ => {
                 // Default: add to server chat
-                self.add_chat_message(connection_id, error_msg)
+                self.add_active_tab_message(connection_id, error_msg)
             }
         }
     }

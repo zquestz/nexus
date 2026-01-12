@@ -53,6 +53,6 @@ impl NexusApp {
             // Show the server's error message directly
             ChatMessage::error(error.unwrap_or_default())
         };
-        self.add_chat_message(connection_id, message)
+        self.add_active_tab_message(connection_id, message)
     }
 }

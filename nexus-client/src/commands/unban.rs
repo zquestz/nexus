@@ -26,7 +26,7 @@ pub fn execute(
     // /unban takes exactly 1 argument (target)
     if args.len() != 1 {
         let error_msg = t_args("cmd-unban-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
@@ -41,7 +41,7 @@ pub fn execute(
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

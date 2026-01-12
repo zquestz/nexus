@@ -387,12 +387,30 @@ where
 
     // Auto-join channels configured by admin
     // We join the user and collect channel info to include in LoginResponse.
-    // No ChatUserJoined broadcast since UserConnected already notifies about the new user.
+    // We also broadcast ChatUserJoined to existing channel members so they see the new user.
     // Auto-join channels are separate from persistent channels:
     // - persistent_channels: survive restart, can't be deleted when empty
     // - auto_join_channels: users automatically join these on login
     let auto_join_config = ctx.db.config.get_auto_join_channels().await;
     let auto_join_channel_names = crate::db::ConfigDb::parse_channel_list(&auto_join_config);
+
+    // Get user's other session IDs for multi-session sync (if any)
+    let other_session_ids: Vec<u32> = ctx
+        .user_manager
+        .get_session_ids_for_user(&authenticated_account.username)
+        .await
+        .into_iter()
+        .filter(|&sid| sid != id)
+        .collect();
+
+    // Get user info for ChatUserJoined broadcasts
+    // We need this before the loop since user isn't in UserManager yet
+    let joining_user_nickname = validated_nickname
+        .clone()
+        .unwrap_or_else(|| username.clone());
+    let joining_user_is_admin = authenticated_account.is_admin;
+    let joining_user_is_shared = authenticated_account.is_shared;
+
     let mut joined_channels = Vec::new();
     for channel_name in auto_join_channel_names {
         // Auto-join at login - ignore errors (e.g., if user somehow hits channel limit)
@@ -405,6 +423,39 @@ where
             .user_manager
             .get_nicknames_for_sessions(&result.member_session_ids)
             .await;
+
+        // Broadcast ChatUserJoined to existing channel members (not to the joining user)
+        // This lets other users in the channel know someone joined
+        let join_broadcast = ServerMessage::ChatUserJoined {
+            channel: channel_name.clone(),
+            nickname: joining_user_nickname.clone(),
+            is_admin: joining_user_is_admin,
+            is_shared: joining_user_is_shared,
+        };
+        for &member_session_id in &result.member_session_ids {
+            if member_session_id != id {
+                ctx.user_manager
+                    .send_to_session(member_session_id, join_broadcast.clone())
+                    .await;
+            }
+        }
+
+        // Broadcast ChatJoined to user's OTHER sessions (multi-session sync)
+        // This lets other sessions of the same user know about the auto-joined channel
+        if !other_session_ids.is_empty() {
+            let chat_joined = ServerMessage::ChatJoined {
+                channel: channel_name.clone(),
+                topic: result.topic.clone(),
+                topic_set_by: result.topic_set_by.clone(),
+                secret: result.secret,
+                members: member_nicknames.clone(),
+            };
+            for &other_session_id in &other_session_ids {
+                ctx.user_manager
+                    .send_to_session(other_session_id, chat_joined.clone())
+                    .await;
+            }
+        }
 
         joined_channels.push(ChannelJoinInfo {
             channel: channel_name,
@@ -2776,6 +2827,133 @@ mod tests {
             new_session.status,
             Some("new status".to_string()),
             "Should inherit status from latest session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_broadcasts_chat_user_joined_to_existing_channel_members() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create two users
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user("bob", &hashed, false, false, true, &db::Permissions::new())
+            .await
+            .unwrap();
+
+        // Initialize persistent channel
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![crate::channels::Channel::new(
+                nexus_common::validators::DEFAULT_CHANNEL.to_string(),
+            )])
+            .await;
+
+        // Set auto_join_channels to include the default channel
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap();
+
+        // Alice logs in first and auto-joins the channel
+        let mut alice_session_id = None;
+        let alice_request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(
+            alice_request,
+            &mut alice_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok(), "Alice login should succeed");
+
+        // Read Alice's LoginResponse
+        let _alice_response = read_login_response(&mut test_ctx).await;
+
+        // Verify Alice is in the channel
+        let alice_sid = alice_session_id.expect("Alice should have session ID");
+        assert!(
+            test_ctx
+                .channel_manager
+                .is_member(nexus_common::validators::DEFAULT_CHANNEL, alice_sid)
+                .await,
+            "Alice should be in the default channel"
+        );
+
+        // Now Bob logs in and auto-joins the same channel
+        let mut bob_session_id = None;
+        let bob_request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(
+            bob_request,
+            &mut bob_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok(), "Bob login should succeed");
+
+        // Read Bob's LoginResponse
+        let _bob_response = read_login_response(&mut test_ctx).await;
+
+        // Verify Bob is in the channel
+        let bob_sid = bob_session_id.expect("Bob should have session ID");
+        assert!(
+            test_ctx
+                .channel_manager
+                .is_member(nexus_common::validators::DEFAULT_CHANNEL, bob_sid)
+                .await,
+            "Bob should be in the default channel"
+        );
+
+        // Alice should have received ChatUserJoined for Bob
+        // In tests, all users share the same tx/rx channel, so we check the rx
+        let mut found_chat_user_joined = false;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if matches!(
+                &msg,
+                ServerMessage::ChatUserJoined { channel, nickname, .. }
+                    if channel == nexus_common::validators::DEFAULT_CHANNEL && nickname == "bob"
+            ) {
+                found_chat_user_joined = true;
+                break;
+            }
+        }
+
+        assert!(
+            found_chat_user_joined,
+            "Alice should have received ChatUserJoined for Bob when Bob auto-joined the channel"
         );
     }
 }

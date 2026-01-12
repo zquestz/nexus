@@ -2,7 +2,7 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
-use nexus_common::protocol::ClientMessage;
+use nexus_common::protocol::{ChannelJoinInfo, ClientMessage};
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -12,15 +12,15 @@ use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{
-    ActivePanel, InputId, Message, NetworkConnection, ServerBookmark, ServerConnection,
-    ServerConnectionParams,
+    ActivePanel, ChannelState, InputId, Message, NetworkConnection, ServerBookmark,
+    ServerConnection, ServerConnectionParams,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 
 /// Result of creating and registering a connection
 struct ConnectionRegistration {
-    chat_topic: Option<String>,
-    chat_topic_set_by: Option<String>,
+    /// Channels the user was auto-joined to on login
+    channels: Vec<ChannelJoinInfo>,
     should_request_userlist: bool,
 }
 
@@ -235,8 +235,39 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Add chat topic message if present
-        self.add_topic_message(ctx.connection_id, reg.chat_topic, reg.chat_topic_set_by);
+        // Initialize channel state from auto-joined channels
+        if let Some(conn) = self.connections.get_mut(&ctx.connection_id) {
+            for channel_info in &reg.channels {
+                let channel_lower = channel_info.channel.to_lowercase();
+
+                // Create channel state
+                let channel_state = ChannelState::new(
+                    channel_info.topic.clone(),
+                    channel_info.topic_set_by.clone(),
+                    channel_info.secret,
+                    channel_info.members.clone(),
+                );
+
+                // Add to channels map and tabs list
+                conn.channels.insert(channel_lower, channel_state);
+                conn.channel_tabs.push(channel_info.channel.clone());
+            }
+
+            // Set active tab to last joined channel, or stay on Console if no channels
+            if let Some(last_channel) = conn.channel_tabs.last() {
+                conn.active_chat_tab = crate::types::ChatTab::Channel(last_channel.clone());
+            }
+        }
+
+        // Add topic messages for each channel
+        for channel_info in &reg.channels {
+            self.add_topic_message(
+                ctx.connection_id,
+                &channel_info.channel,
+                channel_info.topic.clone(),
+                channel_info.topic_set_by.clone(),
+            );
+        }
 
         // Save as bookmark if checkbox was enabled (form connections only, not already a bookmark)
         if matches!(source, ConnectionSource::Form)
@@ -308,11 +339,12 @@ impl NexusApp {
             server_version: conn.server_version,
             server_image,
             cached_server_image,
-            chat_topic: conn.chat_topic.clone(),
-            chat_topic_set_by: conn.chat_topic_set_by.clone(),
+
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
             file_reindex_interval: conn.file_reindex_interval,
+            persistent_channels: conn.persistent_channels,
+            auto_join_channels: conn.auto_join_channels,
             tx: conn.tx,
             shutdown_handle,
         });
@@ -324,8 +356,7 @@ impl NexusApp {
         self.ui_state.active_panel = ActivePanel::None;
 
         Some(ConnectionRegistration {
-            chat_topic: conn.chat_topic,
-            chat_topic_set_by: conn.chat_topic_set_by,
+            channels: conn.channels,
             should_request_userlist,
         })
     }

@@ -51,6 +51,7 @@ title-news = Nieuws
 title-transfers = Overdrachten
 title-news-create = Bericht Maken
 title-news-edit = Bericht Bewerken
+title-channel-members = Leden
 
 # =============================================================================
 # Placeholders
@@ -78,6 +79,8 @@ placeholder-proxy-port = 9050
 placeholder-proxy-username = Gebruikersnaam (optioneel)
 placeholder-proxy-password = Wachtwoord (optioneel)
 placeholder-download-location = Geen downloadlocatie ingesteld
+placeholder-persistent-channels = #kanaal1 #kanaal2 (spatie-gescheiden)
+placeholder-auto-join-channels = #kanaal1 #kanaal2 (spatie-gescheiden)
 
 # =============================================================================
 # Labels
@@ -94,6 +97,7 @@ label-received-fingerprint = Ontvangen vingerafdruk:
 label-theme = Thema
 label-chat-font-size = Lettergrootte:
 label-show-connection-notifications = Verbindingsmeldingen weergeven
+label-show-channel-notifications = Kanaal deelname/vertrek meldingen weergeven
 label-show-timestamps = Tijdstempels weergeven
 label-use-24-hour-time = 24-uursformaat gebruiken
 label-show-seconds = Seconden weergeven
@@ -120,15 +124,19 @@ label-news-image = Afbeelding:
 label-identity = Identiteit
 label-nickname = Bijnaam:
 label-network = Netwerk
+label-none = Geen
 label-use-socks5-proxy = SOCKS5 Proxy gebruiken
 label-proxy-address = Adres:
 label-proxy-port = Poort:
 label-proxy-username = Gebruikersnaam:
 label-proxy-password = Wachtwoord:
 label-download-location = Downloadlocatie:
-label-queue-transfers = Overdrachten in Wachtrij Plaatsen
+label-queue-transfers = Overdrachten in Wachtrij Zetten
 label-download-limit = Downloadlimiet:
 label-upload-limit = Uploadlimiet:
+label-persistent-channels = Permanente Kanalen:
+label-auto-join-channels = Auto-Join Kanalen:
+label-channels = Kanalen
 
 # =============================================================================
 # Permission Display Names
@@ -138,6 +146,9 @@ permission-user_list = Gebruikerslijst
 permission-user_info = Gebruikersinfo
 permission-chat_send = Chat Verzenden
 permission-chat_receive = Chat Ontvangen
+permission-chat_join = Chat Deelnemen
+permission-chat_list = Chat Lijst
+permission-chat_secret = Chat Geheim
 permission-chat_topic = Chat Onderwerp
 permission-chat_topic_edit = Chat Onderwerp Bewerken
 permission-user_broadcast = Gebruiker Broadcast
@@ -231,6 +242,7 @@ empty-select-server = Selecteer een server uit de lijst
 empty-no-connections = Geen verbindingen
 empty-no-bookmarks = Geen bladwijzers
 empty-no-users = Geen gebruikers online
+empty-no-channel-members = Geen leden in kanaal
 user-management-loading = Gebruikers laden…
 user-management-no-users = Geen gebruikers gevonden
 news-loading = Nieuws laden…
@@ -307,7 +319,7 @@ tab-files = Bestanden
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #server
+console-tab = Console
 
 # =============================================================================
 # System Message Usernames
@@ -329,6 +341,13 @@ chat-prefix-broadcast = [BROADCAST]
 
 msg-user-kicked-success = Gebruiker succesvol verwijderd
 msg-user-kicked-success-name = Gebruiker '{ $nickname }' succesvol verwijderd
+msg-chat-join = { $nickname } is het kanaal binnengekomen
+msg-chat-leave = { $nickname } heeft het kanaal verlaten
+msg-channel-is-secret = Dit kanaal is geheim
+msg-channel-list-header = Beschikbare kanalen:
+msg-no-channels = Geen kanalen beschikbaar
+msg-channel-member-count = { $count } leden
+channel-secret = geheim
 msg-broadcast-sent = Broadcast succesvol verzonden
 msg-user-created = Gebruiker succesvol aangemaakt
 msg-user-created-name = Gebruiker '{ $username }' succesvol aangemaakt
@@ -356,6 +375,8 @@ msg-user-is-away-status = { $nickname } is afwezig: { $status }
 
 msg-topic-cleared = Onderwerp gewist door { $username }
 msg-topic-set = Onderwerp ingesteld door { $username }: { $topic }
+msg-secret-set = Geheime modus ingeschakeld door { $username }
+msg-secret-cleared = Geheime modus uitgeschakeld door { $username }
 msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
 confirm-delete-user = Weet je zeker dat je gebruiker '{ $username }' wilt verwijderen?
@@ -372,6 +393,7 @@ msg-connection-cancelled = Verbinding geannuleerd vanwege niet-overeenkomend cer
 err-connection-broken = Verbindingsfout
 err-failed-update-server-info = Kan serverinformatie niet bijwerken: { $error }
 err-user-kick-failed = Kan gebruiker niet verwijderen
+err-unknown = Onbekende fout
 err-no-shutdown-handle = Verbindingsfout: Geen afsluithandle
 err-userlist-failed = Kan gebruikerslijst niet vernieuwen
 err-port-invalid = Poort moet een geldig nummer zijn (1-65535)
@@ -388,6 +410,7 @@ err-could-not-determine-config-dir = Kan configuratiemap niet bepalen
 err-message-too-long = Bericht is te lang ({ $length } tekens, max { $max })
 err-send-failed = Kan bericht niet verzenden
 err-no-chat-permission = Je hebt geen toestemming om berichten te verzenden
+err-console-no-send = Gebruik /join om een kanaal te betreden of /msg om een bericht naar een gebruiker te sturen
 err-broadcast-too-long = Broadcast is te lang ({ $length } tekens, max { $max })
 err-broadcast-send-failed = Kan broadcast niet verzenden
 err-name-required = Bladwijzernaam is vereist
@@ -495,6 +518,7 @@ user-info-end = Einde gebruikersinformatie
 user-info-unknown = Onbekend
 user-info-loading = Gebruikersinformatie laden…
 user-info-status = Status:
+user-info-channels = Kanalen:
 
 # =============================================================================
 # Time Duration
@@ -527,6 +551,7 @@ cmd-help-desc = Beschikbare commando's weergeven
 cmd-help-escape-hint = Tip: Gebruik // om een bericht te sturen dat begint met /
 cmd-me-desc = Stuur een actiebericht (bijv. /me zwaait)
 cmd-me-usage = Gebruik: /{ $command } <actie>
+err-me-no-target = Gebruik /join om een kanaal te betreden of /msg om een actie naar een gebruiker te sturen
 cmd-message-desc = Stuur een bericht naar een gebruiker
 cmd-message-usage = Gebruik: /{ $command } <gebruikersnaam> <bericht>
 cmd-userinfo-desc = Toon informatie over een gebruiker
@@ -591,6 +616,24 @@ cmd-bans-usage = Gebruik: /{ $command }
 cmd-reindex-desc = Start herindexering van bestanden
 cmd-reindex-usage = Gebruik: /{ $command }
 msg-reindex-triggered = Herindexering van bestanden gestart
+cmd-join-desc = Toetreden tot of aanmaken van een kanaal
+cmd-join-usage = Gebruik: /{ $command } #kanaal
+cmd-leave-desc = Verlaat een kanaal
+cmd-leave-usage = Gebruik: /{ $command } [#kanaal]
+cmd-channels-desc = Toon beschikbare kanalen
+cmd-channels-usage = Gebruik: /{ $command }
+cmd-secret-desc = Schakel geheime modus voor het huidige kanaal
+cmd-secret-usage = Gebruik: /{ $command } [aan|uit]
+cmd-secret-arg-on = aan
+cmd-secret-arg-off = uit
+err-secret-no-channel = Dit commando werkt alleen in een kanaal
+err-secret-permission-denied = Je hebt geen toestemming om de geheime modus van het kanaal te wijzigen
+msg-secret-already-on = Kanaal is al geheim
+msg-secret-already-off = Kanaal is al openbaar
+msg-secret-enabled = Kanaal is nu geheim
+msg-secret-disabled = Kanaal is nu openbaar
+msg-secret-status-on = Dit kanaal is geheim
+msg-secret-status-off = Dit kanaal is openbaar
 cmd-trust-desc = Vertrouw een IP, CIDR-bereik of bijnaam om bans te omzeilen
 cmd-trust-usage = Gebruik: /{ $command } <doel> [duur] [reden]
 cmd-untrust-desc = Verwijder een vertrouwde IP-invoer
@@ -619,8 +662,20 @@ err-proxy-connection-failed = Verbinding met proxy mislukt: { $error }
 err-proxy-connection-timeout = Proxy-verbinding time-out na { $seconds } seconden
 err-proxy-address-required = Proxy-adres is vereist wanneer proxy is ingeschakeld
 err-proxy-port-invalid = Proxy-poort moet tussen 1 en 65535 liggen
-err-news-image-too-large = De afbeelding is te groot (max 512KB)
+err-news-image-too-large = Afbeelding is te groot (max 512KB)
 err-news-image-unsupported-type = Niet-ondersteund afbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-topic-no-channel = Dit commando werkt alleen in een kanaal
+err-join-channel = Kon niet toetreden tot kanaal: { $error }
+err-leave-channel = Kon kanaal niet verlaten: { $error }
+err-list-channels = Kon kanalen niet weergeven: { $error }
+err-channel-empty = Kanaalnaam mag niet leeg zijn
+err-channel-too-short = Kanaalnaam moet minstens één teken na # hebben
+err-channel-too-long = Kanaalnaam is te lang (max { $max } tekens)
+err-channel-missing-prefix = Kanaalnaam moet beginnen met #
+err-channel-invalid-characters = Kanaalnaam bevat ongeldige tekens
+err-leave-no-channel = Je moet in een kanaal zijn om /leave zonder argumenten te gebruiken
+err-not-in-channel = Je bent niet in kanaal { $channel }
+err-leave-already-pending = Wacht al op serverreactie
 
 label-port = Poort:
 
@@ -696,6 +751,8 @@ event-user-connected = Gebruiker verbonden
 event-user-disconnected = Gebruiker verbroken
 event-user-kicked = Gebruiker verwijderd
 event-user-message = Gebruikersbericht
+event-chat-join = Chat deelname
+event-chat-leave = Chat vertrek
 
 # Notification content levels
 notification-content-simple = Eenvoudig
@@ -752,6 +809,10 @@ notification-user-kicked = Je bent verwijderd
 notification-user-kicked-from = Verwijderd van {$server}
 notification-user-message = Nieuw gebruikersbericht
 notification-user-message-from = Bericht van {$username}
+notification-chat-join = Gebruiker toegetreden tot kanaal
+notification-chat-join-details = {$username} is toegetreden tot {$channel}
+notification-chat-leave = Gebruiker heeft kanaal verlaten
+notification-chat-leave-details = {$username} heeft {$channel} verlaten
 
 # Fallback values
 unknown-server = Onbekende server

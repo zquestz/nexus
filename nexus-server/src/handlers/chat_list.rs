@@ -218,7 +218,11 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin, Permission::ChatSecret, Permission::ChatList],
+            &[
+                Permission::ChatJoin,
+                Permission::ChatSecret,
+                Permission::ChatList,
+            ],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -233,7 +237,11 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
 
-        test_ctx.channel_manager.set_secret("#secret", true).await.unwrap();
+        test_ctx
+            .channel_manager
+            .set_secret("#secret", true)
+            .await
+            .unwrap();
 
         // Login user 2
         let session_id2 = login_user_with_features(

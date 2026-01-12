@@ -50,6 +50,7 @@ title-news = 뉴스
 title-transfers = 전송
 title-news-create = 게시물 작성
 title-news-edit = 게시물 편집
+title-channel-members = 멤버
 
 # =============================================================================
 # Placeholders
@@ -74,9 +75,11 @@ placeholder-news-body = 뉴스 내용
 placeholder-nickname-optional = 별명 (선택사항)
 placeholder-proxy-address = 프록시 주소
 placeholder-proxy-port = 9050
-placeholder-proxy-username = 사용자 이름 (선택)
+placeholder-proxy-username = 사용자명 (선택)
 placeholder-proxy-password = 비밀번호 (선택)
-placeholder-download-location = 다운로드 위치가 설정되지 않았습니다
+placeholder-download-location = 다운로드 위치가 설정되지 않음
+placeholder-persistent-channels = #채널1 #채널2 (공백으로 구분)
+placeholder-auto-join-channels = #채널1 #채널2 (공백으로 구분)
 
 # =============================================================================
 # Labels
@@ -93,6 +96,7 @@ label-received-fingerprint = 수신된 지문:
 label-theme = 테마
 label-chat-font-size = 글꼴 크기:
 label-show-connection-notifications = 연결 알림 표시
+label-show-channel-notifications = 채널 입장/퇴장 알림 표시
 label-show-timestamps = 타임스탬프 표시
 label-use-24-hour-time = 24시간 형식 사용
 label-show-seconds = 초 표시
@@ -119,15 +123,19 @@ label-news-image = 이미지:
 label-identity = 신원
 label-nickname = 별명:
 label-network = 네트워크
+label-none = 없음
 label-use-socks5-proxy = SOCKS5 프록시 사용
 label-proxy-address = 주소:
 label-proxy-port = 포트:
 label-proxy-username = 사용자 이름:
 label-proxy-password = 비밀번호:
 label-download-location = 다운로드 위치:
-label-queue-transfers = 전송 대기열 사용
+label-queue-transfers = 전송 대기열
 label-download-limit = 다운로드 제한:
 label-upload-limit = 업로드 제한:
+label-persistent-channels = 상시 채널:
+label-auto-join-channels = 자동 참가 채널:
+label-channels = 채널
 
 # =============================================================================
 # Permission Display Names
@@ -137,6 +145,9 @@ permission-user_list = 사용자 목록
 permission-user_info = 사용자 정보
 permission-chat_send = 채팅 전송
 permission-chat_receive = 채팅 수신
+permission-chat_join = 채널 참가
+permission-chat_list = 채널 목록
+permission-chat_secret = 채널 비공개
 permission-chat_topic = 채팅 주제
 permission-chat_topic_edit = 채팅 주제 편집
 permission-user_broadcast = 사용자 브로드캐스트
@@ -230,6 +241,7 @@ empty-select-server = 목록에서 서버를 선택하세요
 empty-no-connections = 연결 없음
 empty-no-bookmarks = 북마크 없음
 empty-no-users = 온라인 사용자 없음
+empty-no-channel-members = 채널에 멤버가 없습니다
 user-management-loading = 사용자 로딩 중…
 user-management-no-users = 사용자를 찾을 수 없습니다
 news-loading = 뉴스 로딩 중…
@@ -306,7 +318,7 @@ tab-files = 파일
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #서버
+console-tab = 콘솔
 
 # =============================================================================
 # System Message Usernames
@@ -328,7 +340,14 @@ chat-prefix-broadcast = [BROADCAST]
 
 msg-user-kicked-success = 사용자가 성공적으로 추방되었습니다
 msg-user-kicked-success-name = 사용자 '{ $nickname }'이(가) 성공적으로 추방되었습니다
-msg-broadcast-sent = 브로드캐스트가 성공적으로 전송되었습니다
+msg-chat-join = { $nickname }님이 채널에 참가했습니다
+msg-chat-leave = { $nickname }님이 채널을 떠났습니다
+msg-channel-is-secret = 이 채널은 비공개입니다
+msg-channel-list-header = 사용 가능한 채널:
+msg-no-channels = 사용 가능한 채널이 없습니다
+msg-channel-member-count = { $count }명의 멤버
+channel-secret = 비공개
+msg-broadcast-sent = 공지가 성공적으로 전송되었습니다
 msg-user-created = 사용자가 성공적으로 생성되었습니다
 msg-user-created-name = 사용자 '{ $username }'이(가) 성공적으로 생성되었습니다
 msg-user-deleted = 사용자가 성공적으로 삭제되었습니다
@@ -354,8 +373,10 @@ msg-user-is-away-status = { $nickname }님이 자리 비움 상태입니다: { $
 # Dynamic Messages (with parameters)
 # =============================================================================
 
-msg-topic-cleared = { $username }님이 주제를 삭제했습니다
-msg-topic-set = { $username }님이 주제를 설정했습니다: { $topic }
+msg-topic-cleared = { $username }님이 주제를 삭제함
+msg-topic-set = { $username }님이 주제를 설정함: { $topic }
+msg-secret-set = { $username }님이 비밀 모드를 활성화함
+msg-secret-cleared = { $username }님이 비밀 모드를 비활성화함
 msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
 confirm-delete-user = '{ $username }' 사용자를 삭제하시겠습니까?
@@ -372,6 +393,7 @@ msg-connection-cancelled = 인증서 불일치로 연결이 취소되었습니�
 err-connection-broken = 연결 오류
 err-failed-update-server-info = 서버 정보 업데이트 실패: { $error }
 err-user-kick-failed = 사용자 추방 실패
+err-unknown = 알 수 없는 오류
 err-no-shutdown-handle = 연결 오류: 종료 핸들 없음
 err-userlist-failed = 사용자 목록 새로고침 실패
 err-port-invalid = 포트는 유효한 숫자여야 합니다 (1-65535)
@@ -388,7 +410,8 @@ err-could-not-determine-config-dir = 설정 디렉토리를 확인할 수 없습
 err-message-too-long = 메시지가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-send-failed = 메시지 전송 실패
 err-no-chat-permission = 메시지를 보낼 권한이 없습니다
-err-broadcast-too-long = 브로드캐스트가 너무 깁니다 ({ $length }자, 최대 { $max }자)
+err-console-no-send = /join으로 채널에 참가하거나 /msg로 사용자에게 메시지를 보내세요
+err-broadcast-too-long = 방송이 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-broadcast-send-failed = 브로드캐스트 전송 실패
 err-name-required = 북마크 이름은 필수입니다
 err-address-required = 서버 주소는 필수입니다
@@ -495,6 +518,7 @@ user-info-end = 사용자 정보 끝
 user-info-unknown = 알 수 없음
 user-info-loading = 사용자 정보 로드 중…
 user-info-status = 상태:
+user-info-channels = 채널:
 
 # =============================================================================
 # Time Duration
@@ -515,6 +539,7 @@ cmd-help-desc = 사용 가능한 명령어 표시
 cmd-help-escape-hint = 팁: /로 시작하는 메시지를 보내려면 //를 사용하세요
 cmd-me-desc = 액션 메시지 보내기
 cmd-me-usage = 사용법: /{ $command } <액션>
+err-me-no-target = /join으로 채널에 참가하거나 /msg로 사용자에게 액션을 보내세요
 cmd-message-desc = 사용자에게 메시지 보내기
 cmd-message-usage = 사용법: /{ $command } <사용자명> <메시지>
 cmd-userinfo-desc = 사용자 정보 표시
@@ -567,9 +592,27 @@ cmd-unban-desc = IP 차단 해제
 cmd-unban-usage = 사용법: /{ $command } <대상>
 cmd-bans-desc = 활성 차단 목록 표시
 cmd-bans-usage = 사용법: /{ $command }
-cmd-reindex-desc = 파일 인덱스 재구축 시작
+cmd-reindex-desc = 파일 인덱스 재구성 트리거
 cmd-reindex-usage = 사용법: /{ $command }
-msg-reindex-triggered = 파일 인덱스 재구축이 시작되었습니다
+msg-reindex-triggered = 파일 인덱스 재구성이 트리거되었습니다
+cmd-join-desc = 채널에 참가하거나 생성
+cmd-join-usage = 사용법: /{ $command } #채널
+cmd-leave-desc = 채널 나가기
+cmd-leave-usage = 사용법: /{ $command } [#채널]
+cmd-channels-desc = 사용 가능한 채널 목록
+cmd-channels-usage = 사용법: /{ $command }
+cmd-secret-desc = 현재 채널의 비밀 모드 전환
+cmd-secret-usage = 사용법: /{ $command } [켜기|끄기]
+cmd-secret-arg-on = 켜기
+cmd-secret-arg-off = 끄기
+err-secret-no-channel = 이 명령은 채널에서만 작동합니다
+err-secret-permission-denied = 채널 비밀 모드를 변경할 권한이 없습니다
+msg-secret-already-on = 채널이 이미 비밀입니다
+msg-secret-already-off = 채널이 이미 공개입니다
+msg-secret-enabled = 채널이 이제 비밀입니다
+msg-secret-disabled = 채널이 이제 공개입니다
+msg-secret-status-on = 이 채널은 비공개입니다
+msg-secret-status-off = 이 채널은 공개입니다
 cmd-trust-desc = IP, CIDR 범위 또는 닉네임을 신뢰하여 차단 우회
 cmd-trust-usage = 사용법: /{ $command } <대상> [기간] [사유]
 cmd-untrust-desc = 신뢰된 IP 항목 제거
@@ -599,7 +642,19 @@ err-proxy-connection-timeout = { $seconds }초 후 프록시 연결 시간 초�
 err-proxy-address-required = 프록시가 활성화된 경우 프록시 주소가 필요합니다
 err-proxy-port-invalid = 프록시 포트는 1에서 65535 사이여야 합니다
 err-news-image-too-large = 이미지가 너무 큽니다 (최대 512KB)
-err-news-image-unsupported-type = 지원되지 않는 이미지 형식입니다 (PNG, WebP, JPEG 또는 SVG만 가능)
+err-news-image-unsupported-type = 지원되지 않는 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
+err-topic-no-channel = 이 명령은 채널에서만 작동합니다
+err-join-channel = 채널 참가 실패: { $error }
+err-leave-channel = 채널 나가기 실패: { $error }
+err-list-channels = 채널 목록 가져오기 실패: { $error }
+err-channel-empty = 채널 이름은 비워둘 수 없습니다
+err-channel-too-short = 채널 이름은 # 뒤에 최소 한 글자가 필요합니다
+err-channel-too-long = 채널 이름이 너무 깁니다 (최대 { $max }자)
+err-channel-missing-prefix = 채널 이름은 #으로 시작해야 합니다
+err-channel-invalid-characters = 채널 이름에 잘못된 문자가 포함되어 있습니다
+err-leave-no-channel = 인수 없이 /leave를 사용하려면 채널에 있어야 합니다
+err-not-in-channel = 채널 { $channel }에 있지 않습니다
+err-leave-already-pending = 이미 서버 응답을 기다리는 중입니다
 
 label-port = 포트:
 
@@ -672,9 +727,11 @@ event-permissions-changed = 권한 변경됨
 event-transfer-complete = 전송 완료
 event-transfer-failed = 전송 실패
 event-user-connected = 사용자 연결
-event-user-disconnected = 사용자 연결 해제
-event-user-kicked = 사용자 추방
+event-user-disconnected = 사용자 연결 끊김
+event-user-kicked = 사용자 추방됨
 event-user-message = 사용자 메시지
+event-chat-join = 채팅 참가
+event-chat-leave = 채팅 퇴장
 
 # Notification content levels
 notification-content-simple = 간단
@@ -731,6 +788,10 @@ notification-user-kicked = 추방되었습니다
 notification-user-kicked-from = {$server}에서 추방되었습니다
 notification-user-message = 새 사용자 메시지
 notification-user-message-from = {$username}님의 메시지
+notification-chat-join = 사용자가 채널에 참가
+notification-chat-join-details = {$username}님이 {$channel}에 참가했습니다
+notification-chat-leave = 사용자가 채널을 떠남
+notification-chat-leave-details = {$username}님이 {$channel}을(를) 떠났습니다
 
 # Fallback values
 unknown-server = 알 수 없는 서버

@@ -338,7 +338,7 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
 pub fn server_message_type(message: &ServerMessage) -> &'static str {
     match message {
         ServerMessage::ChatMessage { .. } => "ChatMessage",
-        ServerMessage::ChatTopicUpdated { .. } => "ChatTopicUpdated",
+        ServerMessage::ChatUpdated { .. } => "ChatUpdated",
         ServerMessage::ChatTopicUpdateResponse { .. } => "ChatTopicUpdateResponse",
         ServerMessage::ChatJoinResponse { .. } => "ChatJoinResponse",
         ServerMessage::ChatLeaveResponse { .. } => "ChatLeaveResponse",
@@ -346,6 +346,8 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::ChatSecretResponse { .. } => "ChatSecretResponse",
         ServerMessage::ChatUserJoined { .. } => "ChatUserJoined",
         ServerMessage::ChatUserLeft { .. } => "ChatUserLeft",
+        ServerMessage::ChatJoined { .. } => "ChatJoined",
+        ServerMessage::ChatLeft { .. } => "ChatLeft",
         ServerMessage::Error { .. } => "Error",
         ServerMessage::HandshakeResponse { .. } => "HandshakeResponse",
         ServerMessage::LoginResponse { .. } => "LoginResponse",

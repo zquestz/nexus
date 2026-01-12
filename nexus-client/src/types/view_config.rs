@@ -25,6 +25,9 @@ pub struct ViewConfig<'a> {
     /// Show user connect/disconnect notifications in chat
     pub show_connection_notifications: bool,
 
+    /// Show channel join/leave notifications in chat
+    pub show_channel_notifications: bool,
+
     /// Font size for chat messages
     pub chat_font_size: u8,
 

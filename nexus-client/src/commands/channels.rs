@@ -1,4 +1,4 @@
-//! /untrust command implementation - remove trusted IPs
+//! /channels command implementation - list available channels
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
@@ -7,25 +7,19 @@ use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 
-/// Execute the /untrust command
+/// Execute the /channels command
 ///
-/// Removes a trusted IP by IP address, CIDR range, or nickname annotation.
-///
-/// Usage: /untrust <target>
-///
-/// Examples:
-///   /untrust alice              - Untrust by nickname annotation
-///   /untrust 192.168.1.100      - Untrust single IP
-///   /untrust 192.168.1.0/24     - Untrust CIDR range (also removes contained IPs)
+/// Lists all available channels on the server.
+/// Usage: /channels
 pub fn execute(
     app: &mut NexusApp,
     connection_id: usize,
     invoked_name: &str,
     args: &[String],
 ) -> Task<Message> {
-    // /untrust takes exactly 1 argument (target)
-    if args.len() != 1 {
-        let error_msg = t_args("cmd-untrust-usage", &[("command", invoked_name)]);
+    // /channels takes no arguments
+    if !args.is_empty() {
+        let error_msg = t_args("cmd-channels-usage", &[("command", invoked_name)]);
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
@@ -33,11 +27,8 @@ pub fn execute(
         return Task::none();
     };
 
-    let target = &args[0];
-
-    let msg = ClientMessage::TrustDelete {
-        target: target.clone(),
-    };
+    // Send ChatList message to server
+    let msg = ClientMessage::ChatList {};
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);

@@ -105,12 +105,44 @@ where
         }
     }
 
-    // Send success response
+    // Send success response to the requester
     let response = ServerMessage::ChatSecretResponse {
         success: true,
         error: None,
     };
-    ctx.send_message(&response).await
+    ctx.send_message(&response).await?;
+
+    // Broadcast ChatUpdated to all channel members
+    let members = ctx
+        .channel_manager
+        .get_members(&channel)
+        .await
+        .unwrap_or_default();
+
+    let update_message = ServerMessage::ChatUpdated {
+        channel: channel.clone(),
+        topic: None,
+        topic_set_by: None,
+        secret: Some(secret),
+        secret_set_by: Some(user.nickname.clone()),
+    };
+
+    for member_session_id in members {
+        if let Some(member) = ctx
+            .user_manager
+            .get_user_by_session_id(member_session_id)
+            .await
+        {
+            // Only send to members with chat feature
+            if member.has_feature(FEATURE_CHAT) {
+                ctx.user_manager
+                    .send_to_session(member_session_id, update_message.clone())
+                    .await;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

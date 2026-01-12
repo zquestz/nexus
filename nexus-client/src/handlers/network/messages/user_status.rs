@@ -30,10 +30,10 @@ impl NexusApp {
                 }
                 _ => t("msg-now-away"),
             };
-            self.add_chat_message(connection_id, ChatMessage::info(msg))
+            self.add_active_tab_message(connection_id, ChatMessage::info(msg))
         } else {
             let error_msg = error.unwrap_or_default();
-            self.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
         }
     }
 
@@ -51,10 +51,10 @@ impl NexusApp {
         }
 
         if success {
-            self.add_chat_message(connection_id, ChatMessage::info(t("msg-welcome-back")))
+            self.add_active_tab_message(connection_id, ChatMessage::info(t("msg-welcome-back")))
         } else {
             let error_msg = error.unwrap_or_default();
-            self.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
         }
     }
 
@@ -80,10 +80,10 @@ impl NexusApp {
                 }
                 _ => t("msg-status-cleared"),
             };
-            self.add_chat_message(connection_id, ChatMessage::info(msg))
+            self.add_active_tab_message(connection_id, ChatMessage::info(msg))
         } else {
             let error_msg = error.unwrap_or_default();
-            self.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
         }
     }
 }

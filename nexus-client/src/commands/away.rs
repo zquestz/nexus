@@ -40,7 +40,7 @@ pub fn execute(
                 StatusError::ContainsNewlines => t("err-status-contains-newlines"),
                 StatusError::InvalidCharacters => t("err-status-invalid-characters"),
             };
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
 
         Some(msg)
@@ -57,7 +57,7 @@ pub fn execute(
                 .track(message_id, ResponseRouting::AwayResult(message));
         }
         Err(e) => {
-            return app.add_chat_message(connection_id, ChatMessage::error(e));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(e));
         }
     }
 

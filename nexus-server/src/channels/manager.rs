@@ -109,11 +109,7 @@ impl ChannelManager {
     ///
     /// Note: If the user is already a member, this succeeds (returns `already_member: true`)
     /// without counting against their channel limit.
-    pub async fn join(
-        &self,
-        channel_name: &str,
-        session_id: u32,
-    ) -> Result<JoinResult, JoinError> {
+    pub async fn join(&self, channel_name: &str, session_id: u32) -> Result<JoinResult, JoinError> {
         let key = channel_name.to_lowercase();
         let mut channels = self.channels.write().await;
 
@@ -285,7 +281,9 @@ impl ChannelManager {
             drop(channels); // Release lock before async DB call
             let topic_str = topic.as_deref().unwrap_or("");
             let set_by_str = set_by.as_deref().unwrap_or("");
-            self.db.set_topic(channel_name, topic_str, set_by_str).await?;
+            self.db
+                .set_topic(channel_name, topic_str, set_by_str)
+                .await?;
         }
 
         Ok(true)
@@ -321,6 +319,26 @@ impl ChannelManager {
             .map(|ch| ch.members.iter().copied().collect())
     }
 
+    /// Get all channels a session is a member of
+    ///
+    /// If `is_admin` is true, returns all channels including secret ones.
+    /// Otherwise, secret channels are excluded from the result.
+    ///
+    /// Returns channel names sorted alphabetically.
+    pub async fn get_channels_for_session(&self, session_id: u32, is_admin: bool) -> Vec<String> {
+        let channels = self.channels.read().await;
+
+        let mut result: Vec<String> = channels
+            .values()
+            .filter(|ch| ch.has_member(session_id))
+            .filter(|ch| is_admin || !ch.secret)
+            .map(|ch| ch.name.clone())
+            .collect();
+
+        result.sort_by_key(|a| a.to_lowercase());
+        result
+    }
+
     /// Get channel info (for checking secret status, etc.)
     #[cfg(test)]
     pub async fn get_channel(&self, channel_name: &str) -> Option<Channel> {
@@ -329,8 +347,6 @@ impl ChannelManager {
         channels.get(&key).cloned()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -1003,6 +1019,78 @@ mod tests {
 
         // Verify the channel was NOT created
         assert!(!manager.exists("#onemore").await);
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_for_session_empty() {
+        let manager = create_test_manager().await;
+
+        // Session not in any channel
+        let channels = manager.get_channels_for_session(1, false).await;
+        assert!(channels.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_for_session_returns_joined_channels() {
+        let manager = create_test_manager().await;
+
+        // Join some channels
+        manager.join("#alpha", 1).await.unwrap();
+        manager.join("#beta", 1).await.unwrap();
+        manager.join("#gamma", 1).await.unwrap();
+
+        let channels = manager.get_channels_for_session(1, false).await;
+        assert_eq!(channels.len(), 3);
+        // Should be sorted alphabetically (case-insensitive)
+        assert_eq!(channels, vec!["#alpha", "#beta", "#gamma"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_for_session_excludes_secret_for_non_admin() {
+        let manager = create_test_manager().await;
+
+        // Join channels
+        manager.join("#public", 1).await.unwrap();
+        manager.join("#secret", 1).await.unwrap();
+
+        // Make #secret secret
+        let _ = manager.set_secret("#secret", true).await;
+
+        // Non-admin should not see secret channel
+        let channels = manager.get_channels_for_session(1, false).await;
+        assert_eq!(channels, vec!["#public"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_for_session_includes_secret_for_admin() {
+        let manager = create_test_manager().await;
+
+        // Join channels
+        manager.join("#public", 1).await.unwrap();
+        manager.join("#secret", 1).await.unwrap();
+
+        // Make #secret secret
+        let _ = manager.set_secret("#secret", true).await;
+
+        // Admin should see all channels including secret
+        let channels = manager.get_channels_for_session(1, true).await;
+        assert_eq!(channels.len(), 2);
+        assert!(channels.contains(&"#public".to_string()));
+        assert!(channels.contains(&"#secret".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_channels_for_session_sorted_case_insensitive() {
+        let manager = create_test_manager().await;
+
+        // Join channels with mixed case
+        manager.join("#Zebra", 1).await.unwrap();
+        manager.join("#alpha", 1).await.unwrap();
+        manager.join("#BETA", 1).await.unwrap();
+
+        let channels = manager.get_channels_for_session(1, false).await;
+        // Should be sorted case-insensitively: alpha, BETA, Zebra
+        assert_eq!(channels, vec!["#alpha", "#BETA", "#Zebra"]);
     }
 
     #[tokio::test]

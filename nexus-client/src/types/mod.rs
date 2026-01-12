@@ -1,6 +1,7 @@
 //! Type definitions for the Nexus client
 
 mod bookmark;
+mod channel;
 pub mod connection;
 mod display;
 mod form;
@@ -11,6 +12,7 @@ mod view_config;
 
 // Re-export types for convenience
 pub use bookmark::{BookmarkEditMode, BookmarkEditState, ServerBookmark};
+pub use channel::ChannelState;
 pub use connection::{
     ConnectionInfo, NetworkConnection, ServerConnection, ServerConnectionParams, TabCompletionState,
 };
@@ -19,7 +21,8 @@ pub use form::{
     BanDuration, ClipboardItem, ClipboardOperation, ConnectionFormState, DisconnectAction,
     DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, NewsManagementMode,
     NewsManagementState, PasswordChangeState, PendingOverwrite, ServerInfoEditState,
-    SettingsFormState, SettingsTab, TabId, UserManagementMode, UserManagementState,
+    ServerInfoParams, SettingsFormState, SettingsTab, TabId, UserManagementMode,
+    UserManagementState,
 };
 pub use message::Message;
 pub use nexus_common::protocol::ServerMessage;

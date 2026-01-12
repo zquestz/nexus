@@ -40,6 +40,7 @@ title-connected = Connected
 title-settings = Settings
 title-bookmarks = Bookmarks
 title-users = Users
+title-channel-members = Members
 title-edit-server-info = Edit Server Info
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
@@ -93,6 +94,7 @@ label-received-fingerprint = Received fingerprint:
 label-theme = Theme:
 label-chat-font-size = Font Size:
 label-show-connection-notifications = Show Connect/Disconnect Notifications
+label-show-channel-notifications = Show Channel Join/Leave Notifications
 label-show-timestamps = Show Timestamps
 label-use-24-hour-time = Use 24-Hour Time
 label-show-seconds = Show Seconds
@@ -106,6 +108,12 @@ label-max-transfers-per-ip = Max Transfers Per IP:
 label-file-reindex-interval = File Reindex Interval:
 label-file-reindex-interval-value = { $minutes } minutes
 label-disabled = Disabled
+label-persistent-channels = Persistent Channels:
+label-auto-join-channels = Auto-Join Channels:
+label-channels = Channels
+label-none = None
+placeholder-persistent-channels = #channel1 #channel2 (space-separated)
+placeholder-auto-join-channels = #channel1 #channel2 (space-separated)
 label-avatar = Avatar:
 label-server-image = Server Image:
 label-details = Technical Details
@@ -137,6 +145,9 @@ permission-user_list = User List
 permission-user_info = User Info
 permission-chat_send = Chat Send
 permission-chat_receive = Chat Receive
+permission-chat_join = Chat Join
+permission-chat_list = Chat List
+permission-chat_secret = Chat Secret
 permission-chat_topic = Chat Topic
 permission-chat_topic_edit = Chat Topic Edit
 permission-user_broadcast = User Broadcast
@@ -235,6 +246,7 @@ empty-select-server = Select a server from the list
 empty-no-connections = No connections
 empty-no-bookmarks = No bookmarks
 empty-no-users = No users online
+empty-no-channel-members = No members in channel
 user-management-loading = Loading users…
 user-management-no-users = No users found
 news-loading = Loading news…
@@ -312,7 +324,7 @@ tab-files = Files
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #server
+console-tab = Console
 
 # =============================================================================
 # System Message Usernames
@@ -363,6 +375,8 @@ msg-user-is-away-status = { $nickname } is away: { $status }
 
 msg-topic-cleared = Topic cleared by { $username }
 msg-topic-set = Topic set by { $username }: { $topic }
+msg-secret-set = Secret mode enabled by { $username }
+msg-secret-cleared = Secret mode disabled by { $username }
 msg-server-info-updated = Server configuration updated
 msg-topic-display = Topic: { $topic }
 confirm-delete-user = Are you sure you want to delete user '{ $username }'?
@@ -395,6 +409,7 @@ err-could-not-determine-config-dir = Could not determine config directory
 err-message-too-long = Message is too long ({ $length } characters, max { $max })
 err-send-failed = Failed to send message
 err-no-chat-permission = You don't have permission to send messages
+err-console-no-send = Use /join to enter a channel or /msg to send a user message
 err-broadcast-too-long = Broadcast is too long ({ $length } characters, max { $max })
 err-broadcast-send-failed = Failed to send broadcast
 err-name-required = Bookmark name is required
@@ -519,6 +534,7 @@ user-info-end = End of user info
 user-info-unknown = Unknown
 user-info-loading = Loading user info…
 user-info-status = Status:
+user-info-channels = Channels:
 
 # =============================================================================
 # Time Duration
@@ -551,6 +567,7 @@ cmd-help-desc = Show available commands
 cmd-help-usage = Usage: /{ $command } [command]
 cmd-me-desc = Send an action message (e.g., /me waves)
 cmd-me-usage = Usage: /{ $command } <action>
+err-me-no-target = Use /join to enter a channel or /msg to send an action to a user
 cmd-help-escape-hint = Tip: Use // to send a message starting with /
 cmd-message-desc = Send a message to a user
 cmd-message-usage = Usage: /{ $command } <nickname> <message>
@@ -565,6 +582,25 @@ cmd-topic-arg-clear = clear
 cmd-topic-set-usage = Usage: /{ $command } set <topic>
 cmd-topic-none = No topic is set
 cmd-topic-permission-denied = You don't have permission to edit the topic
+err-topic-no-channel = This command only works in a channel
+cmd-join-desc = Join or create a channel
+cmd-join-usage = Usage: /{ $command } #channel
+cmd-leave-desc = Leave a channel
+cmd-leave-usage = Usage: /{ $command } [#channel]
+cmd-channels-desc = List available channels
+cmd-channels-usage = Usage: /{ $command }
+cmd-secret-desc = Toggle secret mode on current channel
+cmd-secret-usage = Usage: /{ $command } [on|off]
+cmd-secret-arg-on = on
+cmd-secret-arg-off = off
+err-secret-no-channel = This command only works in a channel
+err-secret-permission-denied = You don't have permission to change channel secret mode
+msg-secret-already-on = Channel is already secret
+msg-secret-already-off = Channel is already public
+msg-secret-enabled = Channel is now secret
+msg-secret-disabled = Channel is now public
+msg-secret-status-on = This channel is secret
+msg-secret-status-off = This channel is public
 cmd-broadcast-desc = Send a broadcast to all users
 cmd-broadcast-usage = Usage: /{ $command } <message>
 cmd-clear-desc = Clear chat history for current tab
@@ -697,6 +733,8 @@ event-broadcast = Broadcast
 event-chat-message = Chat Message
 event-chat-mention = Chat Mention
 event-connection-lost = Connection Lost
+event-chat-join = Chat Join
+event-chat-leave = Chat Leave
 event-news-post = News Post
 event-permissions-changed = Permissions Changed
 event-transfer-complete = Transfer Complete
@@ -757,6 +795,10 @@ notification-user-connected = User connected
 notification-user-connected-name = {$username} connected
 notification-user-disconnected = User disconnected
 notification-user-disconnected-name = {$username} disconnected
+notification-chat-join = User joined channel
+notification-chat-join-details = {$username} joined {$channel}
+notification-chat-leave = User left channel
+notification-chat-leave-details = {$username} left {$channel}
 notification-user-kicked = You were kicked
 notification-user-kicked-from = Kicked from {$server}
 notification-user-message = New user message
@@ -841,3 +883,32 @@ msg-trust-remaining = { $time } remaining
 msg-trust-remaining-days = { $days }d { $hours }h
 msg-trust-remaining-hours = { $hours }h { $minutes }m
 msg-trust-remaining-minutes = { $minutes }m
+
+# =============================================================================
+# Channel System
+# =============================================================================
+
+# Channel error messages
+err-join-channel = Failed to join channel: { $error }
+err-leave-channel = Failed to leave channel: { $error }
+err-list-channels = Failed to list channels: { $error }
+err-unknown = Unknown error
+err-channel-empty = Channel name cannot be empty
+err-channel-too-short = Channel name must have at least one character after #
+err-channel-too-long = Channel name is too long (max { $max } characters)
+err-channel-missing-prefix = Channel name must start with #
+err-channel-invalid-characters = Channel name contains invalid characters
+err-leave-no-channel = You must be in a channel to use /leave without arguments
+err-not-in-channel = You are not in channel { $channel }
+err-leave-already-pending = Already waiting for server response
+
+# Channel user join/leave messages
+msg-chat-join = { $nickname } joined the channel
+msg-chat-leave = { $nickname } left the channel
+msg-channel-is-secret = This channel is secret
+
+# Channel list messages
+msg-channel-list-header = Available channels:
+msg-no-channels = No channels available
+msg-channel-member-count = { $count } members
+channel-secret = secret

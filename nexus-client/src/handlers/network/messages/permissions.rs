@@ -17,7 +17,7 @@ impl NexusApp {
     ///
     /// Note: Previously, this also updated chat_topic when ChatTopic permission changed.
     /// With multi-channel support, topics are now per-channel and included in LoginResponse.channels
-    /// or ChatTopicUpdated messages. When a user gains ChatTopic permission mid-session, they
+    /// or ChatUpdated messages. When a user gains ChatTopic permission mid-session, they
     /// won't see existing topics until they reconnect or topics are changed. This is acceptable
     /// since the multi-channel client UI will handle topic visibility per-channel.
     pub fn handle_permissions_updated(
@@ -94,11 +94,11 @@ impl NexusApp {
         {
             // Channel send failed - add error to chat
             let error_msg = format!("{}: {}", t("err-userlist-failed"), e);
-            return self.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return self.add_console_message(connection_id, ChatMessage::error(error_msg));
         }
 
         // Show notification message
-        self.add_chat_message(
+        self.add_console_message(
             connection_id,
             ChatMessage::system(t("msg-permissions-updated")),
         )

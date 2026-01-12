@@ -29,7 +29,7 @@ pub fn execute(
         true
     } else {
         let error_msg = t_args("cmd-list-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     };
 
     // If requesting all users, check permissions and send server request
@@ -44,7 +44,7 @@ pub fn execute(
 
         if !has_edit && !has_delete {
             let error_msg = t("cmd-list-all-no-permission");
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
 
         // Send request to server for all users
@@ -53,7 +53,7 @@ pub fn execute(
             Ok(id) => id,
             Err(e) => {
                 let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-                return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+                return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
             }
         };
 
@@ -74,7 +74,7 @@ pub fn execute(
 
     // Default behavior: show cached online users
     if conn.online_users.is_empty() {
-        return app.add_chat_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
+        return app.add_active_tab_message(connection_id, ChatMessage::info(t("cmd-list-empty")));
     }
 
     // Build IRC-style user list: @admin user1 user2
@@ -99,5 +99,5 @@ pub fn execute(
         &[("users", &user_list), ("count", &user_count.to_string())],
     );
 
-    app.add_chat_message(connection_id, ChatMessage::info(message))
+    app.add_active_tab_message(connection_id, ChatMessage::info(message))
 }

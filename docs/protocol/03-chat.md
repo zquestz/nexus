@@ -370,6 +370,50 @@ Broadcast to remaining channel members when a user leaves.
 }
 ```
 
+### ChatJoined (Server → Client)
+
+Multi-session sync message sent to a user's OTHER sessions when one session joins a channel. This allows all sessions of the same user to stay synchronized.
+
+**Not sent to:** The session that initiated the join (they receive `ChatJoinResponse`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `channel` | string | Yes | Channel name |
+| `topic` | string | No | Channel topic (null if none) |
+| `topic_set_by` | string | No | Username who set the topic |
+| `secret` | boolean | Yes | Whether channel is secret |
+| `members` | string[] | Yes | Nicknames of current members (sorted) |
+
+**Example:**
+
+```json
+{
+  "channel": "#support",
+  "topic": "Ask for help here",
+  "topic_set_by": "admin",
+  "secret": false,
+  "members": ["admin", "alice", "bob"]
+}
+```
+
+### ChatLeft (Server → Client)
+
+Multi-session sync message sent to a user's OTHER sessions when one session leaves a channel. This allows all sessions of the same user to stay synchronized.
+
+**Not sent to:** The session that initiated the leave (they receive `ChatLeaveResponse`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `channel` | string | Yes | Channel name that was left |
+
+**Example:**
+
+```json
+{
+  "channel": "#support"
+}
+```
+
 ### ChatTopicUpdate (Client → Server)
 
 Update a channel's topic.

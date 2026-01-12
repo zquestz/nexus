@@ -30,7 +30,7 @@ pub fn execute(
     // /ban requires at least 1 argument (target)
     if args.is_empty() {
         let error_msg = t_args("cmd-ban-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
@@ -73,7 +73,7 @@ pub fn execute(
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

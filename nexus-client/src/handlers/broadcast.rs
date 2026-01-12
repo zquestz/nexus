@@ -122,6 +122,6 @@ impl NexusApp {
     /// Add an error message to the chat for broadcast errors
     /// Add a broadcast-specific error to chat
     fn add_broadcast_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
-        self.add_chat_message(connection_id, ChatMessage::error(message))
+        self.add_active_tab_message(connection_id, ChatMessage::error(message))
     }
 }

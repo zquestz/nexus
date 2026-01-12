@@ -29,6 +29,10 @@ pub struct ServerInfoData<'a> {
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated, admin only)
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    pub auto_join_channels: Option<String>,
     /// Cached server image for display (None if no image set)
     pub cached_server_image: Option<&'a CachedImage>,
     /// Whether the current user is an admin
@@ -135,6 +139,34 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 .into()
         });
 
+    // Persistent channels (admin only)
+    let persistent_channels_row: Option<Element<'static, Message>> =
+        data.persistent_channels.as_ref().map(|channels| {
+            let label = shaped_text(t("label-persistent-channels")).size(TEXT_SIZE);
+            let value = if channels.is_empty() {
+                shaped_text(t("label-none")).size(TEXT_SIZE)
+            } else {
+                shaped_text(channels.clone()).size(TEXT_SIZE)
+            };
+            row![label, Space::new().width(ELEMENT_SPACING), value]
+                .align_y(Center)
+                .into()
+        });
+
+    // Auto-join channels (admin only)
+    let auto_join_channels_row: Option<Element<'static, Message>> =
+        data.auto_join_channels.as_ref().map(|channels| {
+            let label = shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE);
+            let value = if channels.is_empty() {
+                shaped_text(t("label-none")).size(TEXT_SIZE)
+            } else {
+                shaped_text(channels.clone()).size(TEXT_SIZE)
+            };
+            row![label, Space::new().width(ELEMENT_SPACING), value]
+                .align_y(Center)
+                .into()
+        });
+
     // Buttons: Edit (admin only, secondary) and Close (primary)
     let buttons = if data.is_admin {
         row![
@@ -181,6 +213,12 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
     }
     if let Some(reindex) = reindex_row {
         items.push(reindex);
+    }
+    if let Some(persistent) = persistent_channels_row {
+        items.push(persistent);
+    }
+    if let Some(auto_join) = auto_join_channels_row {
+        items.push(auto_join);
     }
     items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     items.push(buttons.into());
@@ -345,6 +383,40 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         .spacing(ELEMENT_SPACING)
         .align_y(Center);
     form_items.push(reindex_row.into());
+
+    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+
+    // Channels subheading
+    let channels_heading = shaped_text(t("label-channels"))
+        .size(SUBHEADING_SIZE)
+        .style(subheading_text_style);
+    form_items.push(channels_heading.into());
+
+    // Persistent channels input
+    let persistent_channels_label = shaped_text(t("label-persistent-channels")).size(TEXT_SIZE);
+    form_items.push(persistent_channels_label.into());
+    let persistent_channels_input = text_input(
+        &t("placeholder-persistent-channels"),
+        &edit_state.persistent_channels,
+    )
+    .on_input(Message::EditServerInfoPersistentChannelsChanged)
+    .on_submit(Message::UpdateServerInfoPressed)
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE);
+    form_items.push(persistent_channels_input.into());
+
+    // Auto-join channels input
+    let auto_join_channels_label = shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE);
+    form_items.push(auto_join_channels_label.into());
+    let auto_join_channels_input = text_input(
+        &t("placeholder-auto-join-channels"),
+        &edit_state.auto_join_channels,
+    )
+    .on_input(Message::EditServerInfoAutoJoinChannelsChanged)
+    .on_submit(Message::UpdateServerInfoPressed)
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE);
+    form_items.push(auto_join_channels_input.into());
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 

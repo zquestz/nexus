@@ -21,7 +21,7 @@ pub fn execute(
     // /kick takes 1 or more arguments (nickname + optional reason)
     if args.is_empty() {
         let error_msg = t_args("cmd-kick-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
@@ -40,7 +40,7 @@ pub fn execute(
             ),
             NicknameError::InvalidCharacters => t("err-nickname-invalid"),
         };
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Join remaining args as reason (if any)
@@ -57,7 +57,7 @@ pub fn execute(
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

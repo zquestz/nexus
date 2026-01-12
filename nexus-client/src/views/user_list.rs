@@ -1,4 +1,9 @@
 //! User list panel (right sidebar)
+//!
+//! Shows contextual user list based on the active chat tab:
+//! - Console tab: All online users
+//! - Channel tab: Only channel members
+//! - User message tab: You + the other user (or just you if they're offline)
 
 use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
 use iced::{Center, Color, Element, Fill, Theme};
@@ -19,7 +24,8 @@ use crate::style::{
     muted_text_style, shaped_text, sidebar_panel_style, tooltip_container_style, ui,
     user_list_item_button_style, user_toolbar_separator_style,
 };
-use crate::types::{Message, ServerConnection};
+use crate::types::ActivePanel;
+use crate::types::{ChatTab, Message, ServerConnection, UserInfo};
 
 // ============================================================================
 // Helper Functions
@@ -76,6 +82,82 @@ fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
         .style(user_toolbar_separator_style)
+}
+
+// ============================================================================
+// User Filtering
+// ============================================================================
+
+/// Get the list of users to display based on the active view
+///
+/// Returns a filtered and sorted list of users:
+/// - Panel open (Files, News, etc.): All online users
+/// - Console: All online users
+/// - Channel: Only channel members (matched by nickname, case-insensitive)
+/// - User message: You + the other user (if they're online)
+fn get_contextual_users(conn: &ServerConnection) -> Vec<&UserInfo> {
+    // When a panel is open, always show all users
+    if conn.active_panel != ActivePanel::None {
+        return conn.online_users.iter().collect();
+    }
+
+    let current_nickname = conn
+        .online_users
+        .iter()
+        .find(|u| u.session_ids.contains(&conn.session_id))
+        .map(|u| u.nickname.as_str())
+        .unwrap_or(&conn.connection_info.username);
+
+    match &conn.active_chat_tab {
+        ChatTab::Console => {
+            // Show all online users
+            conn.online_users.iter().collect()
+        }
+        ChatTab::Channel(channel_name) => {
+            // Show only channel members
+            if let Some(channel_state) = conn.get_channel_state(channel_name) {
+                // Filter online_users to only those who are members of this channel
+                conn.online_users
+                    .iter()
+                    .filter(|user| {
+                        channel_state
+                            .members
+                            .iter()
+                            .any(|m| m.eq_ignore_ascii_case(&user.nickname))
+                    })
+                    .collect()
+            } else {
+                // Channel not found, show empty list
+                Vec::new()
+            }
+        }
+        ChatTab::UserMessage(other_nickname) => {
+            // Show you + the other user (if they're online)
+            let other_lower = other_nickname.to_lowercase();
+            let current_lower = current_nickname.to_lowercase();
+
+            conn.online_users
+                .iter()
+                .filter(|user| {
+                    let nickname_lower = user.nickname.to_lowercase();
+                    nickname_lower == current_lower || nickname_lower == other_lower
+                })
+                .collect()
+        }
+    }
+}
+
+/// Get the title for the user list based on the active view
+fn get_user_list_title(conn: &ServerConnection) -> String {
+    // When a panel is open, show generic "Users" title
+    if conn.active_panel != ActivePanel::None {
+        return t("title-users");
+    }
+
+    match &conn.active_chat_tab {
+        ChatTab::Console => t("title-users"),
+        ChatTab::Channel(_) | ChatTab::UserMessage(_) => t("title-channel-members"),
+    }
 }
 
 // ============================================================================
@@ -165,12 +247,18 @@ fn create_user_toolbar<'a>(
 
 /// Displays online users as clickable buttons with expandable action toolbars
 ///
-/// Shows a list of currently connected users. Clicking a username expands it
-/// to show an action toolbar underneath. Only one user can be expanded at a time.
+/// Shows a contextual list of users based on the active chat tab:
+/// - Console tab: All online users
+/// - Channel tab: Only channel members
+/// - User message tab: You + the other user
+///
+/// Clicking a username expands it to show an action toolbar underneath.
+/// Only one user can be expanded at a time.
 /// Admin users are shown in red (using the chat admin color).
 ///
 /// Note: This panel is only shown when the user has `user_list` permission.
 /// Permission checking is done at the layout level.
+///
 /// Build tooltip text for a user, including away/status information
 fn build_user_tooltip(nickname: &str, is_away: bool, status: Option<&str>) -> String {
     match (is_away, status) {
@@ -192,20 +280,30 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         .map(|u| u.nickname.as_str())
         .unwrap_or(&conn.connection_info.username);
 
-    let title = shaped_text(t("title-users"))
+    // Get contextual title based on active tab
+    let title = shaped_text(get_user_list_title(conn))
         .size(USER_LIST_TITLE_SIZE)
         .style(muted_text_style);
 
+    // Get contextual user list based on active tab
+    let users = get_contextual_users(conn);
+
     let mut users_column = Column::new().spacing(USER_LIST_ITEM_SPACING);
 
-    if conn.online_users.is_empty() {
+    if users.is_empty() {
+        // Show appropriate empty message based on tab type
+        let empty_message = match &conn.active_chat_tab {
+            ChatTab::Console => t("empty-no-users"),
+            ChatTab::Channel(_) => t("empty-no-channel-members"),
+            ChatTab::UserMessage(_) => t("empty-no-users"),
+        };
         users_column = users_column.push(
-            shaped_text(t("empty-no-users"))
+            shaped_text(empty_message)
                 .size(USER_LIST_SMALL_TEXT_SIZE)
                 .style(muted_text_style),
         );
     } else {
-        for (index, user) in conn.online_users.iter().enumerate() {
+        for (index, user) in users.iter().enumerate() {
             let is_expanded = conn.expanded_user.as_deref() == Some(user.nickname.as_str());
             let is_even = index % 2 == 0;
 

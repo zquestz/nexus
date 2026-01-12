@@ -124,6 +124,12 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle channel join/leave notifications toggle
+    pub fn handle_channel_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
+        self.config.settings.show_channel_notifications = enabled;
+        Task::none()
+    }
+
     /// Handle chat font size selection from the picker (live preview)
     pub fn handle_chat_font_size_selected(&mut self, size: u8) -> Task<Message> {
         self.config.settings.chat_font_size = size.clamp(CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);

@@ -50,6 +50,7 @@ title-news = 新闻
 title-transfers = 传输
 title-news-create = 创建帖子
 title-news-edit = 编辑帖子
+title-channel-members = 成员
 
 # =============================================================================
 # Placeholders
@@ -77,6 +78,8 @@ placeholder-proxy-port = 9050
 placeholder-proxy-username = 用户名（可选）
 placeholder-proxy-password = 密码（可选）
 placeholder-download-location = 未设置下载位置
+placeholder-persistent-channels = #频道1 #频道2（空格分隔）
+placeholder-auto-join-channels = #频道1 #频道2（空格分隔）
 
 # =============================================================================
 # Labels
@@ -93,6 +96,7 @@ label-received-fingerprint = 收到的指纹：
 label-theme = 主题
 label-chat-font-size = 字体大小：
 label-show-connection-notifications = 显示连接通知
+label-show-channel-notifications = 显示频道加入/离开通知
 label-show-timestamps = 显示时间戳
 label-use-24-hour-time = 使用24小时制
 label-show-seconds = 显示秒
@@ -119,15 +123,19 @@ label-news-image = 图片：
 label-identity = 身份
 label-nickname = 昵称：
 label-network = 网络
+label-none = 无
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
 label-proxy-port = 端口:
 label-proxy-username = 用户名:
 label-proxy-password = 密码:
 label-download-location = 下载位置:
-label-queue-transfers = 排队传输
+label-queue-transfers = 队列传输
 label-download-limit = 下载限制:
 label-upload-limit = 上传限制:
+label-persistent-channels = 常驻频道:
+label-auto-join-channels = 自动加入频道:
+label-channels = 频道
 
 # =============================================================================
 # Permission Display Names
@@ -137,6 +145,9 @@ permission-user_list = 用户列表
 permission-user_info = 用户信息
 permission-chat_send = 发送聊天
 permission-chat_receive = 接收聊天
+permission-chat_join = 加入频道
+permission-chat_list = 频道列表
+permission-chat_secret = 频道私密
 permission-chat_topic = 聊天主题
 permission-chat_topic_edit = 编辑聊天主题
 permission-user_broadcast = 用户广播
@@ -229,7 +240,8 @@ context-menu-open = 打开
 empty-select-server = 从列表中选择服务器
 empty-no-connections = 无连接
 empty-no-bookmarks = 无书签
-empty-no-users = 无在线用户
+empty-no-users = 没有在线用户
+empty-no-channel-members = 频道中没有成员
 user-management-loading = 正在加载用户…
 user-management-no-users = 未找到用户
 news-loading = 正在加载新闻…
@@ -306,7 +318,8 @@ tab-files = 文件
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #服务器
+console-tab = 控制台
+
 
 # =============================================================================
 # System Message Usernames
@@ -326,9 +339,16 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
-msg-user-kicked-success = 用户已成功踢出
-msg-user-kicked-success-name = 用户 '{ $nickname }' 已成功踢出
-msg-broadcast-sent = 广播已成功发送
+msg-user-kicked-success = 成功踢出用户
+msg-user-kicked-success-name = 成功踢出用户 '{ $nickname }'
+msg-chat-join = { $nickname } 加入了频道
+msg-chat-leave = { $nickname } 离开了频道
+msg-channel-is-secret = 此频道是私密的
+msg-channel-list-header = 可用频道:
+msg-no-channels = 没有可用频道
+msg-channel-member-count = { $count } 个成员
+channel-secret = 私密
+msg-broadcast-sent = 广播发送成功
 msg-user-created = 用户已成功创建
 msg-user-created-name = 用户 '{ $username }' 已成功创建
 msg-user-deleted = 用户已成功删除
@@ -356,6 +376,8 @@ msg-user-is-away-status = { $nickname } 已离开: { $status }
 
 msg-topic-cleared = { $username } 清除了主题
 msg-topic-set = { $username } 设置了主题：{ $topic }
+msg-secret-set = { $username } 启用了秘密模式
+msg-secret-cleared = { $username } 禁用了秘密模式
 msg-server-info-updated = 服务器配置已更新
 msg-topic-display = 主题：{ $topic }
 confirm-delete-user = 确定要删除用户 '{ $username }' 吗？
@@ -372,6 +394,7 @@ msg-connection-cancelled = 由于证书不匹配，连接已取消
 err-connection-broken = 连接错误
 err-failed-update-server-info = 更新服务器信息失败：{ $error }
 err-user-kick-failed = 踢出用户失败
+err-unknown = 未知错误
 err-no-shutdown-handle = 连接错误：无关闭句柄
 err-userlist-failed = 刷新用户列表失败
 err-port-invalid = 端口必须是有效数字（1-65535）
@@ -385,10 +408,11 @@ err-login-failed = 登录失败
 err-unexpected-login-response = 意外的登录响应
 err-connection-closed = 连接已关闭
 err-could-not-determine-config-dir = 无法确定配置目录
-err-message-too-long = 消息过长（{ $length }个字符，最多{ $max }个字符）
+err-message-too-long = 消息太长（{ $length } 个字符，最多 { $max }）
 err-send-failed = 发送消息失败
 err-no-chat-permission = 您没有发送消息的权限
-err-broadcast-too-long = 广播过长（{ $length }个字符，最多{ $max }个字符）
+err-console-no-send = 使用 /join 加入频道或 /msg 向用户发送消息
+err-broadcast-too-long = 广播太长（{ $length } 个字符，最多 { $max }）
 err-broadcast-send-failed = 发送广播失败
 err-name-required = 书签名称为必填项
 err-address-required = 服务器地址为必填项
@@ -495,6 +519,7 @@ user-info-end = 用户信息结束
 user-info-unknown = 未知
 user-info-loading = 正在加载用户信息…
 user-info-status = 状态:
+user-info-channels = 频道:
 
 # =============================================================================
 # Time Duration
@@ -514,6 +539,7 @@ cmd-help-header = 可用命令：
 cmd-help-desc = 显示可用命令
 cmd-me-desc = 发送动作消息（例如 /me 挥手）
 cmd-me-usage = 用法：/{ $command } <动作>
+err-me-no-target = 使用 /join 加入频道或 /msg 向用户发送动作
 cmd-help-escape-hint = 提示：使用 // 发送以 / 开头的消息
 cmd-message-desc = 向用户发送消息
 cmd-message-usage = 用法：/{ $command } <用户名> <消息>
@@ -569,8 +595,26 @@ cmd-bans-desc = 列出有效封禁
 cmd-bans-usage = 用法: /{ $command }
 cmd-reindex-desc = 触发文件索引重建
 cmd-reindex-usage = 用法: /{ $command }
-msg-reindex-triggered = 文件索引重建已触发
-cmd-trust-desc = 信任IP、CIDR范围或昵称以绕过封禁
+msg-reindex-triggered = 已触发文件索引重建
+cmd-join-desc = 加入或创建频道
+cmd-join-usage = 用法: /{ $command } #频道
+cmd-leave-desc = 离开频道
+cmd-leave-usage = 用法: /{ $command } [#频道]
+cmd-channels-desc = 列出可用频道
+cmd-channels-usage = 用法: /{ $command }
+cmd-secret-desc = 切换当前频道的秘密模式
+cmd-secret-usage = 用法: /{ $command } [开|关]
+cmd-secret-arg-on = 开
+cmd-secret-arg-off = 关
+err-secret-no-channel = 此命令仅在频道中有效
+err-secret-permission-denied = 您没有更改频道秘密模式的权限
+msg-secret-already-on = 频道已是秘密状态
+msg-secret-already-off = 频道已是公开状态
+msg-secret-enabled = 频道现在是秘密的
+msg-secret-disabled = 频道现在是公开的
+msg-secret-status-on = 此频道是私密的
+msg-secret-status-off = 此频道是公开的
+cmd-trust-desc = 信任 IP、CIDR 范围或昵称以绕过封禁
 cmd-trust-usage = 用法: /{ $command } <目标> [时长] [原因]
 cmd-untrust-desc = 移除受信任的IP条目
 cmd-untrust-usage = 用法: /{ $command } <目标>
@@ -599,7 +643,19 @@ err-proxy-connection-timeout = 代理连接在 { $seconds } 秒后超时
 err-proxy-address-required = 启用代理时需要代理地址
 err-proxy-port-invalid = 代理端口必须在 1 到 65535 之间
 err-news-image-too-large = 图片太大（最大512KB）
-err-news-image-unsupported-type = 不支持的图片类型（仅支持 PNG、WebP、JPEG 或 SVG）
+err-news-image-unsupported-type = 不支持的图片类型（仅支持PNG、WebP、JPEG或SVG）
+err-topic-no-channel = 此命令仅在频道中有效
+err-join-channel = 加入频道失败: { $error }
+err-leave-channel = 离开频道失败: { $error }
+err-list-channels = 获取频道列表失败: { $error }
+err-channel-empty = 频道名称不能为空
+err-channel-too-short = 频道名称必须在#后至少有一个字符
+err-channel-too-long = 频道名称太长（最多{ $max }个字符）
+err-channel-missing-prefix = 频道名称必须以#开头
+err-channel-invalid-characters = 频道名称包含无效字符
+err-leave-no-channel = 不带参数使用/leave时必须在频道中
+err-not-in-channel = 您不在频道 { $channel } 中
+err-leave-already-pending = 已在等待服务器响应
 
 label-port = 端口:
 
@@ -672,9 +728,11 @@ event-permissions-changed = 权限已更改
 event-transfer-complete = 传输完成
 event-transfer-failed = 传输失败
 event-user-connected = 用户已连接
-event-user-disconnected = 用户已断开
+event-user-disconnected = 用户断开连接
 event-user-kicked = 用户被踢出
 event-user-message = 用户消息
+event-chat-join = 加入聊天
+event-chat-leave = 离开聊天
 
 # Notification content levels
 notification-content-simple = 简单
@@ -731,6 +789,10 @@ notification-user-kicked = 您被踢出了
 notification-user-kicked-from = 被踢出{$server}
 notification-user-message = 新用户消息
 notification-user-message-from = 来自{$username}的消息
+notification-chat-join = 用户加入频道
+notification-chat-join-details = {$username}加入了{$channel}
+notification-chat-leave = 用户离开频道
+notification-chat-leave-details = {$username}离开了{$channel}
 
 # Fallback values
 unknown-server = 未知服务器

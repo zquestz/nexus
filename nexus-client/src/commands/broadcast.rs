@@ -20,7 +20,7 @@ pub fn execute(
 ) -> Task<Message> {
     if args.is_empty() {
         let error_msg = t_args("cmd-broadcast-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
@@ -43,14 +43,14 @@ pub fn execute(
             MessageError::ContainsNewlines => t("err-message-contains-newlines"),
             MessageError::InvalidCharacters => t("err-message-invalid-characters"),
         };
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let msg = ClientMessage::UserBroadcast { message };
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()

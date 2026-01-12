@@ -18,14 +18,14 @@ impl NexusApp {
     ) -> Task<Message> {
         if !success {
             let message = ChatMessage::error(error.unwrap_or_default());
-            return self.add_chat_message(connection_id, message);
+            return self.add_active_tab_message(connection_id, message);
         }
 
         let bans = bans.unwrap_or_default();
 
         if bans.is_empty() {
             let message = ChatMessage::info(t("msg-ban-list-empty"));
-            return self.add_chat_message(connection_id, message);
+            return self.add_active_tab_message(connection_id, message);
         }
 
         // Build the ban list output
@@ -33,13 +33,13 @@ impl NexusApp {
 
         // Header
         tasks.push(
-            self.add_chat_message(connection_id, ChatMessage::info(t("msg-ban-list-header"))),
+            self.add_active_tab_message(connection_id, ChatMessage::info(t("msg-ban-list-header"))),
         );
 
         // Each ban entry
         for ban in bans {
             let entry = format_ban_entry(&ban);
-            tasks.push(self.add_chat_message(connection_id, ChatMessage::info(entry)));
+            tasks.push(self.add_active_tab_message(connection_id, ChatMessage::info(entry)));
         }
 
         Task::batch(tasks)

@@ -99,6 +99,8 @@ pub enum Message {
     ChatTabComplete,
     /// Chat scrollable: scroll position changed
     ChatScrolled(iced::widget::scrollable::Viewport),
+    /// Close a channel tab (sends ChatLeave to server)
+    CloseChannelTab(String),
     /// Close a user message tab
     CloseUserMessageTab(String),
     /// Connection form: Connect button pressed
@@ -124,6 +126,10 @@ pub enum Message {
     EditServerInfoFileReindexIntervalChanged(u32),
     /// Server info edit: Name field changed
     EditServerInfoNameChanged(String),
+    /// Server info edit: Persistent channels field changed
+    EditServerInfoPersistentChannelsChanged(String),
+    /// Server info edit: Auto-join channels field changed
+    EditServerInfoAutoJoinChannelsChanged(String),
     /// Server info edit: Edit button pressed (enter edit mode)
     EditServerInfoPressed,
     /// Server info edit: Pick image button pressed
@@ -184,6 +190,8 @@ pub enum Message {
     ClearAvatarPressed,
     /// Settings panel: Connection notifications checkbox toggled
     ConnectionNotificationsToggled(bool),
+    /// Settings panel: Channel join/leave notifications checkbox toggled
+    ChannelNotificationsToggled(bool),
     /// Settings panel: Avatar loaded from file picker (data URI or error)
     AvatarLoaded(Result<String, ImagePickerError>),
     /// Settings panel: Pick avatar button pressed

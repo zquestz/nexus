@@ -21,7 +21,7 @@ pub fn execute(
     // /back takes no arguments
     if !args.is_empty() {
         let error_msg = t_args("cmd-back-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Get the connection
@@ -37,7 +37,7 @@ pub fn execute(
                 .track(message_id, ResponseRouting::BackResult);
         }
         Err(e) => {
-            return app.add_chat_message(connection_id, ChatMessage::error(e));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(e));
         }
     }
 

@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
+use nexus_common::protocol::ChannelJoinInfo;
+
 use super::{
-    ActivePanel, ChatMessage, ChatTab, DisconnectDialogState, FilesManagementState,
+    ActivePanel, ChannelState, ChatMessage, ChatTab, DisconnectDialogState, FilesManagementState,
     NewsManagementState, PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState,
     UserInfo, UserManagementState,
 };
@@ -120,16 +122,17 @@ pub struct ServerConnectionParams {
     pub server_image: String,
     /// Cached server image for display
     pub cached_server_image: Option<CachedImage>,
-    /// Chat topic
-    pub chat_topic: Option<String>,
-    /// Who set the chat topic
-    pub chat_topic_set_by: Option<String>,
+
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated, admin only)
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    pub auto_join_channels: Option<String>,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -181,22 +184,30 @@ pub struct ServerConnection {
     pub server_image: String,
     /// Cached server image for rendering (decoded from server_image)
     pub cached_server_image: Option<CachedImage>,
-    /// Current chat topic (None if no topic set)
-    pub chat_topic: Option<String>,
-    /// Username who set the current chat topic
-    pub chat_topic_set_by: Option<String>,
     /// Max connections per IP (admin only, from ServerInfo)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only, from ServerInfo)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, from ServerInfo, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
-    /// Active chat tab
+    /// Persistent channels (space-separated, admin only)
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    pub auto_join_channels: Option<String>,
+    /// Active chat tab (Console, Channel, or UserMessage)
     pub active_chat_tab: ChatTab,
-    /// Chat message history for server chat
-    pub chat_messages: Vec<ChatMessage>,
-    /// User message history per user
+    /// Console messages (system, error, info, broadcast messages)
+    pub console_messages: Vec<ChatMessage>,
+    /// Channel tabs in join order (channel names, e.g., ["#nexus", "#support"])
+    pub channel_tabs: Vec<String>,
+    /// Channel state by lowercase channel name
+    pub channels: HashMap<String, ChannelState>,
+    /// User message tabs in creation order (nicknames)
+    pub user_message_tabs: Vec<String>,
+    /// User message history per user (keyed by nickname)
     pub user_messages: HashMap<String, Vec<ChatMessage>>,
+    /// Pending channel leave request (to prevent double-send)
+    pub pending_channel_leave: Option<String>,
     /// Tabs with unread messages (for bold indicator)
     pub unread_tabs: HashSet<ChatTab>,
     /// Currently online users
@@ -255,6 +266,29 @@ impl ServerConnection {
         self.is_admin || self.permissions.iter().any(|p| p == permission)
     }
 
+    /// Get channel state by name (case-insensitive lookup)
+    pub fn get_channel_state(&self, channel: &str) -> Option<&ChannelState> {
+        self.channels.get(&channel.to_lowercase())
+    }
+
+    /// Get mutable channel state by name (case-insensitive lookup)
+    pub fn get_channel_state_mut(&mut self, channel: &str) -> Option<&mut ChannelState> {
+        self.channels.get_mut(&channel.to_lowercase())
+    }
+
+    /// Get the display name for a channel (preserves original casing)
+    ///
+    /// Returns the channel name from `channel_tabs` which preserves the original casing,
+    /// or falls back to the provided name if not found.
+    pub fn get_channel_display_name(&self, channel: &str) -> String {
+        let channel_lower = channel.to_lowercase();
+        self.channel_tabs
+            .iter()
+            .find(|c| c.to_lowercase() == channel_lower)
+            .cloned()
+            .unwrap_or_else(|| channel.to_string())
+    }
+
     /// Check if the user has any of the specified permissions
     ///
     /// Returns true if:
@@ -297,14 +331,18 @@ impl ServerConnection {
             server_version: params.server_version,
             server_image: params.server_image,
             cached_server_image: params.cached_server_image,
-            chat_topic: params.chat_topic,
-            chat_topic_set_by: params.chat_topic_set_by,
             max_connections_per_ip: params.max_connections_per_ip,
             max_transfers_per_ip: params.max_transfers_per_ip,
             file_reindex_interval: params.file_reindex_interval,
-            active_chat_tab: ChatTab::Server,
-            chat_messages: Vec::new(),
+            persistent_channels: params.persistent_channels,
+            auto_join_channels: params.auto_join_channels,
+            active_chat_tab: ChatTab::Console,
+            console_messages: Vec::new(),
+            channel_tabs: Vec::new(),
+            channels: HashMap::new(),
+            user_message_tabs: Vec::new(),
             user_messages: HashMap::new(),
+            pending_channel_leave: None,
             unread_tabs: HashSet::new(),
             online_users: Vec::new(),
             expanded_user: None,
@@ -362,16 +400,18 @@ pub struct NetworkConnection {
     pub server_version: Option<String>,
     /// Server image (if provided in ServerInfo)
     pub server_image: String,
-    /// Chat topic received on login (if user has ChatTopic permission)
-    pub chat_topic: Option<String>,
-    /// Username who set the chat topic
-    pub chat_topic_set_by: Option<String>,
+    /// Channels the user was auto-joined to on login
+    pub channels: Vec<ChannelJoinInfo>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated, admin only)
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    pub auto_join_channels: Option<String>,
     /// Locale accepted by the server
     pub locale: String,
     /// Connection info (address, port, auth info)

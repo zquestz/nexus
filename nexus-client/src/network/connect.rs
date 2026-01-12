@@ -138,43 +138,40 @@ async fn perform_login(
             channels,
             locale,
             ..
-        } => {
-            // TODO: Multi-channel - Currently only extracting topic from first channel.
-            // When multi-channel client UI is implemented, the full `channels` array
-            // should be stored in ServerConnection and topics managed per-channel.
-            // This temporary workaround maintains backward compatibility with the
-            // existing single-channel UI that displays chat_topic.
-            let first_channel = channels.as_ref().and_then(|ch| ch.first());
-            Ok(LoginInfo {
-                session_id: id,
-                is_admin: is_admin.unwrap_or(false),
-                permissions: permissions.unwrap_or_default(),
-                server_name: server_info.as_ref().and_then(|info| info.name.clone()),
-                server_description: server_info
-                    .as_ref()
-                    .and_then(|info| info.description.clone()),
-                server_version: server_info.as_ref().and_then(|info| info.version.clone()),
-                server_image: server_info
-                    .as_ref()
-                    .and_then(|info| info.image.clone())
-                    .unwrap_or_default(),
-                chat_topic: first_channel.and_then(|ch| ch.topic.clone()),
-                chat_topic_set_by: first_channel.and_then(|ch| ch.topic_set_by.clone()),
-                max_connections_per_ip: server_info
-                    .as_ref()
-                    .and_then(|info| info.max_connections_per_ip),
-                max_transfers_per_ip: server_info
-                    .as_ref()
-                    .and_then(|info| info.max_transfers_per_ip),
-                file_reindex_interval: server_info
-                    .as_ref()
-                    .and_then(|info| info.file_reindex_interval),
-                transfer_port: server_info
-                    .map(|info| info.transfer_port)
-                    .unwrap_or(DEFAULT_TRANSFER_PORT),
-                locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
-            })
-        }
+        } => Ok(LoginInfo {
+            session_id: id,
+            is_admin: is_admin.unwrap_or(false),
+            permissions: permissions.unwrap_or_default(),
+            server_name: server_info.as_ref().and_then(|info| info.name.clone()),
+            server_description: server_info
+                .as_ref()
+                .and_then(|info| info.description.clone()),
+            server_version: server_info.as_ref().and_then(|info| info.version.clone()),
+            server_image: server_info
+                .as_ref()
+                .and_then(|info| info.image.clone())
+                .unwrap_or_default(),
+            channels: channels.unwrap_or_default(),
+            max_connections_per_ip: server_info
+                .as_ref()
+                .and_then(|info| info.max_connections_per_ip),
+            max_transfers_per_ip: server_info
+                .as_ref()
+                .and_then(|info| info.max_transfers_per_ip),
+            file_reindex_interval: server_info
+                .as_ref()
+                .and_then(|info| info.file_reindex_interval),
+            persistent_channels: server_info
+                .as_ref()
+                .and_then(|info| info.persistent_channels.clone()),
+            auto_join_channels: server_info
+                .as_ref()
+                .and_then(|info| info.auto_join_channels.clone()),
+            transfer_port: server_info
+                .map(|info| info.transfer_port)
+                .unwrap_or(DEFAULT_TRANSFER_PORT),
+            locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
+        }),
         ServerMessage::LoginResponse {
             success: true,
             session_id: None,

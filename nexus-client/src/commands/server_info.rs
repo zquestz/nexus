@@ -23,7 +23,7 @@ pub fn execute(
     // /serverinfo takes no arguments
     if !args.is_empty() {
         let error_msg = t_args("cmd-serverinfo-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Extract data from connection first to avoid borrow issues
@@ -75,11 +75,11 @@ pub fn execute(
     let timestamp = Local::now();
     let mut task = Task::none();
     for line in lines {
-        task = app.add_chat_message(
+        task = app.add_active_tab_message(
             connection_id,
             ChatMessage::info_with_timestamp(line, timestamp),
         );
     }
-    // Last add_chat_message will handle auto-scroll
+    // Last add_active_tab_message will handle auto-scroll
     task
 }

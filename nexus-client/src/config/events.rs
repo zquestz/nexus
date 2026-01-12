@@ -18,6 +18,10 @@ pub enum EventType {
     /// Server broadcast received
     #[default]
     Broadcast,
+    /// A user joined a channel you're in
+    ChatJoin,
+    /// A user left a channel you're in
+    ChatLeave,
     /// Chat message received
     ChatMessage,
     /// Nickname mentioned in chat
@@ -47,6 +51,8 @@ impl EventType {
     pub fn all() -> &'static [EventType] {
         &[
             EventType::Broadcast,
+            EventType::ChatJoin,
+            EventType::ChatLeave,
             EventType::ChatMessage,
             EventType::ChatMention,
             EventType::ConnectionLost,
@@ -65,6 +71,8 @@ impl EventType {
     pub fn translation_key(&self) -> &'static str {
         match self {
             EventType::Broadcast => "event-broadcast",
+            EventType::ChatJoin => "event-chat-join",
+            EventType::ChatLeave => "event-chat-leave",
             EventType::ChatMessage => "event-chat-message",
             EventType::ChatMention => "event-chat-mention",
             EventType::ConnectionLost => "event-connection-lost",
@@ -306,6 +314,12 @@ fn default_event_configs() -> HashMap<EventType, EventConfig> {
     // Broadcasts: enabled by default
     events.insert(EventType::Broadcast, EventConfig::with_notification());
 
+    // Chat join: disabled by default (can be noisy)
+    events.insert(EventType::ChatJoin, EventConfig::default());
+
+    // Chat leave: disabled by default (can be noisy)
+    events.insert(EventType::ChatLeave, EventConfig::default());
+
     // Chat messages: disabled by default (can be noisy)
     events.insert(EventType::ChatMessage, EventConfig::default());
 
@@ -359,8 +373,10 @@ mod tests {
     #[test]
     fn test_event_type_all() {
         let all = EventType::all();
-        assert_eq!(all.len(), 12);
+        assert_eq!(all.len(), 14);
         assert!(all.contains(&EventType::Broadcast));
+        assert!(all.contains(&EventType::ChatJoin));
+        assert!(all.contains(&EventType::ChatLeave));
         assert!(all.contains(&EventType::ChatMessage));
         assert!(all.contains(&EventType::ChatMention));
         assert!(all.contains(&EventType::ConnectionLost));

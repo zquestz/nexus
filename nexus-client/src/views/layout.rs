@@ -53,6 +53,8 @@ struct ServerContentContext<'a> {
     theme: iced::Theme,
     /// Whether to show connection notifications
     show_connection_notifications: bool,
+    /// Whether to show channel join/leave notifications
+    show_channel_notifications: bool,
     /// Chat font size
     chat_font_size: u8,
     /// Timestamp display settings
@@ -228,6 +230,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 active_panel: config.active_panel,
                 theme: config.theme.clone(),
                 show_connection_notifications: config.show_connection_notifications,
+                show_channel_notifications: config.show_channel_notifications,
                 chat_font_size: config.chat_font_size,
                 timestamp_settings: TimestampSettings {
                     show_timestamps: config.show_timestamps,
@@ -262,6 +265,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                     settings_view(SettingsViewData {
                         current_theme: config.theme.clone(),
                         show_connection_notifications: config.show_connection_notifications,
+                        show_channel_notifications: config.show_channel_notifications,
                         chat_font_size: config.chat_font_size,
                         timestamp_settings: TimestampSettings {
                             show_timestamps: config.show_timestamps,
@@ -668,6 +672,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             settings_view(SettingsViewData {
                 current_theme: ctx.theme.clone(),
                 show_connection_notifications: ctx.show_connection_notifications,
+                show_channel_notifications: ctx.show_channel_notifications,
                 chat_font_size: ctx.chat_font_size,
                 timestamp_settings: ctx.timestamp_settings,
                 settings_form: ctx.settings_form,
@@ -698,6 +703,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 max_connections_per_ip: ctx.conn.max_connections_per_ip,
                 max_transfers_per_ip: ctx.conn.max_transfers_per_ip,
                 file_reindex_interval: ctx.conn.file_reindex_interval,
+                persistent_channels: ctx.conn.persistent_channels.clone(),
+                auto_join_channels: ctx.conn.auto_join_channels.clone(),
                 cached_server_image: ctx.conn.cached_server_image.as_ref(),
                 is_admin: ctx.conn.is_admin,
                 edit_state: ctx.conn.server_info_edit.as_ref(),

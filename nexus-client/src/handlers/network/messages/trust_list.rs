@@ -18,14 +18,14 @@ impl NexusApp {
     ) -> Task<Message> {
         if !success {
             let message = ChatMessage::error(error.unwrap_or_default());
-            return self.add_chat_message(connection_id, message);
+            return self.add_active_tab_message(connection_id, message);
         }
 
         let entries = entries.unwrap_or_default();
 
         if entries.is_empty() {
             let message = ChatMessage::info(t("msg-trust-list-empty"));
-            return self.add_chat_message(connection_id, message);
+            return self.add_active_tab_message(connection_id, message);
         }
 
         // Build the trust list output
@@ -33,13 +33,16 @@ impl NexusApp {
 
         // Header
         tasks.push(
-            self.add_chat_message(connection_id, ChatMessage::info(t("msg-trust-list-header"))),
+            self.add_active_tab_message(
+                connection_id,
+                ChatMessage::info(t("msg-trust-list-header")),
+            ),
         );
 
         // Each trust entry
         for entry in entries {
             let formatted = format_trust_entry(&entry);
-            tasks.push(self.add_chat_message(connection_id, ChatMessage::info(formatted)));
+            tasks.push(self.add_active_tab_message(connection_id, ChatMessage::info(formatted)));
         }
 
         Task::batch(tasks)

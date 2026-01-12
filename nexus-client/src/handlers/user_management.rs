@@ -744,7 +744,7 @@ impl NexusApp {
                         reason,
                     }) {
                         let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                        return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+                        return self.add_active_tab_message(conn_id, ChatMessage::error(error_msg));
                     }
                     // Close dialog on success
                     if let Some(conn) = self.connections.get_mut(&conn_id) {
@@ -766,7 +766,7 @@ impl NexusApp {
                         reason,
                     }) {
                         let error_msg = format!("{}: {}", t("err-send-failed"), e);
-                        return self.add_chat_message(conn_id, ChatMessage::error(error_msg));
+                        return self.add_active_tab_message(conn_id, ChatMessage::error(error_msg));
                     }
                     // Close dialog on success
                     if let Some(conn) = self.connections.get_mut(&conn_id) {

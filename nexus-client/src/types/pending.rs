@@ -86,6 +86,8 @@ pub enum ResponseRouting {
     BackResult,
     /// Status command result - contains optional status message for display
     StatusResult(Option<String>),
+    /// Secret command result - contains channel name and new secret value
+    SecretResult { channel: String, secret: bool },
 }
 
 /// Extension trait for tracking pending requests

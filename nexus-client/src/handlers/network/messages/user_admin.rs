@@ -47,7 +47,7 @@ impl NexusApp {
             } else {
                 t("msg-user-created")
             };
-            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
+            let task = self.add_active_tab_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, return to list and refresh
             if matches!(routing, Some(ResponseRouting::UserManagementCreateResult)) {
@@ -65,8 +65,10 @@ impl NexusApp {
             }
         } else {
             // Show error in chat
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()
@@ -98,7 +100,7 @@ impl NexusApp {
             } else {
                 t("msg-user-deleted")
             };
-            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
+            let task = self.add_active_tab_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, close dialog and refresh the list
             if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
@@ -119,8 +121,10 @@ impl NexusApp {
             }
         } else {
             // Show error in chat
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()
@@ -160,7 +164,7 @@ impl NexusApp {
                 conn.user_management.list_error = Some(data.error.unwrap_or_default());
             } else {
                 // Show error in chat
-                return self.add_chat_message(
+                return self.add_active_tab_message(
                     connection_id,
                     ChatMessage::error(data.error.unwrap_or_default()),
                 );
@@ -207,7 +211,7 @@ impl NexusApp {
                     conn.active_panel = return_panel.unwrap_or(ActivePanel::None);
                 }
                 // Show success message in chat
-                return self.add_chat_message(
+                return self.add_active_tab_message(
                     connection_id,
                     ChatMessage::system(t("msg-password-changed")),
                 );
@@ -219,7 +223,7 @@ impl NexusApp {
             } else {
                 t("msg-user-updated")
             };
-            let task = self.add_chat_message(connection_id, ChatMessage::system(message));
+            let task = self.add_active_tab_message(connection_id, ChatMessage::system(message));
 
             // If from user management panel, return to list and refresh
             if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
@@ -250,8 +254,10 @@ impl NexusApp {
             }
         } else {
             // Show error in chat
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()

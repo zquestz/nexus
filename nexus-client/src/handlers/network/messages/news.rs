@@ -186,8 +186,8 @@ impl NexusApp {
 
         if success {
             // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-news-created")));
+            let task = self
+                .add_active_tab_message(connection_id, ChatMessage::system(t("msg-news-created")));
 
             // If from news panel, return to list and refresh
             if matches!(routing, Some(ResponseRouting::NewsCreateResult)) {
@@ -237,8 +237,10 @@ impl NexusApp {
                 conn.news_management.form_error = Some(error.unwrap_or_default());
             }
         } else {
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()
@@ -278,7 +280,7 @@ impl NexusApp {
             if matches!(routing, Some(ResponseRouting::PopulateNewsEdit)) {
                 conn.news_management.list_error = Some(error.unwrap_or_default());
             } else {
-                return self.add_chat_message(
+                return self.add_active_tab_message(
                     connection_id,
                     ChatMessage::error(error.unwrap_or_default()),
                 );
@@ -308,8 +310,8 @@ impl NexusApp {
 
         if success {
             // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-news-updated")));
+            let task = self
+                .add_active_tab_message(connection_id, ChatMessage::system(t("msg-news-updated")));
 
             // If from news panel, update the list and return to list view
             if matches!(routing, Some(ResponseRouting::NewsUpdateResult)) {
@@ -367,8 +369,10 @@ impl NexusApp {
                 conn.news_management.form_error = Some(error.unwrap_or_default());
             }
         } else {
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()
@@ -394,8 +398,8 @@ impl NexusApp {
 
         if success {
             // Show success message in chat
-            let task =
-                self.add_chat_message(connection_id, ChatMessage::system(t("msg-news-deleted")));
+            let task = self
+                .add_active_tab_message(connection_id, ChatMessage::system(t("msg-news-deleted")));
 
             // If from news panel, close dialog and remove from list
             if matches!(routing, Some(ResponseRouting::NewsDeleteResult))
@@ -427,8 +431,10 @@ impl NexusApp {
                 conn.news_management.delete_error = Some(error.unwrap_or_default());
             }
         } else {
-            return self
-                .add_chat_message(connection_id, ChatMessage::error(error.unwrap_or_default()));
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(error.unwrap_or_default()),
+            );
         }
 
         Task::none()

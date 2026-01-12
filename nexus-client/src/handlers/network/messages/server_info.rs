@@ -45,6 +45,14 @@ impl NexusApp {
         if server_info.file_reindex_interval.is_some() {
             conn.file_reindex_interval = server_info.file_reindex_interval;
         }
+        // persistent_channels is only sent to admins
+        if server_info.persistent_channels.is_some() {
+            conn.persistent_channels = server_info.persistent_channels;
+        }
+        // auto_join_channels is only sent to admins
+        if server_info.auto_join_channels.is_some() {
+            conn.auto_join_channels = server_info.auto_join_channels;
+        }
         // Update server image and cached version if provided
         if let Some(image) = server_info.image {
             // Decode first using reference, then move (avoids clone)
@@ -56,7 +64,7 @@ impl NexusApp {
             conn.server_image = image;
         }
 
-        self.add_chat_message(connection_id, ChatMessage::system(system_message))
+        self.add_console_message(connection_id, ChatMessage::system(system_message))
     }
 
     /// Handle server info update response
@@ -84,7 +92,7 @@ impl NexusApp {
                 ));
                 Task::none()
             } else {
-                self.add_chat_message(
+                self.add_console_message(
                     connection_id,
                     ChatMessage::error(t_args(
                         "err-failed-update-server-info",

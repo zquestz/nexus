@@ -126,12 +126,35 @@ where
         }
     }
 
+    // Broadcast ChatJoined to user's OTHER sessions (multi-session sync)
+    // This lets other sessions of the same user know they've joined a channel
+    let other_session_ids = ctx
+        .user_manager
+        .get_session_ids_for_user(&user.username)
+        .await;
+    if other_session_ids.len() > 1 {
+        let chat_joined = ServerMessage::ChatJoined {
+            channel: channel.clone(),
+            topic: result.topic.clone(),
+            topic_set_by: result.topic_set_by.clone(),
+            secret: result.secret,
+            members: member_nicknames.clone(),
+        };
+        for other_session_id in other_session_ids {
+            if other_session_id != session_id {
+                ctx.user_manager
+                    .send_to_session(other_session_id, chat_joined.clone())
+                    .await;
+            }
+        }
+    }
+
     // Send success response with full channel data
     let response = ServerMessage::ChatJoinResponse {
         success: true,
         error: None,
         channel: Some(channel),
-        topic: result.topic.clone(),
+        topic: result.topic,
         topic_set_by: result.topic_set_by,
         secret: Some(result.secret),
         members: Some(member_nicknames),

@@ -115,6 +115,22 @@ Send a broadcast message to all connected users. Broadcasts appear prominently t
 /b Welcome everyone!
 ```
 
+### /channels
+
+List available channels on the server.
+
+**Aliases:** `/ch`
+
+**Permission:** None
+
+**Usage:**
+```
+/channels
+/ch
+```
+
+Secret channels are hidden unless you're a member or an admin. The output shows channel name, member count, and topic.
+
 ### /clear
 
 Clear the chat history for the current tab. This only affects your local view — other users are not affected.
@@ -130,7 +146,7 @@ Clear the chat history for the current tab. This only affects your local view �
 
 ### /focus
 
-Switch focus to the server chat or a user's private message tab.
+Switch focus to a channel or user's private message tab.
 
 **Aliases:** `/f`
 
@@ -138,12 +154,13 @@ Switch focus to the server chat or a user's private message tab.
 
 **Usage:**
 ```
-/focus              # Switch to server chat
+/focus #general     # Switch to #general channel
 /focus alice        # Switch to (or open) Alice's PM tab
+/f #support         # Switch to #support channel
 /f bob              # Switch to Bob's PM tab
 ```
 
-If the user is online but you don't have a PM tab open with them, this command opens one.
+If the target is a user who is online but you don't have a PM tab open with them, this command opens one.
 
 ### /info
 
@@ -158,6 +175,23 @@ Show information about a user. Opens the user info panel with details like usern
 /info alice
 /whois bob
 ```
+
+### /join
+
+Join or create a channel.
+
+**Aliases:** `/j`
+
+**Permission:** `chat_join`
+
+**Usage:**
+```
+/join #general      # Join #general (creates if doesn't exist)
+/join #support      # Join #support
+/j #help            # Short form
+```
+
+Channel names must start with `#`. If the channel doesn't exist, an ephemeral channel is created. Ephemeral channels are deleted when all members leave.
 
 ### /kick
 
@@ -175,6 +209,23 @@ Kick a user from the server, disconnecting them immediately.
 ```
 
 **Note:** You cannot kick administrators unless you are also an administrator.
+
+### /leave
+
+Leave the current channel or a specified channel.
+
+**Aliases:** `/part`
+
+**Permission:** None
+
+**Usage:**
+```
+/leave              # Leave the current channel
+/leave #general     # Leave #general specifically
+/part #support      # Leave #support
+```
+
+**Note:** You cannot leave persistent channels configured by the server admin.
 
 ### /list
 
@@ -285,6 +336,23 @@ List all trusted IPs on the server.
 /trustlist
 ```
 
+### /secret
+
+View or set secret mode on the current channel. Secret channels are hidden from the `/channels` list for non-members.
+
+**Aliases:** None
+
+**Permission:** None (view), `chat_secret` (change)
+
+**Usage:**
+```
+/secret             # Show current secret mode state
+/secret on          # Enable secret mode
+/secret off         # Disable secret mode
+```
+
+Only works in a channel tab. Admins can always see secret channels in the channel list.
+
 ### /sinfo
 
 Show information about the connected server.
@@ -322,18 +390,20 @@ Set or clear your status message without changing your away state.
 
 ### /topic
 
-View or manage the chat topic.
+View or set the current channel's topic.
 
-**Aliases:** `/t`, `/chattopic`
+**Aliases:** `/t`
 
-**Permission:** `chat_topic` (view), `chat_topic_edit` (set/clear)
+**Permission:** `chat_topic` (view), `chat_topic_edit` (set)
 
 **Usage:**
 ```
 /topic                           # View current topic
-/topic set Welcome to my BBS!    # Set a new topic
-/topic clear                     # Clear the topic
+/topic Welcome to my BBS!        # Set a new topic
+/topic                           # With no text, clears the topic
 ```
+
+Only works in a channel tab. The topic is displayed when joining a channel.
 
 ### /unban
 
@@ -397,18 +467,22 @@ Manage chat tabs (server chat and PM conversations).
 | `/ban` | — | `ban_create` | Ban a user by IP, CIDR, or nickname |
 | `/bans` | `/banlist` | `ban_list` | List active bans |
 | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
+| `/channels` | `/ch` | None | List available channels |
 | `/clear` | — | None | Clear chat history for current tab |
-| `/focus` | `/f` | None | Focus server chat or a user's PM tab |
+| `/focus` | `/f` | None | Focus a channel or user's PM tab |
 | `/help` | `/h`, `/?` | None | Show available commands |
 | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
+| `/join` | `/j` | `chat_join` | Join or create a channel |
 | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
+| `/leave` | `/part` | None | Leave a channel |
 | `/list` | `/l`, `/userlist` | `user_list` | Show connected/all users |
 | `/me` | — | None | Send an action message |
 | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 | `/reindex` | — | `file_reindex` | Trigger file index rebuild |
+| `/secret` | — | `chat_secret` | Toggle channel secret mode |
 | `/sinfo` | `/si`, `/serverinfo` | None | Show server information |
 | `/status` | `/s` | None | Set or clear status message |
-| `/topic` | `/t`, `/chattopic` | `chat_topic` / `chat_topic_edit` | View or manage the chat topic |
+| `/topic` | `/t` | `chat_topic` / `chat_topic_edit` | View or set channel topic |
 | `/trust` | — | `trust_create` | Trust a user by IP, CIDR, or nickname |
 | `/trusted` | `/trustlist` | `trust_list` | List trusted IPs |
 | `/unban` | — | `ban_delete` | Remove an IP ban |

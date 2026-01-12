@@ -50,6 +50,7 @@ title-news = Notizie
 title-transfers = Trasferimenti
 title-news-create = Crea Pubblicazione
 title-news-edit = Modifica Pubblicazione
+title-channel-members = Membri
 
 # =============================================================================
 # Placeholders
@@ -77,6 +78,8 @@ placeholder-proxy-port = 9050
 placeholder-proxy-username = Nome utente (opzionale)
 placeholder-proxy-password = Password (opzionale)
 placeholder-download-location = Nessuna posizione di download impostata
+placeholder-persistent-channels = #canale1 #canale2 (separati da spazi)
+placeholder-auto-join-channels = #canale1 #canale2 (separati da spazi)
 
 # =============================================================================
 # Labels
@@ -93,6 +96,7 @@ label-received-fingerprint = Impronta ricevuta:
 label-theme = Tema
 label-chat-font-size = Dimensione font:
 label-show-connection-notifications = Mostra notifiche di connessione
+label-show-channel-notifications = Mostra notifiche entrata/uscita canale
 label-show-timestamps = Mostra timestamp
 label-use-24-hour-time = Usa formato 24 ore
 label-show-seconds = Mostra secondi
@@ -119,15 +123,19 @@ label-news-image = Immagine:
 label-identity = Identità
 label-nickname = Nickname:
 label-network = Rete
+label-none = Nessuno
 label-use-socks5-proxy = Usa Proxy SOCKS5
 label-proxy-address = Indirizzo:
 label-proxy-port = Porta:
 label-proxy-username = Nome utente:
 label-proxy-password = Password:
 label-download-location = Posizione Download:
-label-queue-transfers = Accoda i Trasferimenti
+label-queue-transfers = Accoda Trasferimenti
 label-download-limit = Limite Download:
 label-upload-limit = Limite Upload:
+label-persistent-channels = Canali Persistenti:
+label-auto-join-channels = Canali Auto-Unione:
+label-channels = Canali
 
 # =============================================================================
 # Permission Display Names
@@ -137,6 +145,9 @@ permission-user_list = Lista Utenti
 permission-user_info = Info Utente
 permission-chat_send = Invia Chat
 permission-chat_receive = Ricevi Chat
+permission-chat_join = Entra in Chat
+permission-chat_list = Lista Chat
+permission-chat_secret = Chat Segreto
 permission-chat_topic = Argomento Chat
 permission-chat_topic_edit = Modifica Argomento Chat
 permission-user_broadcast = Broadcast Utente
@@ -230,6 +241,7 @@ empty-select-server = Seleziona un server dalla lista
 empty-no-connections = Nessuna connessione
 empty-no-bookmarks = Nessun segnalibro
 empty-no-users = Nessun utente online
+empty-no-channel-members = Nessun membro nel canale
 user-management-loading = Caricamento utenti…
 user-management-no-users = Nessun utente trovato
 news-loading = Caricamento notizie…
@@ -306,7 +318,7 @@ tab-files = File
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #server
+console-tab = Console
 
 # =============================================================================
 # System Message Usernames
@@ -328,6 +340,13 @@ chat-prefix-broadcast = [BROADCAST]
 
 msg-user-kicked-success = Utente espulso con successo
 msg-user-kicked-success-name = Utente '{ $nickname }' espulso con successo
+msg-chat-join = { $nickname } è entrato nel canale
+msg-chat-leave = { $nickname } ha lasciato il canale
+msg-channel-is-secret = Questo canale è segreto
+msg-channel-list-header = Canali disponibili:
+msg-no-channels = Nessun canale disponibile
+msg-channel-member-count = { $count } membri
+channel-secret = segreto
 msg-broadcast-sent = Broadcast inviato con successo
 msg-user-created = Utente creato con successo
 msg-user-created-name = Utente '{ $username }' creato con successo
@@ -358,6 +377,8 @@ msg-user-is-away-status = { $nickname } è assente: { $status }
 
 msg-topic-cleared = Argomento cancellato da { $username }
 msg-topic-set = Argomento impostato da { $username }: { $topic }
+msg-secret-set = Modalità segreta abilitata da { $username }
+msg-secret-cleared = Modalità segreta disabilitata da { $username }
 msg-server-info-updated = Configurazione del server aggiornata
 msg-topic-display = Argomento: { $topic }
 confirm-delete-user = Sei sicuro di voler eliminare l'utente '{ $username }'?
@@ -374,6 +395,7 @@ msg-connection-cancelled = Connessione annullata per certificato non corrisponde
 err-connection-broken = Errore di connessione
 err-failed-update-server-info = Impossibile aggiornare le informazioni del server: { $error }
 err-user-kick-failed = Impossibile espellere l'utente
+err-unknown = Errore sconosciuto
 err-no-shutdown-handle = Errore di connessione: Nessun handle di chiusura
 err-userlist-failed = Impossibile aggiornare la lista utenti
 err-port-invalid = La porta deve essere un numero valido (1-65535)
@@ -390,6 +412,7 @@ err-could-not-determine-config-dir = Impossibile determinare la directory di con
 err-message-too-long = Il messaggio è troppo lungo ({ $length } caratteri, max { $max })
 err-send-failed = Impossibile inviare il messaggio
 err-no-chat-permission = Non hai il permesso di inviare messaggi
+err-console-no-send = Usa /join per entrare in un canale o /msg per inviare un messaggio a un utente
 err-broadcast-too-long = Il broadcast è troppo lungo ({ $length } caratteri, max { $max })
 err-broadcast-send-failed = Impossibile inviare il broadcast
 err-name-required = Il nome del segnalibro è obbligatorio
@@ -497,6 +520,7 @@ user-info-end = Fine informazioni utente
 user-info-unknown = Sconosciuto
 user-info-loading = Caricamento informazioni utente…
 user-info-status = Stato:
+user-info-channels = Canali:
 
 # =============================================================================
 # Time Duration
@@ -528,6 +552,7 @@ cmd-help-header = Comandi disponibili:
 cmd-help-desc = Mostra i comandi disponibili
 cmd-me-desc = Invia un messaggio di azione (es. *** tu fai qualcosa)
 cmd-me-usage = Uso: /{ $command } <azione>
+err-me-no-target = Usa /join per entrare in un canale o /msg per inviare un'azione a un utente
 cmd-help-escape-hint = Suggerimento: Usa // per inviare un messaggio che inizia con /
 cmd-message-desc = Invia un messaggio a un utente
 cmd-message-usage = Uso: /{ $command } <utente> <messaggio>
@@ -590,10 +615,28 @@ cmd-unban-desc = Rimuovi un ban IP
 cmd-unban-usage = Uso: /{ $command } <obiettivo>
 cmd-bans-desc = Elenca i ban attivi
 cmd-bans-usage = Uso: /{ $command }
-cmd-reindex-desc = Avvia la ricostruzione dell'indice dei file
+cmd-reindex-desc = Avvia ricostruzione indice file
 cmd-reindex-usage = Uso: /{ $command }
-msg-reindex-triggered = Ricostruzione dell'indice dei file avviata
-cmd-trust-desc = Considera attendibile un IP, range CIDR o nickname per ignorare i ban
+msg-reindex-triggered = Ricostruzione indice file avviata
+cmd-join-desc = Entra o crea un canale
+cmd-join-usage = Uso: /{ $command } #canale
+cmd-leave-desc = Lascia un canale
+cmd-leave-usage = Uso: /{ $command } [#canale]
+cmd-channels-desc = Elenca i canali disponibili
+cmd-channels-usage = Uso: /{ $command }
+cmd-secret-desc = Attiva/disattiva la modalità segreta sul canale corrente
+cmd-secret-usage = Uso: /{ $command } [on|off]
+cmd-secret-arg-on = on
+cmd-secret-arg-off = off
+err-secret-no-channel = Questo comando funziona solo in un canale
+err-secret-permission-denied = Non hai il permesso di modificare la modalità segreta del canale
+msg-secret-already-on = Il canale è già segreto
+msg-secret-already-off = Il canale è già pubblico
+msg-secret-enabled = Il canale è ora segreto
+msg-secret-disabled = Il canale è ora pubblico
+msg-secret-status-on = Questo canale è segreto
+msg-secret-status-off = Questo canale è pubblico
+cmd-trust-desc = Considera attendibile un IP, intervallo CIDR o nickname per bypassare i ban
 cmd-trust-usage = Uso: /{ $command } <obiettivo> [durata] [motivo]
 cmd-untrust-desc = Rimuovi una voce IP attendibile
 cmd-untrust-usage = Uso: /{ $command } <obiettivo>
@@ -621,8 +664,20 @@ err-proxy-connection-failed = Connessione al proxy fallita: { $error }
 err-proxy-connection-timeout = Timeout connessione proxy dopo { $seconds } secondi
 err-proxy-address-required = L'indirizzo del proxy è richiesto quando il proxy è abilitato
 err-proxy-port-invalid = La porta del proxy deve essere compresa tra 1 e 65535
-err-news-image-too-large = L'immagine è troppo grande (max 512KB)
+err-news-image-too-large = L'immagine è troppo grande (massimo 512KB)
 err-news-image-unsupported-type = Tipo di immagine non supportato (solo PNG, WebP, JPEG o SVG)
+err-topic-no-channel = Questo comando funziona solo in un canale
+err-join-channel = Impossibile entrare nel canale: { $error }
+err-leave-channel = Impossibile lasciare il canale: { $error }
+err-list-channels = Impossibile elencare i canali: { $error }
+err-channel-empty = Il nome del canale non può essere vuoto
+err-channel-too-short = Il nome del canale deve avere almeno un carattere dopo #
+err-channel-too-long = Il nome del canale è troppo lungo (max { $max } caratteri)
+err-channel-missing-prefix = Il nome del canale deve iniziare con #
+err-channel-invalid-characters = Il nome del canale contiene caratteri non validi
+err-leave-no-channel = Devi essere in un canale per usare /leave senza argomenti
+err-not-in-channel = Non sei nel canale { $channel }
+err-leave-already-pending = In attesa di risposta dal server
 
 label-port = Porta:
 
@@ -698,6 +753,8 @@ event-user-connected = Utente connesso
 event-user-disconnected = Utente disconnesso
 event-user-kicked = Utente espulso
 event-user-message = Messaggio utente
+event-chat-join = Ingresso chat
+event-chat-leave = Uscita chat
 
 # Notification content levels
 notification-content-simple = Semplice
@@ -754,6 +811,10 @@ notification-user-kicked = Sei stato espulso
 notification-user-kicked-from = Espulso da {$server}
 notification-user-message = Nuovo messaggio utente
 notification-user-message-from = Messaggio da {$username}
+notification-chat-join = Utente entrato nel canale
+notification-chat-join-details = {$username} è entrato in {$channel}
+notification-chat-leave = Utente uscito dal canale
+notification-chat-leave-details = {$username} ha lasciato {$channel}
 
 # Fallback values
 unknown-server = Server sconosciuto

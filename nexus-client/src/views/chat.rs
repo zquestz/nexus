@@ -210,42 +210,75 @@ fn create_tab_button(
     }
 }
 
-/// Create an active tab button (with close button for PM tabs)
+/// Create an active tab button (with close button for channel and PM tabs)
 fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Message> {
-    // Active PM tabs include a close button
-    if let ChatTab::UserMessage(ref nickname) = tab {
-        let nickname_clone = nickname.clone();
-        let close_button = tooltip(
-            button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
-                .on_press(Message::CloseUserMessageTab(nickname_clone))
-                .padding(CLOSE_BUTTON_PADDING)
-                .style(close_button_on_primary_style()),
-            container(
-                shaped_text(format!("{} {}", t("tooltip-close"), nickname)).size(TOOLTIP_TEXT_SIZE),
+    match &tab {
+        ChatTab::Channel(channel) => {
+            // Channel tabs include a close button
+            let channel_clone = channel.clone();
+            let close_button = tooltip(
+                button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
+                    .on_press(Message::CloseChannelTab(channel_clone))
+                    .padding(CLOSE_BUTTON_PADDING)
+                    .style(close_button_on_primary_style()),
+                container(
+                    shaped_text(format!("{} {}", t("tooltip-close"), channel))
+                        .size(TOOLTIP_TEXT_SIZE),
+                )
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+                tooltip::Position::Bottom,
             )
-            .padding(TOOLTIP_BACKGROUND_PADDING)
-            .style(tooltip_container_style),
-            tooltip::Position::Bottom,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING);
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
 
-        let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
-            .spacing(SMALL_SPACING)
-            .align_y(iced::Alignment::Center);
+            let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
+                .spacing(SMALL_SPACING)
+                .align_y(iced::Alignment::Center);
 
-        button(tab_content)
-            .on_press(Message::SwitchChatTab(tab))
-            .padding(TAB_CONTENT_PADDING)
-            .style(chat_tab_active_style())
-            .into()
-    } else {
-        // Server tab (no close button)
-        button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
-            .on_press(Message::SwitchChatTab(tab))
-            .padding(INPUT_PADDING)
-            .style(chat_tab_active_style())
-            .into()
+            button(tab_content)
+                .on_press(Message::SwitchChatTab(tab))
+                .padding(TAB_CONTENT_PADDING)
+                .style(chat_tab_active_style())
+                .into()
+        }
+        ChatTab::UserMessage(nickname) => {
+            // PM tabs include a close button
+            let nickname_clone = nickname.clone();
+            let close_button = tooltip(
+                button(crate::icon::close().size(CHAT_MESSAGE_SIZE))
+                    .on_press(Message::CloseUserMessageTab(nickname_clone))
+                    .padding(CLOSE_BUTTON_PADDING)
+                    .style(close_button_on_primary_style()),
+                container(
+                    shaped_text(format!("{} {}", t("tooltip-close"), nickname))
+                        .size(TOOLTIP_TEXT_SIZE),
+                )
+                .padding(TOOLTIP_BACKGROUND_PADDING)
+                .style(tooltip_container_style),
+                tooltip::Position::Bottom,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING);
+
+            let tab_content = row![shaped_text(label).size(CHAT_MESSAGE_SIZE), close_button]
+                .spacing(SMALL_SPACING)
+                .align_y(iced::Alignment::Center);
+
+            button(tab_content)
+                .on_press(Message::SwitchChatTab(tab))
+                .padding(TAB_CONTENT_PADDING)
+                .style(chat_tab_active_style())
+                .into()
+        }
+        ChatTab::Console => {
+            // Console tab (no close button)
+            button(shaped_text(label).size(CHAT_MESSAGE_SIZE))
+                .on_press(Message::SwitchChatTab(tab))
+                .padding(INPUT_PADDING)
+                .style(chat_tab_active_style())
+                .into()
+        }
     }
 }
 
@@ -412,7 +445,14 @@ fn build_message_list<'a>(
     timestamp_settings: TimestampSettings,
 ) -> Column<'a, Message> {
     let messages = match &conn.active_chat_tab {
-        ChatTab::Server => conn.chat_messages.as_slice(),
+        ChatTab::Console => conn.console_messages.as_slice(),
+        ChatTab::Channel(channel) => {
+            let channel_lower = channel.to_lowercase();
+            conn.channels
+                .get(&channel_lower)
+                .map(|ch| ch.messages.as_slice())
+                .unwrap_or(&[])
+        }
         ChatTab::UserMessage(nickname) => conn
             .user_messages
             .get(nickname)
@@ -486,36 +526,46 @@ fn build_input_row<'a>(message_input: &'a str, font_size: f32) -> iced::widget::
 // Tab Bar
 // ============================================================================
 
-/// Build the tab bar with server and PM tabs
+/// Build the tab bar with Console, channel, and PM tabs
 fn build_tab_bar(conn: &ServerConnection) -> (iced::widget::Row<'static, Message>, bool) {
     let mut tab_row = row![].spacing(SMALL_SPACING);
 
-    // Server tab (always present)
-    let is_server_active = conn.active_chat_tab == ChatTab::Server;
-    let server_has_unread = conn.unread_tabs.contains(&ChatTab::Server);
-    let server_tab_button = create_tab_button(
-        ChatTab::Server,
-        t("chat-tab-server"),
-        is_server_active,
-        server_has_unread,
+    // Console tab (always present, cannot be closed)
+    let is_console_active = conn.active_chat_tab == ChatTab::Console;
+    let console_has_unread = conn.unread_tabs.contains(&ChatTab::Console);
+    let console_tab_button = create_tab_button(
+        ChatTab::Console,
+        t("console-tab"),
+        is_console_active,
+        console_has_unread,
     );
-    tab_row = tab_row.push(server_tab_button);
+    tab_row = tab_row.push(console_tab_button);
 
-    // PM tabs (sorted alphabetically by nickname/display name)
-    let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
-    pm_nicknames.sort();
+    // Channel tabs (in join order)
+    for channel in &conn.channel_tabs {
+        let channel_tab = ChatTab::Channel(channel.clone());
+        let is_active = conn.active_chat_tab == channel_tab;
+        let has_unread = conn.unread_tabs.contains(&channel_tab);
+        let channel_tab_button =
+            create_tab_button(channel_tab, channel.clone(), is_active, has_unread);
+        tab_row = tab_row.push(channel_tab_button);
+    }
 
-    let has_pm_tabs = !pm_nicknames.is_empty();
+    // User message tabs (in creation order)
+    let has_pm_tabs = !conn.user_message_tabs.is_empty();
 
-    for nickname in pm_nicknames {
+    for nickname in &conn.user_message_tabs {
         let pm_tab = ChatTab::UserMessage(nickname.clone());
         let is_active = conn.active_chat_tab == pm_tab;
         let has_unread = conn.unread_tabs.contains(&pm_tab);
-        let pm_tab_button = create_tab_button(pm_tab, nickname, is_active, has_unread);
+        let pm_tab_button = create_tab_button(pm_tab, nickname.clone(), is_active, has_unread);
         tab_row = tab_row.push(pm_tab_button);
     }
 
-    (tab_row, has_pm_tabs)
+    // Has closeable tabs if there are channels or PMs
+    let has_closeable_tabs = !conn.channel_tabs.is_empty() || has_pm_tabs;
+
+    (tab_row, has_closeable_tabs)
 }
 
 // ============================================================================

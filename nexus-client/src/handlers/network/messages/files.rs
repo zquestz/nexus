@@ -533,10 +533,10 @@ impl NexusApp {
     ) -> Task<Message> {
         if success {
             let msg = t("msg-reindex-triggered");
-            self.add_chat_message(connection_id, ChatMessage::info(msg))
+            self.add_active_tab_message(connection_id, ChatMessage::info(msg))
         } else {
             let error_msg = error.unwrap_or_else(|| t("err-unknown"));
-            self.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
         }
     }
 

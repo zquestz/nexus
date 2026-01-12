@@ -1,6 +1,7 @@
 //! /window command implementation - manage chat tabs
 
 use iced::Task;
+use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -45,13 +46,13 @@ pub fn execute(
     if arg == next_keyword {
         if args.len() > 1 {
             let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
         Task::done(Message::NextChatTab)
     } else if arg == prev_keyword {
         if args.len() > 1 {
             let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
         Task::done(Message::PrevChatTab)
     } else if arg == close_keyword {
@@ -74,15 +75,15 @@ pub fn execute(
                 Task::done(Message::CloseUserMessageTab(nickname))
             } else {
                 let error_msg = t_args("cmd-window-not-found", &[("name", target.as_str())]);
-                app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+                app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
             }
         } else {
             let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-            app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+            app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
         }
     } else {
         let error_msg = t_args("cmd-window-usage", &[("command", invoked_name)]);
-        app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+        app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
     }
 }
 
@@ -92,13 +93,17 @@ fn list_tabs(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
         return Task::none();
     };
 
-    let mut tabs = vec![t("chat-tab-server")];
+    // Build tab list: Console + Channels (join order) + User messages (creation order)
+    let mut tabs = vec![t("console-tab")];
 
-    let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
-    pm_nicknames.sort();
+    // Add channel tabs in join order
+    for channel in &conn.channel_tabs {
+        tabs.push(channel.clone());
+    }
 
-    for nickname in pm_nicknames {
-        tabs.push(nickname);
+    // Add user message tabs in creation order
+    for nickname in &conn.user_message_tabs {
+        tabs.push(nickname.clone());
     }
 
     let tab_list = tabs.join(", ");
@@ -107,20 +112,30 @@ fn list_tabs(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
         &[("tabs", &tab_list), ("count", &tabs.len().to_string())],
     );
 
-    app.add_chat_message(connection_id, ChatMessage::info(message))
+    app.add_active_tab_message(connection_id, ChatMessage::info(message))
 }
 
-/// Close the current PM tab
+/// Close the current tab (channel or PM)
 fn close_current_tab(app: &mut NexusApp, connection_id: usize) -> Task<Message> {
     let Some(conn) = app.connections.get(&connection_id) else {
         return Task::none();
     };
 
     match &conn.active_chat_tab {
-        ChatTab::Server => app.add_chat_message(
+        ChatTab::Console => app.add_active_tab_message(
             connection_id,
-            ChatMessage::error(t("cmd-window-close-server")),
+            ChatMessage::error(t("cmd-window-close-console")),
         ),
+        ChatTab::Channel(channel) => {
+            // Send ChatLeave to server - tab will close on successful response
+            let msg = ClientMessage::ChatLeave {
+                channel: channel.clone(),
+            };
+            if let Err(e) = conn.send(msg) {
+                return app.add_active_tab_message(connection_id, ChatMessage::error(e));
+            }
+            Task::none()
+        }
         ChatTab::UserMessage(nickname) => {
             Task::done(Message::CloseUserMessageTab(nickname.clone()))
         }

@@ -36,6 +36,8 @@ pub struct SettingsViewData<'a> {
     pub current_theme: Theme,
     /// Show user connect/disconnect notifications in chat
     pub show_connection_notifications: bool,
+    /// Show channel join/leave notifications in chat
+    pub show_channel_notifications: bool,
     /// Font size for chat messages
     pub chat_font_size: u8,
     /// Timestamp display settings
@@ -104,6 +106,7 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
     let chat_content = chat_tab_content(
         data.chat_font_size,
         data.show_connection_notifications,
+        data.show_channel_notifications,
         data.timestamp_settings,
     );
     let network_content = network_tab_content(data.proxy);
@@ -285,6 +288,7 @@ fn general_tab_content<'a>(
 fn chat_tab_content(
     chat_font_size: u8,
     show_connection_notifications: bool,
+    show_channel_notifications: bool,
     timestamp_settings: TimestampSettings,
 ) -> Element<'static, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
@@ -311,6 +315,13 @@ fn chat_tab_content(
         .on_toggle(Message::ConnectionNotificationsToggled)
         .text_size(TEXT_SIZE);
     items.push(notifications_checkbox.into());
+
+    // Channel join/leave notifications checkbox
+    let channel_notifications_checkbox = checkbox(show_channel_notifications)
+        .label(t("label-show-channel-notifications"))
+        .on_toggle(Message::ChannelNotificationsToggled)
+        .text_size(TEXT_SIZE);
+    items.push(channel_notifications_checkbox.into());
 
     // Timestamp settings
     let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)

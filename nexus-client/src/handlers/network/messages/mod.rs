@@ -2,6 +2,7 @@
 //!
 //! This module contains handlers for all server messages, organized by category.
 
+use chat_channel::ChatJoinResponseData;
 use files::FileListResponseData;
 
 mod ban_create;
@@ -9,6 +10,7 @@ mod ban_delete;
 mod ban_list;
 mod broadcast;
 mod chat;
+mod chat_channel;
 mod error;
 mod files;
 mod news;
@@ -68,9 +70,10 @@ impl NexusApp {
                 is_shared,
                 message,
                 action,
-                channel: _,
+                channel,
             } => self.handle_chat_message(
                 connection_id,
+                channel,
                 nickname,
                 message,
                 is_admin,
@@ -78,17 +81,90 @@ impl NexusApp {
                 action,
             ),
 
-            // TODO: Multi-channel - Currently ignoring channel field and updating
-            // the single chat_topic. When multi-channel UI is implemented, route
-            // topic updates to the correct channel tab.
-            ServerMessage::ChatTopicUpdated {
+            ServerMessage::ChatUpdated {
+                channel,
                 topic,
-                nickname,
-                channel: _,
-            } => self.handle_chat_topic(connection_id, topic, nickname),
+                topic_set_by,
+                secret,
+                secret_set_by,
+            } => self.handle_chat_updated(
+                connection_id,
+                channel,
+                topic,
+                topic_set_by,
+                secret,
+                secret_set_by,
+            ),
 
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 self.handle_chat_topic_update_response(connection_id, success, error)
+            }
+
+            ServerMessage::ChatJoinResponse {
+                success,
+                error,
+                channel,
+                topic,
+                topic_set_by,
+                secret,
+                members,
+            } => self.handle_chat_join_response(
+                connection_id,
+                ChatJoinResponseData {
+                    success,
+                    error,
+                    channel,
+                    topic,
+                    topic_set_by,
+                    secret,
+                    members,
+                },
+            ),
+
+            ServerMessage::ChatLeaveResponse {
+                success,
+                error,
+                channel,
+            } => self.handle_chat_leave_response(connection_id, success, error, channel),
+
+            ServerMessage::ChatListResponse {
+                success,
+                error,
+                channels,
+            } => self.handle_chat_list_response(connection_id, success, error, channels),
+
+            ServerMessage::ChatUserJoined {
+                channel,
+                nickname,
+                is_admin,
+                is_shared,
+            } => {
+                self.handle_chat_user_joined(connection_id, channel, nickname, is_admin, is_shared)
+            }
+
+            ServerMessage::ChatUserLeft { channel, nickname } => {
+                self.handle_chat_user_left(connection_id, channel, nickname)
+            }
+
+            ServerMessage::ChatJoined {
+                channel,
+                topic,
+                topic_set_by,
+                secret,
+                members,
+            } => self.handle_chat_joined(
+                connection_id,
+                channel,
+                topic,
+                topic_set_by,
+                secret,
+                members,
+            ),
+
+            ServerMessage::ChatLeft { channel } => self.handle_chat_left(connection_id, channel),
+
+            ServerMessage::ChatSecretResponse { success, error } => {
+                self.handle_chat_secret_response(connection_id, message_id, success, error)
             }
 
             ServerMessage::Error { message, command } => {

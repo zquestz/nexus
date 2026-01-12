@@ -35,14 +35,14 @@ pub fn execute(
     // Too many arguments - show usage
     if args.len() > 1 {
         let error_msg = t_args("cmd-help-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Show all commands
     let mut tasks = Vec::new();
 
     // Header
-    tasks.push(app.add_chat_message(connection_id, ChatMessage::info(t("cmd-help-header"))));
+    tasks.push(app.add_active_tab_message(connection_id, ChatMessage::info(t("cmd-help-header"))));
 
     // List available commands (filtered by permission)
     for cmd in command_list_for_permissions(is_admin, &permissions) {
@@ -54,11 +54,13 @@ pub fn execute(
 
         let description = t(cmd.description_key);
         let line = format!("  /{}{} - {}", cmd.name, aliases, description);
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(line)));
+        tasks.push(app.add_active_tab_message(connection_id, ChatMessage::info(line)));
     }
 
     // Footer with escape hint
-    tasks.push(app.add_chat_message(connection_id, ChatMessage::info(t("cmd-help-escape-hint"))));
+    tasks.push(
+        app.add_active_tab_message(connection_id, ChatMessage::info(t("cmd-help-escape-hint"))),
+    );
 
     Task::batch(tasks)
 }
@@ -74,7 +76,7 @@ fn show_command_help(
     // Look up the command
     let Some(cmd) = get_command_info(command_name) else {
         let error_msg = t_args("cmd-unknown", &[("command", command_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     };
 
     // Check if user has permission to use this command
@@ -87,14 +89,14 @@ fn show_command_help(
 
     if !has_permission {
         let error_msg = t_args("cmd-unknown", &[("command", command_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let mut tasks = Vec::new();
 
     // Show description
     let description = t(cmd.description_key);
-    tasks.push(app.add_chat_message(
+    tasks.push(app.add_active_tab_message(
         connection_id,
         ChatMessage::info(format!("/{} - {}", cmd.name, description)),
     ));
@@ -102,12 +104,13 @@ fn show_command_help(
     // Show aliases if any
     if !cmd.aliases.is_empty() {
         let aliases_line = format!("  Aliases: {}", cmd.aliases.join(", "));
-        tasks.push(app.add_chat_message(connection_id, ChatMessage::info(aliases_line)));
+        tasks.push(app.add_active_tab_message(connection_id, ChatMessage::info(aliases_line)));
     }
 
     // Show usage
     let usage = t_args(cmd.usage_key, &[("command", cmd.name)]);
-    tasks.push(app.add_chat_message(connection_id, ChatMessage::info(format!("  {}", usage))));
+    tasks
+        .push(app.add_active_tab_message(connection_id, ChatMessage::info(format!("  {}", usage))));
 
     Task::batch(tasks)
 }

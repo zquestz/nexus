@@ -132,6 +132,10 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub show_connection_notifications: bool,
 
+    /// Show channel join/leave notifications in chat
+    #[serde(default = "default_true")]
+    pub show_channel_notifications: bool,
+
     /// Show timestamps in chat messages
     #[serde(default = "default_true")]
     pub show_timestamps: bool,
@@ -219,6 +223,7 @@ impl Default for Settings {
             download_path: None,
             chat_font_size: default_chat_font_size(),
             show_connection_notifications: default_true(),
+            show_channel_notifications: default_true(),
             show_timestamps: default_true(),
             use_24_hour_time: false,
             show_seconds: default_true(),

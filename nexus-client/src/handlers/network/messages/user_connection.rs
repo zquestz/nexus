@@ -139,7 +139,7 @@ impl NexusApp {
 
         // Only announce in chat if this is their first session (new user) and notifications are enabled
         if is_new_user && self.config.settings.show_connection_notifications {
-            self.add_chat_message(
+            self.add_console_message(
                 connection_id,
                 ChatMessage::system(t_args("msg-user-connected", &[("nickname", &nickname)])),
             )
@@ -209,7 +209,7 @@ impl NexusApp {
 
         // Only announce in chat if this was their last session (fully offline) and notifications are enabled
         if is_last_session && self.config.settings.show_connection_notifications {
-            self.add_chat_message(
+            self.add_console_message(
                 connection_id,
                 ChatMessage::system(t_args("msg-user-disconnected", &[("nickname", &nickname)])),
             )

@@ -1190,6 +1190,20 @@ impl std::fmt::Debug for SettingsFormState {
 // Server Info Edit State
 // =============================================================================
 
+/// Parameters for creating or comparing ServerInfoEditState.
+/// Used to reduce the number of function arguments.
+#[derive(Clone, Default)]
+pub struct ServerInfoParams<'a> {
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub max_connections_per_ip: Option<u32>,
+    pub max_transfers_per_ip: Option<u32>,
+    pub image: &'a str,
+    pub file_reindex_interval: Option<u32>,
+    pub persistent_channels: Option<&'a str>,
+    pub auto_join_channels: Option<&'a str>,
+}
+
 /// Server info edit panel state
 ///
 /// Stores the form values for editing server configuration.
@@ -1208,6 +1222,10 @@ pub struct ServerInfoEditState {
     pub image: String,
     /// File reindex interval in minutes (editable, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated)
+    pub persistent_channels: String,
+    /// Auto-join channels (space-separated)
+    pub auto_join_channels: String,
     /// Cached image for preview (decoded from image field)
     pub cached_image: Option<CachedImage>,
     /// Error message to display
@@ -1224,6 +1242,8 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("max_transfers_per_ip", &self.max_transfers_per_ip)
             .field("image", &format!("<{} bytes>", self.image.len()))
             .field("file_reindex_interval", &self.file_reindex_interval)
+            .field("persistent_channels", &self.persistent_channels)
+            .field("auto_join_channels", &self.auto_join_channels)
             .field(
                 "cached_image",
                 &self.cached_image.as_ref().map(|_| "<cached>"),
@@ -1235,55 +1255,48 @@ impl std::fmt::Debug for ServerInfoEditState {
 
 impl ServerInfoEditState {
     /// Create a new server info edit state with current values
-    pub fn new(
-        name: Option<&str>,
-        description: Option<&str>,
-        max_connections_per_ip: Option<u32>,
-        max_transfers_per_ip: Option<u32>,
-        image: &str,
-        file_reindex_interval: Option<u32>,
-    ) -> Self {
+    pub fn new(params: ServerInfoParams<'_>) -> Self {
         // Decode image for preview
-        let cached_image = if image.is_empty() {
+        let cached_image = if params.image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(params.image, SERVER_IMAGE_MAX_CACHE_WIDTH)
         };
 
         Self {
-            name: name.unwrap_or("").to_string(),
-            description: description.unwrap_or("").to_string(),
-            max_connections_per_ip,
-            max_transfers_per_ip,
-            image: image.to_string(),
-            file_reindex_interval,
+            name: params.name.unwrap_or("").to_string(),
+            description: params.description.unwrap_or("").to_string(),
+            max_connections_per_ip: params.max_connections_per_ip,
+            max_transfers_per_ip: params.max_transfers_per_ip,
+            image: params.image.to_string(),
+            file_reindex_interval: params.file_reindex_interval,
+            persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
+            auto_join_channels: params.auto_join_channels.unwrap_or("").to_string(),
             cached_image,
             error: None,
         }
     }
 
     /// Check if the form has any changes compared to original values
-    pub fn has_changes(
-        &self,
-        original_name: Option<&str>,
-        original_description: Option<&str>,
-        original_max_connections: Option<u32>,
-        original_max_transfers: Option<u32>,
-        original_image: &str,
-        original_file_reindex_interval: Option<u32>,
-    ) -> bool {
-        let name_changed = self.name != original_name.unwrap_or("");
-        let desc_changed = self.description != original_description.unwrap_or("");
-        let max_conn_changed = self.max_connections_per_ip != original_max_connections;
-        let max_xfer_changed = self.max_transfers_per_ip != original_max_transfers;
-        let image_changed = self.image != original_image;
-        let reindex_changed = self.file_reindex_interval != original_file_reindex_interval;
+    pub fn has_changes(&self, original: &ServerInfoParams<'_>) -> bool {
+        let name_changed = self.name != original.name.unwrap_or("");
+        let desc_changed = self.description != original.description.unwrap_or("");
+        let max_conn_changed = self.max_connections_per_ip != original.max_connections_per_ip;
+        let max_xfer_changed = self.max_transfers_per_ip != original.max_transfers_per_ip;
+        let image_changed = self.image != original.image;
+        let reindex_changed = self.file_reindex_interval != original.file_reindex_interval;
+        let persistent_changed =
+            self.persistent_channels != original.persistent_channels.unwrap_or("");
+        let auto_join_changed =
+            self.auto_join_channels != original.auto_join_channels.unwrap_or("");
         name_changed
             || desc_changed
             || max_conn_changed
             || max_xfer_changed
             || image_changed
             || reindex_changed
+            || persistent_changed
+            || auto_join_changed
     }
 }
 

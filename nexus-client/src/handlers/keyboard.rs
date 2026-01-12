@@ -333,12 +333,13 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Build ordered list of tabs: Server first, then PMs alphabetically
-        let mut tabs = vec![ChatTab::Server];
-        let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
-        pm_nicknames.sort();
-        for nickname in pm_nicknames {
-            tabs.push(ChatTab::UserMessage(nickname));
+        // Build ordered list of tabs: Console + Channels (join order) + User messages (creation order)
+        let mut tabs = vec![ChatTab::Console];
+        for channel in &conn.channel_tabs {
+            tabs.push(ChatTab::Channel(channel.clone()));
+        }
+        for nickname in &conn.user_message_tabs {
+            tabs.push(ChatTab::UserMessage(nickname.clone()));
         }
 
         // Find current tab index and move to next (with wrap)
@@ -383,12 +384,13 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Build ordered list of tabs: Server first, then PMs alphabetically
-        let mut tabs = vec![ChatTab::Server];
-        let mut pm_nicknames: Vec<String> = conn.user_messages.keys().cloned().collect();
-        pm_nicknames.sort();
-        for nickname in pm_nicknames {
-            tabs.push(ChatTab::UserMessage(nickname));
+        // Build ordered list of tabs: Console + Channels (join order) + User messages (creation order)
+        let mut tabs = vec![ChatTab::Console];
+        for channel in &conn.channel_tabs {
+            tabs.push(ChatTab::Channel(channel.clone()));
+        }
+        for nickname in &conn.user_message_tabs {
+            tabs.push(ChatTab::UserMessage(nickname.clone()));
         }
 
         // Find current tab index and move to previous (with wrap)

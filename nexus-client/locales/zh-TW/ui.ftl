@@ -50,6 +50,7 @@ title-news = 新聞
 title-transfers = 傳輸
 title-news-create = 建立貼文
 title-news-edit = 編輯貼文
+title-channel-members = 成員
 
 # =============================================================================
 # Placeholders
@@ -77,6 +78,8 @@ placeholder-proxy-port = 9050
 placeholder-proxy-username = 使用者名稱（選填）
 placeholder-proxy-password = 密碼（選填）
 placeholder-download-location = 未設定下載位置
+placeholder-persistent-channels = #頻道1 #頻道2（空格分隔）
+placeholder-auto-join-channels = #頻道1 #頻道2（空格分隔）
 
 # =============================================================================
 # Labels
@@ -93,6 +96,7 @@ label-received-fingerprint = 收到的指紋：
 label-theme = 主題
 label-chat-font-size = 字型大小：
 label-show-connection-notifications = 顯示連線通知
+label-show-channel-notifications = 顯示頻道加入/離開通知
 label-show-timestamps = 顯示時間戳記
 label-use-24-hour-time = 使用24小時制
 label-show-seconds = 顯示秒數
@@ -119,15 +123,19 @@ label-news-image = 圖片：
 label-identity = 身分
 label-nickname = 暱稱：
 label-network = 網路
+label-none = 無
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
 label-proxy-port = 連接埠:
 label-proxy-username = 使用者名稱:
 label-proxy-password = 密碼:
 label-download-location = 下載位置:
-label-queue-transfers = 排隊傳輸
+label-queue-transfers = 佇列傳輸
 label-download-limit = 下載限制:
 label-upload-limit = 上傳限制:
+label-persistent-channels = 常駐頻道:
+label-auto-join-channels = 自動加入頻道:
+label-channels = 頻道
 
 # =============================================================================
 # Permission Display Names
@@ -137,6 +145,9 @@ permission-user_list = 使用者清單
 permission-user_info = 使用者資訊
 permission-chat_send = 傳送聊天
 permission-chat_receive = 接收聊天
+permission-chat_join = 加入頻道
+permission-chat_list = 頻道列表
+permission-chat_secret = 頻道私密設定
 permission-chat_topic = 聊天主題
 permission-chat_topic_edit = 編輯聊天主題
 permission-user_broadcast = 使用者廣播
@@ -229,7 +240,8 @@ context-menu-open = 開啟
 empty-select-server = 從清單中選擇伺服器
 empty-no-connections = 無連線
 empty-no-bookmarks = 無書籤
-empty-no-users = 無線上使用者
+empty-no-users = 沒有線上使用者
+empty-no-channel-members = 頻道中沒有成員
 user-management-loading = 正在載入使用者…
 user-management-no-users = 找不到使用者
 news-loading = 正在載入新聞…
@@ -306,7 +318,7 @@ tab-files = 檔案
 # Chat Tab Labels
 # =============================================================================
 
-chat-tab-server = #伺服器
+console-tab = 控制台
 
 # =============================================================================
 # System Message Usernames
@@ -326,9 +338,16 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
-msg-user-kicked-success = 使用者已成功踢除
-msg-user-kicked-success-name = 使用者 '{ $nickname }' 已成功踢除
-msg-broadcast-sent = 廣播已成功傳送
+msg-user-kicked-success = 成功踢出使用者
+msg-user-kicked-success-name = 成功踢出使用者 '{ $nickname }'
+msg-chat-join = { $nickname } 加入了頻道
+msg-chat-leave = { $nickname } 離開了頻道
+msg-channel-is-secret = 此頻道為私密頻道
+msg-channel-list-header = 可用頻道:
+msg-no-channels = 沒有可用頻道
+msg-channel-member-count = { $count } 個成員
+channel-secret = 私密
+msg-broadcast-sent = 廣播發送成功
 msg-user-created = 使用者已成功建立
 msg-user-created-name = 使用者 '{ $username }' 已成功建立
 msg-user-deleted = 使用者已成功刪除
@@ -356,6 +375,8 @@ msg-user-is-away-status = { $nickname } 已離開: { $status }
 
 msg-topic-cleared = { $username } 清除了主題
 msg-topic-set = { $username } 設定了主題：{ $topic }
+msg-secret-set = { $username } 啟用了秘密模式
+msg-secret-cleared = { $username } 停用了秘密模式
 msg-server-info-updated = 伺服器設定已更新
 msg-topic-display = 主題：{ $topic }
 confirm-delete-user = 確定要刪除使用者 '{ $username }' 嗎？
@@ -372,6 +393,7 @@ msg-connection-cancelled = 由於憑證不符，連線已取消
 err-connection-broken = 連線錯誤
 err-failed-update-server-info = 更新伺服器資訊失敗：{ $error }
 err-user-kick-failed = 踢除使用者失敗
+err-unknown = 未知錯誤
 err-no-shutdown-handle = 連線錯誤：無關閉控制代碼
 err-userlist-failed = 重新整理使用者清單失敗
 err-port-invalid = 連接埠必須是有效數字（1-65535）
@@ -385,10 +407,11 @@ err-login-failed = 登入失敗
 err-unexpected-login-response = 意外的登入回應
 err-connection-closed = 連線已關閉
 err-could-not-determine-config-dir = 無法確定設定目錄
-err-message-too-long = 訊息過長（{ $length }個字元，最多{ $max }個字元）
+err-message-too-long = 訊息太長（{ $length } 個字元，最多 { $max }）
 err-send-failed = 傳送訊息失敗
 err-no-chat-permission = 您沒有傳送訊息的權限
-err-broadcast-too-long = 廣播過長（{ $length }個字元，最多{ $max }個字元）
+err-console-no-send = 使用 /join 加入頻道或 /msg 向使用者傳送訊息
+err-broadcast-too-long = 廣播太長（{ $length } 個字元，最多 { $max }）
 err-broadcast-send-failed = 傳送廣播失敗
 err-name-required = 書籤名稱為必填
 err-address-required = 伺服器位址為必填
@@ -495,6 +518,7 @@ user-info-end = 使用者資訊結束
 user-info-unknown = 未知
 user-info-loading = 正在載入使用者資訊…
 user-info-status = 狀態:
+user-info-channels = 頻道:
 
 # =============================================================================
 # Time Duration
@@ -512,9 +536,10 @@ time-seconds = { $count } 秒
 cmd-unknown = 未知指令：/{ $command }
 cmd-help-header = 可用指令：
 cmd-help-desc = 顯示可用指令
-cmd-me-desc = 發送動作訊息（例如 /me 揮手）
+cmd-me-desc = 傳送動作訊息（例如 /me 揮手）
 cmd-me-usage = 用法：/{ $command } <動作>
-cmd-help-escape-hint = 提示：使用 // 發送以 / 開頭的訊息
+err-me-no-target = 使用 /join 加入頻道或 /msg 向使用者傳送動作
+cmd-help-escape-hint = 提示：使用 // 傳送以 / 開頭的訊息
 cmd-message-desc = 發送訊息給用戶
 cmd-message-usage = 用法：/{ $command } <用戶名> <訊息>
 cmd-userinfo-desc = 顯示用戶資訊
@@ -569,8 +594,26 @@ cmd-bans-desc = 列出有效封鎖
 cmd-bans-usage = 用法: /{ $command }
 cmd-reindex-desc = 觸發檔案索引重建
 cmd-reindex-usage = 用法: /{ $command }
-msg-reindex-triggered = 檔案索引重建已觸發
-cmd-trust-desc = 信任IP、CIDR範圍或暱稱以繞過封鎖
+msg-reindex-triggered = 已觸發檔案索引重建
+cmd-join-desc = 加入或建立頻道
+cmd-join-usage = 用法: /{ $command } #頻道
+cmd-leave-desc = 離開頻道
+cmd-leave-usage = 用法: /{ $command } [#頻道]
+cmd-channels-desc = 列出可用頻道
+cmd-channels-usage = 用法: /{ $command }
+cmd-secret-desc = 切換目前頻道的秘密模式
+cmd-secret-usage = 用法: /{ $command } [開|關]
+cmd-secret-arg-on = 開
+cmd-secret-arg-off = 關
+err-secret-no-channel = 此指令僅在頻道中有效
+err-secret-permission-denied = 您沒有變更頻道秘密模式的權限
+msg-secret-already-on = 頻道已是秘密狀態
+msg-secret-already-off = 頻道已是公開狀態
+msg-secret-enabled = 頻道現在是秘密的
+msg-secret-disabled = 頻道現在是公開的
+msg-secret-status-on = 此頻道是私密的
+msg-secret-status-off = 此頻道是公開的
+cmd-trust-desc = 信任 IP、CIDR 範圍或暱稱以繞過封鎖
 cmd-trust-usage = 用法: /{ $command } <目標> [時長] [原因]
 cmd-untrust-desc = 移除受信任的IP項目
 cmd-untrust-usage = 用法: /{ $command } <目標>
@@ -597,9 +640,21 @@ err-news-image-decode-failed = 圖片解碼失敗。檔案可能已損壞。
 err-proxy-connection-failed = 連線代理伺服器失敗：{ $error }
 err-proxy-connection-timeout = 代理連線在 { $seconds } 秒後逾時
 err-proxy-address-required = 啟用代理時需要代理地址
-err-proxy-port-invalid = 代理端口必須在 1 到 65535 之間
+err-proxy-port-invalid = 代理連接埠必須在 1 到 65535 之間
 err-news-image-too-large = 圖片太大（最大512KB）
-err-news-image-unsupported-type = 不支援的圖片類型（僅支援 PNG、WebP、JPEG 或 SVG）
+err-news-image-unsupported-type = 不支援的圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-topic-no-channel = 此指令僅在頻道中有效
+err-join-channel = 加入頻道失敗: { $error }
+err-leave-channel = 離開頻道失敗: { $error }
+err-list-channels = 取得頻道列表失敗: { $error }
+err-channel-empty = 頻道名稱不能為空
+err-channel-too-short = 頻道名稱必須在#後至少有一個字元
+err-channel-too-long = 頻道名稱太長（最多{ $max }個字元）
+err-channel-missing-prefix = 頻道名稱必須以#開頭
+err-channel-invalid-characters = 頻道名稱包含無效字元
+err-leave-no-channel = 不帶參數使用/leave時必須在頻道中
+err-not-in-channel = 您不在頻道 { $channel } 中
+err-leave-already-pending = 已在等待伺服器回應
 
 label-port = 連接埠:
 
@@ -672,9 +727,11 @@ event-permissions-changed = 權限已變更
 event-transfer-complete = 傳輸完成
 event-transfer-failed = 傳輸失敗
 event-user-connected = 使用者已連線
-event-user-disconnected = 使用者已斷線
+event-user-disconnected = 使用者斷開連線
 event-user-kicked = 使用者被踢出
 event-user-message = 使用者訊息
+event-chat-join = 加入聊天
+event-chat-leave = 離開聊天
 
 # Notification content levels
 notification-content-simple = 簡單
@@ -731,6 +788,10 @@ notification-user-kicked = 您被踢出了
 notification-user-kicked-from = 被踢出{$server}
 notification-user-message = 新使用者訊息
 notification-user-message-from = 來自{$username}的訊息
+notification-chat-join = 使用者加入頻道
+notification-chat-join-details = {$username}加入了{$channel}
+notification-chat-leave = 使用者離開頻道
+notification-chat-leave-details = {$username}離開了{$channel}
 
 # Fallback values
 unknown-server = 未知伺服器

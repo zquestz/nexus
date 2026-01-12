@@ -364,10 +364,22 @@ pub enum ServerMessage {
         action: ChatAction,
         channel: String,
     },
-    ChatTopicUpdated {
-        topic: String,
-        nickname: String,
+    /// Broadcast when channel properties change (topic, secret mode)
+    /// Only changed fields are included
+    ChatUpdated {
         channel: String,
+        /// New topic (None = not changed, Some("") = cleared)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic: Option<String>,
+        /// Who set the topic
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic_set_by: Option<String>,
+        /// New secret mode (None = not changed)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        secret: Option<bool>,
+        /// Who changed secret mode
+        #[serde(skip_serializing_if = "Option::is_none")]
+        secret_set_by: Option<String>,
     },
     ChatTopicUpdateResponse {
         success: bool,
@@ -429,6 +441,20 @@ pub enum ServerMessage {
     ChatUserLeft {
         channel: String,
         nickname: String,
+    },
+    /// Broadcast to user's OTHER sessions when they join a channel (multi-session sync)
+    ChatJoined {
+        channel: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic_set_by: Option<String>,
+        secret: bool,
+        members: Vec<String>,
+    },
+    /// Broadcast to user's OTHER sessions when they leave a channel (multi-session sync)
+    ChatLeft {
+        channel: String,
     },
     Error {
         message: String,
@@ -1041,6 +1067,9 @@ pub struct UserInfoDetailed {
     pub is_away: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Channels the user is currently in (secret channels only visible to admins)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channels: Option<Vec<String>>,
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -1605,6 +1634,7 @@ mod tests {
             addresses: None,
             is_away: false,
             status: None,
+            channels: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -1782,6 +1812,7 @@ mod tests {
             avatar: None,
             is_admin: Some(false),
             addresses: None,
+            channels: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));

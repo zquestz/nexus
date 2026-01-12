@@ -22,7 +22,7 @@ pub fn execute(
     // Need at least nickname and one word of message
     if args.len() < 2 {
         let error_msg = t_args("cmd-message-usage", &[("command", invoked_name)]);
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let Some(conn) = app.connections.get(&connection_id) else {
@@ -42,7 +42,7 @@ pub fn execute(
             ),
             NicknameError::InvalidCharacters => t("err-nickname-invalid"),
         };
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     // Validate message content
@@ -59,7 +59,7 @@ pub fn execute(
             MessageError::ContainsNewlines => t("err-message-contains-newlines"),
             MessageError::InvalidCharacters => t("err-message-invalid-characters"),
         };
-        return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     let msg = ClientMessage::UserMessage {
@@ -72,7 +72,7 @@ pub fn execute(
         Ok(id) => id,
         Err(e) => {
             let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-            return app.add_chat_message(connection_id, ChatMessage::error(error_msg));
+            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
         }
     };
 

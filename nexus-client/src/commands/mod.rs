@@ -11,11 +11,14 @@
 //! | `/ban` | | `ban_create` | Ban a user by IP, CIDR range, or nickname |
 //! | `/bans` | `/banlist` | `ban_list` | List active bans |
 //! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
+//! | `/channels` | `/ch` | *none* | List available channels |
 //! | `/clear` | | *none* | Clear chat history for current tab |
 //! | `/focus` | `/f` | *none* | Focus server chat or a user's PM tab |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
 //! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
+//! | `/join` | `/j` | `chat_join` | Join or create a channel |
 //! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
+//! | `/leave` | `/part` | *none* | Leave a channel |
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
 //! | `/me` | | *none* | Send an action message |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
@@ -43,14 +46,18 @@ mod back;
 mod ban;
 mod bans;
 mod broadcast;
+mod channels;
 mod clear;
 mod duration;
 mod focus;
 mod help;
+mod join;
+mod leave;
 mod list;
 mod me;
 mod message;
 mod reindex;
+mod secret;
 mod server_info;
 mod status;
 mod topic;
@@ -72,10 +79,11 @@ use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
-    PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_TOPIC,
-    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_FILE_REINDEX, PERMISSION_TRUST_CREATE,
-    PERMISSION_TRUST_DELETE, PERMISSION_TRUST_LIST, PERMISSION_USER_BROADCAST,
-    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
+    PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_JOIN,
+    PERMISSION_CHAT_SECRET, PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT,
+    PERMISSION_FILE_REINDEX, PERMISSION_TRUST_CREATE, PERMISSION_TRUST_DELETE,
+    PERMISSION_TRUST_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_INFO, PERMISSION_USER_KICK,
+    PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
 
 /// Command handler function type
@@ -156,6 +164,16 @@ static COMMANDS: &[CommandRegistration] = &[
     },
     CommandRegistration {
         info: CommandInfo {
+            name: "channels",
+            aliases: &["ch"],
+            description_key: "cmd-channels-desc",
+            usage_key: "cmd-channels-usage",
+            permissions: &[],
+        },
+        handler: channels::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
             name: "clear",
             aliases: &[],
             description_key: "cmd-clear-desc",
@@ -196,6 +214,16 @@ static COMMANDS: &[CommandRegistration] = &[
     },
     CommandRegistration {
         info: CommandInfo {
+            name: "join",
+            aliases: &["j"],
+            description_key: "cmd-join-desc",
+            usage_key: "cmd-join-usage",
+            permissions: &[PERMISSION_CHAT_JOIN],
+        },
+        handler: join::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
             name: "kick",
             aliases: &["k", "userkick"],
             description_key: "cmd-kick-desc",
@@ -203,6 +231,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_USER_KICK],
         },
         handler: user_kick::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "leave",
+            aliases: &["part"],
+            description_key: "cmd-leave-desc",
+            usage_key: "cmd-leave-usage",
+            permissions: &[],
+        },
+        handler: leave::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -243,6 +281,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_FILE_REINDEX],
         },
         handler: reindex::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "secret",
+            aliases: &[],
+            description_key: "cmd-secret-desc",
+            usage_key: "cmd-secret-usage",
+            permissions: &[PERMISSION_CHAT_SECRET],
+        },
+        handler: secret::execute,
     },
     CommandRegistration {
         info: CommandInfo {
@@ -458,7 +506,7 @@ pub fn execute_command(
 
     // Unknown command or no permission - show error
     let error_msg = t_args("cmd-unknown", &[("command", &command.name)]);
-    app.add_chat_message(connection_id, ChatMessage::error(error_msg))
+    app.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
 }
 
 #[cfg(test)]
