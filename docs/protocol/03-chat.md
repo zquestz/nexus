@@ -6,7 +6,7 @@ Chat provides real-time messaging between connected users across multiple channe
 
 Nexus supports multiple chat channels:
 
-- **Persistent channels**: Configured by admin, survive server restart, cannot be left by users
+- **Persistent channels**: Configured by admin, survive server restart
 - **Ephemeral channels**: Created by users via `/join`, deleted when empty
 - **Auto-join channels**: Channels users automatically join on login (configurable by admin)
 
@@ -21,6 +21,8 @@ Channel names must start with `#` (e.g., `#general`, `#support`). The default ch
 
 ## Flow
 
+Note: `ChatUserJoined` / `ChatUserLeft` are emitted when a nickname becomes present/absent in the channel. Member lists are nicknames (deduped), not sessions.
+
 ### Joining a Channel
 
 ```
@@ -33,7 +35,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ChatUserJoined { ... }              │
-   │ ◄─── (broadcast to other members) ─────    │
+   │ ◄─── (broadcast to channel members) ─────   │
    │                                             │
 ```
 
@@ -64,7 +66,20 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ChatUserLeft { ... }                │
-   │ ◄─── (broadcast to remaining members) ─    │
+   │ ◄─── (broadcast to channel members) ─────   │
+   │                                             │
+```
+
+### Disconnection
+
+```
+Client                                        Server
+   │                                             │
+   │  (disconnect)                               │
+   │ ────────────────X──────────────────────►    │
+   │                                             │
+   │         ChatUserLeft { ... }                │
+   │ ◄─── (broadcast to channel members) ─────   │
    │                                             │
 ```
 
@@ -79,7 +94,7 @@ Client                                        Server
    │         ChatTopicUpdateResponse { ... }     │
    │ ◄───────────────────────────────────────    │
    │                                             │
-   │         ChatTopicUpdated { ... }            │
+   │         ChatUpdated { ... }                 │
    │ ◄──── (broadcast to channel members) ──    │
    │                                             │
 ```
@@ -140,7 +155,7 @@ Response to join request with full channel data on success.
 
 ### ChatLeave (Client → Server)
 
-Leave a channel (ephemeral channels only).
+Leave a channel.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -416,7 +431,7 @@ Response to the topic update request.
 }
 ```
 
-### ChatTopicUpdated (Server → Client)
+### ChatUpdated (Server → Client)
 
 Broadcast to channel members when the topic changes.
 
@@ -456,7 +471,7 @@ When `action` is omitted, it defaults to `Normal`.
 | `chat_join` | Joining/creating channels (`ChatJoin`) |
 | `chat_send` | Sending chat messages (`ChatSend`) |
 | `chat_receive` | Receiving chat messages (`ChatMessage` broadcasts) |
-| `chat_topic` | Viewing topic updates (`ChatTopicUpdated` broadcasts) |
+| `chat_topic` | Viewing topic updates (`ChatUpdated` broadcasts) |
 | `chat_topic_edit` | Changing channel topics (`ChatTopicUpdate`) |
 | `chat_secret` | Toggling secret mode (`ChatSecret`) |
 
@@ -470,7 +485,7 @@ Users without the `chat` feature:
 - Cannot send messages (even with `chat_send` permission)
 - Cannot join channels
 - Do not receive `ChatMessage` broadcasts
-- Do not receive `ChatTopicUpdated` broadcasts
+- Do not receive `ChatUpdated` broadcasts
 
 ## Channel Validation
 
