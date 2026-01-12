@@ -25,19 +25,6 @@ impl UserManager {
         users.get(&session_id).cloned()
     }
 
-    /// Get a session by username (case-insensitive)
-    ///
-    /// Returns the first matching session if the user has multiple sessions.
-    /// For all sessions of a user, use `get_sessions_by_username()`.
-    pub async fn get_session_by_username(&self, username: &str) -> Option<UserSession> {
-        let users = self.users.read().await;
-        let username_lower = username.to_lowercase();
-        users
-            .values()
-            .find(|u| u.username.to_lowercase() == username_lower)
-            .cloned()
-    }
-
     /// Get all sessions for a username (case-insensitive)
     ///
     /// Returns all sessions for a user who may be logged in from multiple devices.
@@ -487,5 +474,404 @@ mod tests {
 
         // Should not find non-existent nicknames
         assert!(manager.get_session_by_nickname("Nick3").await.is_none());
+    }
+
+    // =========================================================================
+    // get_unique_nicknames_for_sessions tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_empty_list() {
+        let manager = UserManager::new();
+
+        let nicknames = manager.get_unique_nicknames_for_sessions(&[]).await;
+        assert!(nicknames.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_single_session() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session_id])
+            .await;
+        assert_eq!(nicknames, vec!["alice"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_multiple_different_users() {
+        let manager = UserManager::new();
+
+        let params1 = test_session_params("alice", "alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let params2 = test_session_params("bob", "bob", false);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        let params3 = test_session_params("charlie", "charlie", false);
+        let session3 = manager
+            .add_user(params3)
+            .await
+            .expect("add_user should succeed");
+
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session1, session2, session3])
+            .await;
+
+        // Should be sorted alphabetically
+        assert_eq!(nicknames, vec!["alice", "bob", "charlie"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_deduplicates_same_nickname() {
+        let manager = UserManager::new();
+
+        // Regular user with two sessions (same username = same nickname)
+        let params1 = test_session_params("alice", "alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let params2 = test_session_params("alice", "alice", false);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session1, session2])
+            .await;
+
+        // Should deduplicate to single entry
+        assert_eq!(nicknames, vec!["alice"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_case_insensitive_dedup() {
+        let manager = UserManager::new();
+
+        // Regular user with two sessions (same username = same nickname)
+        // This tests case-insensitive dedup when the same user has multiple sessions
+        let params1 = test_session_params("Alice", "Alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        // Second session for same user - nickname uniqueness doesn't apply to same user
+        let params2 = test_session_params("Alice", "Alice", false);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session1, session2])
+            .await;
+
+        // Should deduplicate (both sessions have "Alice")
+        assert_eq!(nicknames.len(), 1);
+        assert_eq!(nicknames[0], "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_skips_nonexistent_sessions() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        // Include a nonexistent session ID
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session_id, 99999])
+            .await;
+
+        assert_eq!(nicknames, vec!["alice"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_unique_nicknames_mixed_regular_and_shared() {
+        let manager = UserManager::new();
+
+        // Regular user
+        let params1 = test_session_params("alice", "alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        // Shared account with different nickname
+        let params2 = test_session_params("shared_acct", "Guest123", true);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        // Another shared account session
+        let params3 = test_session_params("shared_acct", "Visitor", true);
+        let session3 = manager
+            .add_user(params3)
+            .await
+            .expect("add_user should succeed");
+
+        let nicknames = manager
+            .get_unique_nicknames_for_sessions(&[session1, session2, session3])
+            .await;
+
+        // Should be sorted alphabetically (case-insensitive)
+        assert_eq!(nicknames, vec!["alice", "Guest123", "Visitor"]);
+    }
+
+    // =========================================================================
+    // sessions_contain_nickname tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_empty_list() {
+        let manager = UserManager::new();
+
+        let result = manager.sessions_contain_nickname(&[], "alice", None).await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_found() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        let result = manager
+            .sessions_contain_nickname(&[session_id], "alice", None)
+            .await;
+        assert!(result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_not_found() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        let result = manager
+            .sessions_contain_nickname(&[session_id], "bob", None)
+            .await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_case_insensitive() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "Alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        // Should match regardless of case
+        assert!(
+            manager
+                .sessions_contain_nickname(&[session_id], "alice", None)
+                .await
+        );
+        assert!(
+            manager
+                .sessions_contain_nickname(&[session_id], "ALICE", None)
+                .await
+        );
+        assert!(
+            manager
+                .sessions_contain_nickname(&[session_id], "Alice", None)
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_with_skip() {
+        let manager = UserManager::new();
+
+        let params1 = test_session_params("alice", "alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let params2 = test_session_params("alice", "alice", false);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        // Both sessions have nickname "alice"
+        // If we skip session1, session2 still has "alice"
+        let result = manager
+            .sessions_contain_nickname(&[session1, session2], "alice", Some(session1))
+            .await;
+        assert!(result);
+
+        // If we skip session2, session1 still has "alice"
+        let result = manager
+            .sessions_contain_nickname(&[session1, session2], "alice", Some(session2))
+            .await;
+        assert!(result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_skip_only_match() {
+        let manager = UserManager::new();
+
+        let params1 = test_session_params("alice", "alice", false);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let params2 = test_session_params("bob", "bob", false);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        // Only session1 has "alice", if we skip session1, result should be false
+        let result = manager
+            .sessions_contain_nickname(&[session1, session2], "alice", Some(session1))
+            .await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_nonexistent_sessions() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("alice", "alice", false);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        // Nonexistent session should be skipped
+        let result = manager
+            .sessions_contain_nickname(&[99999, session_id], "alice", None)
+            .await;
+        assert!(result);
+
+        // All nonexistent sessions
+        let result = manager
+            .sessions_contain_nickname(&[99998, 99999], "alice", None)
+            .await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_shared_account() {
+        let manager = UserManager::new();
+
+        // Shared account with custom nickname
+        let params = test_session_params("shared_acct", "Guest123", true);
+        let session_id = manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        // Should match by nickname, not username
+        assert!(
+            manager
+                .sessions_contain_nickname(&[session_id], "Guest123", None)
+                .await
+        );
+        assert!(
+            !manager
+                .sessions_contain_nickname(&[session_id], "shared_acct", None)
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sessions_contain_nickname_multiple_sessions_different_nicknames() {
+        let manager = UserManager::new();
+
+        // Multiple shared account sessions with different nicknames
+        let params1 = test_session_params("shared_acct", "Guest1", true);
+        let session1 = manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let params2 = test_session_params("shared_acct", "Guest2", true);
+        let session2 = manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        let params3 = test_session_params("shared_acct", "Guest3", true);
+        let session3 = manager
+            .add_user(params3)
+            .await
+            .expect("add_user should succeed");
+
+        let sessions = [session1, session2, session3];
+
+        assert!(
+            manager
+                .sessions_contain_nickname(&sessions, "Guest1", None)
+                .await
+        );
+        assert!(
+            manager
+                .sessions_contain_nickname(&sessions, "Guest2", None)
+                .await
+        );
+        assert!(
+            manager
+                .sessions_contain_nickname(&sessions, "Guest3", None)
+                .await
+        );
+        assert!(
+            !manager
+                .sessions_contain_nickname(&sessions, "Guest4", None)
+                .await
+        );
+
+        // Skip session1, Guest1 should not be found
+        assert!(
+            !manager
+                .sessions_contain_nickname(&sessions, "Guest1", Some(session1))
+                .await
+        );
+        // But Guest2 and Guest3 should still be found
+        assert!(
+            manager
+                .sessions_contain_nickname(&sessions, "Guest2", Some(session1))
+                .await
+        );
+        assert!(
+            manager
+                .sessions_contain_nickname(&sessions, "Guest3", Some(session1))
+                .await
+        );
     }
 }

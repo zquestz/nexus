@@ -273,26 +273,34 @@ fn create_active_tab_button(tab: ChatTab, label: String) -> Element<'static, Mes
                 .style(chat_tab_active_style())
                 .into()
         }
-        ChatTab::Console => {
-            // Console tab (icon-only)
-            let tooltip_text = t(CONSOLE_TAB_TOOLTIP_KEY);
-            let icon = crate::icon::terminal().size(CHAT_MESSAGE_SIZE);
-
-            tooltip(
-                button(icon)
-                    .on_press(Message::SwitchChatTab(tab))
-                    .padding(INPUT_PADDING)
-                    .style(chat_tab_active_style()),
-                container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
-                    .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(tooltip_container_style),
-                tooltip::Position::Bottom,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING)
-            .into()
-        }
+        ChatTab::Console => create_console_tab_button(tab, true),
     }
+}
+
+/// Create a console tab button (icon-only with tooltip)
+fn create_console_tab_button(tab: ChatTab, is_active: bool) -> Element<'static, Message> {
+    let tooltip_text = t(CONSOLE_TAB_TOOLTIP_KEY);
+    let icon = crate::icon::terminal().size(CHAT_MESSAGE_SIZE);
+
+    let button_style = if is_active {
+        chat_tab_active_style()
+    } else {
+        iced::widget::button::secondary
+    };
+
+    tooltip(
+        button(icon)
+            .on_press(Message::SwitchChatTab(tab))
+            .padding(INPUT_PADDING)
+            .style(button_style),
+        container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Bottom,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING)
+    .into()
 }
 
 /// Create an inactive tab button (bold if unread)
@@ -302,25 +310,7 @@ fn create_inactive_tab_button(
     has_unread: bool,
 ) -> Element<'static, Message> {
     match &tab {
-        ChatTab::Console => {
-            // Console tab (icon-only)
-            let tooltip_text = t(CONSOLE_TAB_TOOLTIP_KEY);
-            let icon = crate::icon::terminal().size(CHAT_MESSAGE_SIZE);
-
-            tooltip(
-                button(icon)
-                    .on_press(Message::SwitchChatTab(tab))
-                    .padding(INPUT_PADDING)
-                    .style(iced::widget::button::secondary),
-                container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))
-                    .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(tooltip_container_style),
-                tooltip::Position::Bottom,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING)
-            .into()
-        }
+        ChatTab::Console => create_console_tab_button(tab, false),
         _ => {
             let tab_text = if has_unread {
                 // Bold if there are unread messages

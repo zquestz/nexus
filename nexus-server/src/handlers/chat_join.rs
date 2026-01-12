@@ -151,7 +151,7 @@ where
 mod tests {
     use super::*;
     use crate::handlers::testing::{
-        create_test_context, login_user, login_user_with_features, read_server_message,
+        TestContext, create_test_context, login_user, login_user_with_features, read_server_message,
     };
 
     /// Dummy session ID used when creating channels directly via channel_manager
@@ -489,5 +489,448 @@ mod tests {
             }
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
+    }
+
+    // =========================================================================
+    // Multi-session join tests
+    // =========================================================================
+
+    /// Helper to add a second session for the same user to UserManager
+    async fn add_second_session(
+        test_ctx: &mut TestContext,
+        username: &str,
+        permissions: &[Permission],
+        features: Vec<String>,
+    ) -> u32 {
+        use crate::users::user::NewSessionParams;
+        use std::collections::HashSet;
+
+        let perms: HashSet<Permission> = permissions.iter().copied().collect();
+
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: username.to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features,
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: username.to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .expect("Failed to add second session")
+    }
+
+    /// Helper to add a shared account session with custom nickname
+    async fn add_shared_session(
+        test_ctx: &mut TestContext,
+        account_username: &str,
+        nickname: &str,
+        permissions: &[Permission],
+        features: Vec<String>,
+    ) -> u32 {
+        use crate::users::user::NewSessionParams;
+        use std::collections::HashSet;
+
+        let perms: HashSet<Permission> = permissions.iter().copied().collect();
+
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: 1,
+                username: account_username.to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features,
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: nickname.to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .expect("Failed to add shared session")
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_broadcasts_user_joined_to_other_members() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login alice with chat permissions
+        let alice_session = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Alice joins #general
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Login bob with chat permissions
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password2",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins #general - alice should receive ChatUserJoined
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Read bob's ChatJoinResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse {
+                success, members, ..
+            } => {
+                assert!(success);
+                let members = members.unwrap();
+                assert_eq!(members.len(), 2);
+                assert!(members.contains(&"alice".to_string()));
+                assert!(members.contains(&"bob".to_string()));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+
+        // Check that alice received ChatUserJoined (via her tx channel)
+        // Note: In real scenario, alice's session would receive this via her channel
+        // Here we verify the message was sent by checking the rx channel
+        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        match msg {
+            ServerMessage::ChatUserJoined {
+                channel,
+                nickname,
+                is_admin,
+                is_shared,
+            } => {
+                assert_eq!(channel, "#general");
+                assert_eq!(nickname, "bob");
+                assert!(!is_admin);
+                assert!(!is_shared);
+            }
+            _ => panic!("Expected ChatUserJoined, got {:?}", msg),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_no_broadcast_when_nickname_already_present() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login alice session 1 with chat permissions
+        let alice_session1 = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Alice session 1 joins #general
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(alice_session1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Add second session for alice (same nickname)
+        let alice_session2 = add_second_session(
+            &mut test_ctx,
+            "alice",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Alice session 2 joins #general - should NOT broadcast ChatUserJoined
+        // because nickname "alice" is already present via session 1
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(alice_session2),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Read alice session 2's ChatJoinResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse {
+                success, members, ..
+            } => {
+                assert!(success);
+                // Members should still show only one "alice" (deduplicated)
+                let members = members.unwrap();
+                assert_eq!(members.len(), 1);
+                assert!(members.contains(&"alice".to_string()));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+
+        // Verify no ChatUserJoined was sent (rx should be empty or timeout)
+        // Use try_recv to check without blocking
+        let result = test_ctx.rx.try_recv();
+        assert!(
+            result.is_err(),
+            "Should NOT receive ChatUserJoined when nickname already present"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_shared_account_different_nicknames_broadcast() {
+        let mut test_ctx = create_test_context().await;
+
+        // Add first shared account session with nickname "Guest1"
+        let guest1_session = add_shared_session(
+            &mut test_ctx,
+            "shared_acct",
+            "Guest1",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Guest1 joins #general
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(guest1_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Add second shared account session with nickname "Guest2"
+        let guest2_session = add_shared_session(
+            &mut test_ctx,
+            "shared_acct",
+            "Guest2",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Guest2 joins #general - should broadcast ChatUserJoined
+        // because nickname "Guest2" is different from "Guest1"
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(guest2_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Read Guest2's ChatJoinResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse {
+                success, members, ..
+            } => {
+                assert!(success);
+                let members = members.unwrap();
+                assert_eq!(members.len(), 2);
+                assert!(members.contains(&"Guest1".to_string()));
+                assert!(members.contains(&"Guest2".to_string()));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+
+        // Verify ChatUserJoined was sent for Guest2
+        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        match msg {
+            ServerMessage::ChatUserJoined {
+                channel,
+                nickname,
+                is_shared,
+                ..
+            } => {
+                assert_eq!(channel, "#general");
+                assert_eq!(nickname, "Guest2");
+                assert!(is_shared);
+            }
+            _ => panic!("Expected ChatUserJoined, got {:?}", msg),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_member_list_deduplicates_nicknames() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login alice with 3 sessions
+        let alice_session1 = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        let alice_session2 = add_second_session(
+            &mut test_ctx,
+            "alice",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        let alice_session3 = add_second_session(
+            &mut test_ctx,
+            "alice",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // All three sessions join #general
+        for session in [alice_session1, alice_session2, alice_session3] {
+            let _ = test_ctx.channel_manager.join("#general", session).await;
+        }
+
+        // Login bob
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password2",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins - member list should show alice only once
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse {
+                success, members, ..
+            } => {
+                assert!(success);
+                let members = members.unwrap();
+                // Should be deduplicated: alice appears once, plus bob
+                assert_eq!(members.len(), 2);
+                assert!(members.contains(&"alice".to_string()));
+                assert!(members.contains(&"bob".to_string()));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_first_session_triggers_broadcast_second_does_not() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login bob first (he'll be the observer)
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins #general
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Login alice session 1
+        let alice_session1 = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password2",
+            &[Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Alice session 1 joins - should trigger ChatUserJoined
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(alice_session1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Verify bob received ChatUserJoined for alice
+        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        match msg {
+            ServerMessage::ChatUserJoined { nickname, .. } => {
+                assert_eq!(nickname, "alice");
+            }
+            _ => panic!("Expected ChatUserJoined for alice, got {:?}", msg),
+        }
+
+        // Add alice session 2
+        let alice_session2 = add_second_session(
+            &mut test_ctx,
+            "alice",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Alice session 2 joins - should NOT trigger ChatUserJoined
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(alice_session2),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Verify no additional ChatUserJoined was sent
+        let result = test_ctx.rx.try_recv();
+        assert!(
+            result.is_err(),
+            "Should NOT receive second ChatUserJoined for alice"
+        );
     }
 }

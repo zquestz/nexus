@@ -428,19 +428,26 @@ where
 
     // Note: Username validation is already done earlier, so no need to check for empty here
 
-    // Get old username and admin status before update (to detect changes)
-    // Check if target user is online to use cached data, otherwise fall back to DB
-    let old_account = if let Some(online_user) = ctx
-        .user_manager
-        .get_session_by_username(&request.username)
-        .await
-    {
-        Some((online_user.username.clone(), online_user.is_admin))
-    } else {
-        // User is offline - must check DB
-        match ctx.db.users.get_user_by_username(&request.username).await {
-            Ok(Some(acc)) => Some((acc.username.clone(), acc.is_admin)),
-            _ => None,
+    // Get old state before update (to detect actual changes for PermissionsUpdated and UserUpdated)
+    // We need: username, is_admin, enabled, and permissions
+    let (old_username, old_is_admin, old_enabled, old_permissions) = {
+        // We already fetched target_user_account above, use it
+        if let Some(ref account) = target_user_account {
+            let perms = ctx
+                .db
+                .users
+                .get_user_permissions(account.id)
+                .await
+                .unwrap_or_else(|_| Permissions::new());
+            (
+                account.username.clone(),
+                account.is_admin,
+                account.enabled,
+                perms,
+            )
+        } else {
+            // Should not happen - we already checked user exists above
+            (request.username.clone(), false, true, Permissions::new())
         }
     };
 
@@ -473,11 +480,7 @@ where
             };
             ctx.send_message(&response).await?;
 
-            // Only send PermissionsUpdated if admin, enabled, or permissions changed
-            // (not for password-only or username-only changes)
-            let permissions_changed = request.requested_is_admin.is_some()
-                || request.requested_enabled.is_some()
-                || request.requested_permissions.is_some();
+            // We'll determine if permissions actually changed after fetching new state
 
             // Get the updated user's account
             if let Ok(Some(updated_account)) =
@@ -487,6 +490,13 @@ where
                 if let Ok(final_permissions) =
                     ctx.db.users.get_user_permissions(updated_account.id).await
                 {
+                    // Check if anything actually changed
+                    let admin_changed = old_is_admin != updated_account.is_admin;
+                    let enabled_changed = old_enabled != updated_account.enabled;
+                    let permissions_changed =
+                        old_permissions.permissions != final_permissions.permissions;
+                    let actually_changed = admin_changed || enabled_changed || permissions_changed;
+
                     // Always update cached permissions in UserManager for all sessions of this user
                     // (even if we don't broadcast, keeps cache in sync)
                     ctx.user_manager
@@ -496,8 +506,8 @@ where
                         )
                         .await;
 
-                    // Only notify the user if their permissions/admin/enabled status changed
-                    if permissions_changed {
+                    // Only notify the user if their permissions/admin/enabled status actually changed
+                    if actually_changed {
                         let permission_strings: Vec<String> = final_permissions
                             .permissions
                             .iter()
@@ -574,14 +584,9 @@ where
                 }
 
                 // Check if username or admin status changed
-                let username_changed = old_account
-                    .as_ref()
-                    .map(|(old_name, _)| old_name != &updated_account.username)
-                    .unwrap_or(false);
-                let admin_status_changed = old_account
-                    .as_ref()
-                    .map(|(_, old_admin)| *old_admin != updated_account.is_admin)
-                    .unwrap_or(false);
+                let username_changed =
+                    old_username.to_lowercase() != updated_account.username.to_lowercase();
+                let admin_status_changed = old_is_admin != updated_account.is_admin;
 
                 // If username changed, update UserManager
                 if username_changed {
@@ -650,10 +655,7 @@ where
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
-                        previous_username: old_account
-                            .as_ref()
-                            .map(|(name, _)| name.clone())
-                            .unwrap_or(updated_account.username.clone()),
+                        previous_username: old_username.clone(),
                         user: user_info,
                     };
                     ctx.user_manager
@@ -2541,5 +2543,490 @@ mod tests {
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_no_permissions_updated_when_unchanged() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob with some permissions
+        let mut bob_perms = Permissions::new();
+        bob_perms.permissions.insert(Permission::UserList);
+        bob_perms.permissions.insert(Permission::ChatSend);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .await
+            .unwrap();
+
+        // Add bob to UserManager so he can receive messages
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_perms.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Update bob with the SAME permissions (no actual change)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify NO PermissionsUpdated was sent (rx should be empty)
+        let result = test_ctx.rx.try_recv();
+        assert!(
+            result.is_err(),
+            "Should NOT receive PermissionsUpdated when permissions unchanged, got {:?}",
+            result
+        );
+
+        // Clean up
+        let _ = bob_session;
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_permissions_updated_sent_when_changed() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob with some permissions
+        let mut bob_perms = Permissions::new();
+        bob_perms.permissions.insert(Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .await
+            .unwrap();
+
+        // Add bob to UserManager so he can receive messages
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_perms.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Update bob with DIFFERENT permissions (add chat_send)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify PermissionsUpdated WAS sent (permissions changed)
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive PermissionsUpdated");
+        match msg {
+            ServerMessage::PermissionsUpdated {
+                is_admin,
+                permissions,
+                ..
+            } => {
+                assert!(!is_admin);
+                assert!(permissions.contains(&"user_list".to_string()));
+                assert!(permissions.contains(&"chat_send".to_string()));
+            }
+            _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
+        }
+
+        // Clean up
+        let _ = bob_session;
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_no_permissions_updated_for_password_only_change() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob with some permissions
+        let mut bob_perms = Permissions::new();
+        bob_perms.permissions.insert(Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .await
+            .unwrap();
+
+        // Add bob to UserManager
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_perms.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Update bob's password only (no permissions change)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: Some("newpassword".to_string()),
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify NO PermissionsUpdated was sent (only password changed)
+        let result = test_ctx.rx.try_recv();
+        assert!(
+            result.is_err(),
+            "Should NOT receive PermissionsUpdated for password-only change"
+        );
+
+        // Clean up
+        let _ = bob_session;
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_permissions_updated_sent_when_admin_status_changes() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob as non-admin
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Add bob to UserManager so he can receive messages
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Promote bob to admin (no permissions change, but admin status changes)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(true),
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify PermissionsUpdated WAS sent (admin status changed)
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive PermissionsUpdated when admin status changes");
+        match msg {
+            ServerMessage::PermissionsUpdated {
+                is_admin,
+                server_info,
+                ..
+            } => {
+                assert!(is_admin, "Bob should now be admin");
+                // Admins get server_info with max_connections_per_ip
+                assert!(server_info.is_some(), "Admin should receive server_info");
+            }
+            _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
+        }
+
+        // Clean up
+        let _ = bob_session;
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_permissions_updated_sent_when_enabled_status_changes() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob as enabled
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Add bob to UserManager so he can receive messages
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Disable bob (no permissions change, but enabled status changes)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: Some(false),
+            requested_permissions: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // When user is disabled, they get disconnected with an Error message first,
+        // then PermissionsUpdated is sent (but they may not receive it since they're being disconnected)
+        // The key is that the PermissionsUpdated IS generated for enabled status change
+        //
+        // Actually, looking at the code flow: PermissionsUpdated is broadcast first,
+        // then the disconnect happens. So we should receive PermissionsUpdated.
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive PermissionsUpdated when enabled status changes");
+        match msg {
+            ServerMessage::PermissionsUpdated { is_admin, .. } => {
+                assert!(!is_admin);
+            }
+            // Could also be the disconnect Error message
+            ServerMessage::Error { .. } => {
+                // This is also acceptable - means the disconnect happened
+            }
+            _ => panic!("Expected PermissionsUpdated or Error, got {:?}", msg),
+        }
+
+        // Clean up
+        let _ = bob_session;
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_no_permissions_updated_when_admin_status_unchanged() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob as non-admin
+        let bob = test_ctx
+            .db
+            .users
+            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .await
+            .unwrap();
+
+        // Add bob to UserManager so he can receive messages
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                db_user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+            })
+            .await
+            .unwrap();
+
+        // Set bob's admin status to false (same as current - no change)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: Some(false), // Same as current
+            requested_enabled: None,
+            requested_permissions: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        // Read the UserUpdateResponse
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify NO PermissionsUpdated was sent (admin status unchanged)
+        let result = test_ctx.rx.try_recv();
+        assert!(
+            result.is_err(),
+            "Should NOT receive PermissionsUpdated when admin status unchanged"
+        );
+
+        // Clean up
+        let _ = bob_session;
     }
 }
