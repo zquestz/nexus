@@ -22,11 +22,11 @@ pub struct ViewConfig<'a> {
     /// Current theme for styling
     pub theme: Theme,
 
-    /// Show user connect/disconnect notifications in chat
-    pub show_connection_notifications: bool,
+    /// Show user connect/disconnect events in chat
+    pub show_connection_events: bool,
 
-    /// Show channel join/leave notifications in chat
-    pub show_channel_notifications: bool,
+    /// Show channel join/leave events in chat
+    pub show_join_leave_events: bool,
 
     /// Font size for chat messages
     pub chat_font_size: u8,

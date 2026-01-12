@@ -162,8 +162,8 @@ impl NexusApp {
             channel_state.add_member(nickname.clone());
         }
 
-        // Add system message to the channel if notifications are enabled
-        if self.config.settings.show_channel_notifications {
+        // Add system message to the channel if events are enabled
+        if self.config.settings.show_join_leave_events {
             let message = ChatMessage::system(t_args("msg-chat-join", &[("nickname", &nickname)]));
             self.add_channel_message(connection_id, &channel, message)
         } else {
@@ -199,8 +199,8 @@ impl NexusApp {
             channel_state.remove_member(&nickname);
         }
 
-        // Add system message to the channel if notifications are enabled
-        if self.config.settings.show_channel_notifications {
+        // Add system message to the channel if events are enabled
+        if self.config.settings.show_join_leave_events {
             let message = ChatMessage::system(t_args("msg-chat-leave", &[("nickname", &nickname)]));
             self.add_channel_message(connection_id, &channel, message)
         } else {

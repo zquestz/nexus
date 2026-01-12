@@ -128,13 +128,13 @@ pub struct Settings {
     #[serde(default = "default_chat_font_size")]
     pub chat_font_size: u8,
 
-    /// Show user connect/disconnect notifications in chat
+    /// Show user connect/disconnect events in chat
     #[serde(default = "default_true")]
-    pub show_connection_notifications: bool,
+    pub show_connection_events: bool,
 
-    /// Show channel join/leave notifications in chat
+    /// Show channel join/leave events in chat
     #[serde(default = "default_true")]
-    pub show_channel_notifications: bool,
+    pub show_join_leave_events: bool,
 
     /// Show timestamps in chat messages
     #[serde(default = "default_true")]
@@ -222,8 +222,8 @@ impl Default for Settings {
             theme: ThemePreference::default(),
             download_path: None,
             chat_font_size: default_chat_font_size(),
-            show_connection_notifications: default_true(),
-            show_channel_notifications: default_true(),
+            show_connection_events: default_true(),
+            show_join_leave_events: default_true(),
             show_timestamps: default_true(),
             use_24_hour_time: false,
             show_seconds: default_true(),
@@ -258,10 +258,8 @@ impl std::fmt::Debug for Settings {
             .field("theme", &self.theme)
             .field("download_path", &self.download_path)
             .field("chat_font_size", &self.chat_font_size)
-            .field(
-                "show_connection_notifications",
-                &self.show_connection_notifications,
-            )
+            .field("show_connection_events", &self.show_connection_events)
+            .field("show_join_leave_events", &self.show_join_leave_events)
             .field("show_timestamps", &self.show_timestamps)
             .field("use_24_hour_time", &self.use_24_hour_time)
             .field("show_seconds", &self.show_seconds)
@@ -329,7 +327,7 @@ mod tests {
         assert_eq!(settings.theme, ThemePreference::default());
         assert!(settings.download_path.is_none());
         assert_eq!(settings.chat_font_size, CHAT_FONT_SIZE_DEFAULT);
-        assert!(settings.show_connection_notifications);
+        assert!(settings.show_connection_events);
         assert!(settings.show_timestamps);
         assert!(!settings.use_24_hour_time);
         assert!(settings.show_seconds);
@@ -366,8 +364,8 @@ mod tests {
         assert_eq!(settings.theme.0, deserialized.theme.0);
         assert_eq!(settings.chat_font_size, deserialized.chat_font_size);
         assert_eq!(
-            settings.show_connection_notifications,
-            deserialized.show_connection_notifications
+            settings.show_connection_events,
+            deserialized.show_connection_events
         );
         assert_eq!(settings.show_timestamps, deserialized.show_timestamps);
         assert_eq!(settings.use_24_hour_time, deserialized.use_24_hour_time);

@@ -776,8 +776,8 @@ impl NexusApp {
         // Build view configuration
         let config = ViewConfig {
             theme: self.theme(),
-            show_connection_notifications: self.config.settings.show_connection_notifications,
-            show_channel_notifications: self.config.settings.show_channel_notifications,
+            show_connection_events: self.config.settings.show_connection_events,
+            show_join_leave_events: self.config.settings.show_join_leave_events,
             chat_font_size: self.config.settings.chat_font_size,
             show_timestamps: self.config.settings.show_timestamps,
             use_24_hour_time: self.config.settings.use_24_hour_time,

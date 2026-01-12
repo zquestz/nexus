@@ -34,10 +34,10 @@ use crate::types::{InputId, Message, SettingsFormState, SettingsTab};
 pub struct SettingsViewData<'a> {
     /// Current theme for styling
     pub current_theme: Theme,
-    /// Show user connect/disconnect notifications in chat
-    pub show_connection_notifications: bool,
-    /// Show channel join/leave notifications in chat
-    pub show_channel_notifications: bool,
+    /// Show user connect/disconnect events in chat
+    pub show_connection_events: bool,
+    /// Show channel join/leave events in chat
+    pub show_join_leave_events: bool,
     /// Font size for chat messages
     pub chat_font_size: u8,
     /// Timestamp display settings
@@ -105,8 +105,8 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         general_tab_content(data.current_theme, avatar, default_avatar, data.nickname);
     let chat_content = chat_tab_content(
         data.chat_font_size,
-        data.show_connection_notifications,
-        data.show_channel_notifications,
+        data.show_connection_events,
+        data.show_join_leave_events,
         data.timestamp_settings,
     );
     let network_content = network_tab_content(data.proxy);
@@ -287,8 +287,8 @@ fn general_tab_content<'a>(
 /// Build the Chat tab content (font size, notifications, timestamps)
 fn chat_tab_content(
     chat_font_size: u8,
-    show_connection_notifications: bool,
-    show_channel_notifications: bool,
+    show_connection_events: bool,
+    show_join_leave_events: bool,
     timestamp_settings: TimestampSettings,
 ) -> Element<'static, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
@@ -309,19 +309,19 @@ fn chat_tab_content(
         .align_y(Center);
     items.push(font_size_row.into());
 
-    // Connection notifications checkbox
-    let notifications_checkbox = checkbox(show_connection_notifications)
-        .label(t("label-show-connection-notifications"))
+    // Connection events checkbox
+    let connection_events_checkbox = checkbox(show_connection_events)
+        .label(t("label-show-connection-events"))
         .on_toggle(Message::ConnectionNotificationsToggled)
         .text_size(TEXT_SIZE);
-    items.push(notifications_checkbox.into());
+    items.push(connection_events_checkbox.into());
 
-    // Channel join/leave notifications checkbox
-    let channel_notifications_checkbox = checkbox(show_channel_notifications)
-        .label(t("label-show-channel-notifications"))
+    // Channel join/leave events checkbox
+    let join_leave_events_checkbox = checkbox(show_join_leave_events)
+        .label(t("label-show-channel-events"))
         .on_toggle(Message::ChannelNotificationsToggled)
         .text_size(TEXT_SIZE);
-    items.push(channel_notifications_checkbox.into());
+    items.push(join_leave_events_checkbox.into());
 
     // Timestamp settings
     let timestamps_checkbox = checkbox(timestamp_settings.show_timestamps)

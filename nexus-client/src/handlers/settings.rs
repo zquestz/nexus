@@ -120,13 +120,13 @@ impl NexusApp {
 
     /// Handle connection notifications toggle
     pub fn handle_connection_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
-        self.config.settings.show_connection_notifications = enabled;
+        self.config.settings.show_connection_events = enabled;
         Task::none()
     }
 
     /// Handle channel join/leave notifications toggle
     pub fn handle_channel_notifications_toggled(&mut self, enabled: bool) -> Task<Message> {
-        self.config.settings.show_channel_notifications = enabled;
+        self.config.settings.show_join_leave_events = enabled;
         Task::none()
     }
 

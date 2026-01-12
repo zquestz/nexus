@@ -51,10 +51,10 @@ struct ServerContentContext<'a> {
     active_panel: ActivePanel,
     /// Current theme
     theme: iced::Theme,
-    /// Whether to show connection notifications
-    show_connection_notifications: bool,
-    /// Whether to show channel join/leave notifications
-    show_channel_notifications: bool,
+    /// Whether to show connection events
+    show_connection_events: bool,
+    /// Whether to show channel join/leave events
+    show_join_leave_events: bool,
     /// Chat font size
     chat_font_size: u8,
     /// Timestamp display settings
@@ -229,8 +229,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 user_management: user_mgmt,
                 active_panel: config.active_panel,
                 theme: config.theme.clone(),
-                show_connection_notifications: config.show_connection_notifications,
-                show_channel_notifications: config.show_channel_notifications,
+                show_connection_events: config.show_connection_events,
+                show_join_leave_events: config.show_join_leave_events,
                 chat_font_size: config.chat_font_size,
                 timestamp_settings: TimestampSettings {
                     show_timestamps: config.show_timestamps,
@@ -264,8 +264,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                     conn_form,
                     settings_view(SettingsViewData {
                         current_theme: config.theme.clone(),
-                        show_connection_notifications: config.show_connection_notifications,
-                        show_channel_notifications: config.show_channel_notifications,
+                        show_connection_events: config.show_connection_events,
+                        show_join_leave_events: config.show_join_leave_events,
                         chat_font_size: config.chat_font_size,
                         timestamp_settings: TimestampSettings {
                             show_timestamps: config.show_timestamps,
@@ -671,8 +671,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             chat,
             settings_view(SettingsViewData {
                 current_theme: ctx.theme.clone(),
-                show_connection_notifications: ctx.show_connection_notifications,
-                show_channel_notifications: ctx.show_channel_notifications,
+                show_connection_events: ctx.show_connection_events,
+                show_join_leave_events: ctx.show_join_leave_events,
                 chat_font_size: ctx.chat_font_size,
                 timestamp_settings: ctx.timestamp_settings,
                 settings_form: ctx.settings_form,
