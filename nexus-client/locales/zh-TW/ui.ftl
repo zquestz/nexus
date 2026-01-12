@@ -338,6 +338,12 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
+msg-connected-to = 已連接到 { $server }
+msg-server-version = 伺服器版本: { $version }
+msg-logged-in-as = 已登入為 { $nickname }
+msg-logged-in-as-admin = 已登入為 { $nickname } [管理員]
+msg-logged-in-as-shared = 已登入為 { $nickname } ({ $username })
+msg-logged-in-as-shared-admin = 已登入為 { $nickname } ({ $username }) [管理員]
 msg-user-kicked-success = 成功踢出使用者
 msg-user-kicked-success-name = 成功踢出使用者 '{ $nickname }'
 msg-chat-join = { $nickname } 加入了頻道

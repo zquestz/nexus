@@ -338,6 +338,12 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
+msg-connected-to = { $server } に接続しました
+msg-server-version = サーバーバージョン: { $version }
+msg-logged-in-as = { $nickname } としてログイン
+msg-logged-in-as-admin = { $nickname } としてログイン [管理者]
+msg-logged-in-as-shared = { $nickname } ({ $username }) としてログイン
+msg-logged-in-as-shared-admin = { $nickname } ({ $username }) としてログイン [管理者]
 msg-user-kicked-success = ユーザーを正常にキックしました
 msg-user-kicked-success-name = ユーザー '{ $nickname }' を正常にキックしました
 msg-chat-join = { $nickname } がチャンネルに参加しました

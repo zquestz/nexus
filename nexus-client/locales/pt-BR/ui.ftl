@@ -339,6 +339,12 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
+msg-connected-to = Conectado a { $server }
+msg-server-version = Versão do servidor: { $version }
+msg-logged-in-as = Conectado como { $nickname }
+msg-logged-in-as-admin = Conectado como { $nickname } [admin]
+msg-logged-in-as-shared = Conectado como { $nickname } ({ $username })
+msg-logged-in-as-shared-admin = Conectado como { $nickname } ({ $username }) [admin]
 msg-user-kicked-success = Usuário expulso com sucesso
 msg-user-kicked-success-name = Usuário '{ $nickname }' expulso com sucesso
 msg-chat-join = { $nickname } entrou no canal

@@ -11,6 +11,7 @@ use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
+use crate::types::ChatMessage;
 use crate::types::{
     ActivePanel, ChannelState, InputId, Message, NetworkConnection, ServerBookmark,
     ServerConnection, ServerConnectionParams,
@@ -257,6 +258,59 @@ impl NexusApp {
             if let Some(last_channel) = conn.channel_tabs.last() {
                 conn.active_chat_tab = crate::types::ChatTab::Channel(last_channel.clone());
             }
+
+            // Add welcome message to Console with server info
+            let mut welcome_lines = Vec::new();
+
+            // Server name (or address if no name)
+            let server_display = conn
+                .server_name
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .cloned()
+                .unwrap_or_else(|| conn.connection_info.address.clone());
+            welcome_lines.push(t_args("msg-connected-to", &[("server", &server_display)]));
+
+            // Server description (if present)
+            if let Some(ref desc) = conn.server_description
+                && !desc.is_empty()
+            {
+                welcome_lines.push(desc.clone());
+            }
+
+            // Server version (if present)
+            if let Some(ref version) = conn.server_version
+                && !version.is_empty()
+            {
+                welcome_lines.push(t_args("msg-server-version", &[("version", version)]));
+            }
+
+            // Logged in identity: nickname [admin] or nickname (username) [admin] for shared accounts
+            let username = &conn.connection_info.username;
+            let nickname = if conn.connection_info.nickname.is_empty() {
+                username.clone()
+            } else {
+                conn.connection_info.nickname.clone()
+            };
+            let is_shared = !conn.connection_info.nickname.is_empty()
+                && conn.connection_info.nickname != *username;
+            let login_info = match (is_shared, conn.is_admin) {
+                (true, true) => t_args(
+                    "msg-logged-in-as-shared-admin",
+                    &[("nickname", &nickname), ("username", username)],
+                ),
+                (true, false) => t_args(
+                    "msg-logged-in-as-shared",
+                    &[("nickname", &nickname), ("username", username)],
+                ),
+                (false, true) => t_args("msg-logged-in-as-admin", &[("nickname", &nickname)]),
+                (false, false) => t_args("msg-logged-in-as", &[("nickname", &nickname)]),
+            };
+            welcome_lines.push(login_info);
+
+            let welcome_message = welcome_lines.join("\n");
+            conn.console_messages
+                .push(ChatMessage::system(welcome_message));
         }
 
         // Add topic messages for each channel

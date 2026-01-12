@@ -344,6 +344,12 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
+msg-connected-to = Connected to { $server }
+msg-server-version = Server version: { $version }
+msg-logged-in-as = Logged in as { $nickname }
+msg-logged-in-as-admin = Logged in as { $nickname } [admin]
+msg-logged-in-as-shared = Logged in as { $nickname } ({ $username })
+msg-logged-in-as-shared-admin = Logged in as { $nickname } ({ $username }) [admin]
 msg-user-kicked-success = User kicked successfully
 msg-user-kicked-success-name = User '{ $nickname }' kicked successfully
 msg-broadcast-sent = Broadcast sent successfully

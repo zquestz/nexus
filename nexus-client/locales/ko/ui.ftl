@@ -338,6 +338,12 @@ chat-prefix-broadcast = [BROADCAST]
 # Success Messages
 # =============================================================================
 
+msg-connected-to = { $server }에 연결됨
+msg-server-version = 서버 버전: { $version }
+msg-logged-in-as = { $nickname }(으)로 로그인됨
+msg-logged-in-as-admin = { $nickname }(으)로 로그인됨 [관리자]
+msg-logged-in-as-shared = { $nickname } ({ $username })(으)로 로그인됨
+msg-logged-in-as-shared-admin = { $nickname } ({ $username })(으)로 로그인됨 [관리자]
 msg-user-kicked-success = 사용자가 성공적으로 추방되었습니다
 msg-user-kicked-success-name = 사용자 '{ $nickname }'이(가) 성공적으로 추방되었습니다
 msg-chat-join = { $nickname }님이 채널에 참가했습니다
