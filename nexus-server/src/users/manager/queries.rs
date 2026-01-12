@@ -62,21 +62,6 @@ impl UserManager {
             .collect()
     }
 
-    /// Get all session IDs for a given nickname (case-insensitive)
-    ///
-    /// This works correctly for both regular and shared accounts:
-    /// - Regular accounts: nickname == username, so returns all sessions of the user
-    /// - Shared accounts: each session has a unique nickname, so returns just that session
-    pub async fn get_session_ids_for_nickname(&self, nickname: &str) -> Vec<u32> {
-        let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
-        users
-            .iter()
-            .filter(|(_, user)| user.nickname.to_lowercase() == nickname_lower)
-            .map(|(session_id, _)| *session_id)
-            .collect()
-    }
-
     /// Check if a nickname is already in use by an active session (case-insensitive)
     ///
     /// Used during login to ensure nickname uniqueness for shared accounts.
@@ -156,6 +141,55 @@ impl UserManager {
             .collect();
         nicknames.sort_by_key(|n| n.to_lowercase());
         nicknames
+    }
+
+    /// Get sorted unique nicknames for a list of session IDs (case-insensitive dedup)
+    ///
+    /// This is useful when multiple sessions map to the same visible nickname and you
+    /// want one entry per nickname (e.g., channel member lists).
+    ///
+    /// Sessions that don't exist are skipped. The output is sorted alphabetically
+    /// (case-insensitive) and deduplicated case-insensitively.
+    pub async fn get_unique_nicknames_for_sessions(&self, session_ids: &[u32]) -> Vec<String> {
+        let mut nicknames = self.get_nicknames_for_sessions(session_ids).await;
+
+        // `dedup_by_key` only removes adjacent items.
+        // `get_nicknames_for_sessions()` already sorts case-insensitively (by `to_lowercase()`),
+        // so duplicates will be adjacent and dedup is safe here.
+        nicknames.dedup_by_key(|n| n.to_lowercase());
+
+        nicknames
+    }
+
+    /// Return true if any session in `session_ids` has a nickname equal to `nickname`
+    /// (case-insensitive), excluding an optional `skip_session_id`.
+    ///
+    /// This is useful for nickname-based channel presence gating when channel membership
+    /// is tracked by session id.
+    pub async fn sessions_contain_nickname(
+        &self,
+        session_ids: &[u32],
+        nickname: &str,
+        skip_session_id: Option<u32>,
+    ) -> bool {
+        let users = self.users.read().await;
+        let nickname_lower = nickname.to_lowercase();
+
+        for &sid in session_ids {
+            if skip_session_id.is_some_and(|skip| skip == sid) {
+                continue;
+            }
+
+            let Some(user) = users.get(&sid) else {
+                continue;
+            };
+
+            if user.nickname.to_lowercase() == nickname_lower {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Get all unique IP addresses for sessions with a given nickname

@@ -209,24 +209,28 @@ where
 
     // Remove user on disconnect and broadcast to other clients
     if let Some(id) = conn_state.session_id {
-        // First, remove from all channels and broadcast ChatUserLeft to remaining members
-        // We need to do this before removing from UserManager so we still have the user's nickname
+        // Remove from all channels, then notify remaining channel members if needed.
         if let Some(user) = user_manager.get_user_by_session_id(id).await {
             let channel_names = channel_manager.remove_from_all(id).await;
 
-            // Broadcast ChatUserLeft to remaining members of each channel
             for channel_name in channel_names {
                 // Get remaining members (if channel still exists)
                 if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
-                    let leave_msg = ServerMessage::ChatUserLeft {
-                        channel: channel_name,
-                        nickname: user.nickname.clone(),
-                    };
+                    let nickname_present_elsewhere = user_manager
+                        .sessions_contain_nickname(&remaining_members, &user.nickname, None)
+                        .await;
 
-                    for member_session_id in remaining_members {
-                        user_manager
-                            .send_to_session(member_session_id, leave_msg.clone())
-                            .await;
+                    if !nickname_present_elsewhere {
+                        let leave_msg = ServerMessage::ChatUserLeft {
+                            channel: channel_name,
+                            nickname: user.nickname.clone(),
+                        };
+
+                        for member_session_id in remaining_members {
+                            user_manager
+                                .send_to_session(member_session_id, leave_msg.clone())
+                                .await;
+                        }
                     }
                 }
             }

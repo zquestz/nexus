@@ -74,21 +74,14 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Broadcast ChatUserLeft to remaining channel members, but ONLY if this nickname
-    // no longer has any sessions in the channel.
-    //
-    // "Member counts are nicknames" (deduped), so join/leave announcements should only fire
-    // when the first session for a nickname joins and when the last session leaves.
-    let nickname_session_ids = ctx
+    // Broadcast ChatUserLeft only when this nickname becomes absent from the channel
+    // (nickname-based membership; multiple sessions may map to the same nickname).
+    let nickname_present_elsewhere = ctx
         .user_manager
-        .get_session_ids_for_nickname(&user.nickname)
+        .sessions_contain_nickname(&result.remaining_member_session_ids, &user.nickname, None)
         .await;
 
-    let nickname_still_present_in_channel = nickname_session_ids
-        .iter()
-        .any(|&sid| result.remaining_member_session_ids.contains(&sid));
-
-    if !nickname_still_present_in_channel {
+    if !nickname_present_elsewhere {
         let leave_broadcast = ServerMessage::ChatUserLeft {
             channel: channel.clone(),
             nickname: user.nickname.clone(),
@@ -100,8 +93,6 @@ where
                 .await;
         }
     }
-
-    // Note: Channel membership is session-based.
 
     // Send success response
     let response = ServerMessage::ChatLeaveResponse {

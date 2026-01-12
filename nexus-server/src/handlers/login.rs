@@ -409,28 +409,32 @@ where
             continue;
         };
 
-        // Get sorted nicknames for all channel members (session-based),
-        // then deduplicate (member counts are nicknames, not sessions).
-        let mut member_nicknames = ctx
+        // Build member list as unique nicknames (member counts are nicknames, not sessions).
+        let member_nicknames = ctx
             .user_manager
-            .get_nicknames_for_sessions(&result.member_session_ids)
+            .get_unique_nicknames_for_sessions(&result.member_session_ids)
             .await;
 
-        member_nicknames.dedup_by_key(|n| n.to_lowercase());
+        // Broadcast ChatUserJoined only when this nickname becomes present in the channel
+        // (nickname-based membership; multiple sessions may map to the same nickname).
+        let nickname_present_elsewhere = ctx
+            .user_manager
+            .sessions_contain_nickname(&result.member_session_ids, &joining_user_nickname, Some(id))
+            .await;
 
-        // Broadcast ChatUserJoined to existing channel members (not to the joining user)
-        // This lets other users in the channel know someone joined
-        let join_broadcast = ServerMessage::ChatUserJoined {
-            channel: channel_name.clone(),
-            nickname: joining_user_nickname.clone(),
-            is_admin: joining_user_is_admin,
-            is_shared: joining_user_is_shared,
-        };
-        for &member_session_id in &result.member_session_ids {
-            if member_session_id != id {
-                ctx.user_manager
-                    .send_to_session(member_session_id, join_broadcast.clone())
-                    .await;
+        if !nickname_present_elsewhere {
+            let join_broadcast = ServerMessage::ChatUserJoined {
+                channel: channel_name.clone(),
+                nickname: joining_user_nickname.clone(),
+                is_admin: joining_user_is_admin,
+                is_shared: joining_user_is_shared,
+            };
+            for &member_session_id in &result.member_session_ids {
+                if member_session_id != id {
+                    ctx.user_manager
+                        .send_to_session(member_session_id, join_broadcast.clone())
+                        .await;
+                }
             }
         }
 

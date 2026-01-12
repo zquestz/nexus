@@ -104,30 +104,20 @@ where
         }
     };
 
-    // Get sorted nicknames for all channel members (session-based),
-    // then deduplicate (member counts are nicknames, not sessions).
-    let mut member_nicknames = ctx
+    // Build member list as unique nicknames (member counts are nicknames, not sessions).
+    let member_nicknames = ctx
         .user_manager
-        .get_nicknames_for_sessions(&result.member_session_ids)
+        .get_unique_nicknames_for_sessions(&result.member_session_ids)
         .await;
 
-    member_nicknames.dedup_by_key(|n| n.to_lowercase());
-
-    // Broadcast ChatUserJoined to other channel members (not to the joining user),
-    // but ONLY if this nickname was not already present in the channel via another session.
-    //
-    // "Member counts are nicknames" (deduped), so join/leave announcements should only fire
-    // when the first session for a nickname joins and when the last session leaves.
-    let nickname_session_ids = ctx
+    // Broadcast ChatUserJoined only when this nickname becomes present in the channel
+    // (nickname-based membership; multiple sessions may map to the same nickname).
+    let nickname_present_elsewhere = ctx
         .user_manager
-        .get_session_ids_for_nickname(&user.nickname)
+        .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))
         .await;
 
-    let nickname_already_present_in_channel = nickname_session_ids
-        .iter()
-        .any(|&sid| sid != session_id && result.member_session_ids.contains(&sid));
-
-    if !nickname_already_present_in_channel {
+    if !nickname_present_elsewhere {
         let join_broadcast = ServerMessage::ChatUserJoined {
             channel: channel.clone(),
             nickname: user.nickname.clone(),
