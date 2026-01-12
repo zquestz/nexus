@@ -552,7 +552,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         // Send message to shared account by nickname
         let result = handle_user_message(
@@ -620,7 +620,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         let session_id = shared_session_id.unwrap();
 
@@ -683,7 +683,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         let session_id = shared_session_id.unwrap();
 

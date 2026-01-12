@@ -74,36 +74,34 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Broadcast ChatUserLeft to remaining channel members
-    let leave_broadcast = ServerMessage::ChatUserLeft {
-        channel: channel.clone(),
-        nickname: user.nickname.clone(),
-    };
-
-    for member_session_id in &result.remaining_member_session_ids {
-        ctx.user_manager
-            .send_to_session(*member_session_id, leave_broadcast.clone())
-            .await;
-    }
-
-    // Broadcast ChatLeft to user's OTHER sessions (multi-session sync)
-    // This lets other sessions of the same user know they've left a channel
-    let other_session_ids = ctx
+    // Broadcast ChatUserLeft to remaining channel members, but ONLY if this nickname
+    // no longer has any sessions in the channel.
+    //
+    // "Member counts are nicknames" (deduped), so join/leave announcements should only fire
+    // when the first session for a nickname joins and when the last session leaves.
+    let nickname_session_ids = ctx
         .user_manager
-        .get_session_ids_for_user(&user.username)
+        .get_session_ids_for_nickname(&user.nickname)
         .await;
-    if other_session_ids.len() > 1 {
-        let chat_left = ServerMessage::ChatLeft {
+
+    let nickname_still_present_in_channel = nickname_session_ids
+        .iter()
+        .any(|&sid| result.remaining_member_session_ids.contains(&sid));
+
+    if !nickname_still_present_in_channel {
+        let leave_broadcast = ServerMessage::ChatUserLeft {
             channel: channel.clone(),
+            nickname: user.nickname.clone(),
         };
-        for other_session_id in other_session_ids {
-            if other_session_id != session_id {
-                ctx.user_manager
-                    .send_to_session(other_session_id, chat_left.clone())
-                    .await;
-            }
+
+        for member_session_id in &result.remaining_member_session_ids {
+            ctx.user_manager
+                .send_to_session(*member_session_id, leave_broadcast.clone())
+                .await;
         }
     }
+
+    // Note: Channel membership is session-based.
 
     // Send success response
     let response = ServerMessage::ChatLeaveResponse {

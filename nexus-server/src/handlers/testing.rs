@@ -179,7 +179,7 @@ pub async fn create_test_context() -> TestContext {
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
 
     // Create channel manager for tests
-    let channel_manager = ChannelManager::new(db.channels.clone());
+    let channel_manager = ChannelManager::new(db.channels.clone(), user_manager.clone());
 
     TestContext {
         frame_reader,

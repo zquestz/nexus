@@ -125,20 +125,13 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get or create channel state (handles race condition where message arrives before ChatJoined)
+        // Channel membership is session-based, and the server guarantees that a session
+        // only receives channel messages for channels it has joined.
+        //
+        // So: do NOT auto-create channel state/tabs here. If we don't recognize the channel,
+        // ignore the message (it likely arrived after a leave or during a tab close race).
         if conn.get_channel_state(channel).is_none() {
-            // Auto-create minimal channel state
-            let channel_state = crate::types::ChannelState::new_minimal();
-            let channel_lower = channel.to_lowercase();
-            conn.channels.insert(channel_lower.clone(), channel_state);
-            // Add to channel_tabs if not already there
-            if !conn
-                .channel_tabs
-                .iter()
-                .any(|c| c.to_lowercase() == channel_lower)
-            {
-                conn.channel_tabs.push(channel.to_string());
-            }
+            return Task::none();
         }
 
         if let Some(channel_state) = conn.get_channel_state_mut(channel) {

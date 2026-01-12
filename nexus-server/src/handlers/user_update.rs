@@ -2130,7 +2130,7 @@ mod tests {
         .await;
         assert!(login_result.is_ok(), "Shared account login should succeed");
 
-        // Read login response (skips ChatJoined messages)
+        // Read login response
         let _login_response = read_login_response(&mut test_ctx).await;
 
         // Try to change own password

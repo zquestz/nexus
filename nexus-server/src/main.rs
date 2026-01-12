@@ -138,7 +138,7 @@ async fn main() {
     file_index.trigger_reindex();
 
     // Create channel manager for multi-channel chat
-    let channel_manager = ChannelManager::new(database.channels.clone());
+    let channel_manager = ChannelManager::new(database.channels.clone(), user_manager.clone());
 
     // Initialize persistent channels from config and database
     let persistent_channels_config = database.config.get_persistent_channels().await;

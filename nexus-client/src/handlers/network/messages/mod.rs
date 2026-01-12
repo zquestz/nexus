@@ -146,23 +146,7 @@ impl NexusApp {
                 self.handle_chat_user_left(connection_id, channel, nickname)
             }
 
-            ServerMessage::ChatJoined {
-                channel,
-                topic,
-                topic_set_by,
-                secret,
-                members,
-            } => self.handle_chat_joined(
-                connection_id,
-                channel,
-                topic,
-                topic_set_by,
-                secret,
-                members,
-            ),
-
-            ServerMessage::ChatLeft { channel } => self.handle_chat_left(connection_id, channel),
-
+            // Note: Channel membership is session-based and no longer syncs across a user's other sessions.
             ServerMessage::ChatSecretResponse { success, error } => {
                 self.handle_chat_secret_response(connection_id, message_id, success, error)
             }

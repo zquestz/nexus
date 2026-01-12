@@ -104,46 +104,41 @@ where
         }
     };
 
-    // Get sorted nicknames for all channel members
-    let member_nicknames = ctx
+    // Get sorted nicknames for all channel members (session-based),
+    // then deduplicate (member counts are nicknames, not sessions).
+    let mut member_nicknames = ctx
         .user_manager
         .get_nicknames_for_sessions(&result.member_session_ids)
         .await;
 
-    // Broadcast ChatUserJoined to other channel members (not to the joining user)
-    let join_broadcast = ServerMessage::ChatUserJoined {
-        channel: channel.clone(),
-        nickname: user.nickname.clone(),
-        is_admin: user.is_admin,
-        is_shared: user.is_shared,
-    };
+    member_nicknames.dedup_by_key(|n| n.to_lowercase());
 
-    for member_session_id in &result.member_session_ids {
-        if *member_session_id != session_id {
-            ctx.user_manager
-                .send_to_session(*member_session_id, join_broadcast.clone())
-                .await;
-        }
-    }
-
-    // Broadcast ChatJoined to user's OTHER sessions (multi-session sync)
-    // This lets other sessions of the same user know they've joined a channel
-    let other_session_ids = ctx
+    // Broadcast ChatUserJoined to other channel members (not to the joining user),
+    // but ONLY if this nickname was not already present in the channel via another session.
+    //
+    // "Member counts are nicknames" (deduped), so join/leave announcements should only fire
+    // when the first session for a nickname joins and when the last session leaves.
+    let nickname_session_ids = ctx
         .user_manager
-        .get_session_ids_for_user(&user.username)
+        .get_session_ids_for_nickname(&user.nickname)
         .await;
-    if other_session_ids.len() > 1 {
-        let chat_joined = ServerMessage::ChatJoined {
+
+    let nickname_already_present_in_channel = nickname_session_ids
+        .iter()
+        .any(|&sid| sid != session_id && result.member_session_ids.contains(&sid));
+
+    if !nickname_already_present_in_channel {
+        let join_broadcast = ServerMessage::ChatUserJoined {
             channel: channel.clone(),
-            topic: result.topic.clone(),
-            topic_set_by: result.topic_set_by.clone(),
-            secret: result.secret,
-            members: member_nicknames.clone(),
+            nickname: user.nickname.clone(),
+            is_admin: user.is_admin,
+            is_shared: user.is_shared,
         };
-        for other_session_id in other_session_ids {
-            if other_session_id != session_id {
+
+        for member_session_id in &result.member_session_ids {
+            if *member_session_id != session_id {
                 ctx.user_manager
-                    .send_to_session(other_session_id, chat_joined.clone())
+                    .send_to_session(*member_session_id, join_broadcast.clone())
                     .await;
             }
         }

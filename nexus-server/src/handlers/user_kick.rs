@@ -554,7 +554,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         assert!(
             shared_session_id.is_some(),
@@ -631,7 +631,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         let session_id = shared_session_id.unwrap();
 

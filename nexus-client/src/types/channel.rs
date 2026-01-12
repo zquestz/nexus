@@ -34,20 +34,6 @@ impl ChannelState {
         }
     }
 
-    /// Create a minimal channel state (used when receiving a message for an unknown channel)
-    ///
-    /// This handles the race condition where a ChatMessage arrives before ChatJoined
-    /// during multi-session sync.
-    pub fn new_minimal() -> Self {
-        Self {
-            topic: None,
-            topic_set_by: None,
-            secret: false,
-            members: Vec::new(),
-            messages: Vec::new(),
-        }
-    }
-
     /// Add a member to the channel (maintains sorted order)
     pub fn add_member(&mut self, nickname: String) {
         // Check if already a member (case-insensitive)
@@ -106,19 +92,8 @@ mod tests {
     }
 
     #[test]
-    fn test_new_minimal() {
-        let channel = ChannelState::new_minimal();
-
-        assert!(channel.topic.is_none());
-        assert!(channel.topic_set_by.is_none());
-        assert!(!channel.secret);
-        assert!(channel.members.is_empty());
-        assert!(channel.messages.is_empty());
-    }
-
-    #[test]
     fn test_add_member_sorted() {
-        let mut channel = ChannelState::new_minimal();
+        let mut channel = ChannelState::new(None, None, false, vec![]);
 
         channel.add_member("charlie".to_string());
         channel.add_member("alice".to_string());
@@ -129,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_add_member_no_duplicate() {
-        let mut channel = ChannelState::new_minimal();
+        let mut channel = ChannelState::new(None, None, false, vec![]);
 
         channel.add_member("alice".to_string());
         channel.add_member("Alice".to_string()); // Same name, different case

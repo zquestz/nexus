@@ -394,15 +394,6 @@ where
     let auto_join_config = ctx.db.config.get_auto_join_channels().await;
     let auto_join_channel_names = crate::db::ConfigDb::parse_channel_list(&auto_join_config);
 
-    // Get user's other session IDs for multi-session sync (if any)
-    let other_session_ids: Vec<u32> = ctx
-        .user_manager
-        .get_session_ids_for_user(&authenticated_account.username)
-        .await
-        .into_iter()
-        .filter(|&sid| sid != id)
-        .collect();
-
     // Get user info for ChatUserJoined broadcasts
     // We need this before the loop since user isn't in UserManager yet
     let joining_user_nickname = validated_nickname
@@ -418,11 +409,14 @@ where
             continue;
         };
 
-        // Get sorted nicknames for all channel members
-        let member_nicknames = ctx
+        // Get sorted nicknames for all channel members (session-based),
+        // then deduplicate (member counts are nicknames, not sessions).
+        let mut member_nicknames = ctx
             .user_manager
             .get_nicknames_for_sessions(&result.member_session_ids)
             .await;
+
+        member_nicknames.dedup_by_key(|n| n.to_lowercase());
 
         // Broadcast ChatUserJoined to existing channel members (not to the joining user)
         // This lets other users in the channel know someone joined
@@ -436,23 +430,6 @@ where
             if member_session_id != id {
                 ctx.user_manager
                     .send_to_session(member_session_id, join_broadcast.clone())
-                    .await;
-            }
-        }
-
-        // Broadcast ChatJoined to user's OTHER sessions (multi-session sync)
-        // This lets other sessions of the same user know about the auto-joined channel
-        if !other_session_ids.is_empty() {
-            let chat_joined = ServerMessage::ChatJoined {
-                channel: channel_name.clone(),
-                topic: result.topic.clone(),
-                topic_set_by: result.topic_set_by.clone(),
-                secret: result.secret,
-                members: member_nicknames.clone(),
-            };
-            for &other_session_id in &other_session_ids {
-                ctx.user_manager
-                    .send_to_session(other_session_id, chat_joined.clone())
                     .await;
             }
         }

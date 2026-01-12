@@ -1077,7 +1077,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         // Look up by nickname
         let result = handle_user_info(
@@ -1151,7 +1151,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
+        let _ = read_login_response(&mut test_ctx).await; // consume login response
 
         // Look up by username (not nickname) - should fail
         // Shared accounts can only be looked up by their display name (nickname)

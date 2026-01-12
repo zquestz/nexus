@@ -442,20 +442,7 @@ pub enum ServerMessage {
         channel: String,
         nickname: String,
     },
-    /// Broadcast to user's OTHER sessions when they join a channel (multi-session sync)
-    ChatJoined {
-        channel: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        topic: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        topic_set_by: Option<String>,
-        secret: bool,
-        members: Vec<String>,
-    },
-    /// Broadcast to user's OTHER sessions when they leave a channel (multi-session sync)
-    ChatLeft {
-        channel: String,
-    },
+
     Error {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]

@@ -16,6 +16,7 @@ use nexus_common::validators::MAX_CHANNELS_PER_USER;
 
 use super::types::{Channel, ChannelListInfo, JoinError, JoinResult, LeaveResult};
 use crate::db::ChannelDb;
+use crate::users::UserManager;
 
 /// Manages all chat channels
 #[derive(Clone)]
@@ -26,17 +27,20 @@ pub struct ChannelManager {
     persistent_channels: Arc<RwLock<HashSet<String>>>,
     /// Database for persisting channel settings
     db: ChannelDb,
+    /// User manager for resolving session_id -> nickname (for member counts/listing)
+    user_manager: UserManager,
 }
 
 impl ChannelManager {
     /// Create a new empty channel manager
     ///
     /// Use `initialize_persistent_channels` to set up persistent channels after creation.
-    pub fn new(db: ChannelDb) -> Self {
+    pub fn new(db: ChannelDb, user_manager: UserManager) -> Self {
         Self {
             channels: Arc::new(RwLock::new(HashMap::new())),
             persistent_channels: Arc::new(RwLock::new(HashSet::new())),
             db,
+            user_manager,
         }
     }
 
@@ -214,21 +218,51 @@ impl ChannelManager {
     ///
     /// Secret channels are hidden unless the session is a member or is_admin is true.
     pub async fn list(&self, session_id: u32, is_admin: bool) -> Vec<ChannelListInfo> {
-        let channels = self.channels.read().await;
+        // Collect the channels we want to list while holding the channels lock,
+        // then do async user lookups after releasing it.
+        let channels_to_list: Vec<(String, Option<String>, bool, Vec<u32>)> = {
+            let channels = self.channels.read().await;
+            channels
+                .values()
+                .filter(|ch| {
+                    // Show non-secret channels, or secret channels if admin or member
+                    !ch.secret || is_admin || ch.has_member(session_id)
+                })
+                .map(|ch| {
+                    (
+                        ch.name.clone(),
+                        ch.topic.clone(),
+                        ch.secret,
+                        ch.members.iter().copied().collect(),
+                    )
+                })
+                .collect()
+        };
 
-        channels
-            .values()
-            .filter(|ch| {
-                // Show non-secret channels, or secret channels if admin or member
-                !ch.secret || is_admin || ch.has_member(session_id)
-            })
-            .map(|ch| ChannelListInfo {
-                name: ch.name.clone(),
-                topic: ch.topic.clone(),
-                member_count: ch.members.len() as u32,
-                secret: ch.secret,
-            })
-            .collect()
+        let mut results = Vec::with_capacity(channels_to_list.len());
+
+        for (name, topic, secret, member_session_ids) in channels_to_list {
+            // Member counts are nicknames (deduped), not sessions.
+            // We don't store nicknames in ChannelManager, so count unique nicknames by
+            // deriving them from the joined sessions when we build the listing.
+            let mut seen = HashSet::new();
+            for sid in member_session_ids {
+                // We can only count sessions we can map to an active user.
+                // If a session disappeared, skipping it is fine for display.
+                if let Some(user) = self.user_manager.get_user_by_session_id(sid).await {
+                    seen.insert(user.nickname.to_lowercase());
+                }
+            }
+
+            results.push(ChannelListInfo {
+                name,
+                topic,
+                member_count: seen.len() as u32,
+                secret,
+            });
+        }
+
+        results
     }
 
     /// Set the secret mode for a channel
@@ -358,7 +392,8 @@ mod tests {
     async fn create_test_manager() -> ChannelManager {
         let pool = create_test_db().await;
         let db = ChannelDb::new(pool);
-        ChannelManager::new(db)
+        let user_manager = UserManager::new();
+        ChannelManager::new(db, user_manager)
     }
 
     #[tokio::test]

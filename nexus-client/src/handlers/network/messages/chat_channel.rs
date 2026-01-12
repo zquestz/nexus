@@ -4,8 +4,6 @@
 //! - ChatJoinResponse - Response to /join command
 //! - ChatLeaveResponse - Response to /leave command
 //! - ChatSecretResponse - Response to /secret command
-//! - ChatJoined - Multi-session sync when another session joins
-//! - ChatLeft - Multi-session sync when another session leaves
 //! - ChatUserJoined - Notification when another user joins a channel
 //! - ChatUserLeft - Notification when another user leaves a channel
 //! - ChatListResponse - Response to /channels command
@@ -132,78 +130,6 @@ impl NexusApp {
         };
 
         self.remove_channel_tab(connection_id, &channel_name)
-    }
-
-    /// Handle ChatJoined - multi-session sync when another session joins a channel
-    ///
-    /// This is broadcast to a user's OTHER sessions when one session joins a channel.
-    /// Creates/updates the channel state but doesn't steal focus.
-    pub fn handle_chat_joined(
-        &mut self,
-        connection_id: usize,
-        channel: String,
-        topic: Option<String>,
-        topic_set_by: Option<String>,
-        secret: bool,
-        members: Vec<String>,
-    ) -> Task<Message> {
-        let Some(conn) = self.connections.get_mut(&connection_id) else {
-            return Task::none();
-        };
-
-        // Check if channel already exists (race condition - message arrived before ChatJoined)
-        if let Some(channel_state) = conn.get_channel_state_mut(&channel) {
-            // Update with full details
-            channel_state.topic = topic.clone();
-            channel_state.topic_set_by = topic_set_by.clone();
-            channel_state.secret = secret;
-            channel_state.members = members;
-        } else {
-            // Create new channel state
-            let channel_state =
-                ChannelState::new(topic.clone(), topic_set_by.clone(), secret, members.clone());
-            let channel_lower = channel.to_lowercase();
-            conn.channels.insert(channel_lower.clone(), channel_state);
-
-            // Add to channel_tabs if not already there
-            if !conn
-                .channel_tabs
-                .iter()
-                .any(|c| c.to_lowercase() == channel_lower)
-            {
-                conn.channel_tabs.push(channel.clone());
-            }
-        }
-
-        // Add topic message if present (don't steal focus)
-        self.add_topic_message(connection_id, &channel, topic.clone(), topic_set_by);
-
-        // Add secret indicator if channel is secret
-        if secret {
-            let _ = self.add_channel_message(
-                connection_id,
-                &channel,
-                ChatMessage::system(t("msg-channel-is-secret")),
-            );
-        }
-
-        // Mark as unread since this is from another session
-        if let Some(conn) = self.connections.get_mut(&connection_id) {
-            let channel_tab = ChatTab::Channel(conn.get_channel_display_name(&channel));
-            if conn.active_chat_tab != channel_tab {
-                conn.unread_tabs.insert(channel_tab);
-            }
-        }
-
-        Task::none()
-    }
-
-    /// Handle ChatLeft - multi-session sync when another session leaves a channel
-    ///
-    /// This is broadcast to a user's OTHER sessions when one session leaves a channel.
-    /// Removes the channel tab and data, moves focus if necessary.
-    pub fn handle_chat_left(&mut self, connection_id: usize, channel: String) -> Task<Message> {
-        self.remove_channel_tab(connection_id, &channel)
     }
 
     /// Handle ChatUserJoined - notification when another user joins a channel you're in

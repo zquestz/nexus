@@ -135,8 +135,6 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("ChatSecretResponse", pad_limit(2150)); // success + error (2048) + overhead
     m.insert("ChatUserJoined", pad_limit(151)); // channel (32) + nickname (32) + is_admin + is_shared + overhead
     m.insert("ChatUserLeft", pad_limit(114)); // channel (32) + nickname (32) + overhead
-    m.insert("ChatJoined", pad_limit(4200)); // channel (32) + topic (256) + topic_set_by (32) + secret + members array (~50 members) + overhead
-    m.insert("ChatLeft", pad_limit(65)); // channel (32) + overhead
     m.insert("Error", pad_limit(2154));
     m.insert("HandshakeResponse", pad_limit(356));
     m.insert(
@@ -296,7 +294,7 @@ mod tests {
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
         const CLIENT_MESSAGE_COUNT: usize = 48; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel client messages
-        const SERVER_MESSAGE_COUNT: usize = 63; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 8 Chat channel server messages (including ChatJoined, ChatLeft)
+        const SERVER_MESSAGE_COUNT: usize = 61; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel server messages
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -935,41 +933,6 @@ mod tests {
         assert!(
             size <= limit,
             "ChatUserLeft size {} exceeds limit {}",
-            size,
-            limit
-        );
-    }
-
-    #[test]
-    fn test_limit_chat_joined() {
-        let msg = ServerMessage::ChatJoined {
-            channel: str_of_len(MAX_CHANNEL_LENGTH),
-            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
-            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            secret: false,
-            members: vec![str_of_len(MAX_NICKNAME_LENGTH); 50], // ~50 members
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("ChatJoined") as usize;
-        assert!(
-            size <= limit,
-            "ChatJoined size {} exceeds limit {}",
-            size,
-            limit
-        );
-    }
-
-    #[test]
-    fn test_limit_chat_left() {
-        // ChatLeft is sent to user's other sessions when they leave a channel
-        let msg = ServerMessage::ChatLeft {
-            channel: str_of_len(MAX_CHANNEL_LENGTH),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("ChatLeft") as usize;
-        assert!(
-            size <= limit,
-            "ChatLeft size {} exceeds limit {}",
             size,
             limit
         );

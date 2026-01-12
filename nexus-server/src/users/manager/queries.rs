@@ -62,6 +62,21 @@ impl UserManager {
             .collect()
     }
 
+    /// Get all session IDs for a given nickname (case-insensitive)
+    ///
+    /// This works correctly for both regular and shared accounts:
+    /// - Regular accounts: nickname == username, so returns all sessions of the user
+    /// - Shared accounts: each session has a unique nickname, so returns just that session
+    pub async fn get_session_ids_for_nickname(&self, nickname: &str) -> Vec<u32> {
+        let users = self.users.read().await;
+        let nickname_lower = nickname.to_lowercase();
+        users
+            .iter()
+            .filter(|(_, user)| user.nickname.to_lowercase() == nickname_lower)
+            .map(|(session_id, _)| *session_id)
+            .collect()
+    }
+
     /// Check if a nickname is already in use by an active session (case-insensitive)
     ///
     /// Used during login to ensure nickname uniqueness for shared accounts.

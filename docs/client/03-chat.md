@@ -256,13 +256,13 @@ Notifications are suppressed when you're viewing that specific channel.
 - Scroll up to view older messages
 - Use `/clear` to clear the current tab's history
 
-## Multi-Session Behavior
+## Session Membership
 
 If you're logged in from multiple devices:
 
-- Joining a channel on one device syncs to others
-- Leaving a channel on one device syncs to others
-- Messages appear on all sessions
+- Channel membership is per session (each device joins/leaves independently)
+- Only sessions that have joined a channel will receive messages for that channel
+- Messages you send from a session are delivered to other channel members, but your other sessions will only see them if they also joined that channel
 
 ## Quick Reference
 
