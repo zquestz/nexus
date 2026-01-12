@@ -47,6 +47,17 @@ err-permission-denied = Permesso negato
 # Errori di funzionalità
 err-chat-feature-not-enabled = La funzionalità chat non è abilitata
 
+# Errori di canale
+err-channel-name-empty = Il nome del canale non può essere vuoto
+err-channel-name-too-short = Il nome del canale deve avere almeno un carattere dopo #
+err-channel-name-too-long = Il nome del canale è troppo lungo (massimo { $max_length } caratteri)
+err-channel-name-invalid = Il nome del canale contiene caratteri non validi
+err-channel-name-missing-prefix = Il nome del canale deve iniziare con #
+err-channel-not-found = Canale '{ $channel }' non trovato
+err-channel-already-member = Sei già membro del canale '{ $channel }'
+err-channel-limit-exceeded = Non puoi unirti a più di { $max } canali
+err-channel-list-invalid = Canale non valido '{ $channel }': { $reason }
+
 # Errori del database
 err-database = Errore del database
 

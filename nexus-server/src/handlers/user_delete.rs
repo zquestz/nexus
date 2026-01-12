@@ -228,7 +228,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
@@ -274,7 +274,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
@@ -313,7 +313,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Response should indicate failure");
@@ -358,7 +358,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok(), "Admin should be able to delete other admin");
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserDeleteResponse {
                 success,
@@ -469,7 +469,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
                 assert!(!success, "Non-admin should not be able to delete admin");
@@ -659,7 +659,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse {
                 success,
@@ -696,7 +696,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Should receive error response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserDeleteResponse {
                 success,
@@ -733,7 +733,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Should receive error response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserDeleteResponse {
                 success,

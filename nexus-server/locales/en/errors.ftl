@@ -73,6 +73,17 @@ err-cannot-disable-last-admin = Cannot disable the last admin
 err-topic-contains-newlines = Topic cannot contain newlines
 err-topic-invalid-characters = Topic contains invalid characters
 
+# Channel Errors
+err-channel-name-empty = Channel name cannot be empty
+err-channel-name-too-short = Channel name must have at least one character after #
+err-channel-name-too-long = Channel name is too long (max { $max_length } characters)
+err-channel-name-invalid = Channel name contains invalid characters
+err-channel-name-missing-prefix = Channel name must start with #
+err-channel-not-found = Channel '{ $channel }' not found
+err-channel-already-member = You are already a member of channel '{ $channel }'
+err-channel-limit-exceeded = You cannot join more than { $max } channels
+err-channel-list-invalid = Invalid channel '{ $channel }': { $reason }
+
 # Version Validation Errors
 err-version-empty = Version cannot be empty
 err-version-too-long = Version is too long (max { $max_length } characters)

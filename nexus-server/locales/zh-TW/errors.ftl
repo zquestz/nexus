@@ -47,6 +47,17 @@ err-permission-denied = 權限被拒絕
 # 功能錯誤
 err-chat-feature-not-enabled = 聊天功能未啟用
 
+# 頻道錯誤
+err-channel-name-empty = 頻道名稱不能為空
+err-channel-name-too-short = 頻道名稱在#後必須至少有一個字元
+err-channel-name-too-long = 頻道名稱過長（最多{ $max_length }個字元）
+err-channel-name-invalid = 頻道名稱包含無效字元
+err-channel-name-missing-prefix = 頻道名稱必須以#開頭
+err-channel-not-found = 未找到頻道 '{ $channel }'
+err-channel-already-member = 您已經是頻道 '{ $channel }' 的成員
+err-channel-limit-exceeded = 您不能加入超過 { $max } 個頻道
+err-channel-list-invalid = 無效頻道 '{ $channel }': { $reason }
+
 # 資料庫錯誤
 err-database = 資料庫錯誤
 

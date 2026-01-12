@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChannelJoinInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
 };
@@ -385,6 +385,36 @@ where
     };
     *session_id = Some(id);
 
+    // Auto-join channels configured by admin
+    // We join the user and collect channel info to include in LoginResponse.
+    // No ChatUserJoined broadcast since UserConnected already notifies about the new user.
+    // Auto-join channels are separate from persistent channels:
+    // - persistent_channels: survive restart, can't be deleted when empty
+    // - auto_join_channels: users automatically join these on login
+    let auto_join_config = ctx.db.config.get_auto_join_channels().await;
+    let auto_join_channel_names = crate::db::ConfigDb::parse_channel_list(&auto_join_config);
+    let mut joined_channels = Vec::new();
+    for channel_name in auto_join_channel_names {
+        // Auto-join at login - ignore errors (e.g., if user somehow hits channel limit)
+        let Ok(result) = ctx.channel_manager.join(&channel_name, id).await else {
+            continue;
+        };
+
+        // Get sorted nicknames for all channel members
+        let member_nicknames = ctx
+            .user_manager
+            .get_nicknames_for_sessions(&result.member_session_ids)
+            .await;
+
+        joined_channels.push(ChannelJoinInfo {
+            channel: channel_name,
+            topic: result.topic,
+            topic_set_by: result.topic_set_by,
+            secret: result.secret,
+            members: member_nicknames,
+        });
+    }
+
     // Convert cached permissions to strings for LoginResponse
     let user_permissions: Vec<String> = if authenticated_account.is_admin {
         // Admins get all permissions automatically - return empty list
@@ -415,6 +445,20 @@ where
         None
     };
 
+    // Persistent channels only visible to admins
+    let persistent_channels = if authenticated_account.is_admin {
+        Some(ctx.db.config.get_persistent_channels().await)
+    } else {
+        None
+    };
+
+    // Auto-join channels only visible to admins
+    let auto_join_channels = if authenticated_account.is_admin {
+        Some(ctx.db.config.get_auto_join_channels().await)
+    } else {
+        None
+    };
+
     let server_info = Some(ServerInfo {
         name: Some(name),
         description: Some(description),
@@ -424,27 +468,16 @@ where
         image: Some(image),
         transfer_port: ctx.transfer_port,
         file_reindex_interval,
+        persistent_channels,
+        auto_join_channels,
     });
 
-    // Fetch chat info only if user has ChatTopic permission
-    let chat_info =
-        if authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatTopic) {
-            match ctx.db.chat.get_topic().await {
-                Ok(topic) => Some(ChatInfo {
-                    topic: topic.topic,
-                    topic_set_by: topic.set_by,
-                }),
-                Err(e) => {
-                    eprintln!(
-                        "Error fetching chat topic for {}: {}",
-                        authenticated_account.username, e
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
+    // Build channels field for LoginResponse (only if user joined any channels)
+    let channels = if joined_channels.is_empty() {
+        None
+    } else {
+        Some(joined_channels)
+    };
 
     let response = ServerMessage::LoginResponse {
         success: true,
@@ -452,8 +485,8 @@ where
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
         server_info,
-        chat_info,
         locale: Some(locale.clone()),
+        channels,
         error: None,
     };
     ctx.send_message(&response).await?;
@@ -491,7 +524,8 @@ where
 mod tests {
     use super::*;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, read_server_message,
+        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, read_login_response,
+        read_server_message,
     };
 
     #[tokio::test]
@@ -539,9 +573,8 @@ mod tests {
         assert!(result.is_ok(), "First login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        // Read response
-
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        // Read LoginResponse (channels field will be None since auto_join_channels is empty in tests)
+        let response_msg = read_login_response(&mut test_ctx).await;
 
         // Verify successful login response with admin flag and empty permissions
         match response_msg {
@@ -621,7 +654,7 @@ mod tests {
 
         // Read response
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
 
         // Verify successful login response with is_admin and permissions
         match response_msg {
@@ -793,7 +826,7 @@ mod tests {
 
         // Read response
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
 
         // Verify response includes correct permissions
         match response_msg {
@@ -898,87 +931,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_login_includes_server_info_with_chat_topic() {
+    async fn test_login_includes_auto_joined_channels_with_topic() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with ChatTopic permission
-        let password = "password";
-        let hashed = get_cached_password_hash(password);
-        let mut perms = db::Permissions::new();
-        perms.permissions.insert(Permission::ChatTopic);
-        test_ctx
-            .db
-            .users
-            .create_user("alice", &hashed, false, false, true, &perms)
-            .await
-            .unwrap();
-
-        // Set a topic
-        test_ctx
-            .db
-            .chat
-            .set_topic("Test server topic", "admin")
-            .await
-            .unwrap();
-
-        let mut session_id = None;
-        let handshake_complete = true;
-
-        let request = LoginRequest {
-            username: "alice".to_string(),
-            password: password.to_string(),
-            features: vec![],
-            locale: DEFAULT_TEST_LOCALE.to_string(),
-            avatar: None,
-            nickname: None,
-            handshake_complete,
-        };
-        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
-
-        assert!(result.is_ok(), "Login should succeed");
-
-        // Read response
-
-        let response_msg = read_server_message(&mut test_ctx.client).await;
-
-        // Verify LoginResponse includes server_info with chat_topic
-        match response_msg {
-            ServerMessage::LoginResponse {
-                success,
-                server_info,
-                chat_info,
-                ..
-            } => {
-                assert!(success, "Login should succeed");
-                assert!(server_info.is_some(), "Should include server_info");
-                let info = server_info.unwrap();
-                assert_eq!(
-                    info.name,
-                    Some("Nexus BBS".to_string()),
-                    "Should include server name"
-                );
-                assert_eq!(
-                    info.description,
-                    Some("".to_string()),
-                    "Should include server description"
-                );
-                assert!(
-                    info.max_connections_per_ip.is_some(),
-                    "All users should receive max_connections_per_ip"
-                );
-                assert!(chat_info.is_some(), "Should include chat_info");
-                let chat = chat_info.unwrap();
-                assert_eq!(chat.topic, "Test server topic", "Should include chat topic");
-            }
-            _ => panic!("Expected LoginResponse"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_login_excludes_topic_without_permission() {
-        let mut test_ctx = create_test_context().await;
-
-        // Create user without ChatTopic permission
+        // Create regular user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -995,12 +951,22 @@ mod tests {
             .await
             .unwrap();
 
-        // Set a topic (user shouldn't see it)
-        // Set a topic that should NOT be visible
+        // Initialize persistent channel with topic
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![crate::channels::Channel::with_settings(
+                nexus_common::validators::DEFAULT_CHANNEL.to_string(),
+                Some("Test server topic".to_string()),
+                Some("admin".to_string()),
+                false,
+            )])
+            .await;
+
+        // Set auto_join_channels to include the default channel
         test_ctx
             .db
-            .chat
-            .set_topic("Secret topic", "admin")
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
             .await
             .unwrap();
 
@@ -1022,14 +988,107 @@ mod tests {
 
         // Read response
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
 
-        // Verify LoginResponse includes server_info with name/description but excludes topic
+        // Verify LoginResponse includes channels with topic
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
                 server_info,
-                chat_info,
+                channels,
+                ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(server_info.is_some(), "Should include server_info");
+                let info = server_info.unwrap();
+                assert_eq!(
+                    info.name,
+                    Some("Nexus BBS".to_string()),
+                    "Should include server name"
+                );
+                assert_eq!(
+                    info.description,
+                    Some("".to_string()),
+                    "Should include server description"
+                );
+                assert!(
+                    info.max_connections_per_ip.is_some(),
+                    "All users should receive max_connections_per_ip"
+                );
+                assert!(channels.is_some(), "Should include channels");
+                let channel_list = channels.unwrap();
+                assert_eq!(channel_list.len(), 1, "Should have one auto-joined channel");
+                let channel = &channel_list[0];
+                assert_eq!(
+                    channel.channel,
+                    nexus_common::validators::DEFAULT_CHANNEL,
+                    "Should be the default channel"
+                );
+                assert_eq!(
+                    channel.topic,
+                    Some("Test server topic".to_string()),
+                    "Should include channel topic"
+                );
+                assert_eq!(
+                    channel.topic_set_by,
+                    Some("admin".to_string()),
+                    "Should include topic setter"
+                );
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_no_channels_when_no_auto_join_configured() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(),
+            )
+            .await
+            .unwrap();
+
+        // Clear auto-join channels (default is #nexus)
+        test_ctx.db.config.set_auto_join_channels("").await.unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Read response
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+
+        // Verify LoginResponse has no channels when none are auto-joined
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success,
+                server_info,
+                channels,
                 ..
             } => {
                 assert!(success, "Login should succeed");
@@ -1050,8 +1109,8 @@ mod tests {
                     "All users should receive max_connections_per_ip"
                 );
                 assert!(
-                    chat_info.is_none(),
-                    "Should NOT include chat_info without permission"
+                    channels.is_none(),
+                    "Should NOT include channels when none are auto-joined"
                 );
             }
             _ => panic!("Expected LoginResponse"),
@@ -1059,10 +1118,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_login_admin_receives_server_info() {
+    async fn test_login_admin_receives_server_info_and_channels() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user (no explicit ChatTopic permission needed)
+        // Create admin user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1072,11 +1131,22 @@ mod tests {
             .await
             .unwrap();
 
-        // Set a topic
+        // Initialize persistent channel with topic
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![crate::channels::Channel::with_settings(
+                nexus_common::validators::DEFAULT_CHANNEL.to_string(),
+                Some("Admin can see this".to_string()),
+                Some("admin".to_string()),
+                false,
+            )])
+            .await;
+
+        // Set auto_join_channels to include the default channel
         test_ctx
             .db
-            .chat
-            .set_topic("Admin can see this", "admin")
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
             .await
             .unwrap();
 
@@ -1098,15 +1168,15 @@ mod tests {
 
         // Read response
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
 
-        // Verify admin receives server_info and chat_info
+        // Verify admin receives server_info and channels
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
                 is_admin,
                 server_info,
-                chat_info,
+                channels,
                 ..
             } => {
                 assert!(success, "Login should succeed");
@@ -1118,9 +1188,15 @@ mod tests {
                     Some(5),
                     "Admin should receive max_connections_per_ip"
                 );
-                assert!(chat_info.is_some(), "Admin should receive chat_info");
-                let chat = chat_info.unwrap();
-                assert_eq!(chat.topic, "Admin can see this");
+                assert!(channels.is_some(), "Admin should receive channels");
+                let channel_list = channels.unwrap();
+                assert_eq!(channel_list.len(), 1, "Should have one auto-joined channel");
+                let channel = &channel_list[0];
+                assert_eq!(
+                    channel.topic,
+                    Some("Admin can see this".to_string()),
+                    "Channel should include topic"
+                );
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -1177,7 +1253,7 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 assert!(
@@ -1233,7 +1309,7 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent in Spanish
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
@@ -1288,7 +1364,7 @@ mod tests {
         assert!(session_id.is_none(), "Session ID should remain None");
 
         // Verify error message was sent in English (default)
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 // Should be English (contains "Invalid" or "username")
@@ -1329,7 +1405,7 @@ mod tests {
         assert!(result.is_ok(), "Login with valid avatar should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
         match response_msg {
             ServerMessage::LoginResponse { success, .. } => {
                 assert!(success, "Login should succeed with valid avatar");
@@ -1364,7 +1440,7 @@ mod tests {
         assert!(result.is_err(), "Login with oversized avatar should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 assert!(
@@ -1403,7 +1479,7 @@ mod tests {
         );
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 assert!(
@@ -1444,7 +1520,7 @@ mod tests {
         );
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
                 assert!(
@@ -1481,7 +1557,7 @@ mod tests {
         assert!(result.is_ok(), "Login without avatar should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
         match response_msg {
             ServerMessage::LoginResponse { success, .. } => {
                 assert!(success, "Login should succeed without avatar");
@@ -1542,7 +1618,7 @@ mod tests {
         assert!(result.is_ok(), "Login with valid nickname should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_login_response(&mut test_ctx).await;
         match response_msg {
             ServerMessage::LoginResponse { success, .. } => {
                 assert!(success, "Login response should indicate success");
@@ -1797,7 +1873,7 @@ mod tests {
         assert!(session_id1.is_some());
 
         // Read the login response
-        let _response1 = read_server_message(&mut test_ctx.client).await;
+        let _response1 = read_login_response(&mut test_ctx).await;
 
         // Second login attempt with same nickname "Bob"
         let mut session_id2 = None;
@@ -1871,7 +1947,7 @@ mod tests {
         assert!(session_id1.is_some());
 
         // Read the login response
-        let _response1 = read_server_message(&mut test_ctx.client).await;
+        let _response1 = read_login_response(&mut test_ctx).await;
 
         // Second login with different nickname "Bob"
         let mut session_id2 = None;
@@ -2085,7 +2161,7 @@ mod tests {
         assert!(alice_result.is_ok(), "Alice login should succeed");
 
         // Read alice's login response
-        let _response = read_server_message(&mut test_ctx.client).await;
+        let _response = read_login_response(&mut test_ctx).await;
 
         // Create shared account
         test_ctx
@@ -2163,7 +2239,7 @@ mod tests {
         assert!(result.is_ok(), "Guest login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_login_response(&mut test_ctx).await;
         match response {
             ServerMessage::LoginResponse {
                 success, is_admin, ..
@@ -2413,7 +2489,7 @@ mod tests {
         assert!(result.is_ok(), "First user login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_login_response(&mut test_ctx).await;
         match response {
             ServerMessage::LoginResponse {
                 success, is_admin, ..
@@ -2490,7 +2566,7 @@ mod tests {
         let new_session_id = session_id.expect("Session ID should be set");
 
         // Read the LoginResponse
-        let _response = read_server_message(&mut test_ctx.client).await;
+        let _response = read_login_response(&mut test_ctx).await;
 
         // Verify the new session inherited is_away and status from existing session
         let new_session = test_ctx
@@ -2574,7 +2650,7 @@ mod tests {
         let new_session_id = session_id.expect("Session ID should be set");
 
         // Read the LoginResponse
-        let _response = read_server_message(&mut test_ctx.client).await;
+        let _response = read_login_response(&mut test_ctx).await;
 
         // Verify the new session did NOT inherit is_away/status (shared accounts don't inherit)
         let new_session = test_ctx
@@ -2683,7 +2759,7 @@ mod tests {
         let new_session_id = session_id.expect("Session ID should be set");
 
         // Read the LoginResponse
-        let _response = read_server_message(&mut test_ctx.client).await;
+        let _response = read_login_response(&mut test_ctx).await;
 
         // Verify the new session inherited from the LATEST session (session2)
         let new_session = test_ctx

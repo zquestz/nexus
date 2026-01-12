@@ -47,6 +47,17 @@ err-permission-denied = 権限がありません
 # 機能エラー
 err-chat-feature-not-enabled = チャット機能が有効になっていません
 
+# チャンネルエラー
+err-channel-name-empty = チャンネル名を空にすることはできません
+err-channel-name-too-short = チャンネル名は#の後に少なくとも1文字が必要です
+err-channel-name-too-long = チャンネル名が長すぎます（最大{ $max_length }文字）
+err-channel-name-invalid = チャンネル名に無効な文字が含まれています
+err-channel-name-missing-prefix = チャンネル名は#で始まる必要があります
+err-channel-not-found = チャンネル '{ $channel }' が見つかりません
+err-channel-already-member = すでにチャンネル '{ $channel }' のメンバーです
+err-channel-limit-exceeded = { $max } 個以上のチャンネルに参加することはできません
+err-channel-list-invalid = 無効なチャンネル '{ $channel }': { $reason }
+
 # データベースエラー
 err-database = データベースエラー
 

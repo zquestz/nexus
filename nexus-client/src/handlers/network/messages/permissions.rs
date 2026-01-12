@@ -1,7 +1,7 @@
 //! Permissions update handler
 
 use iced::Task;
-use nexus_common::protocol::{ChatInfo, ClientMessage, ServerInfo};
+use nexus_common::protocol::{ClientMessage, ServerInfo};
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -14,13 +14,18 @@ use crate::views::constants::PERMISSION_USER_LIST;
 
 impl NexusApp {
     /// Handle permissions updated notification
+    ///
+    /// Note: Previously, this also updated chat_topic when ChatTopic permission changed.
+    /// With multi-channel support, topics are now per-channel and included in LoginResponse.channels
+    /// or ChatTopicUpdated messages. When a user gains ChatTopic permission mid-session, they
+    /// won't see existing topics until they reconnect or topics are changed. This is acceptable
+    /// since the multi-channel client UI will handle topic visibility per-channel.
     pub fn handle_permissions_updated(
         &mut self,
         connection_id: usize,
         is_admin: bool,
         permissions: Vec<String>,
         server_info: Option<ServerInfo>,
-        chat_info: Option<ChatInfo>,
     ) -> Task<Message> {
         // Get server name before mutable borrow for notification
         let server_name = self
@@ -79,25 +84,6 @@ impl NexusApp {
                     decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
                 };
             }
-        }
-
-        // Update chat info separately
-        if let Some(info) = chat_info {
-            // Empty strings mean not set
-            conn.chat_topic = if info.topic.is_empty() {
-                None
-            } else {
-                Some(info.topic)
-            };
-            conn.chat_topic_set_by = if info.topic_set_by.is_empty() {
-                None
-            } else {
-                Some(info.topic_set_by)
-            };
-        } else {
-            // No chat_info means no permission to see topic
-            conn.chat_topic = None;
-            conn.chat_topic_set_by = None;
         }
 
         // If user just gained user_list permission, refresh the list

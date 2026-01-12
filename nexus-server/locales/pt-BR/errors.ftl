@@ -47,6 +47,17 @@ err-permission-denied = Permissão negada
 # Erros de recursos
 err-chat-feature-not-enabled = Recurso de chat não habilitado
 
+# Erros de canal
+err-channel-name-empty = O nome do canal não pode estar vazio
+err-channel-name-too-short = O nome do canal deve ter pelo menos um caractere após #
+err-channel-name-too-long = O nome do canal é muito longo (máximo { $max_length } caracteres)
+err-channel-name-invalid = O nome do canal contém caracteres inválidos
+err-channel-name-missing-prefix = O nome do canal deve começar com #
+err-channel-not-found = Canal '{ $channel }' não encontrado
+err-channel-already-member = Você já é membro do canal '{ $channel }'
+err-channel-limit-exceeded = Você não pode participar de mais de { $max } canais
+err-channel-list-invalid = Canal inválido '{ $channel }': { $reason }
+
 # Erros de banco de dados
 err-database = Erro de banco de dados
 

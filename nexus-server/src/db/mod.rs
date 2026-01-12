@@ -1,7 +1,7 @@
 //! Database module for persistent storage
 
 pub mod bans;
-pub mod chat;
+pub mod channels;
 pub mod config;
 pub mod news;
 pub mod password;
@@ -14,7 +14,7 @@ pub mod users;
 pub mod testing;
 
 pub use bans::BanDb;
-pub use chat::ChatDb;
+pub use channels::ChannelDb;
 pub use config::ConfigDb;
 pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
@@ -33,10 +33,10 @@ use crate::constants::*;
 pub struct Database {
     pub users: UserDb,
     pub config: ConfigDb,
-    pub chat: ChatDb,
     pub news: NewsDb,
     pub bans: BanDb,
     pub trusts: TrustDb,
+    pub channels: ChannelDb,
 }
 
 impl Database {
@@ -45,10 +45,10 @@ impl Database {
         Self {
             users: UserDb::new(pool.clone()),
             config: ConfigDb::new(pool.clone()),
-            chat: ChatDb::new(pool.clone()),
             news: NewsDb::new(pool.clone()),
             bans: BanDb::new(pool.clone()),
-            trusts: TrustDb::new(pool),
+            trusts: TrustDb::new(pool.clone()),
+            channels: ChannelDb::new(pool),
         }
     }
 }

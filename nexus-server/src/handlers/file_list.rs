@@ -439,7 +439,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse { success, error, .. } => {
                 assert!(!success);
@@ -468,7 +468,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -508,7 +508,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success,
@@ -544,7 +544,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse { success, error, .. } => {
                 assert!(!success);
@@ -572,7 +572,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse { success, error, .. } => {
                 assert!(!success);
@@ -601,7 +601,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse { success, error, .. } => {
                 assert!(!success);
@@ -635,7 +635,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -702,7 +702,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -745,7 +745,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -793,7 +793,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -841,7 +841,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -890,7 +890,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -935,7 +935,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1001,7 +1001,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success,
@@ -1061,7 +1061,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1116,7 +1116,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse { success, error, .. } => {
                 assert!(!success);
@@ -1153,7 +1153,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1190,7 +1190,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1233,7 +1233,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1279,7 +1279,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1331,7 +1331,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..
@@ -1383,7 +1383,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileListResponse {
                 success, entries, ..

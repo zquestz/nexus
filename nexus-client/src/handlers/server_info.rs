@@ -194,6 +194,8 @@ impl NexusApp {
             max_transfers_per_ip,
             image,
             file_reindex_interval,
+            persistent_channels: None, // TODO: Add UI for editing persistent channels
+            auto_join_channels: None,  // TODO: Add UI for editing auto-join channels
         };
 
         if let Err(e) = conn.send(msg) {

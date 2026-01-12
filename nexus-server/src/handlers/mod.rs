@@ -5,6 +5,10 @@ mod ban_delete;
 mod ban_list;
 mod broadcast;
 mod chat;
+mod chat_join;
+mod chat_leave;
+mod chat_list;
+mod chat_secret;
 mod chat_topic_update;
 mod duration;
 pub mod errors;
@@ -49,6 +53,10 @@ pub use ban_delete::handle_ban_delete;
 pub use ban_list::handle_ban_list;
 pub use broadcast::handle_user_broadcast;
 pub use chat::handle_chat_send;
+pub use chat_join::handle_chat_join;
+pub use chat_leave::handle_chat_leave;
+pub use chat_list::handle_chat_list;
+pub use chat_secret::handle_chat_secret;
 pub use chat_topic_update::handle_chat_topic_update;
 pub use errors::*;
 pub use file_copy::handle_file_copy;
@@ -98,6 +106,7 @@ use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
+use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::files::FileIndex;
@@ -125,6 +134,8 @@ pub struct HandlerContext<'a, W> {
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     /// File index for searching files
     pub file_index: Arc<FileIndex>,
+    /// Channel manager for multi-channel chat
+    pub channel_manager: &'a ChannelManager,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

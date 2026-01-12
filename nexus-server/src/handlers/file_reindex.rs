@@ -99,7 +99,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileReindexResponse { success, error } => {
                 assert!(!success);
@@ -120,7 +120,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileReindexResponse { success, error } => {
                 assert!(success);
@@ -148,7 +148,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileReindexResponse { success, error } => {
                 assert!(success);

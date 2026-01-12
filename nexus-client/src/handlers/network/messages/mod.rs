@@ -68,6 +68,7 @@ impl NexusApp {
                 is_shared,
                 message,
                 action,
+                channel: _,
             } => self.handle_chat_message(
                 connection_id,
                 nickname,
@@ -77,9 +78,14 @@ impl NexusApp {
                 action,
             ),
 
-            ServerMessage::ChatTopicUpdated { topic, username } => {
-                self.handle_chat_topic(connection_id, topic, username)
-            }
+            // TODO: Multi-channel - Currently ignoring channel field and updating
+            // the single chat_topic. When multi-channel UI is implemented, route
+            // topic updates to the correct channel tab.
+            ServerMessage::ChatTopicUpdated {
+                topic,
+                nickname,
+                channel: _,
+            } => self.handle_chat_topic(connection_id, topic, nickname),
 
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 self.handle_chat_topic_update_response(connection_id, success, error)
@@ -93,14 +99,7 @@ impl NexusApp {
                 is_admin,
                 permissions,
                 server_info,
-                chat_info,
-            } => self.handle_permissions_updated(
-                connection_id,
-                is_admin,
-                permissions,
-                server_info,
-                chat_info,
-            ),
+            } => self.handle_permissions_updated(connection_id, is_admin, permissions, server_info),
 
             ServerMessage::ServerBroadcast {
                 session_id: _,

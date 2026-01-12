@@ -306,7 +306,7 @@ mod tests {
 
         // Verify response contains the user
         use crate::handlers::testing::read_server_message;
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse {
                 success,
@@ -346,7 +346,7 @@ mod tests {
 
         // Verify admin flag is set
         use crate::handlers::testing::read_server_message;
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse {
                 success,
@@ -419,7 +419,7 @@ mod tests {
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();
@@ -509,7 +509,7 @@ mod tests {
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();
@@ -572,7 +572,7 @@ mod tests {
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();
@@ -633,7 +633,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "UserList all with user_edit should succeed");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { success, .. } => {
                 assert!(success);
@@ -666,7 +666,7 @@ mod tests {
             "UserList all with user_delete should succeed"
         );
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { success, .. } => {
                 assert!(success);
@@ -707,7 +707,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse {
                 success,
@@ -761,7 +761,7 @@ mod tests {
             "UserList all with user_create should succeed"
         );
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { success, .. } => {
                 assert!(success);
@@ -784,7 +784,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "Admin should be able to list all users");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { success, .. } => {
                 assert!(success);
@@ -823,7 +823,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "UserList all should succeed");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { success, users, .. } => {
                 assert!(success);
@@ -926,7 +926,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse {
                 success,
@@ -1009,7 +1009,7 @@ mod tests {
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse {
                 success,
@@ -1107,7 +1107,7 @@ mod tests {
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();
@@ -1196,7 +1196,7 @@ mod tests {
         let result = handle_user_list(false, Some(session1), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();

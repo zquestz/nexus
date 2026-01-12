@@ -111,7 +111,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanListResponse { success, error, .. } = response {
             assert!(!success);
             assert!(error.is_some());
@@ -151,7 +151,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanListResponse {
             success,
             bans,
@@ -178,7 +178,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanListResponse {
             success,
             bans,
@@ -225,7 +225,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanListResponse { success, bans, .. } = response {
             assert!(success);
             let bans = bans.unwrap();

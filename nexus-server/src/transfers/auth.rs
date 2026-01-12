@@ -245,7 +245,7 @@ where
         }
     };
 
-    // Send simplified success response (no server_info, chat_info, etc.)
+    // Send simplified success response (no server_info, channels, etc.)
     let response = ServerMessage::LoginResponse {
         success: true,
         error: None,
@@ -253,7 +253,7 @@ where
         is_admin: None,
         permissions: None,
         server_info: None,
-        chat_info: None,
+        channels: None,
         locale: None,
     };
     send_server_message_with_id(frame_writer, &response, received.message_id).await?;

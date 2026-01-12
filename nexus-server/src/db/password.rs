@@ -112,8 +112,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Pass
     }
 
     // Fast hash - direct comparison (test mode only)
-    if password_hash.starts_with(FAST_HASH_PREFIX) {
-        let stored = &password_hash[FAST_HASH_PREFIX.len()..];
+    if let Some(stored) = password_hash.strip_prefix(FAST_HASH_PREFIX) {
         return Ok(stored == password);
     }
 

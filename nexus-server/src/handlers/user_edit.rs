@@ -216,7 +216,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -241,7 +241,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -281,7 +281,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse {
                 success,
@@ -337,7 +337,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse {
                 success,
@@ -390,7 +390,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse {
                 success, username, ..
@@ -418,7 +418,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -454,7 +454,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse { success, error, .. } => {
                 assert!(
@@ -502,7 +502,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse {
                 success,
@@ -551,7 +551,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserEditResponse {
                 success, is_shared, ..

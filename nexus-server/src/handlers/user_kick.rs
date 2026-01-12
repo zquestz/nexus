@@ -173,7 +173,7 @@ mod tests {
     use crate::db::Permission;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, login_shared_user,
-        login_user, read_server_message,
+        login_user, read_login_response, read_server_message,
     };
 
     #[tokio::test]
@@ -215,7 +215,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Kick should fail without permission");
             assert!(
@@ -256,7 +256,7 @@ mod tests {
         assert!(result.is_ok(), "Kick should succeed with permission");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse {
             success,
             error,
@@ -293,7 +293,7 @@ mod tests {
         assert!(result.is_ok(), "Admin should be able to kick");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse {
             success,
             error,
@@ -334,7 +334,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Should not be able to kick self");
             assert!(
@@ -376,7 +376,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Cannot kick offline user");
             assert!(
@@ -410,7 +410,7 @@ mod tests {
         assert!(result.is_ok(), "Kick should work case-insensitively");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse {
             success,
             error,
@@ -452,7 +452,7 @@ mod tests {
         assert!(result.is_ok(), "Kick should succeed");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse {
             success,
             error,
@@ -497,7 +497,7 @@ mod tests {
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
         // Read response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::UserKickResponse { success, error, .. } = response {
             assert!(!success, "Should not be able to kick admin");
             assert!(
@@ -554,7 +554,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         assert!(
             shared_session_id.is_some(),
@@ -572,7 +572,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserKickResponse {
                 success,
@@ -631,7 +631,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         let session_id = shared_session_id.unwrap();
 
@@ -646,7 +646,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserKickResponse { success, error, .. } => {
                 assert!(!success, "Self-kick by nickname should be prevented");
@@ -678,7 +678,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserKickResponse {
                 success,

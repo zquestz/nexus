@@ -3,21 +3,24 @@
 use std::io;
 
 use nexus_common::validators::{
-    ServerDescriptionError, ServerImageError, ServerNameError, validate_server_description,
+    ChannelListError, ServerDescriptionError, ServerImageError, ServerNameError,
+    validate_auto_join_channels, validate_persistent_channels, validate_server_description,
     validate_server_image, validate_server_name,
 };
 use sqlx::SqlitePool;
 
 use super::sql::{SQL_GET_CONFIG, SQL_SET_CONFIG};
 use crate::constants::{
-    CONFIG_KEY_FILE_REINDEX_INTERVAL, CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
-    CONFIG_KEY_MAX_TRANSFERS_PER_IP, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
-    CONFIG_KEY_SERVER_NAME, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
-    DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE,
-    DEFAULT_SERVER_NAME, ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES,
-    ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE,
-    ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS,
-    ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
+    CONFIG_KEY_AUTO_JOIN_CHANNELS, CONFIG_KEY_FILE_REINDEX_INTERVAL,
+    CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
+    CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
+    CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_FILE_REINDEX_INTERVAL,
+    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_PERSISTENT_CHANNELS,
+    DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME,
+    ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
+    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
+    ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
+    ERR_SERVER_NAME_TOO_LONG,
 };
 
 /// Database interface for server configuration
@@ -239,6 +242,102 @@ impl ConfigDb {
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
+    }
+
+    /// Get the persistent channels list
+    ///
+    /// Returns a space-separated string of channel names that survive restart.
+    /// Returns the default channel from `DEFAULT_PERSISTENT_CHANNELS` if not configured.
+    pub async fn get_persistent_channels(&self) -> String {
+        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or_else(|_| DEFAULT_PERSISTENT_CHANNELS.to_string())
+    }
+
+    /// Set the persistent channels list
+    ///
+    /// Value should be a space-separated string of channel names (e.g., "#general #support").
+    /// These channels survive restart and can't be deleted when empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails or the database update fails.
+    pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
+        // Defense-in-depth validation
+        if let Err(e) = validate_persistent_channels(value) {
+            let msg = match e {
+                ChannelListError::TooLong => "Persistent channels list is too long",
+                ChannelListError::InvalidCharacters => {
+                    "Persistent channels list contains invalid characters"
+                }
+                ChannelListError::ContainsNewlines => {
+                    "Persistent channels list contains newlines"
+                }
+            };
+            return Err(io::Error::other(msg));
+        }
+
+        sqlx::query(SQL_SET_CONFIG)
+            .bind(value)
+            .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Get the auto-join channels list
+    ///
+    /// Returns a space-separated string of channel names that users auto-join on login.
+    /// Returns the default channel from `DEFAULT_AUTO_JOIN_CHANNELS` if not configured.
+    pub async fn get_auto_join_channels(&self) -> String {
+        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or_else(|_| DEFAULT_AUTO_JOIN_CHANNELS.to_string())
+    }
+
+    /// Set the auto-join channels list
+    ///
+    /// Value should be a space-separated string of channel names (e.g., "#nexus #welcome").
+    /// These channels are automatically joined by users on login.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails or the database update fails.
+    pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
+        // Defense-in-depth validation
+        if let Err(e) = validate_auto_join_channels(value) {
+            let msg = match e {
+                ChannelListError::TooLong => "Auto-join channels list is too long",
+                ChannelListError::InvalidCharacters => {
+                    "Auto-join channels list contains invalid characters"
+                }
+                ChannelListError::ContainsNewlines => "Auto-join channels list contains newlines",
+            };
+            return Err(io::Error::other(msg));
+        }
+
+        sqlx::query(SQL_SET_CONFIG)
+            .bind(value)
+            .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Parse channel list string into a list of channel names
+    ///
+    /// Handles space-separated values.
+    /// Returns an empty Vec if the input is empty.
+    pub fn parse_channel_list(value: &str) -> Vec<String> {
+        value.split_whitespace().map(|s| s.to_string()).collect()
     }
 }
 

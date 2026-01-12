@@ -2,6 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::{ChatAction, ClientMessage};
+use nexus_common::validators::DEFAULT_CHANNEL;
 use nexus_common::validators::{self, MessageError};
 
 use crate::NexusApp;
@@ -51,9 +52,11 @@ pub fn execute(
     match &conn.active_chat_tab {
         crate::types::ChatTab::Server => {
             // Send to server chat
+            // TODO: Use actual active channel from chat tab once multi-channel UI is implemented
             let msg = ClientMessage::ChatSend {
                 message,
                 action: ChatAction::Me,
+                channel: DEFAULT_CHANNEL.to_string(),
             };
             if let Err(e) = conn.send(msg) {
                 return app.add_chat_message(connection_id, ChatMessage::error(e));

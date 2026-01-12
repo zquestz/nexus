@@ -19,6 +19,7 @@ use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::HandlerContext;
+use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::files::FileIndex;
@@ -28,6 +29,8 @@ use crate::users::user::NewSessionParams;
 
 /// Type alias for the write half used in tests
 type TestWriteHalf = tokio::net::tcp::OwnedWriteHalf;
+/// Type alias for the read half used in tests
+type TestReadHalf = tokio::net::tcp::OwnedReadHalf;
 
 // ========================================================================
 // Cached Password Hashes for Test Performance
@@ -80,7 +83,7 @@ pub fn get_cached_password_hash(password: &str) -> String {
 
 /// Test context that owns all resources needed for handler testing
 pub struct TestContext {
-    pub client: TcpStream,
+    pub frame_reader: FrameReader<BufReader<TestReadHalf>>,
     pub frame_writer: FrameWriter<TestWriteHalf>,
     pub user_manager: UserManager,
     pub db: Database,
@@ -92,6 +95,7 @@ pub struct TestContext {
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     pub file_index: Arc<FileIndex>,
+    pub channel_manager: ChannelManager,
     /// Keep temp dir alive for tests that use file areas
     #[allow(dead_code)]
     temp_dir: TempDir,
@@ -114,6 +118,7 @@ impl TestContext {
             connection_tracker: self.connection_tracker.clone(),
             ip_rule_cache: self.ip_rule_cache.clone(),
             file_index: self.file_index.clone(),
+            channel_manager: &self.channel_manager,
         }
     }
 }
@@ -132,6 +137,12 @@ pub async fn create_test_context() -> TestContext {
         .expect("Failed to run migrations");
 
     let db = Database::new(pool);
+
+    // Set empty auto_join_channels to avoid channels in LoginResponse during login tests
+    db.config
+        .set_auto_join_channels("")
+        .await
+        .expect("Failed to clear auto_join_channels");
     let user_manager = UserManager::new();
 
     // Create TCP listener on localhost
@@ -147,6 +158,9 @@ pub async fn create_test_context() -> TestContext {
     let frame_writer = FrameWriter::new(write_half);
 
     let client = client_handle.await.unwrap();
+    let (client_read_half, _client_write_half) = client.into_split();
+    let buf_reader = BufReader::new(client_read_half);
+    let frame_reader = FrameReader::new(buf_reader);
 
     // Create message channel (keep receiver alive to prevent channel closure)
     let (tx, rx) = mpsc::unbounded_channel();
@@ -164,8 +178,11 @@ pub async fn create_test_context() -> TestContext {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
 
+    // Create channel manager for tests
+    let channel_manager = ChannelManager::new(db.channels.clone());
+
     TestContext {
-        client,
+        frame_reader,
         frame_writer,
         user_manager,
         db,
@@ -177,6 +194,7 @@ pub async fn create_test_context() -> TestContext {
         connection_tracker,
         ip_rule_cache,
         file_index,
+        channel_manager,
         temp_dir,
     }
 }
@@ -352,17 +370,62 @@ pub async fn login_shared_user(
         .expect("Failed to add shared user to UserManager")
 }
 
-/// Helper to read a ServerMessage from the client stream using the new framing format
-pub async fn read_server_message(client: &mut TcpStream) -> ServerMessage {
-    let (read_half, _write_half) = client.split();
-    let buf_reader = BufReader::new(read_half);
-    let mut frame_reader = FrameReader::new(buf_reader);
-
-    io_read_server_message(&mut frame_reader)
+/// Helper to read a ServerMessage from the test context's frame reader.
+///
+/// This maintains state between reads, so buffered data isn't lost.
+pub async fn read_server_message(test_ctx: &mut TestContext) -> ServerMessage {
+    io_read_server_message(&mut test_ctx.frame_reader)
         .await
         .expect("Failed to read message")
         .expect("Connection closed unexpectedly")
         .message
+}
+
+/// Helper to read a LoginResponse from the client stream.
+///
+/// In test contexts, auto_join_channels is set to empty, so LoginResponse.channels
+/// will be None. This just reads until it finds a LoginResponse.
+///
+/// # Panics
+///
+/// Panics if no `LoginResponse` is found within 5 seconds (timeout).
+pub async fn read_login_response(test_ctx: &mut TestContext) -> ServerMessage {
+    read_server_message_matching(test_ctx, |msg| {
+        matches!(msg, ServerMessage::LoginResponse { .. })
+    })
+    .await
+}
+
+/// Helper to read ServerMessages from the client stream until one matches the predicate.
+///
+/// This is useful when the server may send multiple messages and tests need to find
+/// a specific message type. Non-matching messages are discarded.
+///
+/// # Panics
+///
+/// Panics if no matching message is found within 5 seconds (timeout).
+pub async fn read_server_message_matching<F>(
+    test_ctx: &mut TestContext,
+    predicate: F,
+) -> ServerMessage
+where
+    F: Fn(&ServerMessage) -> bool,
+{
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let result = timeout(Duration::from_secs(5), async {
+        loop {
+            let msg = read_server_message(test_ctx).await;
+            if predicate(&msg) {
+                return msg;
+            }
+            // Discard non-matching message and keep reading
+        }
+    })
+    .await;
+
+    result.expect("Timed out waiting for matching server message")
 }
 
 /// Helper to drain broadcast messages from the channel until a response is found

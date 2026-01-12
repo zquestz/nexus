@@ -440,7 +440,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -486,7 +486,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -533,7 +533,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -577,7 +577,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -624,7 +624,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -681,7 +681,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -731,7 +731,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -777,7 +777,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -824,7 +824,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -871,7 +871,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -917,7 +917,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -964,7 +964,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -1009,7 +1009,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -1057,7 +1057,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -1105,7 +1105,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse { success, .. } => {
                 assert!(success);
@@ -1150,7 +1150,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -1196,7 +1196,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -1246,7 +1246,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,
@@ -1296,7 +1296,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileMoveResponse {
                 success,

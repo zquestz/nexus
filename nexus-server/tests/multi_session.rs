@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use common::{add_test_user, create_test_db};
 use nexus_common::protocol::{ChatAction, ServerMessage, UserInfo};
+use nexus_common::validators::DEFAULT_CHANNEL;
 use nexus_server::db::{self, Permission, Permissions};
 use nexus_server::users::UserManager;
 
@@ -378,6 +379,7 @@ async fn test_broadcast_detects_closed_channels() {
                 is_shared: false,
                 message: "test".to_string(),
                 action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
             },
             Permission::ChatReceive,
         )

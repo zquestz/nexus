@@ -30,12 +30,13 @@ const USER_UPDATE_BASE: usize = 758;
 const USER_EDIT_RESPONSE_BASE: usize = 154;
 
 /// Base overhead for LoginResponse message (without permissions array)
-/// Includes ServerInfo with transfer_port, max_transfers_per_ip, and file_reindex_interval fields
-const LOGIN_RESPONSE_BASE: usize = 701000;
+/// Includes ServerInfo with transfer_port, max_transfers_per_ip, file_reindex_interval, persistent_channels, and auto_join_channels fields
+/// Also includes channels array for auto-joined channels (up to ~10 channels with ~50 members each)
+const LOGIN_RESPONSE_BASE: usize = 724000;
 
 /// Base overhead for PermissionsUpdated message (without permissions array)
-/// Includes ServerInfo with transfer_port, max_transfers_per_ip, and file_reindex_interval fields
-const PERMISSIONS_UPDATED_BASE: usize = 700938;
+/// Includes ServerInfo with transfer_port, max_transfers_per_ip, file_reindex_interval, persistent_channels, and auto_join_channels fields
+const PERMISSIONS_UPDATED_BASE: usize = 702011;
 
 /// Maximum payload sizes for each message type
 ///
@@ -63,8 +64,12 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     let perm_size = permissions_array_size() as u64;
 
     // Client messages (limits match actual max size from validators)
-    m.insert("ChatSend", 1056);
-    m.insert("ChatTopicUpdate", 293);
+    m.insert("ChatSend", 1101); // Added channel field (32 + overhead)
+    m.insert("ChatTopicUpdate", 338); // Added channel field (32 + overhead)
+    m.insert("ChatJoin", 64); // channel (32) + overhead
+    m.insert("ChatLeave", 65); // channel (32) + overhead
+    m.insert("ChatList", 19); // {"type":"ChatList"} = 19 bytes
+    m.insert("ChatSecret", 81); // channel (32) + secret bool + overhead
     m.insert("Handshake", 65);
     m.insert("Login", 176991);
     m.insert("UserBroadcast", 1061);
@@ -78,7 +83,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("UserAway", 160); // status (128) + overhead
     m.insert("UserBack", 19);
     m.insert("UserStatus", 161); // status (128) + overhead
-    m.insert("ServerInfoUpdate", 700490); // includes image field (700000 + overhead) + max_transfers_per_ip + file_reindex_interval
+    m.insert("ServerInfoUpdate", 701563); // includes image field (700000 + overhead) + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
 
     // Ban client messages
     m.insert("BanCreate", 2400); // target (32 nickname or 45 IP/hostname) + duration (10) + reason (2048) + overhead
@@ -113,9 +118,15 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
 
     // Server messages (limits match actual max size from validators)
     // ServerInfo now includes image field (up to 700000 bytes), adding ~700011 bytes
-    m.insert("ChatMessage", 1164);
-    m.insert("ChatTopicUpdated", 340);
+    m.insert("ChatMessage", 1209); // Added channel field (32 + overhead)
+    m.insert("ChatTopicUpdated", 385); // Added channel field (32 + overhead)
     m.insert("ChatTopicUpdateResponse", 573);
+    m.insert("ChatJoinResponse", 4350); // success + error (2048) + channel (32) + topic (256) + topic_set_by (32) + secret + members array (~50 members) + overhead
+    m.insert("ChatLeaveResponse", 2200); // channel (32) + error (2048) + overhead
+    m.insert("ChatListResponse", 0); // unlimited (server-trusted, can have many channels)
+    m.insert("ChatSecretResponse", 2150); // success + error (2048) + overhead
+    m.insert("ChatUserJoined", 151); // channel (32) + nickname (32) + is_admin + is_shared + overhead
+    m.insert("ChatUserLeft", 114); // channel (32) + nickname (32) + overhead
     m.insert("Error", 2154);
     m.insert("HandshakeResponse", 356);
     m.insert("LoginResponse", LOGIN_RESPONSE_BASE as u64 + perm_size);
@@ -124,7 +135,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         PERMISSIONS_UPDATED_BASE as u64 + perm_size,
     );
     m.insert("ServerBroadcast", 1133);
-    m.insert("ServerInfoUpdated", 700574); // includes ServerInfo with image + transfer_port + max_transfers_per_ip + file_reindex_interval
+    m.insert("ServerInfoUpdated", 701647); // includes ServerInfo with image + transfer_port + max_transfers_per_ip + file_reindex_interval + persistent_channels (512) + auto_join_channels (512)
     m.insert("ServerInfoUpdateResponse", 574);
     m.insert("UserConnected", 176515); // includes is_away + status (128)
     m.insert("UserCreateResponse", 614);
@@ -222,12 +233,14 @@ pub fn known_message_types() -> Vec<&'static str> {
 mod tests {
     use super::*;
     use crate::protocol::{
-        ChatAction, ChatInfo, ClientMessage, ServerInfo, ServerMessage, UserInfo, UserInfoDetailed,
+        ChannelJoinInfo, ChatAction, ClientMessage, ServerInfo, ServerMessage, UserInfo,
+        UserInfoDetailed,
     };
     use crate::validators::{
-        MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHAT_TOPIC_LENGTH,
-        MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH,
-        MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+        MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
+        MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
+        MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH,
+        MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH,
         MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
         MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH,
         MAX_VERSION_LENGTH,
@@ -269,8 +282,8 @@ mod tests {
         //
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 44; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch client messages
-        const SERVER_MESSAGE_COUNT: usize = 55; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch server messages
+        const CLIENT_MESSAGE_COUNT: usize = 48; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel client messages
+        const SERVER_MESSAGE_COUNT: usize = 61; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel server messages
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -329,6 +342,7 @@ mod tests {
         let msg = ClientMessage::ChatSend {
             message: str_of_len(MAX_MESSAGE_LENGTH),
             action: ChatAction::Normal,
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
         assert_eq!(json_size(&msg), max_payload_for_type("ChatSend") as usize);
     }
@@ -337,11 +351,43 @@ mod tests {
     fn test_limit_chat_topic_update() {
         let msg = ClientMessage::ChatTopicUpdate {
             topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
         assert_eq!(
             json_size(&msg),
             max_payload_for_type("ChatTopicUpdate") as usize
         );
+    }
+
+    #[test]
+    fn test_limit_chat_join() {
+        let msg = ClientMessage::ChatJoin {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("ChatJoin") as usize);
+    }
+
+    #[test]
+    fn test_limit_chat_leave() {
+        let msg = ClientMessage::ChatLeave {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("ChatLeave") as usize);
+    }
+
+    #[test]
+    fn test_limit_chat_list() {
+        let msg = ClientMessage::ChatList {};
+        assert_eq!(json_size(&msg), max_payload_for_type("ChatList") as usize);
+    }
+
+    #[test]
+    fn test_limit_chat_secret() {
+        let msg = ClientMessage::ChatSecret {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            secret: false,
+        };
+        assert_eq!(json_size(&msg), max_payload_for_type("ChatSecret") as usize);
     }
 
     #[test]
@@ -533,6 +579,8 @@ mod tests {
             max_transfers_per_ip: Some(u32::MAX),
             image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
             file_reindex_interval: Some(u32::MAX),
+            persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+            auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
         };
         assert_eq!(
             json_size(&msg),
@@ -563,6 +611,7 @@ mod tests {
             is_shared: false,
             message: str_of_len(MAX_MESSAGE_LENGTH),
             action: ChatAction::Normal,
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
         assert_eq!(
             json_size(&msg),
@@ -574,11 +623,177 @@ mod tests {
     fn test_limit_chat_topic_updated() {
         let msg = ServerMessage::ChatTopicUpdated {
             topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
         };
         assert_eq!(
             json_size(&msg),
             max_payload_for_type("ChatTopicUpdated") as usize
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_join_response() {
+        // Test success case with all fields populated
+        let msg = ServerMessage::ChatJoinResponse {
+            success: true,
+            error: None,
+            channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
+            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
+            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            secret: Some(false),
+            members: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); 50]),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatJoinResponse") as usize;
+        assert!(
+            size <= limit,
+            "ChatJoinResponse success size {} exceeds limit {}",
+            size,
+            limit
+        );
+
+        // Test error case
+        let error_msg = ServerMessage::ChatJoinResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            channel: None,
+            topic: None,
+            topic_set_by: None,
+            secret: None,
+            members: None,
+        };
+        let error_size = json_size(&error_msg);
+        assert!(
+            error_size <= limit,
+            "ChatJoinResponse error size {} exceeds limit {}",
+            error_size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_join_response_with_many_members() {
+        // Test with maximum expected member count
+        let msg = ServerMessage::ChatJoinResponse {
+            success: true,
+            error: None,
+            channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
+            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
+            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            secret: Some(false),
+            // Members array - estimate ~100 members at max nickname length
+            members: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); 100]),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatJoinResponse") as usize;
+        assert!(
+            size <= limit,
+            "ChatJoinResponse error size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_leave_response() {
+        // Test success case
+        let msg = ServerMessage::ChatLeaveResponse {
+            success: true,
+            error: None,
+            channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatLeaveResponse") as usize;
+        assert!(
+            size <= limit,
+            "ChatLeaveResponse success size {} exceeds limit {}",
+            size,
+            limit
+        );
+
+        // Test error case
+        let error_msg = ServerMessage::ChatLeaveResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+            channel: None,
+        };
+        let error_size = json_size(&error_msg);
+        assert!(
+            error_size <= limit,
+            "ChatLeaveResponse error size {} exceeds limit {}",
+            error_size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_list_response() {
+        // ChatListResponse has unlimited size (0) - just verify it's set that way
+        assert_eq!(max_payload_for_type("ChatListResponse"), 0);
+    }
+
+    #[test]
+    fn test_limit_chat_secret_response() {
+        // Test success case
+        let msg = ServerMessage::ChatSecretResponse {
+            success: true,
+            error: None,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatSecretResponse") as usize;
+        assert!(
+            size <= limit,
+            "ChatSecretResponse success size {} exceeds limit {}",
+            size,
+            limit
+        );
+
+        // Test error case
+        let error_msg = ServerMessage::ChatSecretResponse {
+            success: false,
+            error: Some(str_of_len(2048)),
+        };
+        let error_size = json_size(&error_msg);
+        assert!(
+            error_size <= limit,
+            "ChatSecretResponse error size {} exceeds limit {}",
+            error_size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_user_joined() {
+        let msg = ServerMessage::ChatUserJoined {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            is_admin: false,
+            is_shared: false,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatUserJoined") as usize;
+        assert!(
+            size <= limit,
+            "ChatUserJoined size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_user_left() {
+        let msg = ServerMessage::ChatUserLeft {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            nickname: str_of_len(MAX_NICKNAME_LENGTH),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatUserLeft") as usize;
+        assert!(
+            size <= limit,
+            "ChatUserLeft size {} exceeds limit {}",
+            size,
+            limit
         );
     }
 
@@ -618,6 +833,16 @@ mod tests {
 
     #[test]
     fn test_limit_login_response() {
+        // Create channel join info for auto-joined channels (~10 channels with ~50 members each)
+        let channel_info = ChannelJoinInfo {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
+            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            secret: false,
+            members: (0..50).map(|_| str_of_len(MAX_NICKNAME_LENGTH)).collect(),
+        };
+        let channels: Vec<ChannelJoinInfo> = (0..10).map(|_| channel_info.clone()).collect();
+
         let msg = ServerMessage::LoginResponse {
             success: true,
             error: None,
@@ -637,16 +862,19 @@ mod tests {
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
                 file_reindex_interval: Some(u32::MAX),
-            }),
-            chat_info: Some(ChatInfo {
-                topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-                topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
+                persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             }),
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
+            channels: Some(channels),
         };
-        assert_eq!(
-            json_size(&msg),
-            max_payload_for_type("LoginResponse") as usize
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("LoginResponse") as usize;
+        assert!(
+            size <= limit,
+            "LoginResponse size {} exceeds limit {}",
+            size,
+            limit
         );
     }
 
@@ -666,15 +894,17 @@ mod tests {
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
                 file_reindex_interval: Some(u32::MAX),
-            }),
-            chat_info: Some(ChatInfo {
-                topic: str_of_len(MAX_CHAT_TOPIC_LENGTH),
-                topic_set_by: str_of_len(MAX_USERNAME_LENGTH),
+                persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             }),
         };
-        assert_eq!(
-            json_size(&msg),
-            max_payload_for_type("PermissionsUpdated") as usize
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("PermissionsUpdated") as usize;
+        assert!(
+            size <= limit,
+            "PermissionsUpdated size {} exceeds limit {}",
+            size,
+            limit
         );
     }
 
@@ -690,6 +920,8 @@ mod tests {
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
                 transfer_port: u16::MAX,
                 file_reindex_interval: Some(u32::MAX),
+                persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             },
         };
         assert_eq!(

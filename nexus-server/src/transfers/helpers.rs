@@ -209,8 +209,8 @@ pub(crate) fn login_error_response(error: String) -> ServerMessage {
         is_admin: None,
         permissions: None,
         server_info: None,
-        chat_info: None,
         locale: None,
+        channels: None,
     }
 }
 

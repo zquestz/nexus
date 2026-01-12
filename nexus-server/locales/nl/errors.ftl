@@ -47,6 +47,17 @@ err-permission-denied = Toestemming geweigerd
 # Functiefouten
 err-chat-feature-not-enabled = Chatfunctie niet ingeschakeld
 
+# Kanaalfouten
+err-channel-name-empty = Kanaalnaam mag niet leeg zijn
+err-channel-name-too-short = Kanaalnaam moet minstens één teken hebben na #
+err-channel-name-too-long = Kanaalnaam is te lang (maximaal { $max_length } tekens)
+err-channel-name-invalid = Kanaalnaam bevat ongeldige tekens
+err-channel-name-missing-prefix = Kanaalnaam moet beginnen met #
+err-channel-not-found = Kanaal '{ $channel }' niet gevonden
+err-channel-already-member = U bent al lid van kanaal '{ $channel }'
+err-channel-limit-exceeded = U kunt niet deelnemen aan meer dan { $max } kanalen
+err-channel-list-invalid = Ongeldig kanaal '{ $channel }': { $reason }
+
 # Databasefouten
 err-database = Databasefout
 

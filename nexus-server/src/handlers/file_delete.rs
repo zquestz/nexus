@@ -307,7 +307,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -349,7 +349,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Delete should succeed: {:?}", error);
@@ -391,7 +391,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Delete should succeed: {:?}", error);
@@ -434,7 +434,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -471,7 +471,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -505,7 +505,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -540,7 +540,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -580,7 +580,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -616,7 +616,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Admin delete should succeed: {:?}", error);
@@ -659,7 +659,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Delete should succeed: {:?}", error);
@@ -707,7 +707,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Delete with root mode should succeed: {:?}", error);
@@ -758,7 +758,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Symlink delete should succeed: {:?}", error);
@@ -806,7 +806,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(
@@ -848,7 +848,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(!success);
@@ -897,7 +897,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(success, "Symlink to dir delete should succeed: {:?}", error);
@@ -956,7 +956,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(
@@ -1010,7 +1010,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileDeleteResponse { success, error } => {
                 assert!(

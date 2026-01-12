@@ -47,6 +47,17 @@ err-permission-denied = Zugriff verweigert
 # Feature-Fehler
 err-chat-feature-not-enabled = Chat-Funktion nicht aktiviert
 
+# Channel-Fehler
+err-channel-name-empty = Kanalname darf nicht leer sein
+err-channel-name-too-short = Kanalname muss mindestens ein Zeichen nach # haben
+err-channel-name-too-long = Kanalname ist zu lang (maximal { $max_length } Zeichen)
+err-channel-name-invalid = Kanalname enthält ungültige Zeichen
+err-channel-name-missing-prefix = Kanalname muss mit # beginnen
+err-channel-not-found = Kanal '{ $channel }' nicht gefunden
+err-channel-already-member = Sie sind bereits Mitglied von Kanal '{ $channel }'
+err-channel-limit-exceeded = Sie können nicht mehr als { $max } Kanälen beitreten
+err-channel-list-invalid = Ungültiger Kanal '{ $channel }': { $reason }
+
 # Datenbankfehler
 err-database = Datenbankfehler
 

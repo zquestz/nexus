@@ -145,7 +145,7 @@ mod tests {
             handle_news_edit(99999, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -194,7 +194,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse {
                 success,
@@ -251,7 +251,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -308,7 +308,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse {
                 success,
@@ -364,7 +364,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse { success, error, .. } => {
                 assert!(!success);
@@ -407,7 +407,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse {
                 success,
@@ -471,7 +471,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsEditResponse {
                 success,

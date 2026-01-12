@@ -34,9 +34,26 @@ pub enum ClientMessage {
         message: String,
         #[serde(default, skip_serializing_if = "is_normal_action")]
         action: ChatAction,
+        channel: String,
     },
     ChatTopicUpdate {
         topic: String,
+        channel: String,
+    },
+    /// Join or create a channel
+    ChatJoin {
+        channel: String,
+    },
+    /// Leave a channel
+    ChatLeave {
+        channel: String,
+    },
+    /// List available channels
+    ChatList {},
+    /// Set channel secret mode
+    ChatSecret {
+        channel: String,
+        secret: bool,
     },
     Handshake {
         version: String,
@@ -132,6 +149,12 @@ pub enum ClientMessage {
         /// File reindex interval in minutes (0 to disable automatic reindexing)
         #[serde(skip_serializing_if = "Option::is_none")]
         file_reindex_interval: Option<u32>,
+        /// Persistent channels (space-separated, survive restart)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        persistent_channels: Option<String>,
+        /// Auto-join channels (space-separated, joined on login)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        auto_join_channels: Option<String>,
     },
     NewsList,
     NewsShow {
@@ -339,15 +362,73 @@ pub enum ServerMessage {
         message: String,
         #[serde(default, skip_serializing_if = "is_normal_action")]
         action: ChatAction,
+        channel: String,
     },
     ChatTopicUpdated {
         topic: String,
-        username: String,
+        nickname: String,
+        channel: String,
     },
     ChatTopicUpdateResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    },
+    /// Response to ChatJoin request
+    /// On success, includes full channel data. On error (including already-member), only error is set.
+    ChatJoinResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Channel name (only on success)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<String>,
+        /// Channel topic (only on success)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic: Option<String>,
+        /// Who set the topic (only on success, if topic is set)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic_set_by: Option<String>,
+        /// Whether channel is secret (only on success)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        secret: Option<bool>,
+        /// Nicknames of current channel members (only on success)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        members: Option<Vec<String>>,
+    },
+    /// Response to ChatLeave request
+    ChatLeaveResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channel: Option<String>,
+    },
+    /// Response to ChatList request
+    ChatListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channels: Option<Vec<ChannelInfo>>,
+    },
+    /// Response to ChatSecret request
+    ChatSecretResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Broadcast when a user joins a channel
+    ChatUserJoined {
+        channel: String,
+        nickname: String,
+        is_admin: bool,
+        is_shared: bool,
+    },
+    /// Broadcast when a user leaves a channel
+    ChatUserLeft {
+        channel: String,
+        nickname: String,
     },
     Error {
         message: String,
@@ -374,9 +455,10 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        chat_info: Option<ChatInfo>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         locale: Option<String>,
+        /// Channels the user was auto-joined to on login
+        #[serde(skip_serializing_if = "Option::is_none")]
+        channels: Option<Vec<ChannelJoinInfo>>,
     },
     ServerBroadcast {
         session_id: u32,
@@ -424,8 +506,6 @@ pub enum ServerMessage {
         permissions: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        chat_info: Option<ChatInfo>,
     },
     ServerInfoUpdated {
         server_info: ServerInfo,
@@ -771,12 +851,34 @@ pub struct ServerInfo {
     /// File reindex interval in minutes (0 = disabled)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_reindex_interval: Option<u32>,
+    /// Persistent channels (space-separated, admin only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persistent_channels: Option<String>,
+    /// Auto-join channels (space-separated, admin only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_join_channels: Option<String>,
 }
 
+/// Channel info returned when joining a channel (in LoginResponse or ChatJoinResponse)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatInfo {
-    pub topic: String,
-    pub topic_set_by: String,
+pub struct ChannelJoinInfo {
+    pub channel: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic_set_by: Option<String>,
+    pub secret: bool,
+    pub members: Vec<String>,
+}
+
+/// Channel info for channel lists
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    pub member_count: u32,
+    pub secret: bool,
 }
 
 /// User info for lists. `nickname` is the display name (== username for regular accounts).
@@ -944,14 +1046,34 @@ pub struct UserInfoDetailed {
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClientMessage::ChatSend { message, action } => f
+            ClientMessage::ChatSend {
+                message,
+                action,
+                channel,
+            } => f
                 .debug_struct("ChatSend")
                 .field("message", message)
                 .field("action", action)
+                .field("channel", channel)
                 .finish(),
-            ClientMessage::ChatTopicUpdate { topic } => f
+            ClientMessage::ChatTopicUpdate { topic, channel } => f
                 .debug_struct("ChatTopicUpdate")
                 .field("topic", topic)
+                .field("channel", channel)
+                .finish(),
+            ClientMessage::ChatJoin { channel } => f
+                .debug_struct("ChatJoin")
+                .field("channel", channel)
+                .finish(),
+            ClientMessage::ChatLeave { channel } => f
+                .debug_struct("ChatLeave")
+                .field("channel", channel)
+                .finish(),
+            ClientMessage::ChatList {} => f.debug_struct("ChatList").finish(),
+            ClientMessage::ChatSecret { channel, secret } => f
+                .debug_struct("ChatSecret")
+                .field("channel", channel)
+                .field("secret", secret)
                 .finish(),
             ClientMessage::Handshake { version } => f
                 .debug_struct("Handshake")
@@ -1063,13 +1185,17 @@ impl std::fmt::Debug for ClientMessage {
                 max_connections_per_ip,
                 max_transfers_per_ip,
                 image,
+                persistent_channels,
+                auto_join_channels,
             } => {
                 let mut s = f.debug_struct("ServerInfoUpdate");
                 s.field("name", name)
                     .field("description", description)
                     .field("max_connections_per_ip", max_connections_per_ip)
                     .field("max_transfers_per_ip", max_transfers_per_ip)
-                    .field("file_reindex_interval", file_reindex_interval);
+                    .field("file_reindex_interval", file_reindex_interval)
+                    .field("persistent_channels", persistent_channels)
+                    .field("auto_join_channels", auto_join_channels);
                 if let Some(img) = image {
                     if img.len() > 100 {
                         s.field(
@@ -1330,8 +1456,8 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
             server_info: None,
-            chat_info: None,
             locale: Some("en".to_string()),
+            channels: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1348,8 +1474,8 @@ mod tests {
             is_admin: None,
             permissions: None,
             server_info: None,
-            chat_info: None,
             locale: None,
+            channels: None,
             error: Some("Invalid credentials".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1365,8 +1491,8 @@ mod tests {
             is_admin: Some(true),
             permissions: Some(vec![]),
             server_info: None,
-            chat_info: None,
             locale: Some("en".to_string()),
+            channels: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1384,8 +1510,8 @@ mod tests {
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             server_info: None,
-            chat_info: None,
             locale: Some("en".to_string()),
+            channels: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1591,6 +1717,7 @@ mod tests {
             is_admin: false,
             is_shared: true,
             action: ChatAction::Normal,
+            channel: "#general".to_string(),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"ChatMessage\""));
@@ -2162,6 +2289,8 @@ mod tests {
             image: None,
             transfer_port: 7501,
             file_reindex_interval: Some(5),
+            persistent_channels: None,
+            auto_join_channels: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"max_transfers_per_ip\":3"));

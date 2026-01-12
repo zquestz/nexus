@@ -47,6 +47,17 @@ err-permission-denied = 权限被拒绝
 # 功能错误
 err-chat-feature-not-enabled = 聊天功能未启用
 
+# 频道错误
+err-channel-name-empty = 频道名称不能为空
+err-channel-name-too-short = 频道名称在#后必须至少有一个字符
+err-channel-name-too-long = 频道名称过长（最多{ $max_length }个字符）
+err-channel-name-invalid = 频道名称包含无效字符
+err-channel-name-missing-prefix = 频道名称必须以#开头
+err-channel-not-found = 未找到频道 '{ $channel }'
+err-channel-already-member = 您已经是频道 '{ $channel }' 的成员
+err-channel-limit-exceeded = 您不能加入超过 { $max } 个频道
+err-channel-list-invalid = 无效频道 '{ $channel }': { $reason }
+
 # 数据库错误
 err-database = 数据库错误
 

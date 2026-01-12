@@ -130,7 +130,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserStatusResponse { success, error } => {
                 assert!(success);
@@ -162,7 +162,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume response
+        let _ = read_server_message(&mut test_ctx).await; // consume response
 
         // Now clear it
         let result =
@@ -170,7 +170,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserStatusResponse { success, error } => {
                 assert!(success);
@@ -201,7 +201,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume UserAwayResponse
+        let _ = read_server_message(&mut test_ctx).await; // consume UserAwayResponse
 
         // Verify away is set
         let user = test_ctx
@@ -221,7 +221,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let _ = read_server_message(&mut test_ctx.client).await; // consume response
+        let _ = read_server_message(&mut test_ctx).await; // consume response
 
         // Verify away status is cleared and status changed
         let user = test_ctx
@@ -250,7 +250,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserStatusResponse { success, error } => {
                 assert!(!success);
@@ -276,7 +276,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserStatusResponse { success, error } => {
                 assert!(!success);

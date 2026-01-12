@@ -17,6 +17,7 @@ use nexus_common::io::{
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
@@ -38,6 +39,7 @@ pub struct ConnectionParams {
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     pub file_index: Arc<FileIndex>,
+    pub channel_manager: ChannelManager,
 }
 
 /// Connection state for a single client
@@ -87,6 +89,7 @@ where
         connection_tracker,
         ip_rule_cache,
         file_index,
+        channel_manager,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -139,6 +142,7 @@ where
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
+                            channel_manager: &channel_manager,
                         };
 
                         if let Err(e) = handle_client_message(
@@ -204,11 +208,36 @@ where
     let _ = frame_writer.get_mut().shutdown().await;
 
     // Remove user on disconnect and broadcast to other clients
-    if let Some(id) = conn_state.session_id
-        && let Some(user) = user_manager.remove_user_and_broadcast(id).await
-        && debug
-    {
-        println!("User '{}' disconnected", user.username);
+    if let Some(id) = conn_state.session_id {
+        // First, remove from all channels and broadcast ChatUserLeft to remaining members
+        // We need to do this before removing from UserManager so we still have the user's nickname
+        if let Some(user) = user_manager.get_user_by_session_id(id).await {
+            let channel_names = channel_manager.remove_from_all(id).await;
+
+                // Broadcast ChatUserLeft to remaining members of each channel
+                for channel_name in channel_names {
+                    // Get remaining members (if channel still exists)
+                    if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
+                        let leave_msg = ServerMessage::ChatUserLeft {
+                            channel: channel_name,
+                            nickname: user.nickname.clone(),
+                        };
+
+                        for member_session_id in remaining_members {
+                            user_manager
+                                .send_to_session(member_session_id, leave_msg.clone())
+                                .await;
+                        }
+                    }
+                }
+        }
+
+        // Now remove from UserManager and broadcast UserDisconnected
+        if let Some(user) = user_manager.remove_user_and_broadcast(id).await
+            && debug
+        {
+            println!("User '{}' disconnected", user.username);
+        }
     }
 
     Ok(())
@@ -224,11 +253,28 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     match msg {
-        ClientMessage::ChatSend { message, action } => {
-            handlers::handle_chat_send(message, action, conn_state.session_id, ctx).await?;
+        ClientMessage::ChatSend {
+            message,
+            action,
+            channel,
+        } => {
+            handlers::handle_chat_send(message, action, channel, conn_state.session_id, ctx)
+                .await?;
         }
-        ClientMessage::ChatTopicUpdate { topic } => {
-            handlers::handle_chat_topic_update(topic, conn_state.session_id, ctx).await?;
+        ClientMessage::ChatTopicUpdate { topic, channel } => {
+            handlers::handle_chat_topic_update(topic, channel, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::ChatJoin { channel } => {
+            handlers::handle_chat_join(channel, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::ChatLeave { channel } => {
+            handlers::handle_chat_leave(channel, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::ChatList {} => {
+            handlers::handle_chat_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::ChatSecret { channel, secret } => {
+            handlers::handle_chat_secret(channel, secret, conn_state.session_id, ctx).await?;
         }
         ClientMessage::Handshake { version } => {
             handlers::handle_handshake(version, &mut conn_state.handshake_complete, ctx).await?;
@@ -336,6 +382,8 @@ where
             max_transfers_per_ip,
             image,
             file_reindex_interval,
+            persistent_channels,
+            auto_join_channels,
         } => {
             let request = handlers::ServerInfoUpdateRequest {
                 name,
@@ -344,6 +392,8 @@ where
                 max_transfers_per_ip,
                 image,
                 file_reindex_interval,
+                persistent_channels,
+                auto_join_channels,
                 session_id: conn_state.session_id,
             };
             handlers::handle_server_info_update(request, ctx).await?;

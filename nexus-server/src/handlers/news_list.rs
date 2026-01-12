@@ -118,7 +118,7 @@ mod tests {
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsListResponse { success, error, .. } => {
                 assert!(!success);
@@ -145,7 +145,7 @@ mod tests {
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsListResponse {
                 success,
@@ -206,7 +206,7 @@ mod tests {
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsListResponse {
                 success,
@@ -236,7 +236,7 @@ mod tests {
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsListResponse { success, .. } => {
                 assert!(success);
@@ -296,7 +296,7 @@ mod tests {
             handle_news_list(Some(admin_session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsListResponse { success, items, .. } => {
                 assert!(success);

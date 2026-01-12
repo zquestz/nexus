@@ -258,7 +258,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanDeleteResponse { success, error, .. } = response {
             assert!(!success);
             assert!(error.is_some());
@@ -297,7 +297,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanDeleteResponse { success, ips, .. } = response {
             assert!(success);
             assert!(ips.is_some());
@@ -352,7 +352,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanDeleteResponse {
             success,
             ips,
@@ -396,7 +396,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanDeleteResponse { success, error, .. } = response {
             assert!(!success);
             assert!(error.is_some());
@@ -458,7 +458,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanDeleteResponse { success, ips, .. } = response {
             assert!(success);
             let ips = ips.unwrap();

@@ -391,7 +391,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, error, .. } => {
                 assert!(!success);
@@ -432,7 +432,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse {
                 success,
@@ -491,7 +491,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse {
                 success,
@@ -537,7 +537,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, error, .. } => {
                 assert!(!success);
@@ -571,7 +571,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, error, .. } => {
                 assert!(!success);
@@ -605,7 +605,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, .. } => {
                 assert!(success);
@@ -640,7 +640,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, error, .. } => {
                 assert!(!success);
@@ -675,7 +675,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, info, .. } => {
                 assert!(success);
@@ -724,7 +724,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, info, .. } => {
                 assert!(success);
@@ -770,7 +770,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, info, .. } => {
                 assert!(success);
@@ -813,7 +813,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response: ServerMessage = read_server_message(&mut test_ctx.client).await;
+        let response: ServerMessage = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileInfoResponse { success, info, .. } => {
                 assert!(success);

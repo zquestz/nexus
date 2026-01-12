@@ -27,6 +27,12 @@ pub enum Permission {
     ChatSend,
     /// Permission to receive chat messages
     ChatReceive,
+    /// Permission to join or create channels
+    ChatJoin,
+    /// Permission to view list of available channels
+    ChatList,
+    /// Permission to toggle secret mode on channels
+    ChatSecret,
     /// Permission to see/receive chat topic
     ChatTopic,
     /// Permission to edit chat topic
@@ -105,6 +111,9 @@ impl Permission {
             "user_info" => Some(Permission::UserInfo),
             "chat_send" => Some(Permission::ChatSend),
             "chat_receive" => Some(Permission::ChatReceive),
+            "chat_join" => Some(Permission::ChatJoin),
+            "chat_list" => Some(Permission::ChatList),
+            "chat_secret" => Some(Permission::ChatSecret),
             "chat_topic" => Some(Permission::ChatTopic),
             "chat_topic_edit" => Some(Permission::ChatTopicEdit),
             "user_broadcast" => Some(Permission::UserBroadcast),
@@ -209,6 +218,9 @@ mod tests {
         assert_eq!(Permission::BanList.as_str(), "ban_list");
         assert_eq!(Permission::UserList.as_str(), "user_list");
         assert_eq!(Permission::UserInfo.as_str(), "user_info");
+        assert_eq!(Permission::ChatJoin.as_str(), "chat_join");
+        assert_eq!(Permission::ChatList.as_str(), "chat_list");
+        assert_eq!(Permission::ChatSecret.as_str(), "chat_secret");
         assert_eq!(Permission::ChatSend.as_str(), "chat_send");
         assert_eq!(Permission::ChatReceive.as_str(), "chat_receive");
         assert_eq!(Permission::ChatTopic.as_str(), "chat_topic");
@@ -248,6 +260,12 @@ mod tests {
         assert_eq!(Permission::parse("ban_list"), Some(Permission::BanList));
         assert_eq!(Permission::parse("user_list"), Some(Permission::UserList));
         assert_eq!(Permission::parse("user_info"), Some(Permission::UserInfo));
+        assert_eq!(Permission::parse("chat_join"), Some(Permission::ChatJoin));
+        assert_eq!(Permission::parse("chat_list"), Some(Permission::ChatList));
+        assert_eq!(
+            Permission::parse("chat_secret"),
+            Some(Permission::ChatSecret)
+        );
         assert_eq!(Permission::parse("chat_send"), Some(Permission::ChatSend));
         assert_eq!(
             Permission::parse("chat_receive"),
@@ -399,7 +417,10 @@ mod tests {
             Permission::BanCreate,
             Permission::BanDelete,
             Permission::BanList,
+            Permission::ChatJoin,
+            Permission::ChatList,
             Permission::ChatReceive,
+            Permission::ChatSecret,
             Permission::ChatSend,
             Permission::ChatTopic,
             Permission::ChatTopicEdit,

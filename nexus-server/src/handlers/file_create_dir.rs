@@ -329,7 +329,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -366,7 +366,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -415,7 +415,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -467,7 +467,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -514,7 +514,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -549,7 +549,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -584,7 +584,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -619,7 +619,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -654,7 +654,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -690,7 +690,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -720,7 +720,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -761,7 +761,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -809,7 +809,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -854,7 +854,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -898,7 +898,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -936,7 +936,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -977,7 +977,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response2 = read_server_message(&mut test_ctx.client).await;
+        let response2 = read_server_message(&mut test_ctx).await;
         match response2 {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -1032,7 +1032,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,
@@ -1077,7 +1077,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(!success);
@@ -1115,7 +1115,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse { success, error, .. } => {
                 assert!(
@@ -1158,7 +1158,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileCreateDirResponse {
                 success,

@@ -3,6 +3,8 @@
 //! All user-facing error messages are translated via the i18n system.
 //! Functions are organized alphabetically for easy lookup.
 
+use nexus_common::validators::ChannelError;
+
 use crate::i18n::{t, t_args};
 
 // ========================================================================
@@ -246,6 +248,87 @@ pub fn err_chat_too_long(locale: &str, max_length: usize) -> String {
         locale,
         "err-chat-too-long",
         &[("max_length", &max_length.to_string())],
+    )
+}
+
+// ========================================================================
+// Channel Errors
+// ========================================================================
+
+/// Convert a ChannelError to a localized error message
+///
+/// This helper reduces duplication across chat handlers that all need to
+/// convert channel validation errors to localized strings.
+pub fn channel_error_to_message(e: ChannelError, locale: &str) -> String {
+    match e {
+        ChannelError::Empty => err_channel_name_empty(locale),
+        ChannelError::TooShort => err_channel_name_too_short(locale),
+        ChannelError::TooLong => {
+            err_channel_name_too_long(locale, nexus_common::validators::MAX_CHANNEL_LENGTH)
+        }
+        ChannelError::MissingPrefix => err_channel_name_missing_prefix(locale),
+        ChannelError::InvalidCharacters => err_channel_name_invalid(locale),
+    }
+}
+
+/// Get translated "channel name empty" error
+pub fn err_channel_name_empty(locale: &str) -> String {
+    t(locale, "err-channel-name-empty")
+}
+
+/// Get translated "channel name too long" error
+pub fn err_channel_name_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-channel-name-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "channel name too short" error
+pub fn err_channel_name_too_short(locale: &str) -> String {
+    t(locale, "err-channel-name-too-short")
+}
+
+/// Get translated "channel name invalid" error
+pub fn err_channel_name_invalid(locale: &str) -> String {
+    t(locale, "err-channel-name-invalid")
+}
+
+/// Get translated "channel name missing prefix" error
+pub fn err_channel_name_missing_prefix(locale: &str) -> String {
+    t(locale, "err-channel-name-missing-prefix")
+}
+
+/// Get translated "invalid channel in list" error
+pub fn err_channel_list_invalid(locale: &str, channel: &str, reason: &str) -> String {
+    t_args(
+        locale,
+        "err-channel-list-invalid",
+        &[("channel", channel), ("reason", reason)],
+    )
+}
+
+/// Get translated "channel not found" error
+pub fn err_channel_not_found(locale: &str, channel: &str) -> String {
+    t_args(locale, "err-channel-not-found", &[("channel", channel)])
+}
+
+/// Get translated "already a member" error
+pub fn err_channel_already_member(locale: &str, channel: &str) -> String {
+    t_args(
+        locale,
+        "err-channel-already-member",
+        &[("channel", channel)],
+    )
+}
+
+/// Get translated "channel limit exceeded" error
+pub fn err_channel_limit_exceeded(locale: &str, max: usize) -> String {
+    t_args(
+        locale,
+        "err-channel-limit-exceeded",
+        &[("max", &max.to_string())],
     )
 }
 

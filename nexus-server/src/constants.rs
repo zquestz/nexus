@@ -132,15 +132,20 @@ pub const FEATURE_NEWS: &str = "news";
 #[allow(dead_code)]
 pub const FEATURE_FILES: &str = "files";
 
-// =============================================================================
-// Chat State Keys
-// =============================================================================
+/// Config key for persistent channels (space-separated list)
+/// These channels survive restart and can't be deleted when empty
+pub const CONFIG_KEY_PERSISTENT_CHANNELS: &str = "persistent_channels";
 
-/// Chat state key for topic
-pub const CHAT_STATE_KEY_TOPIC: &str = "topic";
+/// Default persistent channels (survive restart, can't be deleted when empty)
+pub const DEFAULT_PERSISTENT_CHANNELS: &str = nexus_common::validators::DEFAULT_CHANNEL;
 
-/// Chat state key for username who set the topic
-pub const CHAT_STATE_KEY_TOPIC_SET_BY: &str = "topic_set_by";
+/// Config key for auto-join channels (space-separated list)
+/// These channels are automatically joined by users on login
+pub const CONFIG_KEY_AUTO_JOIN_CHANNELS: &str = "auto_join_channels";
+
+/// Default auto-join channels (joined on login)
+/// By default, same as persistent channels for backward compatibility
+pub const DEFAULT_AUTO_JOIN_CHANNELS: &str = nexus_common::validators::DEFAULT_CHANNEL;
 
 /// Maximum number of concurrent database connections in the pool
 ///

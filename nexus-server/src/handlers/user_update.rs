@@ -5,7 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::is_shared_account_permission;
-use nexus_common::protocol::{ChatInfo, ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
 use crate::constants::DEFAULT_LOCALE;
@@ -504,12 +504,6 @@ where
                             .map(|p| p.as_str().to_string())
                             .collect();
 
-                        // Check if user now has chat topic permission
-                        let now_has_chat_topic = updated_account.is_admin
-                            || final_permissions
-                                .permissions
-                                .contains(&Permission::ChatTopic);
-
                         // Only send fields that change with permissions (max_connections_per_ip for admins)
                         // Other fields (name, description, image, transfer_port) are unchanged and
                         // the client already knows them from login
@@ -524,24 +518,10 @@ where
                             None
                         };
 
-                        // Include chat info only if user has permission
-                        let chat_info = if now_has_chat_topic {
-                            match ctx.db.chat.get_topic().await {
-                                Ok(topic) => Some(ChatInfo {
-                                    topic: topic.topic,
-                                    topic_set_by: topic.set_by,
-                                }),
-                                Err(_) => None,
-                            }
-                        } else {
-                            None
-                        };
-
                         let permissions_update = ServerMessage::PermissionsUpdated {
                             is_admin: updated_account.is_admin,
                             permissions: permission_strings,
                             server_info,
-                            chat_info,
                         };
 
                         // Send to all sessions belonging to the updated user
@@ -742,6 +722,8 @@ where
 mod tests {
     use super::*;
     use crate::db;
+    #[allow(unused_imports)]
+    use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
     use crate::users::user::NewSessionParams;
 
@@ -792,7 +774,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::Error { message, .. } => {
                 assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
@@ -821,7 +803,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -852,7 +834,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -883,7 +865,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -914,7 +896,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -945,7 +927,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -981,7 +963,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -1015,7 +997,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -1056,7 +1038,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1102,7 +1084,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -1137,7 +1119,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1165,7 +1147,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::Error { message, .. } => {
                 assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
@@ -1209,7 +1191,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1260,7 +1242,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::Error { message, .. } => {
                 assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
@@ -1304,7 +1286,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
@@ -1343,7 +1325,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1397,7 +1379,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1467,7 +1449,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1548,7 +1530,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1617,7 +1599,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should not allow self-edit");
@@ -1649,7 +1631,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
                 assert!(success, "Should successfully disable admin2");
@@ -1677,7 +1659,7 @@ mod tests {
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
-        let _ = read_server_message(&mut test_ctx.client).await;
+        let _ = read_server_message(&mut test_ctx).await;
 
         // Demote admin2 and admin3 so admin1 is the only admin
         let request = UserUpdateRequest {
@@ -1691,7 +1673,7 @@ mod tests {
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
-        let _ = read_server_message(&mut test_ctx.client).await;
+        let _ = read_server_message(&mut test_ctx).await;
 
         let request = UserUpdateRequest {
             current_password: None,
@@ -1704,7 +1686,7 @@ mod tests {
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
-        let _ = read_server_message(&mut test_ctx.client).await;
+        let _ = read_server_message(&mut test_ctx).await;
 
         // Now admin1 is the only admin. Admin1 tries to disable themselves (should fail - self-edit)
         // But self-edit is blocked. So we test the database protection directly.
@@ -1790,7 +1772,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok(), "Should send error response, not disconnect");
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Non-admin should not be able to edit admin");
@@ -1837,7 +1819,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -1876,7 +1858,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -2025,7 +2007,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse {
                 success,
@@ -2148,8 +2130,8 @@ mod tests {
         .await;
         assert!(login_result.is_ok(), "Shared account login should succeed");
 
-        // Read login response
-        let _login_response = read_server_message(&mut test_ctx.client).await;
+        // Read login response (skips ChatJoined messages)
+        let _login_response = read_login_response(&mut test_ctx).await;
 
         // Try to change own password
         let request = UserUpdateRequest {
@@ -2166,7 +2148,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error response");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(
@@ -2224,7 +2206,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error response");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should fail with forbidden permissions");
@@ -2282,7 +2264,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should succeed");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(
@@ -2349,7 +2331,7 @@ mod tests {
 
         assert!(result.is_ok(), "Handler should return Ok");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should fail to rename guest account");
@@ -2419,7 +2401,7 @@ mod tests {
 
         assert!(result.is_ok(), "Handler should return Ok");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(success, "Should succeed enabling guest account");
@@ -2487,7 +2469,7 @@ mod tests {
 
         assert!(result.is_ok(), "Handler should return Ok");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(success, "Should succeed updating guest permissions");
@@ -2551,7 +2533,7 @@ mod tests {
 
         assert!(result.is_ok(), "Handler should return Ok");
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should fail to change guest password");

@@ -15,9 +15,24 @@ pub struct ServerInfoBroadcastParams {
     pub image: String,
     pub transfer_port: u16,
     pub file_reindex_interval: u32,
+    pub persistent_channels: String,
+    pub auto_join_channels: String,
 }
 
 impl UserManager {
+    /// Send a message to a specific session by session ID
+    ///
+    /// Returns true if the message was sent, false if the session doesn't exist
+    /// or the channel is closed.
+    pub async fn send_to_session(&self, session_id: u32, message: ServerMessage) -> bool {
+        let users = self.users.read().await;
+        if let Some(user) = users.get(&session_id) {
+            user.tx.send((message, None)).is_ok()
+        } else {
+            false
+        }
+    }
+
     /// Broadcast a message to all connected users with proper disconnect notification
     ///
     /// Automatically removes users whose channels have closed and notifies other clients
@@ -217,6 +232,20 @@ impl UserManager {
                         None
                     };
 
+                // Only send persistent_channels to admins
+                let persistent_channels = if user.is_admin {
+                    Some(params.persistent_channels.clone())
+                } else {
+                    None
+                };
+
+                // Only send auto_join_channels to admins
+                let auto_join_channels = if user.is_admin {
+                    Some(params.auto_join_channels.clone())
+                } else {
+                    None
+                };
+
                 let server_info = ServerInfo {
                     name: Some(params.name.clone()),
                     description: Some(params.description.clone()),
@@ -226,6 +255,8 @@ impl UserManager {
                     image: Some(params.image.clone()),
                     transfer_port: params.transfer_port,
                     file_reindex_interval,
+                    persistent_channels,
+                    auto_join_channels,
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

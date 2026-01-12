@@ -9,9 +9,9 @@ use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError};
 
 use super::{
-    HandlerContext, err_authentication, err_chat_feature_not_enabled, err_chat_too_long,
-    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
-    err_not_logged_in, err_permission_denied,
+    HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
+    err_chat_feature_not_enabled, err_chat_too_long, err_message_contains_newlines,
+    err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
@@ -20,6 +20,7 @@ use crate::db::Permission;
 pub async fn handle_chat_send<W>(
     message: String,
     action: ChatAction,
+    channel: String,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -44,6 +45,13 @@ where
         };
         return ctx
             .send_error_and_disconnect(&error_msg, Some("ChatSend"))
+            .await;
+    }
+
+    // Validate channel name
+    if let Err(e) = validators::validate_channel(&channel) {
+        return ctx
+            .send_error(&channel_error_to_message(e, ctx.locale), Some("ChatSend"))
             .await;
     }
 
@@ -75,21 +83,51 @@ where
             .await;
     }
 
-    // Broadcast to all users with chat feature and ChatReceive permission
-    ctx.user_manager
-        .broadcast_to_feature(
-            FEATURE_CHAT,
-            ServerMessage::ChatMessage {
-                session_id: id,
-                nickname: user.nickname.clone(),
-                is_admin: user.is_admin,
-                is_shared: user.is_shared,
-                message,
-                action,
-            },
-            Permission::ChatReceive,
-        )
-        .await;
+    // Check if user is a member of the channel
+    // For security, always return "not found" to non-members to avoid leaking
+    // existence of secret channels
+    if !ctx.channel_manager.is_member(&channel, id).await {
+        return ctx
+            .send_error(
+                &err_channel_not_found(ctx.locale, &channel),
+                Some("ChatSend"),
+            )
+            .await;
+    }
+
+    // Get channel members for routing
+    let members = ctx
+        .channel_manager
+        .get_members(&channel)
+        .await
+        .unwrap_or_default();
+
+    // Build the chat message
+    let chat_message = ServerMessage::ChatMessage {
+        session_id: id,
+        nickname: user.nickname.clone(),
+        is_admin: user.is_admin,
+        is_shared: user.is_shared,
+        message,
+        action,
+        channel,
+    };
+
+    // Send message to all channel members who have the chat feature and ChatReceive permission
+    for member_session_id in members {
+        if let Some(member) = ctx
+            .user_manager
+            .get_user_by_session_id(member_session_id)
+            .await
+        {
+            // Check if member has chat feature and receive permission
+            if member.has_feature(FEATURE_CHAT) && member.has_permission(Permission::ChatReceive) {
+                ctx.user_manager
+                    .send_to_session(member_session_id, chat_message.clone())
+                    .await;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -98,7 +136,7 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user_with_features};
+    use crate::handlers::testing::{create_test_context, login_user_with_features, read_server_message};
 
     #[tokio::test]
     async fn test_chat_requires_login() {
@@ -109,6 +147,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             session_id,
             &mut test_ctx.handler_context(),
         )
@@ -130,6 +169,7 @@ mod tests {
         let result = handle_chat_send(
             long_message,
             ChatAction::Normal,
+            "#general".to_string(),
             session_id,
             &mut test_ctx.handler_context(),
         )
@@ -157,6 +197,9 @@ mod tests {
         )
         .await;
 
+        // Join a channel
+        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+
         // Create message at exactly MAX_MESSAGE_LENGTH characters
         let max_message = "a".repeat(validators::MAX_MESSAGE_LENGTH);
 
@@ -164,6 +207,7 @@ mod tests {
         let result = handle_chat_send(
             max_message,
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -193,6 +237,7 @@ mod tests {
         let result = handle_chat_send(
             "".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -205,6 +250,7 @@ mod tests {
         let result = handle_chat_send(
             "   ".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -236,6 +282,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello\nWorld".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -248,6 +295,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello\rWorld".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -263,6 +311,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello\r\nWorld".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -287,10 +336,14 @@ mod tests {
         )
         .await;
 
+        // Join a channel
+        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+
         // Try to send chat without permission
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -322,6 +375,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -346,10 +400,14 @@ mod tests {
         )
         .await;
 
+        // Join a channel
+        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+
         // Send valid chat message
         let result = handle_chat_send(
             "Hello, world!".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -370,6 +428,7 @@ mod tests {
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             invalid_session_id,
             &mut test_ctx.handler_context(),
         )
@@ -398,10 +457,14 @@ mod tests {
         )
         .await;
 
+        // Join a channel
+        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+
         // Admin should be able to send chat
         let result = handle_chat_send(
             "Admin message!".to_string(),
             ChatAction::Normal,
+            "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -412,5 +475,136 @@ mod tests {
             result.is_ok(),
             "Admin should be able to chat without explicit permission"
         );
+    }
+
+    #[tokio::test]
+    async fn test_chat_to_channel_not_member() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend, db::Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Create channel but don't join it
+        test_ctx.channel_manager.join("#general", 999).await.unwrap(); // Someone else creates it
+
+        // Try to send to channel user is not a member of
+        let result = handle_chat_send(
+            "Hello".to_string(),
+            ChatAction::Normal,
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed but send error
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_chat_to_nonexistent_channel() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Try to send to nonexistent channel
+        let result = handle_chat_send(
+            "Hello".to_string(),
+            ChatAction::Normal,
+            "#nonexistent".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed but send error
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_chat_to_specific_channel() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend, db::Permission::ChatJoin],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Join #general channel
+        test_ctx.channel_manager.join("#general", session_id).await.unwrap();
+
+        // Send to #general channel
+        let result = handle_chat_send(
+            "Hello channel!".to_string(),
+            ChatAction::Normal,
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Chat to joined channel should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_chat_requires_channel() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user with chat permission and feature
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Try to send with empty channel name
+        let result = handle_chat_send(
+            "Hello".to_string(),
+            ChatAction::Normal,
+            "".to_string(), // Empty channel name
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        // Should succeed (handler returns Ok) but send error response
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert!(message.to_lowercase().contains("channel")); // Error about channel
+                assert_eq!(command, Some("ChatSend".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
     }
 }

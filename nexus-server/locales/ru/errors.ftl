@@ -47,6 +47,17 @@ err-permission-denied = Доступ запрещен
 # Ошибки функций
 err-chat-feature-not-enabled = Функция чата не включена
 
+# Ошибки каналов
+err-channel-name-empty = Название канала не может быть пустым
+err-channel-name-too-short = Название канала должно содержать хотя бы один символ после #
+err-channel-name-too-long = Название канала слишком длинное (максимум { $max_length } символов)
+err-channel-name-invalid = Название канала содержит недопустимые символы
+err-channel-name-missing-prefix = Название канала должно начинаться с #
+err-channel-not-found = Канал '{ $channel }' не найден
+err-channel-already-member = Вы уже являетесь участником канала '{ $channel }'
+err-channel-limit-exceeded = Вы не можете присоединиться более чем к { $max } каналам
+err-channel-list-invalid = Недопустимый канал '{ $channel }': { $reason }
+
 # Ошибки базы данных
 err-database = Ошибка базы данных
 

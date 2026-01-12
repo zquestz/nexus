@@ -568,7 +568,7 @@ pub fn chat_view<'a>(
     .height(Fill)
     .style(content_background_style);
 
-    // Only show tab bar if there are PM tabs (more than just #server)
+    // Only show tab bar if there are PM tabs (more than just the main chat channel tab)
     if has_pm_tabs {
         column![
             container(tab_bar).padding(SMALL_PADDING).width(Fill),

@@ -5,8 +5,8 @@
 /// Maximum length for usernames in bytes
 pub const MAX_USERNAME_LENGTH: usize = 32;
 
-/// Characters that are not allowed in usernames (path-sensitive)
-const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*'];
+/// Characters that are not allowed in usernames (path-sensitive + channel prefix)
+const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*', '#'];
 
 /// Validation error for usernames
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +159,15 @@ mod tests {
         );
         assert_eq!(
             validate_username("user*name"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        // Channel prefix (would conflict with channel names)
+        assert_eq!(
+            validate_username("#username"),
+            Err(UsernameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_username("user#name"),
             Err(UsernameError::InvalidCharacters)
         );
     }

@@ -2,7 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, ChatTopicError};
+use nexus_common::validators::{self, ChatTopicError, DEFAULT_CHANNEL};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -126,7 +126,11 @@ fn set_topic(app: &mut NexusApp, connection_id: usize, topic: String) -> Task<Me
         return Task::none();
     };
 
-    let msg = ClientMessage::ChatTopicUpdate { topic };
+    // TODO: Use actual active channel from chat tab once multi-channel UI is implemented
+    let msg = ClientMessage::ChatTopicUpdate {
+        topic,
+        channel: DEFAULT_CHANNEL.to_string(),
+    };
 
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);

@@ -317,7 +317,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(!success);
@@ -360,7 +360,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(success);
@@ -403,7 +403,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(success);
@@ -447,7 +447,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(!success);
@@ -483,7 +483,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(!success);
@@ -518,7 +518,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, .. } => {
                 assert!(!success);
@@ -555,7 +555,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, .. } => {
                 assert!(!success);
@@ -592,7 +592,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, .. } => {
                 assert!(!success);
@@ -629,7 +629,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, .. } => {
                 assert!(!success);
@@ -670,7 +670,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(success);
@@ -715,7 +715,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(!success);
@@ -763,7 +763,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(success, "Rename with root mode should succeed: {:?}", error);
@@ -816,7 +816,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(success, "Symlink rename should succeed: {:?}", error);
@@ -867,7 +867,7 @@ mod tests {
         .await
         .unwrap();
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::FileRenameResponse { success, error } => {
                 assert!(

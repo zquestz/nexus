@@ -207,7 +207,8 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{
-        create_test_context, get_cached_password_hash, login_user, read_server_message,
+        create_test_context, get_cached_password_hash, login_user, read_login_response,
+        read_server_message,
     };
     use crate::users::user::NewSessionParams;
 
@@ -343,7 +344,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
                 success,
@@ -462,7 +463,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
                 success,
@@ -591,7 +592,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
                 success,
@@ -729,7 +730,7 @@ mod tests {
         // Close writer and read response
 
         // Parse and verify response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
                 success,
@@ -783,7 +784,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Read response
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
                 success,
@@ -865,7 +866,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { user, .. } => {
                 let user_info = user.unwrap();
@@ -965,7 +966,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { user, .. } => {
                 let user_info = user.unwrap();
@@ -1000,7 +1001,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { user, .. } => {
                 let user_info = user.unwrap();
@@ -1055,7 +1056,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         // Look up by nickname
         let result = handle_user_info(
@@ -1067,7 +1068,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { success, user, .. } => {
                 assert!(success);
@@ -1129,7 +1130,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         // Look up by username (not nickname) - should fail
         // Shared accounts can only be looked up by their display name (nickname)
@@ -1142,7 +1143,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { success, error, .. } => {
                 assert!(
@@ -1175,7 +1176,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse { success, user, .. } => {
                 assert!(success);

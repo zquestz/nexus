@@ -44,8 +44,11 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `ban_create`: Create/update IP bans
 /// - `ban_delete`: Remove IP bans
 /// - `ban_list`: View list of active bans
-/// - `chat_receive`: Receive chat messages from #server
-/// - `chat_send`: Send chat messages to #server
+/// - `chat_join`: Join or create chat channels
+/// - `chat_list`: View list of available channels
+/// - `chat_receive`: Receive chat messages in chat channels
+/// - `chat_secret`: Toggle secret mode on channels
+/// - `chat_send`: Send chat messages to chat channels
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
 /// - `file_copy`: Copy files and directories
@@ -74,7 +77,10 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "ban_create",
     "ban_delete",
     "ban_list",
+    "chat_join",
+    "chat_list",
     "chat_receive",
+    "chat_secret",
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
@@ -119,8 +125,10 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 /// They cannot perform any actions that modify database records (except sending messages).
 ///
 /// Allowed permissions:
-/// - `chat_receive`: Receive chat messages from #server
-/// - `chat_send`: Send chat messages to #server
+/// - `chat_join`: Join or create chat channels
+/// - `chat_list`: View list of available channels
+/// - `chat_receive`: Receive chat messages in chat channels
+/// - `chat_send`: Send chat messages to chat channels
 /// - `chat_topic`: View the server topic (but not edit)
 /// - `file_download`: Download files from file area
 /// - `file_info`: View detailed file/directory information
@@ -130,6 +138,8 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 /// - `user_list`: View the list of connected users
 /// - `user_message`: Send private messages to users
 pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
+    "chat_join",
+    "chat_list",
     "chat_receive",
     "chat_send",
     "chat_topic",
@@ -190,19 +200,21 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (34)
-        assert_eq!(ALL_PERMISSIONS.len(), 34);
+        // Verify we have the expected number of permissions (37)
+        assert_eq!(ALL_PERMISSIONS.len(), 37);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (10)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 10);
+        // Verify we have the expected number of shared account permissions (12)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 12);
     }
 
     #[test]
     fn test_is_shared_account_permission() {
         // Allowed permissions
+        assert!(is_shared_account_permission("chat_join"));
+        assert!(is_shared_account_permission("chat_list"));
         assert!(is_shared_account_permission("chat_receive"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));

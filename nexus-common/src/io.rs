@@ -284,6 +284,10 @@ pub fn client_message_type(message: &ClientMessage) -> &'static str {
     match message {
         ClientMessage::ChatSend { .. } => "ChatSend",
         ClientMessage::ChatTopicUpdate { .. } => "ChatTopicUpdate",
+        ClientMessage::ChatJoin { .. } => "ChatJoin",
+        ClientMessage::ChatLeave { .. } => "ChatLeave",
+        ClientMessage::ChatList { .. } => "ChatList",
+        ClientMessage::ChatSecret { .. } => "ChatSecret",
         ClientMessage::Handshake { .. } => "Handshake",
         ClientMessage::Login { .. } => "Login",
         ClientMessage::UserBroadcast { .. } => "UserBroadcast",
@@ -336,6 +340,12 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::ChatMessage { .. } => "ChatMessage",
         ServerMessage::ChatTopicUpdated { .. } => "ChatTopicUpdated",
         ServerMessage::ChatTopicUpdateResponse { .. } => "ChatTopicUpdateResponse",
+        ServerMessage::ChatJoinResponse { .. } => "ChatJoinResponse",
+        ServerMessage::ChatLeaveResponse { .. } => "ChatLeaveResponse",
+        ServerMessage::ChatListResponse { .. } => "ChatListResponse",
+        ServerMessage::ChatSecretResponse { .. } => "ChatSecretResponse",
+        ServerMessage::ChatUserJoined { .. } => "ChatUserJoined",
+        ServerMessage::ChatUserLeft { .. } => "ChatUserLeft",
         ServerMessage::Error { .. } => "Error",
         ServerMessage::HandshakeResponse { .. } => "HandshakeResponse",
         ServerMessage::LoginResponse { .. } => "LoginResponse",
@@ -399,6 +409,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
 mod tests {
     use super::*;
     use crate::protocol::ChatAction;
+    use crate::validators::DEFAULT_CHANNEL;
     use std::io::Cursor;
     use tokio::io::BufReader;
 
@@ -408,6 +419,7 @@ mod tests {
             client_message_type(&ClientMessage::ChatSend {
                 message: "hi".to_string(),
                 action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
             }),
             "ChatSend"
         );
@@ -433,6 +445,7 @@ mod tests {
                 is_shared: false,
                 message: "hi".to_string(),
                 action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
             }),
             "ChatMessage"
         );
@@ -450,6 +463,7 @@ mod tests {
         let message = ClientMessage::ChatSend {
             message: "Hello, world!".to_string(),
             action: ChatAction::Normal,
+            channel: DEFAULT_CHANNEL.to_string(),
         };
 
         // Write the message
@@ -476,6 +490,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_and_receive_server_message() {
+        use crate::validators::DEFAULT_CHANNEL;
+
         let message = ServerMessage::ChatMessage {
             session_id: 42,
             nickname: "alice".to_string(),
@@ -483,6 +499,7 @@ mod tests {
             is_shared: false,
             message: "Hi there!".to_string(),
             action: ChatAction::Normal,
+            channel: DEFAULT_CHANNEL.to_string(),
         };
 
         // Write the message

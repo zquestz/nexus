@@ -140,7 +140,7 @@ mod tests {
         assert!(handshake_complete, "Handshake flag should be set to true");
 
         // Read response from client side using new framing format
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
 
         // Verify response
         match response_msg {
@@ -231,7 +231,7 @@ mod tests {
         assert!(err.to_string().contains("Major version mismatch"));
 
         // Read and verify response using new framing format
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {
@@ -269,7 +269,7 @@ mod tests {
         assert!(!handshake_complete, "Handshake flag should remain false");
 
         // Read and verify response using new framing format
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {
@@ -305,7 +305,7 @@ mod tests {
         assert!(!handshake_complete, "Handshake flag should remain false");
 
         // Read and verify response using new framing format
-        let response_msg = read_server_message(&mut test_ctx.client).await;
+        let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
             ServerMessage::HandshakeResponse { success, error, .. } => {

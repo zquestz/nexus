@@ -170,7 +170,7 @@ mod tests {
     use crate::db::Permission;
     use crate::handlers::testing::{
         create_test_context, get_cached_password_hash, login_shared_user, login_user,
-        read_channel_response, read_server_message,
+        read_channel_response, read_login_response, read_server_message,
     };
 
     #[tokio::test]
@@ -219,7 +219,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Check response
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -254,7 +254,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -290,7 +290,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -324,7 +324,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -358,7 +358,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -403,7 +403,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
@@ -552,7 +552,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         // Send message to shared account by nickname
         let result = handle_user_message(
@@ -620,7 +620,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         let session_id = shared_session_id.unwrap();
 
@@ -636,7 +636,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success, "Self-message by nickname should be prevented");
@@ -683,7 +683,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx.client).await; // consume login response
+        let _ = read_login_response(&mut test_ctx).await; // consume login response (skips ChatJoined)
 
         let session_id = shared_session_id.unwrap();
 

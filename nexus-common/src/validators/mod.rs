@@ -6,9 +6,12 @@
 
 mod avatar;
 mod ban_reason;
+mod channel;
+mod channel_list;
 mod chat_topic;
 mod data_uri;
 mod dir_name;
+mod error;
 mod features;
 mod file_path;
 mod ip_rule_reason;
@@ -31,9 +34,19 @@ mod version;
 
 pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
 pub use ban_reason::{BanReasonError, MAX_BAN_REASON_LENGTH, validate_ban_reason};
+pub use channel::{
+    CHANNEL_PREFIX, ChannelError, DEFAULT_CHANNEL, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER,
+    MIN_CHANNEL_LENGTH, validate_channel,
+};
+pub use channel_list::{
+    AutoJoinChannelsError, ChannelListError, MAX_AUTO_JOIN_CHANNELS_LENGTH,
+    MAX_CHANNEL_LIST_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, PersistentChannelsError,
+    validate_auto_join_channels, validate_channel_list, validate_persistent_channels,
+};
 pub use chat_topic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
 pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
 pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};
+pub use error::MAX_ERROR_LENGTH;
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};
 pub use ip_rule_reason::{IpRuleReasonError, MAX_IP_RULE_REASON_LENGTH, validate_ip_rule_reason};

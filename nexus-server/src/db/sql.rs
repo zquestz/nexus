@@ -25,27 +25,6 @@ pub const SQL_GET_CONFIG: &str = "SELECT value FROM config WHERE key = ?";
 pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
 
 // ========================================================================
-// Chat State Query Operations
-// ========================================================================
-
-/// Get a chat state value by key
-///
-/// **Parameters:**
-/// 1. `key: &str` - Chat state key to look up
-///
-/// **Returns:** `(value: String)`
-pub const SQL_GET_CHAT_STATE: &str = "SELECT value FROM chat_state WHERE key = ?";
-
-/// Set a chat state value (insert or replace)
-///
-/// **Parameters:**
-/// 1. `key: &str` - Chat state key
-/// 2. `value: &str` - Chat state value
-///
-/// **Note:** Uses `INSERT OR REPLACE` to upsert the value.
-pub const SQL_SET_CHAT_STATE: &str = "INSERT OR REPLACE INTO chat_state (key, value) VALUES (?, ?)";
-
-// ========================================================================
 // User Query Operations
 // ========================================================================
 

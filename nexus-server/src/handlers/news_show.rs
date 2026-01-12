@@ -126,7 +126,7 @@ mod tests {
         let result = handle_news_show(1, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsShowResponse { success, error, .. } => {
                 assert!(!success);
@@ -154,7 +154,7 @@ mod tests {
             handle_news_show(99999, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsShowResponse { success, error, .. } => {
                 assert!(!success);
@@ -207,7 +207,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsShowResponse {
                 success,
@@ -260,7 +260,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsShowResponse { success, news, .. } => {
                 assert!(success);
@@ -319,7 +319,7 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx.client).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::NewsShowResponse { success, news, .. } => {
                 assert!(success);

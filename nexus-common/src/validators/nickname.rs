@@ -7,8 +7,8 @@
 /// Maximum length for nicknames in bytes
 pub const MAX_NICKNAME_LENGTH: usize = 32;
 
-/// Characters that are not allowed in nicknames (path-sensitive)
-const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*'];
+/// Characters that are not allowed in nicknames (path-sensitive + channel prefix)
+const FORBIDDEN_CHARS: &[char] = &['/', '\\', ':', '.', '<', '>', '"', '|', '?', '*', '#'];
 
 /// Validation error for nicknames
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +161,15 @@ mod tests {
         );
         assert_eq!(
             validate_nickname("nick*name"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        // Channel prefix (would conflict with channel names)
+        assert_eq!(
+            validate_nickname("#nickname"),
+            Err(NicknameError::InvalidCharacters)
+        );
+        assert_eq!(
+            validate_nickname("nick#name"),
             Err(NicknameError::InvalidCharacters)
         );
     }

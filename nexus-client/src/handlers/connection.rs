@@ -3,7 +3,7 @@
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, MessageError};
+use nexus_common::validators::{self, MessageError, DEFAULT_CHANNEL};
 
 use crate::commands::{self, ParseResult};
 use crate::i18n::{get_locale, t, t_args};
@@ -425,8 +425,16 @@ impl NexusApp {
                     return Task::none();
                 };
 
+                // TODO: Use actual active channel from chat tab once multi-channel UI is implemented
                 let (msg, pm_nickname) = match &conn.active_chat_tab {
-                    ChatTab::Server => (ClientMessage::ChatSend { message, action }, None),
+                    ChatTab::Server => (
+                        ClientMessage::ChatSend {
+                            message,
+                            action,
+                            channel: DEFAULT_CHANNEL.to_string(),
+                        },
+                        None,
+                    ),
                     ChatTab::UserMessage(nickname) => (
                         ClientMessage::UserMessage {
                             to_nickname: nickname.clone(),

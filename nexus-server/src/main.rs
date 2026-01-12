@@ -1,6 +1,7 @@
 //! Nexus BBS Server
 
 mod args;
+mod channels;
 mod connection;
 mod connection_tracker;
 mod constants;
@@ -28,6 +29,7 @@ use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
 
 use args::Args;
+use channels::{Channel, ChannelManager};
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
@@ -135,6 +137,82 @@ async fn main() {
     // Trigger initial index build in background
     file_index.trigger_reindex();
 
+    // Create channel manager for multi-channel chat
+    let channel_manager = ChannelManager::new(database.channels.clone());
+
+    // Initialize persistent channels from config and database
+    let persistent_channels_config = database.config.get_persistent_channels().await;
+    let channel_names = db::ConfigDb::parse_channel_list(&persistent_channels_config);
+    if !channel_names.is_empty() {
+        let mut channels_to_init = Vec::new();
+        for name in &channel_names {
+            // Load settings from DB if they exist, otherwise create defaults
+            match database.channels.get_channel_settings(name).await {
+                Ok(Some(settings)) => {
+                    let (topic, topic_set_by) = if settings.topic.is_empty() {
+                        (None, None)
+                    } else {
+                        (Some(settings.topic), Some(settings.topic_set_by))
+                    };
+                    channels_to_init.push(Channel::with_settings(
+                        name.to_string(),
+                        topic,
+                        topic_set_by,
+                        settings.secret,
+                    ));
+                }
+                Ok(None) => {
+                    // Channel in config but not in DB - create default settings
+                    if let Err(e) = database
+                        .channels
+                        .upsert_channel_settings(&db::channels::ChannelSettings {
+                            name: name.to_string(),
+                            topic: String::new(),
+                            topic_set_by: String::new(),
+                            secret: false,
+                        })
+                        .await
+                    {
+                        eprintln!("Failed to create channel settings for {}: {}", name, e);
+                    }
+                    channels_to_init.push(Channel::new(name.to_string()));
+                }
+                Err(e) => {
+                    eprintln!("Failed to load channel settings for {}: {}", name, e);
+                    channels_to_init.push(Channel::new(name.to_string()));
+                }
+            }
+        }
+
+        // Prune channels from DB that are no longer in config
+        if let Ok(all_settings) = database.channels.get_all_channel_settings().await {
+            for settings in all_settings {
+                let name_lower = settings.name.to_lowercase();
+                if !channel_names.iter().any(|n| n.to_lowercase() == name_lower) {
+                    if let Err(e) = database
+                        .channels
+                        .delete_channel_settings(&settings.name)
+                        .await
+                    {
+                        eprintln!(
+                            "Failed to delete stale channel settings for {}: {}",
+                            settings.name, e
+                        );
+                    } else if args.debug {
+                        eprintln!("Pruned stale channel settings for {}", settings.name);
+                    }
+                }
+            }
+        }
+
+        channel_manager
+            .initialize_persistent_channels(channels_to_init)
+            .await;
+        if args.debug {
+            eprintln!("Initialized {} persistent channel(s)", channel_names.len());
+        }
+    }
+
     // Clone for the timer task
     let file_index_for_timer = file_index.clone();
     let database_for_timer = database.clone();
@@ -183,6 +261,7 @@ async fn main() {
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
+                            channel_manager: channel_manager.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
 

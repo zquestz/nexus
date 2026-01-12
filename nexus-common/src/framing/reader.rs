@@ -585,7 +585,7 @@ mod tests {
             Err(FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
                 length: 2000,
-                max: 1056
+                max: 1101
             }) if message_type == "ChatSend"
         ));
     }

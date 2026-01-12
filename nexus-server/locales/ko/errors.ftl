@@ -47,6 +47,17 @@ err-permission-denied = 권한이 거부됨
 # 기능 오류
 err-chat-feature-not-enabled = 채팅 기능이 활성화되지 않았습니다
 
+# 채널 오류
+err-channel-name-empty = 채널 이름은 비워둘 수 없습니다
+err-channel-name-too-short = 채널 이름은 # 뒤에 최소 한 글자 이상이어야 합니다
+err-channel-name-too-long = 채널 이름이 너무 깁니다 (최대 { $max_length }자)
+err-channel-name-invalid = 채널 이름에 잘못된 문자가 포함되어 있습니다
+err-channel-name-missing-prefix = 채널 이름은 #으로 시작해야 합니다
+err-channel-not-found = '{ $channel }' 채널을 찾을 수 없습니다
+err-channel-already-member = 이미 '{ $channel }' 채널의 멤버입니다
+err-channel-limit-exceeded = { $max }개 이상의 채널에 참가할 수 없습니다
+err-channel-list-invalid = 잘못된 채널 '{ $channel }': { $reason }
+
 # 데이터베이스 오류
 err-database = 데이터베이스 오류
 

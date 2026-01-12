@@ -127,6 +127,22 @@ impl UserManager {
             .any(|u| u.is_admin && range.contains(&u.address.ip()))
     }
 
+    /// Get sorted nicknames for a list of session IDs
+    ///
+    /// Looks up the nickname for each session ID and returns them sorted
+    /// alphabetically (case-insensitive). Sessions that don't exist are skipped.
+    ///
+    /// Used by channel join handlers to build member lists.
+    pub async fn get_nicknames_for_sessions(&self, session_ids: &[u32]) -> Vec<String> {
+        let users = self.users.read().await;
+        let mut nicknames: Vec<String> = session_ids
+            .iter()
+            .filter_map(|&session_id| users.get(&session_id).map(|u| u.nickname.clone()))
+            .collect();
+        nicknames.sort_by_key(|n| n.to_lowercase());
+        nicknames
+    }
+
     /// Get all unique IP addresses for sessions with a given nickname
     ///
     /// Used by the ban system to get IPs when banning by nickname.
