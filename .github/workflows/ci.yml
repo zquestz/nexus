@@ -180,7 +180,7 @@ jobs:
           chmod +x "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
           file "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
 
-  # Test Linux package formats (deb, rpm, appimage)
+  # Test Linux package formats (deb, appimage)
   bundle-linux:
     name: Bundle Linux (${{ matrix.format }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -192,16 +192,10 @@ jobs:
             format: deb
           - runner: ubuntu-latest
             arch: x64
-            format: rpm
-          - runner: ubuntu-latest
-            arch: x64
             format: appimage
           - runner: ubuntu-24.04-arm
             arch: arm64
             format: deb
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            format: rpm
           - runner: ubuntu-24.04-arm
             arch: arm64
             format: appimage
@@ -212,9 +206,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev
-          if [ "${{ matrix.format }}" = "rpm" ]; then
-            sudo apt-get install -y rpm
-          fi
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

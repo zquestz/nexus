@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,20 +18,36 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: x64
-            target: x86_64-unknown-linux-gnu
           - runner: ubuntu-24.04-arm
             arch: arm64
-            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev rpm
+          sudo apt-get install -y libasound2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: linux-${{ matrix.arch }}-client-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: linux-${{ matrix.arch }}-client-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-${{ matrix.arch }}-client-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-bundle
         run: cargo install --git https://github.com/zquestz/cargo-bundle --force
@@ -44,10 +60,6 @@ jobs:
         working-directory: nexus-client
         run: cargo bundle --release --format deb
 
-      - name: Build rpm package
-        working-directory: nexus-client
-        run: cargo bundle --release --format rpm
-
       - name: Build appimage package
         working-directory: nexus-client
         run: cargo bundle --release --format appimage
@@ -56,7 +68,6 @@ jobs:
         run: |
           mkdir -p dist
           mv target/release/bundle/deb/*.deb dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.deb
-          mv target/release/bundle/rpm/*.rpm dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.rpm
           mv target/release/bundle/appimage/*.AppImage dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.AppImage
 
       - name: Upload artifacts
@@ -74,15 +85,31 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: x64
-            target: x86_64-unknown-linux-gnu
           - runner: ubuntu-24.04-arm
             arch: arm64
-            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: linux-${{ matrix.arch }}-server-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: linux-${{ matrix.arch }}-server-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-${{ matrix.arch }}-server-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build server
         run: cargo build --release --package nexus-server
@@ -116,6 +143,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: macos-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: macos-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build client (ARM64)
         run: cargo build --release --package nexus-client --target aarch64-apple-darwin
@@ -160,16 +205,17 @@ jobs:
 
       - name: Replace binary with universal binary
         run: |
-          # cargo bundle built a native ARM64 binary, replace it with universal
           cp target/release/Nexus "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
           chmod +x "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
-          # Verify it's universal
           file "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
 
       - name: Create DMG
         run: |
           mkdir -p dist
-          hdiutil create -volname "Nexus BBS" -srcfolder "target/release/bundle/osx/Nexus BBS.app" -ov -format UDZO "dist/nexus-client-${{ steps.version.outputs.VERSION }}-macos-universal.dmg"
+          hdiutil create -volname "Nexus BBS" \
+            -srcfolder "target/release/bundle/osx/Nexus BBS.app" \
+            -ov -format UDZO \
+            "dist/nexus-client-${{ steps.version.outputs.VERSION }}-macos-universal.dmg"
 
       - name: Package server (x64)
         run: |
@@ -205,6 +251,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: windows-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: windows-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: windows-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Build client
         run: cargo build --release --package nexus-client
 
@@ -232,11 +296,12 @@ jobs:
           cd dist
           7z a -tzip nexusd-${{ steps.version.outputs.VERSION }}-windows-x64.zip nexusd
 
-      - name: Rename MSI
+      - name: Collect client artifact
         shell: bash
         run: |
           mkdir -p dist
-          mv target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/*.msi dist/nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi
+          mv target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/*.msi \
+             dist/nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -268,25 +333,29 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release
+
           # Linux client packages
           cp artifacts/linux-client-x64/* release/
           cp artifacts/linux-client-arm64/* release/
+
           # Linux server
-          cp artifacts/linux-server-x64/*.tar.gz release/
-          cp artifacts/linux-server-arm64/*.tar.gz release/
+          cp artifacts/linux-server-x64/* release/
+          cp artifacts/linux-server-arm64/* release/
+
           # macOS
           cp artifacts/macos/* release/
+
           # Windows
-          cp artifacts/windows/*.msi release/
-          cp artifacts/windows/*.zip release/
-          
-          # List all files
+          cp artifacts/windows/* release/
+
+          echo "Release artifacts:"
           ls -la release/
 
       - name: Generate checksums
         run: |
           cd release
           sha256sum * > SHA256SUMS.txt
+          echo "Checksums:"
           cat SHA256SUMS.txt
 
       - name: Create draft release
@@ -294,43 +363,41 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
-          files: |
-            release/*
+          files: release/*
           body: |
             ## Downloads
-            
+
             ### Client (Nexus BBS)
-            
+
             #### macOS
             | Architecture | Download |
             |--------------|----------|
             | Universal (Intel + Apple Silicon) | `nexus-client-${{ steps.version.outputs.VERSION }}-macos-universal.dmg` |
-            
+
             #### Windows
             | Architecture | Download |
             |--------------|----------|
             | x64 (Installer) | `nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi` |
-            
+
             #### Linux
             | Format | x64 | ARM64 |
             |--------|-----|-------|
-            | AppImage | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.AppImage` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.AppImage` |
-            | Debian/Ubuntu | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.deb` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.deb` |
-            | Fedora/RHEL | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.rpm` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.rpm` |
-            
+            | AppImage (all distros) | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.AppImage` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.AppImage` |
+            | Debian/Ubuntu (.deb) | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.deb` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.deb` |
+
+            > **Fedora/RHEL users:** Use the AppImage. RPM packages are not available due to [cargo-bundle not implementing RPM support](https://github.com/burtonageo/cargo-bundle/issues/92).
+
             ### Server (nexusd)
-            
+
             | Platform | x64 | ARM64 |
             |----------|-----|-------|
             | macOS | `nexusd-${{ steps.version.outputs.VERSION }}-macos-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz` |
             | Windows | `nexusd-${{ steps.version.outputs.VERSION }}-windows-x64.zip` | — |
             | Linux | `nexusd-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz` |
-            
+
             ### Verification
-            
+
             Verify your download with the SHA256 checksums in `SHA256SUMS.txt`:
             ```bash
             sha256sum -c SHA256SUMS.txt
             ```
-            
-            ---
