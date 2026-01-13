@@ -12,7 +12,19 @@ identifier = "at.greyh.nexus"
 icon = ["assets/macos/nexus.png", "assets/windows/nexus.ico"]
 category = "public.app-category.social-networking"
 short_description = "Cross-platform BBS client"
-copyright = "Copyright (c) 2025 Nexus BBS Project"
+long_description = """
+Nexus is a modern BBS (Bulletin Board System) client supporting chat,
+file transfers, news, and user management. Features include mandatory TLS
+encryption, 30 themes, 13 language translations, and cross-platform support.
+"""
+copyright = "Copyright (c) 2026 Nexus BBS Project"
+
+# Linux-specific settings
+linux_exec_args = "%u"
+linux_mime_types = []
+
+# Debian package dependencies (runtime libraries)
+deb_depends = ["libasound2"]
 
 [dependencies]
 nexus-common = { path = "../nexus-common" }

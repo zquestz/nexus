@@ -1,0 +1,336 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build Linux client packages (deb, rpm, appimage)
+  build-linux-client:
+    name: Build Linux Client (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev rpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-bundle
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build deb package
+        working-directory: nexus-client
+        run: cargo bundle --release --format deb
+
+      - name: Build rpm package
+        working-directory: nexus-client
+        run: cargo bundle --release --format rpm
+
+      - name: Build appimage package
+        working-directory: nexus-client
+        run: cargo bundle --release --format appimage
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          mv target/release/bundle/deb/*.deb dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.deb
+          mv target/release/bundle/rpm/*.rpm dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.rpm
+          mv target/release/bundle/appimage/*.AppImage dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.AppImage
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-client-${{ matrix.arch }}
+          path: dist/*
+
+  # Build Linux server
+  build-linux-server:
+    name: Build Linux Server (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build server
+        run: cargo build --release --package nexus-server
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Package server
+        run: |
+          mkdir -p dist/nexusd
+          cp target/release/nexusd dist/nexusd/
+          cp README.md LICENSE dist/nexusd/
+          cd dist
+          tar -czvf nexusd-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.tar.gz nexusd
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-server-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  # Build macOS (universal client + both arch servers)
+  build-macos:
+    name: Build macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Build client (ARM64)
+        run: cargo build --release --package nexus-client --target aarch64-apple-darwin
+
+      - name: Build client (x64)
+        run: cargo build --release --package nexus-client --target x86_64-apple-darwin
+
+      - name: Build server (ARM64)
+        run: cargo build --release --package nexus-server --target aarch64-apple-darwin
+
+      - name: Build server (x64)
+        run: cargo build --release --package nexus-server --target x86_64-apple-darwin
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create universal client binary
+        run: |
+          mkdir -p target/release
+          lipo -create \
+            -output target/release/Nexus \
+            target/aarch64-apple-darwin/release/nexus \
+            target/x86_64-apple-darwin/release/nexus
+          chmod +x target/release/Nexus
+          file target/release/Nexus
+
+      - name: Install cargo-bundle
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
+      - name: Configure for macOS bundle
+        working-directory: nexus-client
+        run: |
+          # Add ICNS icon for macOS builds
+          sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
+          # Rename binary to Nexus for macOS builds
+          sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
+
+      - name: Create app bundle
+        working-directory: nexus-client
+        run: cargo bundle --release
+
+      - name: Replace binary with universal binary
+        run: |
+          # cargo bundle built a native ARM64 binary, replace it with universal
+          cp target/release/Nexus "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+          chmod +x "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+          # Verify it's universal
+          file "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          hdiutil create -volname "Nexus BBS" -srcfolder "target/release/bundle/osx/Nexus BBS.app" -ov -format UDZO "dist/nexus-client-${{ steps.version.outputs.VERSION }}-macos-universal.dmg"
+
+      - name: Package server (x64)
+        run: |
+          mkdir -p dist/nexusd
+          cp target/x86_64-apple-darwin/release/nexusd dist/nexusd/
+          cp README.md LICENSE dist/nexusd/
+          cd dist
+          tar -czvf nexusd-${{ steps.version.outputs.VERSION }}-macos-x64.tar.gz nexusd
+          rm -rf nexusd
+
+      - name: Package server (ARM64)
+        run: |
+          mkdir -p dist/nexusd
+          cp target/aarch64-apple-darwin/release/nexusd dist/nexusd/
+          cp README.md LICENSE dist/nexusd/
+          cd dist
+          tar -czvf nexusd-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz nexusd
+          rm -rf nexusd
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  # Build Windows
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build client
+        run: cargo build --release --package nexus-client
+
+      - name: Build server
+        run: cargo build --release --package nexus-server
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install cargo-bundle
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
+      - name: Create MSI installer
+        working-directory: nexus-client
+        run: cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
+
+      - name: Package server
+        shell: bash
+        run: |
+          mkdir -p dist/nexusd
+          cp target/release/nexusd.exe dist/nexusd/
+          cp README.md LICENSE dist/nexusd/
+          cd dist
+          7z a -tzip nexusd-${{ steps.version.outputs.VERSION }}-windows-x64.zip nexusd
+
+      - name: Rename MSI
+        shell: bash
+        run: |
+          mkdir -p dist
+          mv target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/*.msi dist/nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.msi
+            dist/*.zip
+
+  # Create GitHub release with all artifacts
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-linux-client, build-linux-server, build-macos, build-windows]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          # Linux client packages
+          cp artifacts/linux-client-x64/* release/
+          cp artifacts/linux-client-arm64/* release/
+          # Linux server
+          cp artifacts/linux-server-x64/*.tar.gz release/
+          cp artifacts/linux-server-arm64/*.tar.gz release/
+          # macOS
+          cp artifacts/macos/* release/
+          # Windows
+          cp artifacts/windows/*.msi release/
+          cp artifacts/windows/*.zip release/
+          
+          # List all files
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            release/*
+          body: |
+            ## Downloads
+            
+            ### Client (Nexus BBS)
+            
+            #### macOS
+            | Architecture | Download |
+            |--------------|----------|
+            | Universal (Intel + Apple Silicon) | `nexus-client-${{ steps.version.outputs.VERSION }}-macos-universal.dmg` |
+            
+            #### Windows
+            | Architecture | Download |
+            |--------------|----------|
+            | x64 (Installer) | `nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi` |
+            
+            #### Linux
+            | Format | x64 | ARM64 |
+            |--------|-----|-------|
+            | AppImage | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.AppImage` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.AppImage` |
+            | Debian/Ubuntu | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.deb` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.deb` |
+            | Fedora/RHEL | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.rpm` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.rpm` |
+            
+            ### Server (nexusd)
+            
+            | Platform | x64 | ARM64 |
+            |----------|-----|-------|
+            | macOS | `nexusd-${{ steps.version.outputs.VERSION }}-macos-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz` |
+            | Windows | `nexusd-${{ steps.version.outputs.VERSION }}-windows-x64.zip` | — |
+            | Linux | `nexusd-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz` |
+            
+            ### Verification
+            
+            Verify your download with the SHA256 checksums in `SHA256SUMS.txt`:
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+            
+            ---

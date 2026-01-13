@@ -11,12 +11,11 @@ env:
 
 jobs:
   test:
-    name: Test
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -26,37 +25,34 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.rust }}
 
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
         run: cargo test --workspace --verbose
 
   build:
-    name: Build
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -66,26 +62,24 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.rust }}
 
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release
         run: cargo build --release --workspace --verbose
@@ -121,24 +115,106 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  bundle:
-    name: Bundle
-    runs-on: ${{ matrix.os }}
+  # Test macOS universal binary build (matches release workflow)
+  build-macos-universal:
+    name: Build macOS (Universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: macos-universal-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: macos-universal-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: macos-universal-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build client (ARM64)
+        run: cargo build --release --package nexus-client --target aarch64-apple-darwin
+
+      - name: Build client (x64)
+        run: cargo build --release --package nexus-client --target x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          mkdir -p target/release
+          lipo -create \
+            -output target/release/Nexus \
+            target/aarch64-apple-darwin/release/nexus \
+            target/x86_64-apple-darwin/release/nexus
+          chmod +x target/release/Nexus
+          file target/release/Nexus
+
+      - name: Install cargo-bundle
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
+      - name: Configure for macOS bundle
+        working-directory: nexus-client
+        run: |
+          sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
+          sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
+
+      - name: Create app bundle
+        working-directory: nexus-client
+        run: cargo bundle --release
+
+      - name: Replace binary with universal binary
+        run: |
+          cp target/release/Nexus "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+          chmod +x "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+          file "target/release/bundle/osx/Nexus BBS.app/Contents/MacOS/Nexus"
+
+  # Test Linux package formats (deb, rpm, appimage)
+  bundle-linux:
+    name: Bundle Linux (${{ matrix.format }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            bundle_command: cargo bundle --release
-          - os: macos-latest
-            bundle_command: cargo bundle --release
-          - os: windows-latest
-            bundle_command: cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
+          - runner: ubuntu-latest
+            arch: x64
+            format: deb
+          - runner: ubuntu-latest
+            arch: x64
+            format: rpm
+          - runner: ubuntu-latest
+            arch: x64
+            format: appimage
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            format: deb
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            format: rpm
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            format: appimage
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+          if [ "${{ matrix.format }}" = "rpm" ]; then
+            sudo apt-get install -y rpm
+          fi
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -147,33 +223,58 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-bundle-${{ matrix.arch }}-${{ matrix.format }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-bundle-${{ matrix.arch }}-${{ matrix.format }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-cargo-bundle-target-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-bundle-${{ matrix.arch }}-${{ matrix.format }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-bundle
         run: cargo install --git https://github.com/zquestz/cargo-bundle --force
 
-      - name: Add ICNS icon for macOS builds
-        if: runner.os == 'macOS'
-        run: sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
+      - name: Build ${{ matrix.format }} bundle
         working-directory: nexus-client
+        run: cargo bundle --release --format ${{ matrix.format }}
 
-      - name: Rename binary to Nexus for macOS builds
-        if: runner.os == 'macOS'
-        run: sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
-        working-directory: nexus-client
+  # Test Windows MSI installer
+  bundle-windows:
+    name: Bundle Windows (MSI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Build bundle
-        run: ${{ matrix.bundle_command }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: windows-bundle-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: windows-bundle-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: windows-bundle-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-bundle
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+
+      - name: Build MSI installer
         working-directory: nexus-client
+        run: cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
