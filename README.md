@@ -14,13 +14,36 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - **Chat** — Real-time messaging with topics, private messages, and broadcasts
 - **Files** — Multi-tab browser with search, downloads, uploads, pause/resume, and queue management
 - **News** — Bulletin board with Markdown and image support
-- **Users** — 31 granular permissions, shared accounts, guest access, custom avatars
+- **Users** — 38 granular permissions, shared accounts, guest access, custom avatars
 - **Security** — Mandatory TLS, TOFU verification, Argon2id passwords, proxy support
 - **Notifications** — Desktop and sound alerts for 12 event types
 - **Customization** — 30 themes, 13 languages, configurable UI
 - **Connectivity** — Multi-server bookmarks, auto-connect, UPnP, IPv4/IPv6/Yggdrasil
 
-## Quick Start
+## Downloads
+
+Pre-built binaries are available on the [Releases](https://github.com/zquestz/nexus/releases) page.
+
+### Client
+
+| Platform | Download |
+|----------|----------|
+| macOS (Universal) | `nexus-client-{version}-macos-universal.dmg` |
+| Windows (x64) | `nexus-client-{version}-windows-x64.msi` |
+| Linux (x64) | `.AppImage` or `.deb` |
+| Linux (ARM64) | `.AppImage` or `.deb` |
+
+### Server
+
+| Platform | Download |
+|----------|----------|
+| macOS | `nexusd-{version}-macos-{x64,arm64}.tar.gz` |
+| Windows | `nexusd-{version}-windows-x64.zip` |
+| Linux | `nexusd-{version}-linux-{x64,arm64}.tar.gz` |
+
+See [Client Installation](docs/client/01-getting-started.md) and [Server Installation](docs/server/01-getting-started.md) for detailed instructions.
+
+## Quick Start (from source)
 
 ```bash
 # Build

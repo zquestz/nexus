@@ -116,8 +116,8 @@ jobs:
         run: cargo fmt --all -- --check
 
   # Test macOS universal binary build (matches release workflow)
-  build-macos-universal:
-    name: Build macOS (Universal)
+  bundle-macos:
+    name: Bundle macOS (Universal)
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -269,3 +269,22 @@ jobs:
       - name: Build MSI installer
         working-directory: nexus-client
         run: cargo bundle --target x86_64-pc-windows-msvc --format wxsmsi --release
+
+  # Test Docker image build
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: nexusd:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

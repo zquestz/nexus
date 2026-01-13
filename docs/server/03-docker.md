@@ -2,7 +2,76 @@
 
 This guide covers running the Nexus BBS server using Docker.
 
-## Quick Start
+## Quick Start with Pre-built Images
+
+The easiest way to run the Nexus server is using the official pre-built images from GitHub Container Registry.
+
+### Pull and Run
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/zquestz/nexusd:latest
+
+# Run the container
+docker run -d \
+  -p 7500:7500 \
+  -p 7501:7501 \
+  -v nexus-data:/home/nexus/.local/share/nexusd \
+  --name nexusd \
+  ghcr.io/zquestz/nexusd:latest
+```
+
+### Using Docker Compose with Pre-built Image
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  nexusd:
+    image: ghcr.io/zquestz/nexusd:latest
+    container_name: nexusd
+    restart: unless-stopped
+    ports:
+      - "7500:7500"
+      - "7501:7501"
+    volumes:
+      - nexus-data:/home/nexus/.local/share/nexusd
+    environment:
+      - NEXUS_BIND=0.0.0.0
+      - NEXUS_PORT=7500
+      - NEXUS_TRANSFER_PORT=7501
+      - NEXUS_DEBUG=
+
+volumes:
+  nexus-data:
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
+### Available Tags
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Most recent stable release |
+| `0.5.0` | Specific version |
+| `0.5` | Latest patch release in 0.5.x series |
+| `0` | Latest release in 0.x.x series |
+
+### Supported Architectures
+
+Pre-built images support both architectures in a single manifest:
+- `linux/amd64` (x86_64)
+- `linux/arm64` (aarch64)
+
+Docker automatically pulls the correct architecture for your system.
+
+## Building from Source
+
+If you prefer to build the image yourself, you can use the included Dockerfile.
 
 ### Using Docker Compose (Recommended)
 
@@ -11,7 +80,7 @@ This guide covers running the Nexus BBS server using Docker.
 git clone https://github.com/zquestz/nexus.git
 cd nexus
 
-# Start the server
+# Start the server (builds automatically)
 docker compose up -d
 
 # View logs
@@ -171,6 +240,27 @@ docker compose down -v
 
 **Warning:** This deletes all data including users, settings, and files.
 
+## Updating
+
+### Pre-built Images
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/zquestz/nexusd:latest
+
+# Restart with new image
+docker compose down
+docker compose up -d
+```
+
+### From Source
+
+```bash
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
 ## Backup and Restore
 
 ### Backup
@@ -275,6 +365,16 @@ docker volume ls | grep nexus
 ```
 
 If the volume doesn't exist, data is lost when the container stops.
+
+### Wrong Architecture
+
+If you get exec format errors, Docker pulled the wrong architecture. Force the correct one:
+
+```bash
+docker pull --platform linux/amd64 ghcr.io/zquestz/nexusd:latest
+# or
+docker pull --platform linux/arm64 ghcr.io/zquestz/nexusd:latest
+```
 
 ## Next Steps
 

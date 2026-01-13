@@ -2,12 +2,55 @@
 
 This guide walks you through setting up and running the Nexus BBS server.
 
-## Requirements
+## Installation
 
+### Download Pre-Built Binaries
+
+Pre-built binaries are available for all major platforms on the [GitHub Releases](https://github.com/zquestz/nexus/releases) page.
+
+#### macOS
+
+Download the appropriate tarball for your Mac:
+
+| Architecture | File |
+|--------------|------|
+| Intel | `nexusd-{version}-macos-x64.tar.gz` |
+| Apple Silicon (M1/M2/M3) | `nexusd-{version}-macos-arm64.tar.gz` |
+
+```bash
+# Extract and run
+tar -xzf nexusd-*-macos-*.tar.gz
+cd nexusd
+./nexusd
+```
+
+#### Windows
+
+1. Download `nexusd-{version}-windows-x64.zip`
+2. Extract the zip file
+3. Run `nexusd.exe` from Command Prompt or PowerShell
+
+#### Linux
+
+Download the appropriate tarball for your architecture:
+
+| Architecture | File |
+|--------------|------|
+| x64 (Intel/AMD) | `nexusd-{version}-linux-x64.tar.gz` |
+| ARM64 (Raspberry Pi 4+, ARM servers) | `nexusd-{version}-linux-arm64.tar.gz` |
+
+```bash
+# Extract and run
+tar -xzf nexusd-*-linux-*.tar.gz
+cd nexusd
+./nexusd
+```
+
+### Building from Source
+
+Requirements:
 - Rust 1.91+ (2024 edition)
 - Linux, macOS, or Windows
-
-## Building from Source
 
 ```bash
 # Clone the repository
@@ -25,7 +68,7 @@ cargo build --release -p nexus-server
 Start the server with default settings:
 
 ```bash
-./target/release/nexusd
+./nexusd
 ```
 
 You'll see output like:
@@ -120,6 +163,19 @@ If you're running behind a firewall, open these ports:
 - **TCP 7501** — File transfer port
 
 For cloud servers, also configure security groups to allow inbound traffic on these ports.
+
+## Verifying Downloads
+
+All releases include a `SHA256SUMS.txt` file. To verify your download:
+
+```bash
+# Linux/macOS
+sha256sum -c SHA256SUMS.txt
+
+# Or verify a single file
+sha256sum nexusd-*-linux-x64.tar.gz
+# Compare output with the value in SHA256SUMS.txt
+```
 
 ## Next Steps
 

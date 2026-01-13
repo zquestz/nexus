@@ -4,13 +4,56 @@ This guide walks you through installing the Nexus BBS client and connecting to y
 
 ## Installation
 
+### Download Pre-Built Binaries
+
+Pre-built binaries are available for all major platforms on the [GitHub Releases](https://github.com/zquestz/nexus/releases) page.
+
+#### macOS
+
+1. Download `nexus-client-{version}-macos-universal.dmg`
+2. Open the DMG file
+3. Drag **Nexus BBS** to your Applications folder
+4. On first launch, right-click the app and select **Open** (required for unsigned apps)
+
+The universal binary runs natively on both Intel and Apple Silicon Macs.
+
+#### Windows
+
+1. Download `nexus-client-{version}-windows-x64.msi`
+2. Run the installer
+3. Launch **Nexus BBS** from the Start Menu
+
+#### Linux
+
+Choose the format that works best for your distribution:
+
+| Format | Best For | Installation |
+|--------|----------|--------------|
+| **AppImage** | Any distro | Download, `chmod +x`, run |
+| **Deb** | Debian, Ubuntu, Mint | `sudo dpkg -i nexus-client-{version}-linux-{arch}.deb` |
+
+Both x64 and ARM64 builds are available.
+
+**AppImage quick start:**
+```bash
+chmod +x nexus-client-*-linux-x64.AppImage
+./nexus-client-*-linux-x64.AppImage
+```
+
+> **Fedora/RHEL users:** Use the AppImage. RPM packages are not currently available due to a limitation in our build tooling.
+
 ### Building from Source
 
 Requirements:
 - Rust 1.91+ (2024 edition)
-- Linux only: ALSA development library (`libasound2-dev` on Debian/Ubuntu)
+- Linux only: ALSA development library
 
 ```bash
+# Install ALSA (Linux only)
+sudo apt-get install libasound2-dev  # Debian/Ubuntu
+sudo dnf install alsa-lib-devel      # Fedora
+sudo pacman -S alsa-lib              # Arch
+
 # Clone the repository
 git clone https://github.com/zquestz/nexus.git
 cd nexus
@@ -81,6 +124,19 @@ Once connected, you'll see:
 | **User List** (right) | Online users — click for actions |
 | **Toolbar** (top) | Access to Files, News, Settings, and more |
 | **Input Field** (bottom) | Type messages or commands |
+
+## Verifying Downloads
+
+All releases include a `SHA256SUMS.txt` file. To verify your download:
+
+```bash
+# Linux/macOS
+sha256sum -c SHA256SUMS.txt
+
+# Or verify a single file
+sha256sum nexus-client-*-linux-x64.AppImage
+# Compare output with the value in SHA256SUMS.txt
+```
 
 ## Next Steps
 

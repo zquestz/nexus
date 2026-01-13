@@ -1,16 +1,22 @@
 # Docker Compose for Nexus BBS Server
 #
-# Usage:
+# Quick Start with Pre-built Image:
 #   docker compose up -d          # Start server
 #   docker compose logs -f        # View logs
 #   docker compose down           # Stop server
+#
+# Build from Source:
+#   docker compose build          # Build local image
+#   docker compose up -d          # Start server
 #
 # First user to connect becomes admin.
 
 services:
   nexusd:
-    build: .
-    image: nexus-server:latest
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/zquestz/nexusd:latest
+    # Or build from source:
+    # build: .
     container_name: nexusd
     restart: unless-stopped
     ports:

@@ -40,11 +40,9 @@ RUN cargo build --release --package nexus-server && \
 # Runtime stage
 FROM debian:bookworm-slim
 
-# OCI labels
+# OCI labels (metadata-action sets source, revision, created, url, version automatically)
 LABEL org.opencontainers.image.title="Nexus BBS Server" \
   org.opencontainers.image.description="A modern BBS server inspired by Hotline" \
-  org.opencontainers.image.version="0.5.0" \
-  org.opencontainers.image.source="https://github.com/zquestz/nexus" \
   org.opencontainers.image.licenses="MIT"
 
 RUN useradd --create-home nexus && \
