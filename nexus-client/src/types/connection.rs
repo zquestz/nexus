@@ -15,7 +15,7 @@ use nexus_common::protocol::ChannelJoinInfo;
 use super::{
     ActivePanel, ChannelState, ChatMessage, ChatTab, DisconnectDialogState, FilesManagementState,
     NewsManagementState, PasswordChangeState, ResponseRouting, ScrollState, ServerInfoEditState,
-    UserInfo, UserManagementState,
+    ServerInfoTab, UserInfo, UserManagementState,
 };
 use crate::image::CachedImage;
 
@@ -239,6 +239,8 @@ pub struct ServerConnection {
     pub avatar_cache: HashMap<String, CachedImage>,
     /// Server info edit state (Some when editing, None otherwise)
     pub server_info_edit: Option<ServerInfoEditState>,
+    /// Active tab in server info display mode (shown based on available data)
+    pub server_info_tab: ServerInfoTab,
     /// Currently active panel in the main content area (per-connection)
     pub active_panel: ActivePanel,
     /// News management panel state
@@ -358,6 +360,7 @@ impl ServerConnection {
             password_change_state: None,
             avatar_cache: HashMap::new(),
             server_info_edit: None,
+            server_info_tab: ServerInfoTab::default(),
             active_panel: ActivePanel::None,
             news_management: NewsManagementState::default(),
             news_image_cache: HashMap::new(),

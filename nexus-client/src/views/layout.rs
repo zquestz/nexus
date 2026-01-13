@@ -707,6 +707,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 auto_join_channels: ctx.conn.auto_join_channels.clone(),
                 cached_server_image: ctx.conn.cached_server_image.as_ref(),
                 is_admin: ctx.conn.is_admin,
+                active_tab: ctx.conn.server_info_tab,
                 edit_state: ctx.conn.server_info_edit.as_ref(),
             };
             stack![chat, server_info_view(&data)]

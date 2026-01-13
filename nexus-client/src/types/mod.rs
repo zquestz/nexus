@@ -21,7 +21,7 @@ pub use form::{
     BanDuration, ClipboardItem, ClipboardOperation, ConnectionFormState, DisconnectAction,
     DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, NewsManagementMode,
     NewsManagementState, PasswordChangeState, PendingOverwrite, ServerInfoEditState,
-    ServerInfoParams, SettingsFormState, SettingsTab, TabId, UserManagementMode,
+    ServerInfoParams, ServerInfoTab, SettingsFormState, SettingsTab, TabId, UserManagementMode,
     UserManagementState,
 };
 pub use message::Message;

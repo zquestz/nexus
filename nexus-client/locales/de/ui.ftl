@@ -124,6 +124,19 @@ label-identity = Identität
 label-nickname = Spitzname:
 label-network = Netzwerk
 label-none = Keine
+label-server-settings = Servereinstellungen
+tab-limits = Limits
+tab-files = Dateien
+tab-channels = Kanäle
+label-connections-short = Verbindungen:
+label-transfers-short = Übertragungen:
+label-reindex-short = Neuindiz.:
+label-persistent-short = Permanent:
+label-auto-join-short = Auto-Beitritt:
+label-minutes = Minuten
+label-name = Name:
+label-description = Beschreibung:
+label-version-value = Version { $version }
 label-use-socks5-proxy = SOCKS5-Proxy verwenden
 label-proxy-address = Adresse:
 label-proxy-port = Port:
@@ -311,7 +324,6 @@ err-dir-name-invalid = Verzeichnisname enthält ungültige Zeichen
 tab-general = Allgemein
 tab-chat = Chat
 tab-network = Netzwerk
-tab-files = Dateien
 
 # =============================================================================
 # Chat Tab Labels

@@ -1187,6 +1187,27 @@ impl std::fmt::Debug for SettingsFormState {
 }
 
 // =============================================================================
+// Server Info Display Tab
+// =============================================================================
+
+/// Tab selection for server info display mode
+///
+/// Tabs are shown based on available data:
+/// - Limits: visible to all users (connections, transfers)
+/// - Files: visible to admins or users with file_reindex permission
+/// - Channels: visible to users with chat_join permission (auto-join only) or admins (both)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ServerInfoTab {
+    /// Limits tab: connections per IP, transfers per IP (all users)
+    #[default]
+    Limits,
+    /// Files tab: reindex interval (admins + file_reindex permission)
+    Files,
+    /// Channels tab: auto-join (chat_join permission), persistent (admins only)
+    Channels,
+}
+
+// =============================================================================
 // Server Info Edit State
 // =============================================================================
 

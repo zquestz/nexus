@@ -125,6 +125,19 @@ label-identity = Identiteit
 label-nickname = Bijnaam:
 label-network = Netwerk
 label-none = Geen
+label-server-settings = Serverinstellingen
+tab-limits = Limieten
+tab-files = Bestanden
+tab-channels = Kanalen
+label-connections-short = Verbindingen:
+label-transfers-short = Overdrachten:
+label-reindex-short = Herindexeren:
+label-persistent-short = Permanent:
+label-auto-join-short = Auto-join:
+label-minutes = minuten
+label-name = Naam:
+label-description = Beschrijving:
+label-version-value = Versie { $version }
 label-use-socks5-proxy = SOCKS5 Proxy gebruiken
 label-proxy-address = Adres:
 label-proxy-port = Poort:
@@ -313,7 +326,6 @@ err-dir-name-invalid = Mapnaam bevat ongeldige tekens
 tab-general = Algemeen
 tab-chat = Chat
 tab-network = Netwerk
-tab-files = Bestanden
 
 # =============================================================================
 # Chat Tab Labels

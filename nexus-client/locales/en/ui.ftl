@@ -112,6 +112,19 @@ label-persistent-channels = Persistent Channels:
 label-auto-join-channels = Auto-Join Channels:
 label-channels = Channels
 label-none = None
+label-server-settings = Server Settings
+tab-limits = Limits
+tab-files = Files
+tab-channels = Channels
+label-connections-short = Connections:
+label-transfers-short = Transfers:
+label-reindex-short = Reindex:
+label-persistent-short = Persistent:
+label-auto-join-short = Auto-join:
+label-minutes = minutes
+label-name = Name:
+label-description = Description:
+label-version-value = Version { $version }
 placeholder-persistent-channels = #channel1 #channel2 (space-separated)
 placeholder-auto-join-channels = #channel1 #channel2 (space-separated)
 label-avatar = Avatar:
@@ -318,7 +331,6 @@ err-dir-name-invalid = Directory name contains invalid characters
 tab-general = General
 tab-chat = Chat
 tab-network = Network
-tab-files = Files
 
 # =============================================================================
 # Chat Tab Labels

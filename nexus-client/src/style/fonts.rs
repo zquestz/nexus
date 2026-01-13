@@ -39,6 +39,7 @@ pub const MONOSPACE_ITALIC_FONT: Font = Font {
 pub const TITLE_SIZE: f32 = 20.0;
 
 /// Subheading text size (e.g., section headers within panels)
+#[allow(dead_code)]
 pub const SUBHEADING_SIZE: f32 = 16.0;
 
 /// Standard text and input field size

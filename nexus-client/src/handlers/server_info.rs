@@ -14,10 +14,23 @@ use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::style::SERVER_IMAGE_MAX_SIZE;
-use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoParams};
+use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoParams, ServerInfoTab};
 
 impl NexusApp {
     // ==================== Panel Actions ====================
+
+    /// Change the active tab in server info display mode
+    pub fn handle_server_info_tab_changed(&mut self, tab: ServerInfoTab) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.server_info_tab = tab;
+        Task::none()
+    }
 
     /// Enter server info edit mode
     ///

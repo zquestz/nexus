@@ -484,12 +484,8 @@ where
         None
     };
 
-    // Auto-join channels only visible to admins
-    let auto_join_channels = if authenticated_account.is_admin {
-        Some(ctx.db.config.get_auto_join_channels().await)
-    } else {
-        None
-    };
+    // Auto-join channels visible to all users (they just got auto-joined)
+    let auto_join_channels = Some(ctx.db.config.get_auto_join_channels().await);
 
     let server_info = Some(ServerInfo {
         name: Some(name),

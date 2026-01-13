@@ -124,6 +124,19 @@ label-identity = 身分
 label-nickname = 暱稱：
 label-network = 網路
 label-none = 無
+label-server-settings = 伺服器設定
+tab-limits = 限制
+tab-files = 檔案
+tab-channels = 頻道
+label-connections-short = 連線：
+label-transfers-short = 傳輸：
+label-reindex-short = 重建索引：
+label-persistent-short = 常駐：
+label-auto-join-short = 自動加入：
+label-minutes = 分鐘
+label-name = 名稱：
+label-description = 描述：
+label-version-value = 版本 { $version }
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
 label-proxy-port = 連接埠:
@@ -312,7 +325,6 @@ err-dir-name-invalid = 資料夾名稱包含無效字元
 tab-general = 一般
 tab-chat = 聊天
 tab-network = 網路
-tab-files = 檔案
 
 # =============================================================================
 # Chat Tab Labels

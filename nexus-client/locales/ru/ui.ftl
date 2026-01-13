@@ -124,6 +124,19 @@ label-identity = Личность
 label-nickname = Псевдоним:
 label-network = Сеть
 label-none = Нет
+label-server-settings = Настройки сервера
+tab-limits = Лимиты
+tab-files = Файлы
+tab-channels = Каналы
+label-connections-short = Подключения:
+label-transfers-short = Передачи:
+label-reindex-short = Переиндекс.:
+label-persistent-short = Постоянные:
+label-auto-join-short = Авто-вход:
+label-minutes = минут
+label-name = Название:
+label-description = Описание:
+label-version-value = Версия { $version }
 label-use-socks5-proxy = Использовать SOCKS5 прокси
 label-proxy-address = Адрес:
 label-proxy-port = Порт:
@@ -312,7 +325,6 @@ err-dir-name-invalid = Имя папки содержит недопустимы
 tab-general = Общие
 tab-chat = Чат
 tab-network = Сеть
-tab-files = Файлы
 
 # =============================================================================
 # Chat Tab Labels

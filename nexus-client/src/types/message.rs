@@ -132,6 +132,8 @@ pub enum Message {
     EditServerInfoAutoJoinChannelsChanged(String),
     /// Server info edit: Edit button pressed (enter edit mode)
     EditServerInfoPressed,
+    /// Server info display: Tab changed (tabs shown based on available data)
+    ServerInfoTabChanged(super::ServerInfoTab),
     /// Server info edit: Pick image button pressed
     PickServerImagePressed,
     /// Server info edit: Clear image button pressed

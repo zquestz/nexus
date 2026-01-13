@@ -1,19 +1,20 @@
 //! Server info panel view
 
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, image, row, svg, text_input};
+use iced::widget::{Id, Space, button, container, image, row, svg, text_input};
 use iced::{Center, Element, Fill, Length};
-use iced_aw::NumberInput;
+use iced_aw::{NumberInput, TabLabel, Tabs};
 
 use super::layout::scrollable_panel;
 use crate::i18n::{t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
-    SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, SUBHEADING_SIZE, TEXT_SIZE,
-    error_text_style, panel_title, shaped_text, shaped_text_wrapped, subheading_text_style,
+    SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
+    TAB_LABEL_PADDING, TEXT_SIZE, error_text_style, muted_text_style, panel_title, shaped_text,
+    shaped_text_wrapped,
 };
-use crate::types::{InputId, Message, ServerInfoEditState};
+use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoTab};
 
 /// Data needed to render the server info panel
 pub struct ServerInfoData<'a> {
@@ -23,20 +24,22 @@ pub struct ServerInfoData<'a> {
     pub description: Option<String>,
     /// Server version (if provided)
     pub version: Option<String>,
-    /// Max connections per IP (admin only)
+    /// Max connections per IP (all users)
     pub max_connections_per_ip: Option<u32>,
-    /// Max transfers per IP (admin only)
+    /// Max transfers per IP (all users)
     pub max_transfers_per_ip: Option<u32>,
-    /// File reindex interval in minutes (admin only, 0 = disabled)
+    /// File reindex interval in minutes (admins + file_reindex permission, 0 = disabled)
     pub file_reindex_interval: Option<u32>,
     /// Persistent channels (space-separated, admin only)
     pub persistent_channels: Option<String>,
-    /// Auto-join channels (space-separated, admin only)
+    /// Auto-join channels (space-separated, users with chat_join permission + admins)
     pub auto_join_channels: Option<String>,
     /// Cached server image for display (None if no image set)
     pub cached_server_image: Option<&'a CachedImage>,
     /// Whether the current user is an admin
     pub is_admin: bool,
+    /// Active tab in display mode (shown based on available data)
+    pub active_tab: ServerInfoTab,
     /// Edit state (Some when in edit mode)
     pub edit_state: Option<&'a ServerInfoEditState>,
 }
@@ -56,116 +59,198 @@ pub fn server_info_view(data: &ServerInfoData<'_>) -> Element<'static, Message> 
 
 /// Render the server info display view (read-only)
 fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Message> {
+    let mut items: Vec<Element<'static, Message>> = Vec::new();
+
     // Server image at the top (if set)
-    let image_element: Option<Element<'static, Message>> =
-        data.cached_server_image
-            .map(|cached_image| match cached_image {
-                CachedImage::Raster(handle) => image(handle.clone())
-                    .width(Length::Fill)
-                    .content_fit(iced::ContentFit::ScaleDown)
-                    .into(),
-                CachedImage::Svg(handle) => svg(handle.clone())
-                    .width(Length::Fill)
-                    .content_fit(iced::ContentFit::ScaleDown)
-                    .into(),
-            });
+    if let Some(cached_image) = data.cached_server_image {
+        let image_element: Element<'static, Message> = match cached_image {
+            CachedImage::Raster(handle) => image(handle.clone())
+                .width(Length::Fill)
+                .content_fit(iced::ContentFit::ScaleDown)
+                .into(),
+            CachedImage::Svg(handle) => svg(handle.clone())
+                .width(Length::Fill)
+                .content_fit(iced::ContentFit::ScaleDown)
+                .into(),
+        };
+        items.push(image_element);
+    }
 
     // Server name as the title (fallback to generic title if no name)
     let title_text = data.name.clone().unwrap_or_else(|| t("title-server-info"));
-    let title = panel_title(title_text);
+    items.push(panel_title(title_text).into());
 
     // Server description directly under title (no label)
-    let description_element: Option<Element<'static, Message>> = data
-        .description
-        .as_ref()
-        .filter(|d| !d.is_empty())
-        .map(|description| {
+    if let Some(description) = data.description.as_ref().filter(|d| !d.is_empty()) {
+        items.push(
             shaped_text_wrapped(description.clone())
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
+                .into(),
+        );
+    }
+
+    // Server version (centered like name and description)
+    if let Some(version) = &data.version {
+        items.push(
+            container(
+                shaped_text(t_args("label-version-value", &[("version", version)])).size(TEXT_SIZE),
+            )
+            .width(Fill)
+            .align_x(Center)
+            .into(),
+        );
+    }
+
+    // Determine which tabs to show based on available data
+    let has_limits = data.max_connections_per_ip.is_some() || data.max_transfers_per_ip.is_some();
+    let has_files = data.file_reindex_interval.is_some();
+    let has_channels = data.persistent_channels.is_some() || data.auto_join_channels.is_some();
+
+    // Show settings tabs if user has any settings data
+    if has_limits || has_files || has_channels {
+        items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+        // Build tab content for each available tab
+        let limits_content: Element<'static, Message> = {
+            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
+            // Space between tab bar and first content
+            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            if let Some(max_conn) = data.max_connections_per_ip {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-connections-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(max_conn.to_string()).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            if let Some(max_xfer) = data.max_transfers_per_ip {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-transfers-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(max_xfer.to_string()).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            iced::widget::Column::with_children(content_items)
+                .spacing(ELEMENT_SPACING)
                 .into()
-        });
+        };
 
-    // Details subheading
-    let details_heading = shaped_text(t("label-details"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-
-    // Server version
-    let version_row: Option<Element<'static, Message>> = data.version.as_ref().map(|version| {
-        let label = shaped_text(t("label-server-version")).size(TEXT_SIZE);
-        let value = shaped_text(version.clone()).size(TEXT_SIZE);
-        row![label, Space::new().width(ELEMENT_SPACING), value]
-            .align_y(Center)
-            .into()
-    });
-
-    // Max connections per IP (admin only)
-    let max_conn_row: Option<Element<'static, Message>> =
-        data.max_connections_per_ip.map(|max_conn| {
-            let label = shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE);
-            let value = shaped_text(max_conn.to_string()).size(TEXT_SIZE);
-            row![label, Space::new().width(ELEMENT_SPACING), value]
-                .align_y(Center)
+        let files_content: Element<'static, Message> = {
+            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
+            // Space between tab bar and first content
+            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            if let Some(interval) = data.file_reindex_interval {
+                let value = if interval == 0 {
+                    t("label-disabled")
+                } else {
+                    t_args(
+                        "label-file-reindex-interval-value",
+                        &[("minutes", &interval.to_string())],
+                    )
+                };
+                content_items.push(
+                    row![
+                        shaped_text(t("label-reindex-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(value).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            iced::widget::Column::with_children(content_items)
+                .spacing(ELEMENT_SPACING)
                 .into()
-        });
+        };
 
-    // Max transfers per IP (admin only)
-    let max_xfer_row: Option<Element<'static, Message>> =
-        data.max_transfers_per_ip.map(|max_xfer| {
-            let label = shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE);
-            let value = shaped_text(max_xfer.to_string()).size(TEXT_SIZE);
-            row![label, Space::new().width(ELEMENT_SPACING), value]
-                .align_y(Center)
+        let channels_content: Element<'static, Message> = {
+            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
+            // Space between tab bar and first content
+            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            if let Some(channels) = &data.persistent_channels {
+                let value = if channels.is_empty() {
+                    t("label-none")
+                } else {
+                    channels.clone()
+                };
+                content_items.push(
+                    row![
+                        shaped_text(t("label-persistent-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(value).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            if let Some(channels) = &data.auto_join_channels {
+                let value = if channels.is_empty() {
+                    t("label-none")
+                } else {
+                    channels.clone()
+                };
+                content_items.push(
+                    row![
+                        shaped_text(t("label-auto-join-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(value).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            iced::widget::Column::with_children(content_items)
+                .spacing(ELEMENT_SPACING)
                 .into()
-        });
+        };
 
-    // File reindex interval (admin only)
-    let reindex_row: Option<Element<'static, Message>> =
-        data.file_reindex_interval.map(|interval| {
-            let label = shaped_text(t("label-file-reindex-interval")).size(TEXT_SIZE);
-            let value = if interval == 0 {
-                shaped_text(t("label-disabled")).size(TEXT_SIZE)
-            } else {
-                shaped_text(t_args(
-                    "label-file-reindex-interval-value",
-                    &[("minutes", &interval.to_string())],
-                ))
-                .size(TEXT_SIZE)
-            };
-            row![label, Space::new().width(ELEMENT_SPACING), value]
-                .align_y(Center)
-                .into()
-        });
+        // Build tabs widget (only including tabs for available data)
+        let mut tabs: Tabs<'static, Message, ServerInfoTab> =
+            Tabs::new(Message::ServerInfoTabChanged);
 
-    // Persistent channels (admin only)
-    let persistent_channels_row: Option<Element<'static, Message>> =
-        data.persistent_channels.as_ref().map(|channels| {
-            let label = shaped_text(t("label-persistent-channels")).size(TEXT_SIZE);
-            let value = if channels.is_empty() {
-                shaped_text(t("label-none")).size(TEXT_SIZE)
-            } else {
-                shaped_text(channels.clone()).size(TEXT_SIZE)
-            };
-            row![label, Space::new().width(ELEMENT_SPACING), value]
-                .align_y(Center)
-                .into()
-        });
+        if has_limits {
+            tabs = tabs.push(
+                ServerInfoTab::Limits,
+                TabLabel::Text(t("tab-limits")),
+                limits_content,
+            );
+        }
 
-    // Auto-join channels (admin only)
-    let auto_join_channels_row: Option<Element<'static, Message>> =
-        data.auto_join_channels.as_ref().map(|channels| {
-            let label = shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE);
-            let value = if channels.is_empty() {
-                shaped_text(t("label-none")).size(TEXT_SIZE)
-            } else {
-                shaped_text(channels.clone()).size(TEXT_SIZE)
-            };
-            row![label, Space::new().width(ELEMENT_SPACING), value]
-                .align_y(Center)
-                .into()
-        });
+        if has_files {
+            tabs = tabs.push(
+                ServerInfoTab::Files,
+                TabLabel::Text(t("tab-files")),
+                files_content,
+            );
+        }
+
+        if has_channels {
+            tabs = tabs.push(
+                ServerInfoTab::Channels,
+                TabLabel::Text(t("tab-channels")),
+                channels_content,
+            );
+        }
+
+        let tabs = tabs
+            .set_active_tab(&data.active_tab)
+            .tab_bar_position(iced_aw::TabBarPosition::Top)
+            .text_size(TEXT_SIZE)
+            .tab_label_padding(TAB_LABEL_PADDING);
+
+        items.push(tabs.into());
+    }
+
+    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Buttons: Edit (admin only, secondary) and Close (primary)
     let buttons = if data.is_admin {
@@ -190,37 +275,6 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
         .spacing(ELEMENT_SPACING)
     };
 
-    // Build content column
-    let mut items: Vec<Element<'static, Message>> = Vec::new();
-
-    if let Some(img) = image_element {
-        items.push(img);
-    }
-    items.push(title.into());
-    if let Some(desc) = description_element {
-        items.push(desc);
-    }
-    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-    items.push(details_heading.into());
-    if let Some(ver) = version_row {
-        items.push(ver);
-    }
-    if let Some(conn) = max_conn_row {
-        items.push(conn);
-    }
-    if let Some(xfer) = max_xfer_row {
-        items.push(xfer);
-    }
-    if let Some(reindex) = reindex_row {
-        items.push(reindex);
-    }
-    if let Some(persistent) = persistent_channels_row {
-        items.push(persistent);
-    }
-    if let Some(auto_join) = auto_join_channels_row {
-        items.push(auto_join);
-    }
-    items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     items.push(buttons.into());
 
     let content = iced::widget::Column::with_children(items)
@@ -252,22 +306,23 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
-    // General subheading
-    let general_heading = shaped_text(t("label-general"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(general_heading.into());
-
-    // Server name input
+    // Server name input with inline label
+    let name_label = shaped_text(t("label-name")).size(TEXT_SIZE);
     let name_input = text_input(&t("placeholder-server-name"), &edit_state.name)
         .on_input(Message::EditServerInfoNameChanged)
         .on_submit(Message::UpdateServerInfoPressed)
         .id(Id::from(InputId::EditServerInfoName))
         .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
-    form_items.push(name_input.into());
+        .size(TEXT_SIZE)
+        .width(Fill);
+    form_items.push(
+        row![name_label, Space::new().width(ELEMENT_SPACING), name_input]
+            .align_y(Center)
+            .into(),
+    );
 
-    // Server description input
+    // Server description input with inline label
+    let desc_label = shaped_text(t("label-description")).size(TEXT_SIZE);
     let desc_input = text_input(
         &t("placeholder-server-description"),
         &edit_state.description,
@@ -276,18 +331,17 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .on_submit(Message::UpdateServerInfoPressed)
     .id(Id::from(InputId::EditServerInfoDescription))
     .padding(INPUT_PADDING)
-    .size(TEXT_SIZE);
-    form_items.push(desc_input.into());
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![desc_label, Space::new().width(ELEMENT_SPACING), desc_input]
+            .align_y(Center)
+            .into(),
+    );
 
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    // Image row with inline label
+    let image_label = shaped_text(t("label-image")).size(TEXT_SIZE);
 
-    // Image subheading
-    let image_heading = shaped_text(t("label-image"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(image_heading.into());
-
-    // Image buttons
     let pick_image_button = button(shaped_text(t("button-choose-image")).size(TEXT_SIZE))
         .on_press(Message::PickServerImagePressed)
         .padding(BUTTON_PADDING)
@@ -304,9 +358,6 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             .style(btn::secondary)
     };
 
-    let image_buttons = row![pick_image_button, clear_image_button].spacing(ELEMENT_SPACING);
-
-    // Image row: preview (if exists) + buttons
     if let Some(cached) = &edit_state.cached_image {
         let image_preview: Element<'static, Message> = match cached {
             CachedImage::Raster(handle) => image(handle.clone())
@@ -320,24 +371,45 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
                 .content_fit(iced::ContentFit::ScaleDown)
                 .into(),
         };
-        let image_row = row![image_preview, image_buttons]
+        form_items.push(
+            row![
+                image_label,
+                Space::new().width(ELEMENT_SPACING),
+                image_preview,
+                Space::new().width(ELEMENT_SPACING),
+                pick_image_button,
+                clear_image_button
+            ]
             .spacing(ELEMENT_SPACING)
-            .align_y(Center);
-        form_items.push(image_row.into());
+            .align_y(Center)
+            .into(),
+        );
     } else {
-        form_items.push(image_buttons.into());
+        form_items.push(
+            row![
+                image_label,
+                Space::new().width(ELEMENT_SPACING),
+                pick_image_button,
+                clear_image_button
+            ]
+            .spacing(ELEMENT_SPACING)
+            .align_y(Center)
+            .into(),
+        );
     }
 
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Limits subheading
-    let limits_heading = shaped_text(t("label-limits"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(limits_heading.into());
+    form_items.push(
+        shaped_text(t("tab-limits"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into(),
+    );
 
-    // Max connections per IP input using NumberInput
-    let max_conn_label = shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE);
+    // Connections and Transfers side-by-side
+    let conn_label = shaped_text(t("label-connections-short")).size(TEXT_SIZE);
     let max_conn_value = edit_state.max_connections_per_ip.unwrap_or(1);
     let max_conn_input: Element<'static, Message> = NumberInput::new(
         &max_conn_value,
@@ -347,13 +419,8 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .id(Id::from(InputId::EditServerInfoMaxConnections))
     .padding(INPUT_PADDING)
     .into();
-    let max_conn_row = row![max_conn_label, max_conn_input]
-        .spacing(ELEMENT_SPACING)
-        .align_y(Center);
-    form_items.push(max_conn_row.into());
 
-    // Max transfers per IP input using NumberInput
-    let max_xfer_label = shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE);
+    let xfer_label = shaped_text(t("label-transfers-short")).size(TEXT_SIZE);
     let max_xfer_value = edit_state.max_transfers_per_ip.unwrap_or(1);
     let max_xfer_input: Element<'static, Message> = NumberInput::new(
         &max_xfer_value,
@@ -363,13 +430,33 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .id(Id::from(InputId::EditServerInfoMaxTransfers))
     .padding(INPUT_PADDING)
     .into();
-    let max_xfer_row = row![max_xfer_label, max_xfer_input]
-        .spacing(ELEMENT_SPACING)
-        .align_y(Center);
-    form_items.push(max_xfer_row.into());
 
-    // File reindex interval input using NumberInput (0-255)
-    let reindex_label = shaped_text(t("label-file-reindex-interval")).size(TEXT_SIZE);
+    form_items.push(
+        row![
+            conn_label,
+            Space::new().width(ELEMENT_SPACING),
+            max_conn_input,
+            Space::new().width(SPACER_SIZE_LARGE),
+            xfer_label,
+            Space::new().width(ELEMENT_SPACING),
+            max_xfer_input,
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
+    // Files subheading
+    form_items.push(
+        shaped_text(t("tab-files"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into(),
+    );
+
+    // Reindex with "minutes" suffix inline
+    let reindex_label = shaped_text(t("label-reindex-short")).size(TEXT_SIZE);
     let reindex_value = edit_state.file_reindex_interval.unwrap_or(5);
     let reindex_input: Element<'static, Message> = NumberInput::new(
         &reindex_value,
@@ -379,44 +466,71 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .id(Id::from(InputId::EditServerInfoFileReindexInterval))
     .padding(INPUT_PADDING)
     .into();
-    let reindex_row = row![reindex_label, reindex_input]
-        .spacing(ELEMENT_SPACING)
-        .align_y(Center);
-    form_items.push(reindex_row.into());
+    let minutes_suffix = shaped_text(t("label-minutes")).size(TEXT_SIZE);
 
-    form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    form_items.push(
+        row![
+            reindex_label,
+            Space::new().width(ELEMENT_SPACING),
+            reindex_input,
+            Space::new().width(ELEMENT_SPACING),
+            minutes_suffix,
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Channels subheading
-    let channels_heading = shaped_text(t("label-channels"))
-        .size(SUBHEADING_SIZE)
-        .style(subheading_text_style);
-    form_items.push(channels_heading.into());
+    form_items.push(
+        shaped_text(t("tab-channels"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into(),
+    );
 
-    // Persistent channels input
-    let persistent_channels_label = shaped_text(t("label-persistent-channels")).size(TEXT_SIZE);
-    form_items.push(persistent_channels_label.into());
-    let persistent_channels_input = text_input(
+    // Persistent channels input with inline label
+    let persistent_label = shaped_text(t("label-persistent-short")).size(TEXT_SIZE);
+    let persistent_input = text_input(
         &t("placeholder-persistent-channels"),
         &edit_state.persistent_channels,
     )
     .on_input(Message::EditServerInfoPersistentChannelsChanged)
     .on_submit(Message::UpdateServerInfoPressed)
     .padding(INPUT_PADDING)
-    .size(TEXT_SIZE);
-    form_items.push(persistent_channels_input.into());
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![
+            persistent_label,
+            Space::new().width(ELEMENT_SPACING),
+            persistent_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
 
-    // Auto-join channels input
-    let auto_join_channels_label = shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE);
-    form_items.push(auto_join_channels_label.into());
-    let auto_join_channels_input = text_input(
+    // Auto-join channels input with inline label
+    let auto_join_label = shaped_text(t("label-auto-join-short")).size(TEXT_SIZE);
+    let auto_join_input = text_input(
         &t("placeholder-auto-join-channels"),
         &edit_state.auto_join_channels,
     )
     .on_input(Message::EditServerInfoAutoJoinChannelsChanged)
     .on_submit(Message::UpdateServerInfoPressed)
     .padding(INPUT_PADDING)
-    .size(TEXT_SIZE);
-    form_items.push(auto_join_channels_input.into());
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![
+            auto_join_label,
+            Space::new().width(ELEMENT_SPACING),
+            auto_join_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 

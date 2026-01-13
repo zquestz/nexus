@@ -520,6 +520,7 @@ impl NexusApp {
                 self.handle_edit_server_info_auto_join_channels_changed(channels)
             }
             Message::EditServerInfoPressed => self.handle_edit_server_info_pressed(),
+            Message::ServerInfoTabChanged(tab) => self.handle_server_info_tab_changed(tab),
             Message::PickServerImagePressed => self.handle_pick_server_image_pressed(),
             Message::ShowServerInfo => self.handle_show_server_info(),
             Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),

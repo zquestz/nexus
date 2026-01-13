@@ -124,6 +124,19 @@ label-identity = 신원
 label-nickname = 별명:
 label-network = 네트워크
 label-none = 없음
+label-server-settings = 서버 설정
+tab-limits = 제한
+tab-files = 파일
+tab-channels = 채널
+label-connections-short = 연결:
+label-transfers-short = 전송:
+label-reindex-short = 재색인:
+label-persistent-short = 상시:
+label-auto-join-short = 자동 참가:
+label-minutes = 분
+label-name = 이름:
+label-description = 설명:
+label-version-value = 버전 { $version }
 label-use-socks5-proxy = SOCKS5 프록시 사용
 label-proxy-address = 주소:
 label-proxy-port = 포트:
@@ -312,7 +325,6 @@ err-dir-name-invalid = 폴더 이름에 잘못된 문자가 포함되어 있습�
 tab-general = 일반
 tab-chat = 채팅
 tab-network = 네트워크
-tab-files = 파일
 
 # =============================================================================
 # Chat Tab Labels

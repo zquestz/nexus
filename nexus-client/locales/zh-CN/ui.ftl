@@ -124,6 +124,19 @@ label-identity = 身份
 label-nickname = 昵称：
 label-network = 网络
 label-none = 无
+label-server-settings = 服务器设置
+tab-limits = 限制
+tab-files = 文件
+tab-channels = 频道
+label-connections-short = 连接：
+label-transfers-short = 传输：
+label-reindex-short = 重建索引：
+label-persistent-short = 常驻：
+label-auto-join-short = 自动加入：
+label-minutes = 分钟
+label-name = 名称：
+label-description = 描述：
+label-version-value = 版本 { $version }
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
 label-proxy-port = 端口:
@@ -312,7 +325,6 @@ err-dir-name-invalid = 文件夹名称包含无效字符
 tab-general = 常规
 tab-chat = 聊天
 tab-network = 网络
-tab-files = 文件
 
 # =============================================================================
 # Chat Tab Labels
