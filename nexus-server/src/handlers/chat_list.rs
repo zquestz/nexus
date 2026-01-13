@@ -220,6 +220,7 @@ mod tests {
             "password",
             &[
                 Permission::ChatJoin,
+                Permission::ChatCreate,
                 Permission::ChatSecret,
                 Permission::ChatList,
             ],

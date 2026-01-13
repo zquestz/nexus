@@ -156,9 +156,10 @@ label-channels = Canais
 
 permission-user_list = Lista de Usuários
 permission-user_info = Info do Usuário
-permission-chat_send = Enviar Chat
+permission-chat_send = Enviar no Chat
 permission-chat_receive = Receber Chat
 permission-chat_join = Entrar no Chat
+permission-chat_create = Criar Canal
 permission-chat_list = Lista de Canais
 permission-chat_secret = Canal Secreto
 permission-chat_topic = Tópico do Chat

@@ -44,6 +44,7 @@ err-account-disabled-by-admin = Cuenta deshabilitada por el administrador
 # Permission & Access Errors
 # Errores de permisos y acceso
 err-permission-denied = Permiso denegado
+err-permission-denied-chat-create = Permiso denegado: puedes unirte a canales existentes pero no puedes crear nuevos
 
 # Errores de características
 err-chat-feature-not-enabled = La función de chat no está habilitada

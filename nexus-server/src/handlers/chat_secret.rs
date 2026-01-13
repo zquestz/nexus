@@ -282,7 +282,11 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin, Permission::ChatSecret],
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatSecret,
+            ],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -335,7 +339,11 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin, Permission::ChatSecret],
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatSecret,
+            ],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -415,11 +423,16 @@ mod tests {
             .await;
 
         // Login user with ChatSecret permission and chat feature
+        // Login user with ChatJoin, ChatCreate, and ChatSecret permissions
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatSecret],
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatSecret,
+            ],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -480,7 +493,11 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin, Permission::ChatSecret],
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatSecret,
+            ],
             false,
             vec![FEATURE_CHAT.to_string()],
         )

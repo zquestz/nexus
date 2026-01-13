@@ -334,7 +334,6 @@ impl ChannelManager {
     }
 
     /// Check if a channel exists
-    #[cfg(test)]
     pub async fn exists(&self, channel_name: &str) -> bool {
         let key = channel_name.to_lowercase();
         let channels = self.channels.read().await;

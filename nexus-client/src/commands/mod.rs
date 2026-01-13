@@ -11,7 +11,7 @@
 //! | `/ban` | | `ban_create` | Ban a user by IP, CIDR range, or nickname |
 //! | `/bans` | `/banlist` | `ban_list` | List active bans |
 //! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
-//! | `/channels` | `/ch` | *none* | List available channels |
+//! | `/channels` | `/ch` | `chat_list` | List available channels |
 //! | `/clear` | | *none* | Clear chat history for current tab |
 //! | `/focus` | `/f` | *none* | Focus server chat or a user's PM tab |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
@@ -20,7 +20,7 @@
 //! | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
 //! | `/leave` | `/part` | *none* | Leave a channel |
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
-//! | `/me` | | *none* | Send an action message |
+//! | `/me` | | `chat_send` | Send an action message |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 //! | `/sinfo` | `/si`, `/serverinfo` | *none* | Show server information |
 //! | `/status` | `/s` | *none* | Set or clear your status message |
@@ -80,10 +80,10 @@ use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_JOIN,
-    PERMISSION_CHAT_SECRET, PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT,
-    PERMISSION_FILE_REINDEX, PERMISSION_TRUST_CREATE, PERMISSION_TRUST_DELETE,
-    PERMISSION_TRUST_LIST, PERMISSION_USER_BROADCAST, PERMISSION_USER_INFO, PERMISSION_USER_KICK,
-    PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
+    PERMISSION_CHAT_LIST, PERMISSION_CHAT_SECRET, PERMISSION_CHAT_SEND, PERMISSION_CHAT_TOPIC,
+    PERMISSION_CHAT_TOPIC_EDIT, PERMISSION_FILE_REINDEX, PERMISSION_TRUST_CREATE,
+    PERMISSION_TRUST_DELETE, PERMISSION_TRUST_LIST, PERMISSION_USER_BROADCAST,
+    PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_LIST, PERMISSION_USER_MESSAGE,
 };
 
 /// Command handler function type
@@ -168,7 +168,7 @@ static COMMANDS: &[CommandRegistration] = &[
             aliases: &["ch"],
             description_key: "cmd-channels-desc",
             usage_key: "cmd-channels-usage",
-            permissions: &[],
+            permissions: &[PERMISSION_CHAT_LIST],
         },
         handler: channels::execute,
     },
@@ -258,7 +258,7 @@ static COMMANDS: &[CommandRegistration] = &[
             aliases: &[],
             description_key: "cmd-me-desc",
             usage_key: "cmd-me-usage",
-            permissions: &[],
+            permissions: &[PERMISSION_CHAT_SEND],
         },
         handler: me::execute,
     },

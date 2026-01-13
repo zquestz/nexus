@@ -159,6 +159,7 @@ permission-user_info = 用户信息
 permission-chat_send = 发送聊天
 permission-chat_receive = 接收聊天
 permission-chat_join = 加入频道
+permission-chat_create = 创建频道
 permission-chat_list = 频道列表
 permission-chat_secret = 频道私密
 permission-chat_topic = 聊天主题

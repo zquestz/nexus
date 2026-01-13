@@ -19,7 +19,6 @@ use super::{
     err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
-#[cfg(test)]
 use crate::constants::FEATURE_CHAT;
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Permission};
@@ -329,6 +328,18 @@ where
         }
     };
 
+    // Check if user can auto-join channels BEFORE features is moved into NewSessionParams
+    // Auto-join only happens if:
+    // 1. User has the chat feature enabled (passed in login request)
+    // 2. User has ChatJoin permission (or is admin)
+    // Additionally, creating new channels during auto-join requires ChatCreate permission.
+    let has_chat_feature = features.iter().any(|f| f == FEATURE_CHAT);
+    let has_chat_join_permission =
+        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatJoin);
+    let has_chat_create_permission =
+        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatCreate);
+    let can_auto_join = has_chat_feature && has_chat_join_permission;
+
     // For regular accounts with existing sessions, inherit is_away/status from the latest session
     // This ensures that if a user set themselves as away, logging in from another device
     // doesn't silently clear their away status from the perspective of other users.
@@ -391,8 +402,13 @@ where
     // Auto-join channels are separate from persistent channels:
     // - persistent_channels: survive restart, can't be deleted when empty
     // - auto_join_channels: users automatically join these on login
+    // Note: can_auto_join was computed before add_user() to check before features was moved
     let auto_join_config = ctx.db.config.get_auto_join_channels().await;
-    let auto_join_channel_names = crate::db::ConfigDb::parse_channel_list(&auto_join_config);
+    let auto_join_channel_names = if can_auto_join {
+        crate::db::ConfigDb::parse_channel_list(&auto_join_config)
+    } else {
+        Vec::new()
+    };
 
     // Get user info for ChatUserJoined broadcasts
     // We need this before the loop since user isn't in UserManager yet
@@ -404,6 +420,17 @@ where
 
     let mut joined_channels = Vec::new();
     for channel_name in auto_join_channel_names {
+        // Check if channel exists - if not, user needs ChatCreate permission to create it.
+        // Note: There's a benign TOCTOU race here - the channel could be created by another
+        // user between our exists() check and join() call. This is acceptable because if
+        // another user creates it first, we just join the existing channel (which requires
+        // only ChatJoin, not ChatCreate). No privilege escalation is possible.
+        let channel_exists = ctx.channel_manager.exists(&channel_name).await;
+        if !channel_exists && !has_chat_create_permission {
+            // User can't create channels, skip this one
+            continue;
+        }
+
         // Auto-join at login - ignore errors (e.g., if user somehow hits channel limit)
         let Ok(result) = ctx.channel_manager.join(&channel_name, id).await else {
             continue;
@@ -484,8 +511,12 @@ where
         None
     };
 
-    // Auto-join channels visible to all users (they just got auto-joined)
-    let auto_join_channels = Some(ctx.db.config.get_auto_join_channels().await);
+    // Auto-join channels only visible to users who can use chat
+    let auto_join_channels = if can_auto_join {
+        Some(auto_join_config)
+    } else {
+        None
+    };
 
     let server_info = Some(ServerInfo {
         name: Some(name),
@@ -962,20 +993,15 @@ mod tests {
     async fn test_login_includes_auto_joined_channels_with_topic() {
         let mut test_ctx = create_test_context().await;
 
-        // Create regular user
+        // Create regular user with ChatJoin permission (required for auto-join)
         let password = "password";
         let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.add(db::Permission::ChatJoin);
         test_ctx
             .db
             .users
-            .create_user(
-                "alice",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-            )
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -1004,7 +1030,7 @@ mod tests {
         let request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
-            features: vec![],
+            features: vec![FEATURE_CHAT.to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: None,
@@ -1146,6 +1172,236 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_login_skips_auto_join_without_chat_join_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITHOUT ChatJoin permission
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(
+                "alice",
+                &hashed,
+                false,
+                false,
+                true,
+                &db::Permissions::new(), // No permissions
+            )
+            .await
+            .unwrap();
+
+        // Initialize persistent channel
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![crate::channels::Channel::new(
+                nexus_common::validators::DEFAULT_CHANNEL.to_string(),
+            )])
+            .await;
+
+        // Set auto_join_channels to include the default channel
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Login WITH chat feature but WITHOUT ChatJoin permission
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+
+        // Verify LoginResponse has no channels (auto-join was skipped due to missing permission)
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success, channels, ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(
+                    channels.as_ref().is_none_or(|c| c.is_empty()),
+                    "Should NOT include channels when user lacks ChatJoin permission"
+                );
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+
+        // Verify user is NOT in the channel
+        let channel_members = test_ctx
+            .channel_manager
+            .get_members(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap_or_default();
+        assert!(
+            channel_members.is_empty(),
+            "User should not be in channel without ChatJoin permission"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_skips_auto_join_channel_creation_without_chat_create_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH ChatJoin but WITHOUT ChatCreate permission
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.add(db::Permission::ChatJoin);
+        // Note: NOT adding ChatCreate
+        test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, false, true, &perms)
+            .await
+            .unwrap();
+
+        // Do NOT initialize any persistent channels - the auto-join channel doesn't exist yet
+        // This means auto-join would need to CREATE the channel
+
+        // Set auto_join_channels to a channel that doesn't exist
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels("#nonexistent")
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Login WITH chat feature and ChatJoin, but WITHOUT ChatCreate
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+
+        // Verify LoginResponse has no channels (channel creation was skipped)
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success, channels, ..
+            } => {
+                assert!(success, "Login should succeed");
+                assert!(
+                    channels.as_ref().is_none_or(|c| c.is_empty()),
+                    "Should NOT include channels when user lacks ChatCreate and channel doesn't exist"
+                );
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+
+        // Verify the channel was NOT created
+        assert!(
+            !test_ctx.channel_manager.exists("#nonexistent").await,
+            "Channel should not be created without ChatCreate permission"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_auto_joins_existing_channel_without_chat_create_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create user WITH ChatJoin but WITHOUT ChatCreate permission
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.add(db::Permission::ChatJoin);
+        // Note: NOT adding ChatCreate
+        test_ctx
+            .db
+            .users
+            .create_user("alice", &hashed, false, false, true, &perms)
+            .await
+            .unwrap();
+
+        // Initialize a persistent channel (so it exists before login)
+        test_ctx
+            .channel_manager
+            .initialize_persistent_channels(vec![crate::channels::Channel::new(
+                nexus_common::validators::DEFAULT_CHANNEL.to_string(),
+            )])
+            .await;
+
+        // Set auto_join_channels to the existing channel
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let handshake_complete = true;
+
+        // Login WITH chat feature and ChatJoin (no ChatCreate needed for existing channel)
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login should succeed");
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+
+        // Verify LoginResponse includes the channel (user joined existing channel)
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success, channels, ..
+            } => {
+                assert!(success, "Login should succeed");
+                let channels = channels.expect("Should include channels");
+                assert_eq!(channels.len(), 1, "Should have joined one channel");
+                assert_eq!(
+                    channels[0].channel,
+                    nexus_common::validators::DEFAULT_CHANNEL
+                );
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+
+        // Verify user IS in the channel
+        let channel_members = test_ctx
+            .channel_manager
+            .get_members(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .expect("Channel should exist");
+        assert!(
+            !channel_members.is_empty(),
+            "User should be in channel with ChatJoin permission for existing channel"
+        );
+    }
+
+    #[tokio::test]
     async fn test_login_admin_receives_server_info_and_channels() {
         let mut test_ctx = create_test_context().await;
 
@@ -1184,7 +1440,7 @@ mod tests {
         let request = LoginRequest {
             username: "admin".to_string(),
             password: password.to_string(),
-            features: vec![],
+            features: vec![FEATURE_CHAT.to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: None,
@@ -2811,26 +3067,21 @@ mod tests {
     async fn test_login_broadcasts_chat_user_joined_to_existing_channel_members() {
         let mut test_ctx = create_test_context().await;
 
-        // Create two users
+        // Create two users with ChatJoin permission (required for auto-join)
         let password = "password";
         let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.add(db::Permission::ChatJoin);
         test_ctx
             .db
             .users
-            .create_user(
-                "alice",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-            )
+            .create_user("alice", &hashed, false, false, true, &perms)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("bob", &hashed, false, false, true, &db::Permissions::new())
+            .create_user("bob", &hashed, false, false, true, &perms)
             .await
             .unwrap();
 
@@ -2855,7 +3106,7 @@ mod tests {
         let alice_request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
-            features: vec![],
+            features: vec![FEATURE_CHAT.to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: None,
@@ -2883,11 +3134,12 @@ mod tests {
         );
 
         // Now Bob logs in and auto-joins the same channel
+        // Bob logs in and should auto-join, triggering ChatUserJoined to Alice
         let mut bob_session_id = None;
         let bob_request = LoginRequest {
             username: "bob".to_string(),
             password: password.to_string(),
-            features: vec![],
+            features: vec![FEATURE_CHAT.to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: None,

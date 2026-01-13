@@ -159,6 +159,7 @@ permission-user_info = ユーザー情報
 permission-chat_send = チャット送信
 permission-chat_receive = チャット受信
 permission-chat_join = チャンネル参加
+permission-chat_create = チャンネル作成
 permission-chat_list = チャンネル一覧
 permission-chat_secret = チャンネル秘密設定
 permission-chat_topic = チャットトピック

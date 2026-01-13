@@ -159,6 +159,7 @@ permission-user_info = User Info
 permission-chat_send = Chat Send
 permission-chat_receive = Chat Receive
 permission-chat_join = Chat Join
+permission-chat_create = Chat Create
 permission-chat_list = Chat List
 permission-chat_secret = Chat Secret
 permission-chat_topic = Chat Topic

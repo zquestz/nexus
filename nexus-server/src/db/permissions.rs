@@ -27,8 +27,10 @@ pub enum Permission {
     ChatSend,
     /// Permission to receive chat messages
     ChatReceive,
-    /// Permission to join or create channels
+    /// Permission to join existing channels
     ChatJoin,
+    /// Permission to create new channels
+    ChatCreate,
     /// Permission to view list of available channels
     ChatList,
     /// Permission to toggle secret mode on channels
@@ -112,6 +114,7 @@ impl Permission {
             "chat_send" => Some(Permission::ChatSend),
             "chat_receive" => Some(Permission::ChatReceive),
             "chat_join" => Some(Permission::ChatJoin),
+            "chat_create" => Some(Permission::ChatCreate),
             "chat_list" => Some(Permission::ChatList),
             "chat_secret" => Some(Permission::ChatSecret),
             "chat_topic" => Some(Permission::ChatTopic),
@@ -219,6 +222,7 @@ mod tests {
         assert_eq!(Permission::UserList.as_str(), "user_list");
         assert_eq!(Permission::UserInfo.as_str(), "user_info");
         assert_eq!(Permission::ChatJoin.as_str(), "chat_join");
+        assert_eq!(Permission::ChatCreate.as_str(), "chat_create");
         assert_eq!(Permission::ChatList.as_str(), "chat_list");
         assert_eq!(Permission::ChatSecret.as_str(), "chat_secret");
         assert_eq!(Permission::ChatSend.as_str(), "chat_send");
@@ -417,6 +421,7 @@ mod tests {
             Permission::BanCreate,
             Permission::BanDelete,
             Permission::BanList,
+            Permission::ChatCreate,
             Permission::ChatJoin,
             Permission::ChatList,
             Permission::ChatReceive,

@@ -121,7 +121,7 @@ List available channels on the server.
 
 **Aliases:** `/ch`
 
-**Permission:** None
+**Permission:** `chat_list`
 
 **Usage:**
 ```
@@ -182,7 +182,7 @@ Join or create a channel.
 
 **Aliases:** `/j`
 
-**Permission:** `chat_join`
+**Permission:** `chat_join` (join existing), `chat_create` (create new)
 
 **Usage:**
 ```
@@ -191,7 +191,7 @@ Join or create a channel.
 /j #help            # Short form
 ```
 
-Channel names must start with `#`. If the channel doesn't exist, an ephemeral channel is created. Ephemeral channels are deleted when all members leave.
+Channel names must start with `#`. If the channel doesn't exist and you have `chat_create` permission, an ephemeral channel is created. Ephemeral channels are deleted when all members leave.
 
 ### /kick
 
@@ -252,7 +252,7 @@ Send an action message (like IRC). Action messages are displayed in italics with
 
 **Aliases:** None
 
-**Permission:** None
+**Permission:** `chat_send`
 
 **Usage:**
 ```
@@ -467,16 +467,16 @@ Manage chat tabs (server chat and PM conversations).
 | `/ban` | — | `ban_create` | Ban a user by IP, CIDR, or nickname |
 | `/bans` | `/banlist` | `ban_list` | List active bans |
 | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
-| `/channels` | `/ch` | None | List available channels |
+| `/channels` | `/ch` | `chat_list` | List available channels |
 | `/clear` | — | None | Clear chat history for current tab |
 | `/focus` | `/f` | None | Focus a channel or user's PM tab |
 | `/help` | `/h`, `/?` | None | Show available commands |
 | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
-| `/join` | `/j` | `chat_join` | Join or create a channel |
+| `/join` | `/j` | `chat_join` / `chat_create` | Join or create a channel |
 | `/kick` | `/k`, `/userkick` | `user_kick` | Kick a user from the server |
 | `/leave` | `/part` | None | Leave a channel |
 | `/list` | `/l`, `/userlist` | `user_list` | Show connected/all users |
-| `/me` | — | None | Send an action message |
+| `/me` | — | `chat_send` | Send an action message |
 | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 | `/reindex` | — | `file_reindex` | Trigger file index rebuild |
 | `/secret` | — | `chat_secret` | Toggle channel secret mode |

@@ -44,7 +44,8 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `ban_create`: Create/update IP bans
 /// - `ban_delete`: Remove IP bans
 /// - `ban_list`: View list of active bans
-/// - `chat_join`: Join or create chat channels
+/// - `chat_create`: Create new chat channels
+/// - `chat_join`: Join existing chat channels
 /// - `chat_list`: View list of available channels
 /// - `chat_receive`: Receive chat messages in chat channels
 /// - `chat_secret`: Toggle secret mode on channels
@@ -77,6 +78,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "ban_create",
     "ban_delete",
     "ban_list",
+    "chat_create",
     "chat_join",
     "chat_list",
     "chat_receive",
@@ -121,32 +123,45 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 
 /// Permissions that can be granted to shared accounts.
 ///
-/// Shared accounts are restricted to read-only operations and basic chat functionality.
-/// They cannot perform any actions that modify database records (except sending messages).
+/// Shared accounts are restricted to read-only operations and basic chat/file functionality.
+/// They cannot perform any actions that modify database records (except sending messages
+/// and uploading files to designated upload folders).
 ///
 /// Allowed permissions:
-/// - `chat_join`: Join or create chat channels
+/// - `ban_list`: View list of active bans
+/// - `chat_create`: Create new chat channels
+/// - `chat_join`: Join existing chat channels
 /// - `chat_list`: View list of available channels
 /// - `chat_receive`: Receive chat messages in chat channels
+/// - `chat_secret`: Toggle secret mode on channels
 /// - `chat_send`: Send chat messages to chat channels
 /// - `chat_topic`: View the server topic (but not edit)
 /// - `file_download`: Download files from file area
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories (read-only)
+/// - `file_search`: Search files in the file area
+/// - `file_upload`: Upload files to upload/dropbox folders
 /// - `news_list`: View news posts (but not create/edit/delete)
+/// - `trust_list`: View list of trusted IPs
 /// - `user_info`: View detailed user information
 /// - `user_list`: View the list of connected users
 /// - `user_message`: Send private messages to users
 pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
+    "ban_list",
+    "chat_create",
     "chat_join",
     "chat_list",
     "chat_receive",
+    "chat_secret",
     "chat_send",
     "chat_topic",
     "file_download",
     "file_info",
     "file_list",
+    "file_search",
+    "file_upload",
     "news_list",
+    "trust_list",
     "user_info",
     "user_list",
     "user_message",
@@ -200,28 +215,34 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (37)
-        assert_eq!(ALL_PERMISSIONS.len(), 37);
+        // Verify we have the expected number of permissions (38)
+        assert_eq!(ALL_PERMISSIONS.len(), 38);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (12)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 12);
+        // Verify we have the expected number of shared account permissions (18)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 18);
     }
 
     #[test]
     fn test_is_shared_account_permission() {
         // Allowed permissions
+        assert!(is_shared_account_permission("ban_list"));
+        assert!(is_shared_account_permission("chat_create"));
         assert!(is_shared_account_permission("chat_join"));
         assert!(is_shared_account_permission("chat_list"));
         assert!(is_shared_account_permission("chat_receive"));
+        assert!(is_shared_account_permission("chat_secret"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));
         assert!(is_shared_account_permission("file_download"));
         assert!(is_shared_account_permission("file_info"));
         assert!(is_shared_account_permission("file_list"));
+        assert!(is_shared_account_permission("file_search"));
+        assert!(is_shared_account_permission("file_upload"));
         assert!(is_shared_account_permission("news_list"));
+        assert!(is_shared_account_permission("trust_list"));
         assert!(is_shared_account_permission("user_info"));
         assert!(is_shared_account_permission("user_list"));
         assert!(is_shared_account_permission("user_message"));
@@ -229,7 +250,6 @@ mod tests {
         // Forbidden permissions
         assert!(!is_shared_account_permission("ban_create"));
         assert!(!is_shared_account_permission("ban_delete"));
-        assert!(!is_shared_account_permission("ban_list"));
         assert!(!is_shared_account_permission("user_create"));
         assert!(!is_shared_account_permission("user_delete"));
         assert!(!is_shared_account_permission("user_edit"));
@@ -240,7 +260,6 @@ mod tests {
         assert!(!is_shared_account_permission("news_edit"));
         assert!(!is_shared_account_permission("news_delete"));
         assert!(!is_shared_account_permission("file_root"));
-        assert!(!is_shared_account_permission("file_upload"));
         assert!(!is_shared_account_permission("file_copy"));
         assert!(!is_shared_account_permission("file_move"));
         assert!(!is_shared_account_permission("file_rename"));

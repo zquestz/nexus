@@ -159,6 +159,7 @@ permission-user_info = Benutzerinfo
 permission-chat_send = Chat Senden
 permission-chat_receive = Chat Empfangen
 permission-chat_join = Chat Beitreten
+permission-chat_create = Chat Erstellen
 permission-chat_list = Chat Liste
 permission-chat_secret = Chat Geheim
 permission-chat_topic = Chat-Thema

@@ -159,6 +159,7 @@ permission-user_info = 사용자 정보
 permission-chat_send = 채팅 전송
 permission-chat_receive = 채팅 수신
 permission-chat_join = 채널 참가
+permission-chat_create = 채널 생성
 permission-chat_list = 채널 목록
 permission-chat_secret = 채널 비공개
 permission-chat_topic = 채팅 주제

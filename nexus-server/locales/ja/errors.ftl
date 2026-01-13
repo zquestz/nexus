@@ -43,6 +43,7 @@ err-account-disabled-by-admin = 管理者によってアカウントが無効化
 
 # 権限とアクセスのエラー
 err-permission-denied = 権限がありません
+err-permission-denied-chat-create = 権限がありません：既存のチャンネルには参加できますが、新しいチャンネルを作成することはできません
 
 # 機能エラー
 err-chat-feature-not-enabled = チャット機能が有効になっていません

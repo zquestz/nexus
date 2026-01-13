@@ -43,6 +43,7 @@ err-account-disabled-by-admin = Konto vom Administrator deaktiviert
 
 # Berechtigungs- und Zugriffsfehler
 err-permission-denied = Zugriff verweigert
+err-permission-denied-chat-create = Zugriff verweigert: Sie können bestehenden Kanälen beitreten, aber keine neuen erstellen
 
 # Feature-Fehler
 err-chat-feature-not-enabled = Chat-Funktion nicht aktiviert

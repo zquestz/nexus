@@ -14,6 +14,12 @@ use super::{
 use crate::channels::JoinError;
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
+use crate::i18n::t;
+
+/// Error message for missing ChatCreate permission when creating a channel
+fn err_permission_denied_chat_create(locale: &str) -> String {
+    t(locale, "err-permission-denied-chat-create")
+}
 
 /// Helper to create an error response with all fields set to None
 fn error_response(error_msg: String) -> ServerMessage {
@@ -69,7 +75,7 @@ where
             .await;
     }
 
-    // Check ChatJoin permission
+    // Check ChatJoin permission (required for both joining and creating)
     if !user.has_permission(Permission::ChatJoin) {
         eprintln!(
             "ChatJoin from {} (user: {}) without permission",
@@ -77,6 +83,24 @@ where
         );
         return ctx
             .send_message(&error_response(err_permission_denied(ctx.locale)))
+            .await;
+    }
+
+    // Check if channel exists - if not, also require ChatCreate permission.
+    // Note: There's a benign TOCTOU race here - the channel could be created by another
+    // user between our exists() check and join() call. This is acceptable because if
+    // another user creates it first, we just join the existing channel (which requires
+    // only ChatJoin, not ChatCreate). No privilege escalation is possible.
+    let channel_exists = ctx.channel_manager.exists(&channel).await;
+    if !channel_exists && !user.has_permission(Permission::ChatCreate) {
+        eprintln!(
+            "ChatJoin from {} (user: {}) trying to create channel without ChatCreate permission",
+            ctx.peer_addr, user.username
+        );
+        return ctx
+            .send_message(&error_response(err_permission_denied_chat_create(
+                ctx.locale,
+            )))
             .await;
     }
 
@@ -211,12 +235,12 @@ mod tests {
     async fn test_chat_join_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
+        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -259,12 +283,12 @@ mod tests {
     async fn test_chat_join_already_member_is_error() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
+        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -344,15 +368,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_chat_join_requires_chat_create_for_new_channel() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login user with ChatJoin permission but WITHOUT ChatCreate permission
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin], // No ChatCreate
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Try to create a new channel - should fail without ChatCreate
+        let result = handle_chat_join(
+            "#newchannel".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse { success, error, .. } => {
+                assert!(!success);
+                assert!(error.is_some());
+                // Should mention they can join but not create
+                assert!(error.unwrap().contains("create"));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+
+        // Verify channel was NOT created
+        assert!(!test_ctx.channel_manager.exists("#newchannel").await);
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_existing_channel_without_chat_create() {
+        let mut test_ctx = create_test_context().await;
+
+        // First, create the channel using channel_manager directly
+        test_ctx
+            .channel_manager
+            .join("#existing", DUMMY_SESSION_ID)
+            .await
+            .unwrap();
+
+        // Login user with ChatJoin permission but WITHOUT ChatCreate permission
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin], // No ChatCreate - but channel already exists
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Try to join existing channel - should succeed even without ChatCreate
+        let result = handle_chat_join(
+            "#existing".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatJoinResponse {
+                success,
+                error,
+                channel,
+                members,
+                ..
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(channel, Some("#existing".to_string()));
+                let members = members.unwrap();
+                assert!(members.contains(&"alice".to_string()));
+            }
+            _ => panic!("Expected ChatJoinResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
     async fn test_chat_join_requires_feature() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user WITH ChatJoin permission but WITHOUT chat feature
+        // Login user WITH ChatJoin and ChatCreate permissions but WITHOUT chat feature
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
         )
         .await;
@@ -440,12 +555,12 @@ mod tests {
     async fn test_chat_join_limit_exceeded() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
+        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -570,18 +685,18 @@ mod tests {
     async fn test_chat_join_broadcasts_user_joined_to_other_members() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice with chat permissions
+        // Login alice with chat permissions (including ChatCreate to create the channel)
         let alice_session = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Alice joins #general
+        // Alice joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session),
@@ -590,7 +705,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login bob with chat permissions
+        // Login bob with chat permissions (only ChatJoin needed to join existing channel)
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -648,18 +763,18 @@ mod tests {
     async fn test_chat_join_no_broadcast_when_nickname_already_present() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice session 1 with chat permissions
+        // Login alice session 1 with chat permissions (including ChatCreate to create the channel)
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Alice session 1 joins #general
+        // Alice session 1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session1),
@@ -668,7 +783,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add second session for alice (same nickname)
+        // Add second session for alice (only ChatJoin needed to join existing)
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",
@@ -714,17 +829,17 @@ mod tests {
     async fn test_chat_join_shared_account_different_nicknames_broadcast() {
         let mut test_ctx = create_test_context().await;
 
-        // Add first shared account session with nickname "Guest1"
+        // Add shared session "Guest1" with chat permissions (including ChatCreate to create the channel)
         let guest1_session = add_shared_session(
             &mut test_ctx,
-            "shared_acct",
+            "guest",
             "Guest1",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Guest1 joins #general
+        // Guest1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(guest1_session),
@@ -733,10 +848,10 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add second shared account session with nickname "Guest2"
+        // Add another shared session "Guest2" with chat permissions (only ChatJoin needed to join existing)
         let guest2_session = add_shared_session(
             &mut test_ctx,
-            "shared_acct",
+            "guest",
             "Guest2",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
@@ -859,18 +974,18 @@ mod tests {
     async fn test_chat_join_first_session_triggers_broadcast_second_does_not() {
         let mut test_ctx = create_test_context().await;
 
-        // Login bob first (he'll be the observer)
+        // Login bob first (will be in channel when alice joins, needs ChatCreate to create it)
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
-            "password",
-            &[Permission::ChatJoin],
+            "password2",
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Bob joins #general
+        // Bob joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -879,11 +994,11 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login alice session 1
+        // Login alice session 1 with chat permissions (only ChatJoin needed to join existing)
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
-            "password2",
+            "password",
             &[Permission::ChatJoin],
             false,
             vec![FEATURE_CHAT.to_string()],
@@ -909,6 +1024,7 @@ mod tests {
         }
 
         // Add alice session 2
+        // Add second session for alice (only ChatJoin needed to join existing)
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",

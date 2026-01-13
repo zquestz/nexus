@@ -156,9 +156,10 @@ label-channels = Каналы
 
 permission-user_list = Список Пользователей
 permission-user_info = Инфо Пользователя
-permission-chat_send = Отправка Чата
+permission-chat_send = Отправка в Чате
 permission-chat_receive = Получение Чата
 permission-chat_join = Присоединение к Каналу
+permission-chat_create = Создание Канала
 permission-chat_list = Список Каналов
 permission-chat_secret = Секретный Канал
 permission-chat_topic = Тема Чата

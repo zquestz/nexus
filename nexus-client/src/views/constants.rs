@@ -22,11 +22,14 @@ pub(crate) const PERMISSION_CHAT_TOPIC: &str = "chat_topic";
 /// Permission to edit chat topic
 pub(crate) const PERMISSION_CHAT_TOPIC_EDIT: &str = "chat_topic_edit";
 
-/// Permission to join/create channels
+/// Permission to join existing channels
 pub(crate) const PERMISSION_CHAT_JOIN: &str = "chat_join";
 
 /// Permission to toggle channel secret mode
 pub(crate) const PERMISSION_CHAT_SECRET: &str = "chat_secret";
+
+/// Permission to list available channels
+pub(crate) const PERMISSION_CHAT_LIST: &str = "chat_list";
 
 // === User Permissions ===
 

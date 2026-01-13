@@ -43,6 +43,7 @@ err-account-disabled-by-admin = 帳戶已被管理員停用
 
 # 權限和存取錯誤
 err-permission-denied = 權限被拒絕
+err-permission-denied-chat-create = 權限被拒絕：您可以加入現有頻道，但無法建立新頻道
 
 # 功能錯誤
 err-chat-feature-not-enabled = 聊天功能未啟用

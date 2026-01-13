@@ -160,6 +160,7 @@ permission-user_info = Info Utilisateur
 permission-chat_send = Envoyer Chat
 permission-chat_receive = Recevoir Chat
 permission-chat_join = Rejoindre Chat
+permission-chat_create = Créer un Canal
 permission-chat_list = Liste des Canaux
 permission-chat_secret = Canal Secret
 permission-chat_topic = Sujet du Chat

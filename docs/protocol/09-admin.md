@@ -618,26 +618,26 @@ Admins bypass this restriction and can grant any permissions.
 
 ## Shared Account Restrictions
 
-Shared accounts have limited allowed permissions:
+Shared accounts can only have the following permissions (any others are automatically removed):
 
-**Allowed:**
+- `ban_list`
+- `chat_create`
+- `chat_join`
+- `chat_list`
 - `chat_receive`
+- `chat_secret`
 - `chat_send`
 - `chat_topic`
 - `file_download`
 - `file_info`
 - `file_list`
+- `file_search`
+- `file_upload`
 - `news_list`
+- `trust_list`
 - `user_info`
 - `user_list`
 - `user_message`
-
-**Forbidden (automatically removed):**
-- `user_create`, `user_delete`, `user_edit`, `user_kick`
-- `user_broadcast`
-- `chat_topic_edit`
-- `news_create`, `news_edit`, `news_delete`
-- All other file permissions (`file_copy`, `file_create_dir`, `file_delete`, `file_move`, `file_rename`, `file_root`, `file_upload`)
 
 Shared accounts can never be admins.
 

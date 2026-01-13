@@ -43,6 +43,7 @@ err-account-disabled-by-admin = 관리자가 계정을 비활성화했습니다
 
 # 권한 및 액세스 오류
 err-permission-denied = 권한이 거부됨
+err-permission-denied-chat-create = 권한 거부됨: 기존 채널에 참여할 수 있지만 새 채널을 만들 수 없습니다
 
 # 기능 오류
 err-chat-feature-not-enabled = 채팅 기능이 활성화되지 않았습니다

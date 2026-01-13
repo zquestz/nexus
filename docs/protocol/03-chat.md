@@ -468,12 +468,16 @@ When `action` is omitted, it defaults to `Normal`.
 
 | Permission | Required For |
 |------------|--------------|
-| `chat_join` | Joining/creating channels (`ChatJoin`) |
+| `chat_join` | Joining existing channels (`ChatJoin`) |
+| `chat_create` | Creating new channels (`ChatJoin` when channel doesn't exist) |
+| `chat_list` | Listing available channels (`ChatList`) |
 | `chat_send` | Sending chat messages (`ChatSend`) |
 | `chat_receive` | Receiving chat messages (`ChatMessage` broadcasts) |
 | `chat_topic` | Viewing topic updates (`ChatUpdated` broadcasts) |
 | `chat_topic_edit` | Changing channel topics (`ChatTopicUpdate`) |
 | `chat_secret` | Toggling secret mode (`ChatSecret`) |
+
+**Note:** Creating a channel requires both `chat_join` and `chat_create` permissions.
 
 Admins have all permissions automatically.
 

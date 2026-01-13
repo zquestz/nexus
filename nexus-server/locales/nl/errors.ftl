@@ -43,6 +43,7 @@ err-account-disabled-by-admin = Account uitgeschakeld door beheerder
 
 # Permissie- en toegangsfouten
 err-permission-denied = Toestemming geweigerd
+err-permission-denied-chat-create = Toestemming geweigerd: u kunt bestaande kanalen betreden maar geen nieuwe aanmaken
 
 # Functiefouten
 err-chat-feature-not-enabled = Chatfunctie niet ingeschakeld

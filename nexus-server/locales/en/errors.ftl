@@ -43,6 +43,7 @@ err-account-disabled-by-admin = Account disabled by admin
 
 # Permission & Access Errors
 err-permission-denied = Permission denied
+err-permission-denied-chat-create = Permission denied: you can join existing channels but cannot create new ones
 
 # Feature Errors
 err-chat-feature-not-enabled = Chat feature not enabled

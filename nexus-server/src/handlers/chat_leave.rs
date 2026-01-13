@@ -170,7 +170,7 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
@@ -327,18 +327,18 @@ mod tests {
     async fn test_chat_leave_broadcasts_user_left_to_remaining_members() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice with chat permissions
+        // Login alice with chat permissions (including ChatCreate to create the channel)
         let alice_session = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Alice joins #general
+        // Alice joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session),
@@ -347,7 +347,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login bob with chat permissions
+        // Login bob with chat permissions (only ChatJoin needed to join existing channel)
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -358,7 +358,7 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general
+        // Bob joins #general (already exists)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -394,18 +394,18 @@ mod tests {
     async fn test_chat_leave_no_broadcast_when_nickname_still_present() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice session 1 with chat permissions
+        // Login alice session 1 with chat permissions (including ChatCreate to create the channel)
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
             "password",
-            &[Permission::ChatJoin],
+            &[Permission::ChatJoin, Permission::ChatCreate],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Alice session 1 joins #general
+        // Alice session 1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session1),
@@ -475,17 +475,38 @@ mod tests {
     async fn test_chat_leave_last_session_triggers_broadcast() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice with two sessions
+        // Login bob first (he'll be the observer, needs ChatCreate to create the channel)
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin, Permission::ChatCreate],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins #general (creates it)
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Login alice session 1 (only ChatJoin needed to join existing channel)
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
-            "password",
+            "password2",
             &[Permission::ChatJoin],
             false,
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
+        // Add alice session 2
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",
@@ -494,7 +515,7 @@ mod tests {
         )
         .await;
 
-        // Both sessions join #general
+        // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", alice_session1)
@@ -503,25 +524,6 @@ mod tests {
             .channel_manager
             .join("#general", alice_session2)
             .await;
-
-        // Login bob to observe
-        let bob_session = login_user_with_features(
-            &mut test_ctx,
-            "bob",
-            "password2",
-            &[Permission::ChatJoin],
-            false,
-            vec![FEATURE_CHAT.to_string()],
-        )
-        .await;
-
-        let _ = handle_chat_join(
-            "#general".to_string(),
-            Some(bob_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Drain any pending messages
         while test_ctx.rx.try_recv().is_ok() {}
@@ -565,26 +567,47 @@ mod tests {
     async fn test_chat_leave_shared_account_different_nicknames() {
         let mut test_ctx = create_test_context().await;
 
-        // Add two shared account sessions with different nicknames
+        // Login bob first (he'll be the observer, needs ChatCreate to create the channel)
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin, Permission::ChatCreate],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins #general (creates it)
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Add first shared account session with nickname "Guest1"
         let guest1_session = add_shared_session(
             &mut test_ctx,
-            "shared_acct",
+            "guest",
             "Guest1",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
+        // Add second shared account session with nickname "Guest2"
         let guest2_session = add_shared_session(
             &mut test_ctx,
-            "shared_acct",
+            "guest",
             "Guest2",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Both join #general
+        // Both guests join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", guest1_session)
@@ -593,25 +616,6 @@ mod tests {
             .channel_manager
             .join("#general", guest2_session)
             .await;
-
-        // Login bob to observe
-        let bob_session = login_user_with_features(
-            &mut test_ctx,
-            "bob",
-            "password",
-            &[Permission::ChatJoin],
-            false,
-            vec![FEATURE_CHAT.to_string()],
-        )
-        .await;
-
-        let _ = handle_chat_join(
-            "#general".to_string(),
-            Some(bob_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Drain any pending messages
         while test_ctx.rx.try_recv().is_ok() {}
@@ -665,12 +669,32 @@ mod tests {
     async fn test_chat_leave_regular_user_multiple_sessions_no_broadcast_until_last() {
         let mut test_ctx = create_test_context().await;
 
+        // Login bob first (he'll be the observer, needs ChatCreate to create the channel)
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin, Permission::ChatCreate],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        // Bob joins #general (creates it)
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
         // Regular user with two sessions (same nickname)
         // This tests that no broadcast happens until the last session leaves
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
-            "password",
+            "password2",
             &[Permission::ChatJoin],
             false,
             vec![FEATURE_CHAT.to_string()],
@@ -685,7 +709,7 @@ mod tests {
         )
         .await;
 
-        // Both sessions join #general
+        // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", alice_session1)
@@ -694,25 +718,6 @@ mod tests {
             .channel_manager
             .join("#general", alice_session2)
             .await;
-
-        // Login bob to observe
-        let bob_session = login_user_with_features(
-            &mut test_ctx,
-            "bob",
-            "password2",
-            &[Permission::ChatJoin],
-            false,
-            vec![FEATURE_CHAT.to_string()],
-        )
-        .await;
-
-        let _ = handle_chat_join(
-            "#general".to_string(),
-            Some(bob_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Drain any pending messages
         while test_ctx.rx.try_recv().is_ok() {}

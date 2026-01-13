@@ -160,6 +160,7 @@ permission-user_info = Gebruikersinfo
 permission-chat_send = Chat Verzenden
 permission-chat_receive = Chat Ontvangen
 permission-chat_join = Chat Deelnemen
+permission-chat_create = Chat Aanmaken
 permission-chat_list = Chat Lijst
 permission-chat_secret = Chat Geheim
 permission-chat_topic = Chat Onderwerp

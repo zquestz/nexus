@@ -43,6 +43,7 @@ err-account-disabled-by-admin = 账户已被管理员禁用
 
 # 权限和访问错误
 err-permission-denied = 权限被拒绝
+err-permission-denied-chat-create = 权限被拒绝：您可以加入现有频道，但无法创建新频道
 
 # 功能错误
 err-chat-feature-not-enabled = 聊天功能未启用
