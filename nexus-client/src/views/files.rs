@@ -922,6 +922,16 @@ fn build_lazy_search_context_menu(
         has_download = true;
     }
 
+    // Copy Link (always available - no special permission needed)
+    menu_items.push(
+        MenuButton::new(shaped_text(t("files-copy-link")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(menu_button_style)
+            .on_press(Message::FileCopyLink(result.path.clone()))
+            .into(),
+    );
+
     // Separator before Info/Open section (Open is always available)
     if has_download {
         menu_items.push(
@@ -1578,6 +1588,16 @@ fn build_lazy_context_menu(
         );
         has_download_section = true;
     }
+
+    // Copy Link (always available - no special permission needed)
+    menu_items.push(
+        MenuButton::new(shaped_text(t("files-copy-link")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(menu_button_style)
+            .on_press(Message::FileCopyLink(entry_path.to_string()))
+            .into(),
+    );
 
     // Clipboard separator
     let will_have_clipboard = perms.file_move || perms.file_copy;

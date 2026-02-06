@@ -198,6 +198,7 @@ Right-click a file or folder for these options:
 | Action | Description | Permission |
 |--------|-------------|------------|
 | **Download** | Download to your computer | `file_download` |
+| **Copy Link** | Copy a `nexus://` link to clipboard | None |
 | **Cut** | Cut for moving | `file_move` |
 | **Copy** | Copy for pasting | `file_copy` |
 | **Paste** | Paste cut/copied item (folders only) | `file_move` or `file_copy` |
@@ -248,6 +249,21 @@ Right-click and select **Info** to view:
 - Whether it's a directory or symlink
 - MIME type (for files)
 - SHA-256 hash (for files)
+
+### Sharing Files
+
+You can share files with other Nexus users by copying a link:
+
+1. Right-click a file or folder
+2. Select **Copy Link**
+3. Paste the link anywhere — in Nexus chat, email, or messaging apps
+
+The copied link uses the `nexus://` scheme (e.g., `nexus://example.com/files/Music/song.mp3`). When another Nexus user clicks the link:
+
+- If they're already connected to that server, Nexus navigates to the file location
+- If not connected, Nexus initiates a connection first
+
+Links pasted in Nexus chat are automatically clickable. File links navigate to the folder and automatically start downloading the file. Folder links just navigate to that location.
 
 ## Transfers Panel
 

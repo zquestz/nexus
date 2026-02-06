@@ -319,6 +319,7 @@ files-search-query-invalid = A consulta de pesquisa contém caracteres inválido
 files-create-directory-title = Criar Novo Diretório
 files-directory-name-placeholder = Nome do diretório
 files-info = Info
+files-copy-link = Copiar link
 files-rename = Renomear
 files-rename-title = Renomear "{ $name }"
 files-rename-placeholder = Novo nome

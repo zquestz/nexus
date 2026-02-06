@@ -320,6 +320,7 @@ files-search-query-invalid = Zoekopdracht bevat ongeldige tekens
 files-create-directory-title = Nieuwe Map Maken
 files-directory-name-placeholder = Mapnaam
 files-info = Info
+files-copy-link = Link kopiëren
 files-rename = Hernoemen
 files-rename-title = "{ $name }" hernoemen
 files-rename-placeholder = Nieuwe naam

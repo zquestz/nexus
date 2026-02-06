@@ -319,6 +319,7 @@ files-search-query-invalid = Поисковый запрос содержит н
 files-create-directory-title = Создать Новую Папку
 files-directory-name-placeholder = Имя папки
 files-info = Информация
+files-copy-link = Копировать ссылку
 files-rename = Переименовать
 files-rename-title = Переименовать "{ $name }"
 files-rename-placeholder = Новое имя

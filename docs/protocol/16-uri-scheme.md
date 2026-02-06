@@ -38,7 +38,7 @@ Paths specify what to open after connecting. They are intents, not commands — 
 | `/chat/alice` | Open/focus user message tab with alice |
 | `/files` | Open Files panel |
 | `/files/Music` | Open Files panel to Music folder |
-| `/files/Music/song.mp3` | Navigate to Music folder, initiate download of song.mp3 |
+| `/files/Music/song.mp3` | Navigate to Music folder and download song.mp3 |
 | `/news` | Open News panel |
 | `/info` | Open Server Info panel |
 
@@ -194,7 +194,7 @@ Connects with shared account credentials and joins #lobby.
 nexus://bbs.example.com/files/Public/readme.txt
 ```
 
-Uses existing connection or bookmark, opens Files panel, downloads readme.txt.
+Uses existing connection or bookmark, opens Files panel to the Public folder and downloads readme.txt.
 
 ### Simple server link
 

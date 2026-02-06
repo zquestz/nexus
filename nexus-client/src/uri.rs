@@ -364,6 +364,30 @@ fn url_encode_userinfo(s: &str) -> String {
     result
 }
 
+/// Percent-encode a string for use in URI path
+///
+/// Encodes all characters except unreserved characters and forward slash per RFC 3986:
+/// A-Z a-z 0-9 - . _ ~ /
+pub fn url_encode_path(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+
+    for byte in s.bytes() {
+        match byte {
+            // Unreserved characters (RFC 3986) plus forward slash for paths
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                result.push(byte as char);
+            }
+            // Everything else gets percent-encoded
+            _ => {
+                result.push('%');
+                result.push_str(&format!("{:02X}", byte));
+            }
+        }
+    }
+
+    result
+}
+
 /// Check if a string looks like a nexus:// URI
 pub fn is_nexus_uri(s: &str) -> bool {
     s.starts_with("nexus://")

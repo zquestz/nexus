@@ -318,6 +318,7 @@ files-search-query-invalid = Suchanfrage enthält ungültige Zeichen
 files-create-directory-title = Neuer Ordner erstellen
 files-directory-name-placeholder = Verzeichnisname
 files-info = Info
+files-copy-link = Link kopieren
 files-rename = Umbenennen
 files-rename-title = "{ $name }" umbenennen
 files-rename-placeholder = Neuer Name

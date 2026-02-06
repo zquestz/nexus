@@ -917,6 +917,7 @@ impl NexusApp {
             Message::FileTabNew => self.handle_file_tab_new(),
             Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
+            Message::FileCopyLink(path) => self.handle_file_copy_link(path),
             Message::FileDownload(path) => self.handle_file_download(path),
             Message::FileDownloadAll(path) => self.handle_file_download_all(path),
             Message::FileUpload(destination) => self.handle_file_upload(destination),

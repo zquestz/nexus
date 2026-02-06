@@ -11,6 +11,7 @@ use crate::types::{
     ActivePanel, ClipboardItem, ClipboardOperation, FileSortColumn, InputId, Message,
     PendingRequests, ResponseRouting, TabId,
 };
+use crate::uri::url_encode_path;
 use crate::views::files::build_navigate_path;
 
 /// Strip leading slash from a path
@@ -1083,6 +1084,38 @@ impl NexusApp {
 
         conn.files_management.close_tab_by_id(tab_id);
         Task::none()
+    }
+
+    // ==================== Copy Link ====================
+
+    /// Handle copy link request - copies nexus:// URL to clipboard
+    ///
+    /// Builds a deep link URL with the current connection info and file path,
+    /// then copies it to the system clipboard.
+    pub fn handle_file_copy_link(&mut self, path: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // Build raw URL without username
+        let info = &conn.connection_info;
+        let port_suffix = if info.port == nexus_common::DEFAULT_PORT {
+            String::new()
+        } else {
+            format!(":{}", info.port)
+        };
+
+        let url = format!(
+            "nexus://{}{}/files/{}",
+            info.address,
+            port_suffix,
+            url_encode_path(&path)
+        );
+
+        iced::clipboard::write(url)
     }
 
     // ==================== Downloads ====================

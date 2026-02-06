@@ -96,7 +96,7 @@ impl NexusApp {
                             show_hidden,
                         );
                     } else {
-                        // It's a file - queue download
+                        // It's a file - initiate download
                         let file_path = if tab.current_path.is_empty() {
                             entry.name.clone()
                         } else {
