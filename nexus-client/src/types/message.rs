@@ -462,8 +462,8 @@ pub enum Message {
     FileTabSwitch(TabId),
     /// Files: Close tab by ID
     FileTabClose(TabId),
-    /// Files: Copy nexus:// link for file path to clipboard
-    FileCopyLink(String),
+    /// Files: Share - copy nexus:// link for file path to clipboard
+    FileShare(String),
     /// Files: Download file (from context menu)
     FileDownload(String),
     /// Files: Download directory (from context menu or toolbar)

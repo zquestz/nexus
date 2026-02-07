@@ -60,6 +60,7 @@ ipnet = "2.11"
 uuid = { version = "1.20", features = ["v4", "serde"] }
 webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled"] }
 hex = "0.4"
+percent-encoding = "2.3"
 notify-rust = "4.11"
 lewton = "0.10"
 interprocess = { version = "2.2", features = ["tokio"] }

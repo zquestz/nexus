@@ -894,7 +894,6 @@ fn build_lazy_search_context_menu(
     perms: FilePermissions,
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
-    let mut has_download = false;
 
     // Download (if permission)
     if perms.file_download {
@@ -906,7 +905,6 @@ fn build_lazy_search_context_menu(
                 .on_press(Message::FileSearchResultDownload(result.clone()))
                 .into(),
         );
-        has_download = true;
     }
 
     // Upload (directories only, if permission)
@@ -919,29 +917,26 @@ fn build_lazy_search_context_menu(
                 .on_press(Message::FileUpload(result.path.clone()))
                 .into(),
         );
-        has_download = true;
     }
 
-    // Copy Link (always available - no special permission needed)
+    // Share (always available - no special permission needed)
     menu_items.push(
-        MenuButton::new(shaped_text(t("files-copy-link")).size(TEXT_SIZE))
+        MenuButton::new(shaped_text(t("files-share")).size(TEXT_SIZE))
             .padding(CONTEXT_MENU_ITEM_PADDING)
             .width(Fill)
             .style(menu_button_style)
-            .on_press(Message::FileCopyLink(result.path.clone()))
+            .on_press(Message::FileShare(result.path.clone()))
             .into(),
     );
 
-    // Separator before Info/Open section (Open is always available)
-    if has_download {
-        menu_items.push(
-            container(Space::new())
-                .width(Fill)
-                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
-                .style(separator_style)
-                .into(),
-        );
-    }
+    // Separator before Info/Open section
+    menu_items.push(
+        container(Space::new())
+            .width(Fill)
+            .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+            .style(separator_style)
+            .into(),
+    );
 
     // Info (if permission)
     if perms.file_info {
@@ -1554,9 +1549,7 @@ fn build_lazy_context_menu(
     has_clipboard: bool,
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
-    let mut has_download_section = false;
     let mut has_clipboard_section = false;
-    let mut has_normal_section = false;
 
     // Download
     if perms.file_download {
@@ -1573,7 +1566,6 @@ fn build_lazy_context_menu(
                 .on_press(download_message)
                 .into(),
         );
-        has_download_section = true;
     }
 
     // Upload
@@ -1586,22 +1578,21 @@ fn build_lazy_context_menu(
                 .on_press(Message::FileUpload(entry_path.to_string()))
                 .into(),
         );
-        has_download_section = true;
     }
 
-    // Copy Link (always available - no special permission needed)
+    // Share (always available - no special permission needed)
     menu_items.push(
-        MenuButton::new(shaped_text(t("files-copy-link")).size(TEXT_SIZE))
+        MenuButton::new(shaped_text(t("files-share")).size(TEXT_SIZE))
             .padding(CONTEXT_MENU_ITEM_PADDING)
             .width(Fill)
             .style(menu_button_style)
-            .on_press(Message::FileCopyLink(entry_path.to_string()))
+            .on_press(Message::FileShare(entry_path.to_string()))
             .into(),
     );
 
     // Clipboard separator
     let will_have_clipboard = perms.file_move || perms.file_copy;
-    if has_download_section && will_have_clipboard {
+    if will_have_clipboard {
         menu_items.push(
             container(Space::new())
                 .width(Fill)
@@ -1677,7 +1668,6 @@ fn build_lazy_context_menu(
                 .on_press(Message::FileInfoClicked(entry_name.to_string()))
                 .into(),
         );
-        has_normal_section = true;
     }
 
     // Rename
@@ -1690,11 +1680,10 @@ fn build_lazy_context_menu(
                 .on_press(Message::FileRenameClicked(entry_name.to_string()))
                 .into(),
         );
-        has_normal_section = true;
     }
 
-    // Delete separator
-    if perms.file_delete && (has_download_section || has_clipboard_section || has_normal_section) {
+    // Delete separator (Share is always present, so there's always content before Delete)
+    if perms.file_delete {
         menu_items.push(
             container(Space::new())
                 .width(Fill)

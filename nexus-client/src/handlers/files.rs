@@ -1086,13 +1086,13 @@ impl NexusApp {
         Task::none()
     }
 
-    // ==================== Copy Link ====================
+    // ==================== Share ====================
 
-    /// Handle copy link request - copies nexus:// URL to clipboard
+    /// Handle share request - copies nexus:// URL to clipboard
     ///
     /// Builds a deep link URL with the current connection info and file path,
     /// then copies it to the system clipboard.
-    pub fn handle_file_copy_link(&mut self, path: String) -> Task<Message> {
+    pub fn handle_file_share(&mut self, path: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -1108,9 +1108,16 @@ impl NexusApp {
             format!(":{}", info.port)
         };
 
+        // IPv6 addresses need brackets in URIs
+        let host = if info.address.parse::<std::net::Ipv6Addr>().is_ok() {
+            format!("[{}]", info.address)
+        } else {
+            info.address.clone()
+        };
+
         let url = format!(
             "nexus://{}{}/files/{}",
-            info.address,
+            host,
             port_suffix,
             url_encode_path(&path)
         );

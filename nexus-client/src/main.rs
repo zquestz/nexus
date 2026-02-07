@@ -414,7 +414,10 @@ impl NexusApp {
     /// Called once at startup to set up initial state and generate tasks for
     /// focusing the input field and auto-connecting to bookmarks.
     fn new() -> (Self, Task<Message>) {
+        #[cfg(not(target_os = "macos"))]
         let mut app = Self::default();
+        #[cfg(target_os = "macos")]
+        let app = Self::default();
 
         // Initialize tray icon on startup if setting is enabled (Windows/Linux only)
         #[cfg(not(target_os = "macos"))]
@@ -917,7 +920,7 @@ impl NexusApp {
             Message::FileTabNew => self.handle_file_tab_new(),
             Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
-            Message::FileCopyLink(path) => self.handle_file_copy_link(path),
+            Message::FileShare(path) => self.handle_file_share(path),
             Message::FileDownload(path) => self.handle_file_download(path),
             Message::FileDownloadAll(path) => self.handle_file_download_all(path),
             Message::FileUpload(destination) => self.handle_file_upload(destination),

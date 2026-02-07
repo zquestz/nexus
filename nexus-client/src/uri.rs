@@ -14,6 +14,8 @@
 
 use std::fmt;
 
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, percent_encode};
+
 /// Default BBS port
 const DEFAULT_PORT: u16 = 7500;
 
@@ -309,83 +311,38 @@ fn parse_path(path: &str) -> Result<Option<NexusPath>, ParseError> {
     }
 }
 
-/// Simple URL decoding for percent-encoded characters
+/// URL decoding for percent-encoded characters
 ///
 /// Properly handles multi-byte UTF-8 sequences (e.g., %C3%A9 → é)
 fn url_decode(s: &str) -> String {
-    let mut bytes = Vec::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            // Try to parse two hex digits
-            let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2
-                && let Ok(byte) = u8::from_str_radix(&hex, 16)
-            {
-                bytes.push(byte);
-                continue;
-            }
-            // Failed to decode, keep original
-            bytes.push(b'%');
-            bytes.extend(hex.as_bytes());
-        } else {
-            // Regular character - encode as UTF-8 bytes
-            let mut buf = [0u8; 4];
-            bytes.extend(c.encode_utf8(&mut buf).as_bytes());
-        }
-    }
-
-    // Convert bytes to string, replacing invalid UTF-8 with replacement character
-    String::from_utf8_lossy(&bytes).into_owned()
+    percent_decode_str(s).decode_utf8_lossy().into_owned()
 }
 
+/// Characters to encode in userinfo (everything except unreserved per RFC 3986)
+/// Unreserved: A-Z a-z 0-9 - . _ ~
+const USERINFO_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+/// Characters to encode in path (everything except unreserved + slash per RFC 3986)
+/// Unreserved: A-Z a-z 0-9 - . _ ~ /
+const PATH_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~')
+    .remove(b'/');
+
 /// Percent-encode a string for use in URI userinfo (username or password)
-///
-/// Encodes all characters except unreserved characters per RFC 3986:
-/// A-Z a-z 0-9 - . _ ~
 fn url_encode_userinfo(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-
-    for byte in s.bytes() {
-        match byte {
-            // Unreserved characters (RFC 3986)
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                result.push(byte as char);
-            }
-            // Everything else gets percent-encoded
-            _ => {
-                result.push('%');
-                result.push_str(&format!("{:02X}", byte));
-            }
-        }
-    }
-
-    result
+    percent_encode(s.as_bytes(), USERINFO_ENCODE_SET).to_string()
 }
 
 /// Percent-encode a string for use in URI path
-///
-/// Encodes all characters except unreserved characters and forward slash per RFC 3986:
-/// A-Z a-z 0-9 - . _ ~ /
 pub fn url_encode_path(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-
-    for byte in s.bytes() {
-        match byte {
-            // Unreserved characters (RFC 3986) plus forward slash for paths
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                result.push(byte as char);
-            }
-            // Everything else gets percent-encoded
-            _ => {
-                result.push('%');
-                result.push_str(&format!("{:02X}", byte));
-            }
-        }
-    }
-
-    result
+    percent_encode(s.as_bytes(), PATH_ENCODE_SET).to_string()
 }
 
 /// Check if a string looks like a nexus:// URI
@@ -721,5 +678,200 @@ mod tests {
                 is_channel: true
             })
         );
+    }
+
+    #[test]
+    fn test_url_encode_path_spaces() {
+        assert_eq!(url_encode_path("hello world"), "hello%20world");
+        assert_eq!(
+            url_encode_path("path/to/my file.txt"),
+            "path/to/my%20file.txt"
+        );
+    }
+
+    #[test]
+    fn test_url_encode_path_unicode() {
+        assert_eq!(url_encode_path("Música"), "M%C3%BAsica");
+        assert_eq!(url_encode_path("日本語"), "%E6%97%A5%E6%9C%AC%E8%AA%9E");
+        assert_eq!(url_encode_path("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn test_url_encode_path_special_chars() {
+        // These should be encoded
+        assert_eq!(url_encode_path("file&name"), "file%26name");
+        assert_eq!(url_encode_path("file#name"), "file%23name");
+        assert_eq!(url_encode_path("file?name"), "file%3Fname");
+        assert_eq!(url_encode_path("file=name"), "file%3Dname");
+        assert_eq!(url_encode_path("file@name"), "file%40name");
+        assert_eq!(url_encode_path("100%done"), "100%25done");
+    }
+
+    #[test]
+    fn test_url_encode_path_preserves_slash() {
+        assert_eq!(url_encode_path("path/to/file"), "path/to/file");
+        assert_eq!(url_encode_path("/root/path/"), "/root/path/");
+    }
+
+    #[test]
+    fn test_url_encode_path_unreserved_chars() {
+        // Unreserved chars should NOT be encoded (RFC 3986)
+        assert_eq!(url_encode_path("file-name"), "file-name");
+        assert_eq!(url_encode_path("file.name"), "file.name");
+        assert_eq!(url_encode_path("file_name"), "file_name");
+        assert_eq!(url_encode_path("file~name"), "file~name");
+    }
+
+    #[test]
+    fn test_url_decode_roundtrip() {
+        let original = "Shared/Music/Café Songs/日本語 file.mp3";
+        let encoded = url_encode_path(original);
+        let decoded = url_decode(&encoded);
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn test_ipv6_uri_roundtrip() {
+        // Bracketed IPv6 parses correctly and displays with brackets
+        let uri = parse("nexus://[::1]:8500/files/test").unwrap();
+        assert_eq!(uri.host, "::1");
+        assert_eq!(uri.to_string(), "nexus://[::1]:8500/files/test");
+
+        // Yggdrasil-style unbracketed IPv6 also works
+        let uri = parse("nexus://[202:e7f:a50e:d03b:e13e:75f1:24c9:58bc]/files/Music").unwrap();
+        assert_eq!(uri.host, "202:e7f:a50e:d03b:e13e:75f1:24c9:58bc");
+        assert_eq!(
+            uri.to_string(),
+            "nexus://[202:e7f:a50e:d03b:e13e:75f1:24c9:58bc]/files/Music"
+        );
+    }
+
+    // =========================================================================
+    // Comprehensive URI segment tests
+    // =========================================================================
+
+    #[test]
+    fn test_userinfo_utf8_encoding() {
+        // UTF-8 username and password should encode and decode correctly
+        let uri = NexusUri {
+            user: Some("用户".to_string()),     // Chinese "user"
+            password: Some("密码".to_string()), // Chinese "password"
+            host: "example.com".to_string(),
+            port: DEFAULT_PORT,
+            path: None,
+        };
+        let encoded = uri.to_string();
+        // Verify it encodes (contains percent-encoded bytes)
+        assert!(encoded.contains('%'));
+
+        // Parse it back
+        let parsed = parse(&encoded).unwrap();
+        assert_eq!(parsed.user, Some("用户".to_string()));
+        assert_eq!(parsed.password, Some("密码".to_string()));
+    }
+
+    #[test]
+    fn test_userinfo_special_chars() {
+        // Special chars that must be encoded in userinfo: : @ /
+        let uri = NexusUri {
+            user: Some("user@domain".to_string()),
+            password: Some("pass:word/slash".to_string()),
+            host: "example.com".to_string(),
+            port: DEFAULT_PORT,
+            path: None,
+        };
+        let encoded = uri.to_string();
+
+        // @ : / should be encoded
+        assert!(encoded.contains("%40")); // @
+        assert!(encoded.contains("%3A")); // :
+        assert!(encoded.contains("%2F")); // /
+
+        // Parse it back
+        let parsed = parse(&encoded).unwrap();
+        assert_eq!(parsed.user, Some("user@domain".to_string()));
+        assert_eq!(parsed.password, Some("pass:word/slash".to_string()));
+    }
+
+    #[test]
+    fn test_userinfo_unreserved_chars() {
+        // Unreserved chars should NOT be encoded: - . _ ~
+        let uri = NexusUri {
+            user: Some("user-name.test_account~1".to_string()),
+            password: Some("pass-word.test_123~".to_string()),
+            host: "example.com".to_string(),
+            port: DEFAULT_PORT,
+            path: None,
+        };
+        let encoded = uri.to_string();
+
+        // These should appear literally, not encoded
+        assert!(encoded.contains("user-name.test_account~1"));
+        assert!(encoded.contains("pass-word.test_123~"));
+    }
+
+    #[test]
+    fn test_path_utf8_encoding() {
+        // UTF-8 path components
+        let uri =
+            parse("nexus://example.com/files/M%C3%BAsica/%E6%97%A5%E6%9C%AC%E8%AA%9E").unwrap();
+        if let Some(NexusPath::Files { path }) = uri.path {
+            assert_eq!(path, "Música/日本語");
+        } else {
+            panic!("Expected Files path");
+        }
+    }
+
+    #[test]
+    fn test_path_special_chars() {
+        // Path with special chars that need encoding
+        let original = "Music/Artist & Band/Song #1.mp3";
+        let encoded = url_encode_path(original);
+        // & and # should be encoded, / should not
+        assert!(encoded.contains("%26")); // &
+        assert!(encoded.contains("%23")); // #
+        assert!(encoded.contains("/")); // / preserved
+        assert!(!encoded.contains("%2F")); // / not encoded
+
+        let decoded = url_decode(&encoded);
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn test_host_not_encoded() {
+        // Host should not have percent encoding applied
+        let uri = parse("nexus://example.com/files/test").unwrap();
+        assert_eq!(uri.host, "example.com");
+
+        // IPv4 with dots
+        let uri = parse("nexus://192.168.1.1/files/test").unwrap();
+        assert_eq!(uri.host, "192.168.1.1");
+    }
+
+    #[test]
+    fn test_full_uri_with_all_segments() {
+        // Complete URI with all segments including UTF-8
+        let uri = NexusUri {
+            user: Some("用户".to_string()),
+            password: Some("密码".to_string()),
+            host: "::1".to_string(),
+            port: 8500,
+            path: Some(NexusPath::Files {
+                path: "Música/日本語 file.mp3".to_string(),
+            }),
+        };
+
+        let encoded = uri.to_string();
+        let parsed = parse(&encoded).unwrap();
+
+        assert_eq!(parsed.user, Some("用户".to_string()));
+        assert_eq!(parsed.password, Some("密码".to_string()));
+        assert_eq!(parsed.host, "::1");
+        assert_eq!(parsed.port, 8500);
+        if let Some(NexusPath::Files { path }) = parsed.path {
+            assert_eq!(path, "Música/日本語 file.mp3");
+        } else {
+            panic!("Expected Files path");
+        }
     }
 }
