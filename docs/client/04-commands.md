@@ -285,6 +285,21 @@ Send a message to a user.
 
 After sending, the client switches to that user's message tab.
 
+### /ping
+
+Measure the round-trip latency to the server.
+
+**Aliases:** None
+
+**Permission:** None
+
+**Usage:**
+```
+/ping
+```
+
+Displays the response time in milliseconds (e.g., "Pong: 42ms").
+
 ### /reindex
 
 Trigger a file index rebuild on the server. This is useful if files were added or modified outside of normal BBS operations.

@@ -22,6 +22,7 @@
 //! | `/list` | `/l`, `/userlist` | `user_list` | Show connected users |
 //! | `/me` | | `chat_send` | Send an action message |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
+//! | `/ping` | | *none* | Measure latency to server |
 //! | `/sinfo` | `/si`, `/serverinfo` | *none* | Show server information |
 //! | `/status` | `/s` | *none* | Set or clear your status message |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
@@ -56,6 +57,7 @@ mod leave;
 mod list;
 mod me;
 mod message;
+mod ping;
 mod reindex;
 mod secret;
 mod server_info;
@@ -271,6 +273,16 @@ static COMMANDS: &[CommandRegistration] = &[
             permissions: &[PERMISSION_USER_MESSAGE],
         },
         handler: message::execute,
+    },
+    CommandRegistration {
+        info: CommandInfo {
+            name: "ping",
+            aliases: &[],
+            description_key: "cmd-ping-desc",
+            usage_key: "cmd-ping-usage",
+            permissions: &[],
+        },
+        handler: ping::execute,
     },
     CommandRegistration {
         info: CommandInfo {

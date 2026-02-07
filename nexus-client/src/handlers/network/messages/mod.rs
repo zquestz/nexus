@@ -36,7 +36,8 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 
 use crate::NexusApp;
-use crate::types::Message;
+use crate::i18n::t_args;
+use crate::types::{ChatMessage, Message, ResponseRouting};
 
 impl NexusApp {
     /// Handle message received from server
@@ -518,11 +519,34 @@ impl NexusApp {
                 self.handle_voice_user_left(connection_id, nickname, target)
             }
 
-            // Keepalive response - no action needed, receiving it is enough
-            ServerMessage::Pong => Task::none(),
+            // Keepalive response - check if this is a response to a /ping command
+            ServerMessage::Pong => self.handle_pong(connection_id, message_id),
 
             // Catch-all for any unhandled message types
             _ => Task::none(),
         }
+    }
+
+    /// Handle pong response - check if this is a response to a /ping command
+    fn handle_pong(&mut self, connection_id: usize, message_id: MessageId) -> Task<Message> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+
+        // Check if we have a pending ping from /ping command
+        let Some(ResponseRouting::PingResult(sent_time)) =
+            conn.pending_requests.remove(&message_id)
+        else {
+            // No pending ping - this is just a keepalive response
+            return Task::none();
+        };
+
+        // Calculate latency
+        let elapsed = sent_time.elapsed();
+        let ms = elapsed.as_millis();
+
+        // Display result in chat
+        let message = t_args("ping-result", &[("ms", &ms.to_string())]);
+        self.add_active_tab_message(connection_id, ChatMessage::info(message))
     }
 }

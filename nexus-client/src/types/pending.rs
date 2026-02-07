@@ -92,6 +92,8 @@ pub enum ResponseRouting {
     StatusResult(Option<String>),
     /// Secret command result - contains channel name and new secret value
     SecretResult { channel: String, secret: bool },
+    /// Ping command result - contains send time for latency calculation
+    PingResult(std::time::Instant),
 }
 
 /// Extension trait for tracking pending requests
