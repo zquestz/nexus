@@ -116,7 +116,10 @@ label-chat-topic-set-by = Onderwerp Ingesteld Door:
 label-max-connections-per-ip = Max Verbindingen Per IP:
 label-max-transfers-per-ip = Max Overdrachten Per IP:
 label-file-reindex-interval = Bestand Herindexering Interval:
-label-file-reindex-interval-value = { $minutes } minuten
+label-file-reindex-interval-value = { $minutes } { $minutes ->
+    [one] minuut
+   *[other] minuten
+}
 label-disabled = Uitgeschakeld
 label-avatar = Avatar:
 label-server-image = Serverafbeelding:
@@ -405,7 +408,10 @@ msg-chat-leave = { $nickname } heeft het kanaal verlaten
 msg-channel-is-secret = Dit kanaal is geheim
 msg-channel-list-header = Beschikbare kanalen:
 msg-no-channels = Geen kanalen beschikbaar
-msg-channel-member-count = { $count } leden
+msg-channel-member-count = { $count } { $count ->
+    [one] lid
+   *[other] leden
+}
 channel-secret = geheim
 msg-broadcast-sent = Broadcast succesvol verzonden
 msg-user-created = Gebruiker succesvol aangemaakt
@@ -531,7 +537,10 @@ err-message-too-long-details = { $error } ({ $length } tekens, max { $max })
 # Network connection errors (with parameters)
 err-invalid-address = Ongeldig adres '{ $address }': { $error }
 err-could-not-resolve = Kan adres '{ $address }' niet oplossen
-err-connection-timeout = Verbinding verlopen na { $seconds } seconden
+err-connection-timeout = Verbinding verlopen na { $seconds } { $seconds ->
+    [one] seconde
+   *[other] seconden
+}
 err-connection-failed = Verbinding mislukt: { $error }
 err-tls-handshake-failed = TLS-handshake mislukt: { $error }
 err-failed-send-handshake = Kan handshake niet verzenden: { $error }
@@ -724,7 +733,10 @@ err-news-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mog
 
 # Proxy errors
 err-proxy-connection-failed = Verbinding met proxy mislukt: { $error }
-err-proxy-connection-timeout = Proxy-verbinding time-out na { $seconds } seconden
+err-proxy-connection-timeout = Proxy-verbinding time-out na { $seconds } { $seconds ->
+    [one] seconde
+   *[other] seconden
+}
 err-proxy-address-required = Proxy-adres is vereist wanneer proxy is ingeschakeld
 err-proxy-port-invalid = Proxy-poort moet tussen 1 en 65535 liggen
 err-news-image-too-large = Afbeelding is te groot (max 512KB)
@@ -766,7 +778,10 @@ transfer-action-open-folder = Map openen
 transfer-action-retry = Opnieuw proberen
 
 # Transfer info
-transfer-files-progress = { $completed }/{ $total } bestanden
+transfer-files-progress = { $completed }/{ $total } { $total ->
+    [one] bestand
+   *[other] bestanden
+}
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } verstreken
 transfer-eta = { $time } resterend
@@ -995,7 +1010,10 @@ warn-voice-processor-disabled = Audioverwerking uitgeschakeld: { $error }
 warn-voice-quality-failed = Kan spraakkwaliteit niet wijzigen: { $error }
 
 # Voice success messages
-msg-voice-joined = Spraakchat in { $target } gestart ({ $count } anderen)
+msg-voice-joined = Spraakchat in { $target } gestart ({ $count } { $count ->
+    [one] andere
+   *[other] anderen
+})
 msg-voice-joined-empty = Spraakchat in { $target } gestart
 msg-voice-left = Spraakchat in { $target } verlaten
 msg-voice-user-joined = { $nickname } is toegetreden tot spraakchat
@@ -1086,5 +1104,11 @@ toast-download-started = { $filename } downloaden
 toast-download-queued = Download in wachtrij: { $filename }
 toast-upload-started = { $filename } uploaden
 toast-upload-queued = Upload in wachtrij: { $filename }
-toast-uploads-started = { $count } bestanden uploaden
-toast-uploads-queued = { $count } uploads in wachtrij
+toast-uploads-started = { $count } { $count ->
+    [one] bestand
+   *[other] bestanden
+} uploaden
+toast-uploads-queued = { $count } { $count ->
+    [one] upload
+   *[other] uploads
+} in wachtrij

@@ -19,7 +19,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.5.23";
+pub const PROTOCOL_VERSION: &str = "0.5.24";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;

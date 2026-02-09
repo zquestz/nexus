@@ -115,7 +115,10 @@ label-chat-topic-set-by = Tópico Definido Por:
 label-max-connections-per-ip = Máx. Ligações Por IP:
 label-max-transfers-per-ip = Máx. Transferências Por IP:
 label-file-reindex-interval = Intervalo de Reindexação:
-label-file-reindex-interval-value = { $minutes } minutos
+label-file-reindex-interval-value = { $minutes } { $minutes ->
+    [one] minuto
+   *[other] minutos
+}
 label-disabled = Desativado
 label-avatar = Ícone:
 label-server-image = Imagem do servidor:
@@ -404,7 +407,10 @@ msg-chat-leave = { $nickname } saiu do canal
 msg-channel-is-secret = Este canal é secreto
 msg-channel-list-header = Canais disponíveis:
 msg-no-channels = Nenhum canal disponível
-msg-channel-member-count = { $count } membros
+msg-channel-member-count = { $count } { $count ->
+    [one] membro
+   *[other] membros
+}
 channel-secret = secreto
 msg-broadcast-sent = Difusão enviada com sucesso
 msg-user-created = Utilizador criado com sucesso
@@ -531,7 +537,10 @@ err-message-too-long-details = { $error } ({ $length } caracteres, máx { $max }
 # Network connection errors (with parameters)
 err-invalid-address = Endereço inválido '{ $address }': { $error }
 err-could-not-resolve = Não foi possível resolver o endereço '{ $address }'
-err-connection-timeout = Tempo de ligação esgotado após { $seconds } segundos
+err-connection-timeout = Tempo de ligação esgotado após { $seconds } { $seconds ->
+    [one] segundo
+   *[other] segundos
+}
 err-connection-failed = Falha na ligação: { $error }
 err-tls-handshake-failed = Falha no handshake TLS: { $error }
 err-failed-send-handshake = Falha ao enviar handshake: { $error }
@@ -724,7 +733,10 @@ err-news-image-decode-failed = Falha ao descodificar a imagem. O ficheiro pode e
 
 # Proxy errors
 err-proxy-connection-failed = Falha ao ligar ao proxy: { $error }
-err-proxy-connection-timeout = Tempo limite da ligação ao proxy após { $seconds } segundos
+err-proxy-connection-timeout = Tempo limite da ligação ao proxy após { $seconds } { $seconds ->
+    [one] segundo
+   *[other] segundos
+}
 err-proxy-address-required = O endereço do proxy é obrigatório quando o proxy está ativado
 err-proxy-port-invalid = A porta do proxy deve estar entre 1 e 65535
 err-news-image-too-large = A imagem é demasiado grande (máximo 512KB)
@@ -766,7 +778,10 @@ transfer-action-open-folder = Abrir pasta
 transfer-action-retry = Tentar novamente
 
 # Transfer info
-transfer-files-progress = { $completed }/{ $total } ficheiros
+transfer-files-progress = { $completed }/{ $total } { $total ->
+    [one] ficheiro
+   *[other] ficheiros
+}
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } decorrido
 transfer-eta = { $time } restante
@@ -995,7 +1010,10 @@ warn-voice-processor-disabled = Processamento de áudio desativado: { $error }
 warn-voice-quality-failed = Falha ao alterar qualidade de voz: { $error }
 
 # Voice success messages
-msg-voice-joined = Entrou no chat de voz em { $target } ({ $count } outros)
+msg-voice-joined = Entrou no chat de voz em { $target } ({ $count } { $count ->
+    [one] outro
+   *[other] outros
+})
 msg-voice-joined-empty = Entrou no chat de voz em { $target }
 msg-voice-left = Saiu do chat de voz em { $target }
 msg-voice-user-joined = { $nickname } entrou no chat de voz
@@ -1086,5 +1104,11 @@ toast-download-started = A transferir { $filename }
 toast-download-queued = Transferência na fila: { $filename }
 toast-upload-started = A enviar { $filename }
 toast-upload-queued = Envio na fila: { $filename }
-toast-uploads-started = A enviar { $count } ficheiros
-toast-uploads-queued = { $count } envios na fila
+toast-uploads-started = A enviar { $count } { $count ->
+    [one] ficheiro
+   *[other] ficheiros
+}
+toast-uploads-queued = { $count } { $count ->
+    [one] envio
+   *[other] envios
+} na fila

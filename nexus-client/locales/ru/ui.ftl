@@ -115,7 +115,11 @@ label-chat-topic-set-by = Тема Установлена:
 label-max-connections-per-ip = Макс. Подключений На IP:
 label-max-transfers-per-ip = Макс. Передач На IP:
 label-file-reindex-interval = Интервал переиндексации файлов:
-label-file-reindex-interval-value = { $minutes } минут
+label-file-reindex-interval-value = { $minutes } { $minutes ->
+    [one] минута
+    [few] минуты
+   *[other] минут
+}
 label-disabled = Отключено
 label-avatar = Аватар:
 label-server-image = Изображение сервера:
@@ -404,7 +408,11 @@ msg-chat-leave = { $nickname } покинул канал
 msg-channel-is-secret = Этот канал секретный
 msg-channel-list-header = Доступные каналы:
 msg-no-channels = Нет доступных каналов
-msg-channel-member-count = { $count } участников
+msg-channel-member-count = { $count } { $count ->
+    [one] участник
+    [few] участника
+   *[other] участников
+}
 channel-secret = секретный
 msg-broadcast-sent = Рассылка успешно отправлена
 msg-user-created = Пользователь успешно создан
@@ -531,7 +539,11 @@ err-message-too-long-details = { $error } ({ $length } символов, мак�
 # Network connection errors (with parameters)
 err-invalid-address = Недопустимый адрес '{ $address }': { $error }
 err-could-not-resolve = Не удалось разрешить адрес '{ $address }'
-err-connection-timeout = Время ожидания подключения истекло через { $seconds } секунд
+err-connection-timeout = Время ожидания подключения истекло через { $seconds } { $seconds ->
+    [one] секунду
+    [few] секунды
+   *[other] секунд
+}
 err-connection-failed = Ошибка подключения: { $error }
 err-tls-handshake-failed = Ошибка TLS-рукопожатия: { $error }
 err-failed-send-handshake = Не удалось отправить рукопожатие: { $error }
@@ -731,7 +743,11 @@ err-news-image-decode-failed = Не удалось декодировать из
 
 # Proxy errors
 err-proxy-connection-failed = Не удалось подключиться к прокси: { $error }
-err-proxy-connection-timeout = Время ожидания подключения к прокси истекло через { $seconds } секунд
+err-proxy-connection-timeout = Время ожидания подключения к прокси истекло через { $seconds } { $seconds ->
+    [one] секунду
+    [few] секунды
+   *[other] секунд
+}
 err-proxy-address-required = Адрес прокси обязателен, когда прокси включен
 err-proxy-port-invalid = Порт прокси должен быть от 1 до 65535
 err-news-image-too-large = Изображение слишком большое (максимум 512КБ)
@@ -773,7 +789,11 @@ transfer-action-open-folder = Открыть папку
 transfer-action-retry = Повторить
 
 # Transfer info
-transfer-files-progress = { $completed }/{ $total } файлов
+transfer-files-progress = { $completed }/{ $total } { $total ->
+    [one] файл
+    [few] файла
+   *[other] файлов
+}
 transfer-speed = { $speed }/с
 transfer-elapsed = { $time } прошло
 transfer-eta = { $time } осталось
@@ -1002,7 +1022,11 @@ warn-voice-processor-disabled = Обработка аудио отключена
 warn-voice-quality-failed = Не удалось изменить качество голоса: { $error }
 
 # Voice success messages
-msg-voice-joined = Присоединился к голосовому чату в { $target } ({ $count } других)
+msg-voice-joined = Присоединился к голосовому чату в { $target } ({ $count } { $count ->
+    [one] другой
+    [few] других
+   *[other] других
+})
 msg-voice-joined-empty = Присоединился к голосовому чату в { $target }
 msg-voice-left = Покинул голосовой чат в { $target }
 msg-voice-user-joined = { $nickname } присоединился к голосовому чату
@@ -1094,5 +1118,13 @@ toast-download-started = Скачивание { $filename }
 toast-download-queued = Загрузка в очереди: { $filename }
 toast-upload-started = Отправка { $filename }
 toast-upload-queued = Отправка в очереди: { $filename }
-toast-uploads-started = Отправка { $count } файлов
-toast-uploads-queued = { $count } отправок в очереди
+toast-uploads-started = Отправка { $count } { $count ->
+    [one] файла
+    [few] файлов
+   *[other] файлов
+}
+toast-uploads-queued = { $count } { $count ->
+    [one] отправка
+    [few] отправки
+   *[other] отправок
+} в очереди

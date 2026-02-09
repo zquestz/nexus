@@ -1,6 +1,6 @@
 [package]
 name = "nexus-client"
-version = "0.5.23"
+version = "0.5.24"
 edition = "2024"
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]
@@ -86,7 +86,6 @@ ksni = { version = "0.3", default-features = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 
 [dev-dependencies]

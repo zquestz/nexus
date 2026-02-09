@@ -113,7 +113,10 @@ label-chat-topic-set-by = Chat Topic Set By:
 label-max-connections-per-ip = Max Connections Per IP:
 label-max-transfers-per-ip = Max Transfers Per IP:
 label-file-reindex-interval = File Reindex Interval:
-label-file-reindex-interval-value = { $minutes } minutes
+label-file-reindex-interval-value = { $minutes } { $minutes ->
+    [one] minute
+   *[other] minutes
+}
 label-disabled = Disabled
 label-persistent-channels = Persistent Channels:
 label-auto-join-channels = Auto-Join Channels:
@@ -523,7 +526,10 @@ err-news-image-decode-failed = Failed to decode image. The file may be corrupted
 
 # Proxy errors
 err-proxy-connection-failed = Failed to connect to proxy: { $error }
-err-proxy-connection-timeout = Proxy connection timed out after { $seconds } seconds
+err-proxy-connection-timeout = Proxy connection timed out after { $seconds } { $seconds ->
+    [one] second
+   *[other] seconds
+}
 err-proxy-address-required = Proxy address is required when proxy is enabled
 err-proxy-port-invalid = Proxy port must be between 1 and 65535
 err-news-image-too-large = Image is too large (max 512KB)
@@ -547,7 +553,10 @@ err-message-too-long-details = { $error } ({ $length } characters, max { $max })
 # Network connection errors (with parameters)
 err-invalid-address = Invalid address '{ $address }': { $error }
 err-could-not-resolve = Could not resolve address '{ $address }'
-err-connection-timeout = Connection timed out after { $seconds } seconds
+err-connection-timeout = Connection timed out after { $seconds } { $seconds ->
+    [one] second
+   *[other] seconds
+}
 err-connection-failed = Connection failed: { $error }
 err-tls-handshake-failed = TLS handshake failed: { $error }
 err-failed-send-handshake = Failed to send handshake: { $error }
@@ -755,7 +764,10 @@ transfer-action-retry = Retry
 
 
 # Transfer info
-transfer-files-progress = { $completed }/{ $total } files
+transfer-files-progress = { $completed }/{ $total } { $total ->
+    [one] file
+   *[other] files
+}
 transfer-speed = { $speed }/s
 transfer-elapsed = { $time } elapsed
 transfer-eta = { $time } remaining
@@ -987,7 +999,10 @@ msg-channel-is-secret = This channel is secret
 # Channel list messages
 msg-channel-list-header = Available channels:
 msg-no-channels = No channels available
-msg-channel-member-count = { $count } members
+msg-channel-member-count = { $count } { $count ->
+    [one] member
+   *[other] members
+}
 channel-secret = secret
 
 # =============================================================================
@@ -1014,7 +1029,10 @@ warn-voice-processor-disabled = Audio processing disabled: { $error }
 warn-voice-quality-failed = Failed to change voice quality: { $error }
 
 # Voice success messages
-msg-voice-joined = Joined voice in { $target } ({ $count } others)
+msg-voice-joined = Joined voice in { $target } ({ $count } { $count ->
+    [one] other
+   *[other] others
+})
 msg-voice-joined-empty = Joined voice in { $target }
 msg-voice-left = Left voice in { $target }
 msg-voice-user-joined = { $nickname } joined voice
@@ -1106,5 +1124,11 @@ toast-download-started = Downloading { $filename }
 toast-download-queued = Download queued: { $filename }
 toast-upload-started = Uploading { $filename }
 toast-upload-queued = Upload queued: { $filename }
-toast-uploads-started = Uploading { $count } files
-toast-uploads-queued = { $count } uploads queued
+toast-uploads-started = Uploading { $count } { $count ->
+    [one] file
+   *[other] files
+}
+toast-uploads-queued = { $count } { $count ->
+    [one] upload
+   *[other] uploads
+} queued
