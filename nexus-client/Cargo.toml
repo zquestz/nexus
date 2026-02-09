@@ -27,6 +27,9 @@ linux_mime_types = ["x-scheme-handler/nexus"]
 # macOS-specific settings
 osx_url_schemes = ["nexus"]
 
+# Windows-specific settings
+windows_url_schemes = ["nexus"]
+
 # Debian package dependencies (runtime libraries)
 deb_depends = ["libasound2"]
 
