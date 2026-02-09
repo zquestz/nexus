@@ -26,6 +26,9 @@ mod widgets;
 #[cfg(not(target_os = "macos"))]
 mod tray;
 
+#[cfg(target_os = "macos")]
+mod macos_url;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 
@@ -443,6 +446,10 @@ impl NexusApp {
             // If tray creation fails on startup, silently continue without it
             // (user can toggle the setting to see the error)
         }
+
+        // Install macOS URL scheme delegate to receive nexus:// links via Apple Events
+        #[cfg(target_os = "macos")]
+        macos_url::install();
 
         // Check for startup URI
         let startup_uri = STARTUP_URI.lock().unwrap().take();
@@ -1139,6 +1146,10 @@ impl NexusApp {
             // IPC listener for receiving URIs from other instances
             Subscription::run(ipc_listener_stream),
         ];
+
+        // Listen for macOS URL scheme events (Apple Events from clicking nexus:// links)
+        #[cfg(target_os = "macos")]
+        subscriptions.push(Subscription::run(macos_url::url_stream));
 
         // Subscribe to all active connections
         for conn in self.connections.values() {
