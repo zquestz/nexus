@@ -1,7 +1,7 @@
 # Nexus BBS
 
 [![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
-[![Version](https://img.shields.io/badge/version-0.5.22-blue.svg)](https://github.com/zquestz/nexus)
+[![Version](https://img.shields.io/badge/version-0.5.23-blue.svg)](https://github.com/zquestz/nexus)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 

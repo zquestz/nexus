@@ -104,7 +104,21 @@ News posts render links via Markdown syntax.
 
 ## Single Instance
 
-When a `nexus://` URI is opened and Nexus is already running, the URI is passed to the existing instance via IPC:
+### macOS — Apple Events
+
+On macOS, the OS handles single-instance routing natively for URL scheme clicks. When a user clicks a `nexus://` link in a browser or Finder:
+
+1. macOS delivers the URL via Apple Events (`application:openURLs:`)
+2. If the app is not running, macOS launches it and delivers the event after initialization
+3. If the app is already running, macOS activates it and delivers the event immediately
+
+The client registers a custom `NSApplicationDelegate` to receive these events and forwards URLs to the Iced event loop via a channel.
+
+IPC (below) is still used on macOS for CLI invocations (e.g., `nexus "nexus://..."`).
+
+### IPC (All Platforms)
+
+When a `nexus://` URI is opened via command line and Nexus is already running, the URI is passed to the existing instance via IPC:
 
 1. New instance attempts to connect to IPC socket/pipe
 2. If successful: sends URI, waits for acknowledgment, exits
@@ -114,11 +128,12 @@ When a `nexus://` URI is opened and Nexus is already running, the URI is passed 
 
 | Platform | Path |
 |----------|------|
-| Linux | `$XDG_RUNTIME_DIR/nexus-{username}` |
-| macOS | `$TMPDIR/nexus-{username}` |
-| Windows | Named pipe `\\.\pipe\nexus-{username}` |
+| Linux | `$XDG_RUNTIME_DIR/nexus.sock` |
+| macOS | `$TMPDIR/nexus.sock` |
+| Linux fallback | `/tmp/nexus-{username}.sock` |
+| Windows | Named pipe `nexus-{username}` |
 
-The `{username}` suffix ensures per-user isolation.
+On Linux and macOS, the socket lives inside a per-user directory (`XDG_RUNTIME_DIR`, `TMPDIR`), providing user isolation without a username suffix. The `/tmp` fallback and Windows named pipe include `{username}` explicitly.
 
 ### IPC Protocol
 
