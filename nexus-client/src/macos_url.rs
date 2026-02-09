@@ -32,7 +32,6 @@ define_class!(
 
     unsafe impl NSApplicationDelegate for NexusAppDelegate {
         #[unsafe(method(application:openURLs:))]
-        #[unsafe(method_family = none)]
         fn application_open_urls(&self, _application: &NSApplication, urls: &NSArray<NSURL>) {
             for url in urls.iter() {
                 if let Some(abs) = url.absoluteString() {

@@ -1,16 +1,20 @@
 //! General settings tab (theme, avatar, nickname, tray settings)
 
 use iced::widget::button as btn;
-use iced::widget::{Column, Id, Space, button, checkbox, pick_list, row, text_input};
+#[cfg(not(target_os = "macos"))]
+use iced::widget::checkbox;
+use iced::widget::{Column, Id, Space, button, pick_list, row, text_input};
 use iced::{Center, Element, Fill};
 
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::image::CachedImage;
 use crate::style::{
-    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, CHECKBOX_INDENT, ELEMENT_SPACING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, shaped_text,
+    AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, INPUT_PADDING, SPACER_SIZE_MEDIUM,
+    TEXT_SIZE, shaped_text,
 };
+#[cfg(not(target_os = "macos"))]
+use crate::style::{CHECKBOX_INDENT, SPACER_SIZE_SMALL};
 use crate::types::{InputId, Message};
 use iced::Theme;
 
