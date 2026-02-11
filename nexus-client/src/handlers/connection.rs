@@ -85,6 +85,16 @@ impl NexusApp {
             return Task::none();
         }
 
+        // Validate required fields (on_submit fires even when form is incomplete)
+        if self.connection_form.server_name.trim().is_empty() {
+            self.connection_form.error = Some(t("err-name-required"));
+            return Task::none();
+        }
+        if self.connection_form.server_address.trim().is_empty() {
+            self.connection_form.error = Some(t("err-address-required"));
+            return Task::none();
+        }
+
         self.connection_form.error = None;
 
         let port = self.connection_form.port;
@@ -580,74 +590,20 @@ impl NexusApp {
 
     /// Handle Tab pressed in connection form
     ///
-    /// Checks which field is actually focused using async operations,
-    /// then moves to the next field in sequence.
+    /// Uses `focused_field` to determine the current field and move to the next
+    /// one directly, avoiding async `is_focused` race conditions with Iced's
+    /// native Tab handling.
     pub fn handle_connection_form_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of all six connection form fields in parallel
-        let check_name = operation::is_focused(Id::from(InputId::ServerName));
-        let check_address = operation::is_focused(Id::from(InputId::ServerAddress));
-        let check_port = operation::is_focused(Id::from(InputId::Port));
-        let check_username = operation::is_focused(Id::from(InputId::Username));
-        let check_password = operation::is_focused(Id::from(InputId::Password));
-        let check_nickname = operation::is_focused(Id::from(InputId::Nickname));
-
-        // Batch the checks and combine results
-        Task::batch([
-            check_name.map(|focused| (0, focused)),
-            check_address.map(|focused| (1, focused)),
-            check_port.map(|focused| (2, focused)),
-            check_username.map(|focused| (3, focused)),
-            check_password.map(|focused| (4, focused)),
-            check_nickname.map(|focused| (5, focused)),
-        ])
-        .collect()
-        .map(|results: Vec<(u8, bool)>| {
-            let name_focused = results.iter().any(|(i, f)| *i == 0 && *f);
-            let address_focused = results.iter().any(|(i, f)| *i == 1 && *f);
-            let port_focused = results.iter().any(|(i, f)| *i == 2 && *f);
-            let username_focused = results.iter().any(|(i, f)| *i == 3 && *f);
-            let password_focused = results.iter().any(|(i, f)| *i == 4 && *f);
-            let nickname_focused = results.iter().any(|(i, f)| *i == 5 && *f);
-            Message::ConnectionFormFocusResult(
-                name_focused,
-                address_focused,
-                port_focused,
-                username_focused,
-                password_focused,
-                nickname_focused,
-            )
-        })
-    }
-
-    /// Handle focus check result for connection form Tab navigation
-    pub fn handle_connection_form_focus_result(
-        &mut self,
-        name_focused: bool,
-        address_focused: bool,
-        port_focused: bool,
-        username_focused: bool,
-        password_focused: bool,
-        nickname_focused: bool,
-    ) -> Task<Message> {
-        // Determine next field based on which is currently focused
+        // Determine next field based on tracked focused field
         // Note: Port is skipped because NumberInput handles its own Tab key
-        let next_field = if name_focused {
-            InputId::ServerAddress
-        } else if address_focused {
-            // Skip Port (NumberInput)
-            InputId::Username
-        } else if port_focused {
-            InputId::Username
-        } else if username_focused {
-            InputId::Password
-        } else if password_focused {
-            InputId::Nickname
-        } else if nickname_focused {
-            // Wrap around to first field
-            InputId::ServerName
-        } else {
-            // None focused, start at first field
-            InputId::ServerName
+        let next_field = match self.focused_field {
+            InputId::ServerName => InputId::ServerAddress,
+            InputId::ServerAddress => InputId::Username,
+            InputId::Port => InputId::Username,
+            InputId::Username => InputId::Password,
+            InputId::Password => InputId::Nickname,
+            InputId::Nickname => InputId::ServerName,
+            _ => InputId::ServerName,
         };
 
         self.focused_field = next_field;

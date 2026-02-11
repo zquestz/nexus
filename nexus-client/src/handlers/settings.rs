@@ -197,6 +197,7 @@ impl NexusApp {
         } else {
             self.config.settings.nickname = Some(nickname);
         }
+        self.focused_field = InputId::SettingsNickname;
         Task::none()
     }
 
@@ -211,12 +212,14 @@ impl NexusApp {
     /// Handle proxy address field change
     pub fn handle_proxy_address_changed(&mut self, address: String) -> Task<Message> {
         self.config.settings.proxy.address = address;
+        self.focused_field = InputId::ProxyAddress;
         Task::none()
     }
 
     /// Handle proxy port field change
     pub fn handle_proxy_port_changed(&mut self, port: u16) -> Task<Message> {
         self.config.settings.proxy.port = port;
+        self.focused_field = InputId::ProxyPort;
         Task::none()
     }
 
@@ -227,6 +230,7 @@ impl NexusApp {
         } else {
             self.config.settings.proxy.username = Some(username);
         }
+        self.focused_field = InputId::ProxyUsername;
         Task::none()
     }
 
@@ -237,6 +241,7 @@ impl NexusApp {
         } else {
             self.config.settings.proxy.password = Some(password);
         }
+        self.focused_field = InputId::ProxyPassword;
         Task::none()
     }
 
@@ -273,57 +278,19 @@ impl NexusApp {
                 Task::none()
             }
             SettingsTab::Network => {
-                // Network tab: cycle through proxy fields
-                let check_address = operation::is_focused(Id::from(InputId::ProxyAddress));
-                let check_port = operation::is_focused(Id::from(InputId::ProxyPort));
-                let check_username = operation::is_focused(Id::from(InputId::ProxyUsername));
-                let check_password = operation::is_focused(Id::from(InputId::ProxyPassword));
+                // Cycle through Network tab fields: address -> username -> password -> address
+                // (skips port because NumberInput handles its own Tab key)
+                let next_field = match self.focused_field {
+                    InputId::ProxyAddress => InputId::ProxyUsername,
+                    InputId::ProxyPort => InputId::ProxyUsername,
+                    InputId::ProxyUsername => InputId::ProxyPassword,
+                    InputId::ProxyPassword => InputId::ProxyAddress,
+                    _ => InputId::ProxyAddress,
+                };
 
-                Task::batch([
-                    check_address.map(|focused| (0, focused)),
-                    check_port.map(|focused| (1, focused)),
-                    check_username.map(|focused| (2, focused)),
-                    check_password.map(|focused| (3, focused)),
-                ])
-                .collect()
-                .map(|results: Vec<(u8, bool)>| {
-                    let address = results.iter().any(|(i, f)| *i == 0 && *f);
-                    let port = results.iter().any(|(i, f)| *i == 1 && *f);
-                    let username = results.iter().any(|(i, f)| *i == 2 && *f);
-                    let password = results.iter().any(|(i, f)| *i == 3 && *f);
-                    Message::SettingsNetworkFocusResult(address, port, username, password)
-                })
+                self.focused_field = next_field;
+                operation::focus(Id::from(next_field))
             }
-        }
-    }
-
-    /// Handle focus check result for Network tab and move to next field
-    pub fn handle_settings_network_focus_result(
-        &mut self,
-        address: bool,
-        port: bool,
-        username: bool,
-        password: bool,
-    ) -> Task<Message> {
-        // Cycle through Network tab fields: address -> username -> password -> address
-        // (skips port because NumberInput handles its own Tab key)
-        if address {
-            self.focused_field = InputId::ProxyUsername;
-            operation::focus(Id::from(InputId::ProxyUsername))
-        } else if port {
-            // If somehow focused on port, move to username
-            self.focused_field = InputId::ProxyUsername;
-            operation::focus(Id::from(InputId::ProxyUsername))
-        } else if username {
-            self.focused_field = InputId::ProxyPassword;
-            operation::focus(Id::from(InputId::ProxyPassword))
-        } else if password {
-            self.focused_field = InputId::ProxyAddress;
-            operation::focus(Id::from(InputId::ProxyAddress))
-        } else {
-            // No field focused, start with address
-            self.focused_field = InputId::ProxyAddress;
-            operation::focus(Id::from(InputId::ProxyAddress))
         }
     }
 

@@ -563,16 +563,6 @@ impl NexusApp {
             Message::UsernameChanged(username) => self.handle_username_changed(username),
             Message::NicknameChanged(nickname) => self.handle_nickname_changed(nickname),
             Message::ConnectionFormTabPressed => self.handle_connection_form_tab_pressed(),
-            Message::ConnectionFormFocusResult(
-                name,
-                address,
-                port,
-                username,
-                password,
-                nickname,
-            ) => self.handle_connection_form_focus_result(
-                name, address, port, username, password, nickname,
-            ),
 
             // Bookmark management
             Message::BookmarkAddressChanged(addr) => self.handle_bookmark_address_changed(addr),
@@ -596,11 +586,6 @@ impl NexusApp {
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(id) => self.handle_show_edit_bookmark(id),
             Message::BookmarkEditTabPressed => self.handle_bookmark_edit_tab_pressed(),
-            Message::BookmarkEditFocusResult(name, address, port, username, password, nickname) => {
-                self.handle_bookmark_edit_focus_result(
-                    name, address, port, username, password, nickname,
-                )
-            }
 
             // Certificate fingerprint
             Message::AcceptNewFingerprint => self.handle_accept_new_fingerprint(),
@@ -688,13 +673,7 @@ impl NexusApp {
             Message::UserManagementCreateTabPressed => {
                 self.handle_user_management_create_tab_pressed()
             }
-            Message::UserManagementCreateFocusResult(username, password) => {
-                self.handle_user_management_create_focus_result(username, password)
-            }
             Message::UserManagementEditTabPressed => self.handle_user_management_edit_tab_pressed(),
-            Message::UserManagementEditFocusResult(username, password) => {
-                self.handle_user_management_edit_focus_result(username, password)
-            }
 
             // Broadcast
             Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),
@@ -775,9 +754,6 @@ impl NexusApp {
             Message::ProxyUsernameChanged(username) => self.handle_proxy_username_changed(username),
             Message::ProxyPasswordChanged(password) => self.handle_proxy_password_changed(password),
             Message::SettingsTabPressed => self.handle_settings_tab_pressed(),
-            Message::SettingsNetworkFocusResult(address, port, username, password) => {
-                self.handle_settings_network_focus_result(address, port, username, password)
-            }
             Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),
             Message::DownloadPathSelected(path) => self.handle_download_path_selected(path),
             Message::QueueTransfersToggled(enabled) => self.handle_queue_transfers_toggled(enabled),
@@ -862,9 +838,6 @@ impl NexusApp {
             Message::ShowServerInfo => self.handle_show_server_info(),
             Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),
             Message::ServerInfoEditTabPressed => self.handle_server_info_edit_tab_pressed(),
-            Message::ServerInfoEditFocusResult(name, description) => {
-                self.handle_server_info_edit_focus_result(name, description)
-            }
 
             // User info
             Message::CloseUserInfo => self.handle_close_user_info(),
@@ -883,9 +856,6 @@ impl NexusApp {
             Message::ChangePasswordCancelPressed => self.handle_change_password_cancel_pressed(),
             Message::ChangePasswordSavePressed => self.handle_change_password_save_pressed(),
             Message::ChangePasswordTabPressed => self.handle_change_password_tab_pressed(),
-            Message::ChangePasswordFocusResult(current, new, confirm) => {
-                self.handle_change_password_focus_result(current, new, confirm)
-            }
 
             // Network events (async results)
             Message::BookmarkConnectionResult {

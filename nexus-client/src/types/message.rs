@@ -73,34 +73,20 @@ pub enum Message {
     ChangePasswordPressed,
     /// Password change: Save button pressed (submit form)
     ChangePasswordSavePressed,
-    /// Password change: Tab pressed, check focus and move to next field
+    /// Password change: Tab pressed, move to next field
     ChangePasswordTabPressed,
-    /// Password change: Focus check result for Tab navigation (current, new, confirm)
-    ChangePasswordFocusResult(bool, bool, bool),
-    /// Bookmark edit: Tab pressed, check focus and move to next field
+    /// Bookmark edit: Tab pressed, move to next field
     BookmarkEditTabPressed,
-    /// Bookmark edit: Focus check result for Tab navigation (name, address, port, username, password, nickname)
-    BookmarkEditFocusResult(bool, bool, bool, bool, bool, bool),
-    /// Connection form: Tab pressed, check focus and move to next field
+    /// Connection form: Tab pressed, move to next field
     ConnectionFormTabPressed,
-    /// Connection form: Focus check result for Tab navigation (name, address, port, username, password, nickname)
-    ConnectionFormFocusResult(bool, bool, bool, bool, bool, bool),
-    /// User management create: Tab pressed, check focus and move to next field
+    /// User management create: Tab pressed, move to next field
     UserManagementCreateTabPressed,
-    /// User management create: Focus check result for Tab navigation (username, password)
-    UserManagementCreateFocusResult(bool, bool),
-    /// User management edit: Tab pressed, check focus and move to next field
+    /// User management edit: Tab pressed, move to next field
     UserManagementEditTabPressed,
-    /// User management edit: Focus check result for Tab navigation (username, password)
-    UserManagementEditFocusResult(bool, bool),
-    /// Server info edit: Tab pressed, check focus and move to next field
+    /// Server info edit: Tab pressed, move to next field
     ServerInfoEditTabPressed,
-    /// Server info edit: Focus check result for Tab navigation (name, description)
-    ServerInfoEditFocusResult(bool, bool),
-    /// Settings panel: Tab pressed, check focus and move to next field
+    /// Settings panel: Tab pressed, move to next field
     SettingsTabPressed,
-    /// Settings panel Network tab: Focus check result for Tab navigation (address, port, username, password)
-    SettingsNetworkFocusResult(bool, bool, bool, bool),
     /// Chat: Message input field changed
     ChatInputChanged(String),
     /// Chat: Tab key pressed for nickname completion

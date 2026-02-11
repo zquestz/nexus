@@ -27,25 +27,18 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
     // Port is always valid since it's a u16
     let can_connect = !form.server_name.trim().is_empty() && !form.server_address.trim().is_empty();
 
-    // Helper for on_submit - use no-op when form is invalid
-    let submit_action = if can_connect {
-        Message::ConnectPressed
-    } else {
-        Message::ServerNameChanged(String::new())
-    };
-
     let title = panel_title(t("title-connect-to-server"));
 
     let server_name_input = text_input(&t("placeholder-server-name"), &form.server_name)
         .on_input(Message::ServerNameChanged)
-        .on_submit(submit_action.clone())
+        .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::ServerName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let server_address_input = text_input(&t("placeholder-server-address"), &form.server_address)
         .on_input(Message::ServerAddressChanged)
-        .on_submit(submit_action.clone())
+        .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::ServerAddress))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
@@ -62,14 +55,14 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
 
     let username_input = text_input(&t("placeholder-username-optional"), &form.username)
         .on_input(Message::UsernameChanged)
-        .on_submit(submit_action.clone())
+        .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::Username))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
     let password_input = text_input(&t("placeholder-password-optional"), &form.password)
         .on_input(Message::PasswordChanged)
-        .on_submit(submit_action.clone())
+        .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::Password))
         .secure(true)
         .padding(INPUT_PADDING)
@@ -77,7 +70,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
 
     let nickname_input = text_input(&t("placeholder-nickname-optional"), &form.nickname)
         .on_input(Message::NicknameChanged)
-        .on_submit(submit_action)
+        .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::Nickname))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);

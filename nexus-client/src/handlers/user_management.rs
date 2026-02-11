@@ -917,47 +917,16 @@ impl NexusApp {
 
     /// Handle Tab pressed in password change form
     ///
-    /// Checks which field is actually focused using async operations,
-    /// then moves to the next field in sequence.
+    /// Uses `focused_field` to determine the current field and move to the next
+    /// one directly, avoiding async `is_focused` race conditions with Iced's
+    /// native Tab handling.
     pub fn handle_change_password_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of all three password fields in parallel
-        let check_current = operation::is_focused(Id::from(InputId::ChangePasswordCurrent));
-        let check_new = operation::is_focused(Id::from(InputId::ChangePasswordNew));
-        let check_confirm = operation::is_focused(Id::from(InputId::ChangePasswordConfirm));
-
-        // Batch the checks and combine results
-        Task::batch([
-            check_current.map(|focused| (0, focused)),
-            check_new.map(|focused| (1, focused)),
-            check_confirm.map(|focused| (2, focused)),
-        ])
-        .collect()
-        .map(|results: Vec<(u8, bool)>| {
-            let current_focused = results.iter().any(|(i, f)| *i == 0 && *f);
-            let new_focused = results.iter().any(|(i, f)| *i == 1 && *f);
-            let confirm_focused = results.iter().any(|(i, f)| *i == 2 && *f);
-            Message::ChangePasswordFocusResult(current_focused, new_focused, confirm_focused)
-        })
-    }
-
-    /// Handle focus check result for password change Tab navigation
-    pub fn handle_change_password_focus_result(
-        &mut self,
-        current_focused: bool,
-        new_focused: bool,
-        confirm_focused: bool,
-    ) -> Task<Message> {
-        // Determine next field based on which is currently focused
-        let next_field = if current_focused {
-            InputId::ChangePasswordNew
-        } else if new_focused {
-            InputId::ChangePasswordConfirm
-        } else if confirm_focused {
-            // Wrap around to first field
-            InputId::ChangePasswordCurrent
-        } else {
-            // None focused, start at first field
-            InputId::ChangePasswordCurrent
+        // Determine next field based on tracked focused field
+        let next_field = match self.focused_field {
+            InputId::ChangePasswordCurrent => InputId::ChangePasswordNew,
+            InputId::ChangePasswordNew => InputId::ChangePasswordConfirm,
+            InputId::ChangePasswordConfirm => InputId::ChangePasswordCurrent,
+            _ => InputId::ChangePasswordCurrent,
         };
 
         self.focused_field = next_field;
@@ -1097,41 +1066,15 @@ impl NexusApp {
 
     /// Handle Tab pressed in user management create form
     ///
-    /// Checks which field is actually focused using async operations,
-    /// then moves to the next field in sequence.
+    /// Uses `focused_field` to determine the current field and move to the next
+    /// one directly, avoiding async `is_focused` race conditions with Iced's
+    /// native Tab handling.
     pub fn handle_user_management_create_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of both create form fields in parallel
-        let check_username = operation::is_focused(Id::from(InputId::AdminUsername));
-        let check_password = operation::is_focused(Id::from(InputId::AdminPassword));
-
-        // Batch the checks and combine results
-        Task::batch([
-            check_username.map(|focused| (0, focused)),
-            check_password.map(|focused| (1, focused)),
-        ])
-        .collect()
-        .map(|results: Vec<(u8, bool)>| {
-            let username_focused = results.iter().any(|(i, f)| *i == 0 && *f);
-            let password_focused = results.iter().any(|(i, f)| *i == 1 && *f);
-            Message::UserManagementCreateFocusResult(username_focused, password_focused)
-        })
-    }
-
-    /// Handle focus check result for user management create Tab navigation
-    pub fn handle_user_management_create_focus_result(
-        &mut self,
-        username_focused: bool,
-        password_focused: bool,
-    ) -> Task<Message> {
-        // Determine next field based on which is currently focused
-        let next_field = if username_focused {
-            InputId::AdminPassword
-        } else if password_focused {
-            // Wrap around to first field
-            InputId::AdminUsername
-        } else {
-            // None focused, start at first field
-            InputId::AdminUsername
+        // Determine next field based on tracked focused field
+        let next_field = match self.focused_field {
+            InputId::AdminUsername => InputId::AdminPassword,
+            InputId::AdminPassword => InputId::AdminUsername,
+            _ => InputId::AdminUsername,
         };
 
         self.focused_field = next_field;
@@ -1140,41 +1083,15 @@ impl NexusApp {
 
     /// Handle Tab pressed in user management edit form
     ///
-    /// Checks which field is actually focused using async operations,
-    /// then moves to the next field in sequence.
+    /// Uses `focused_field` to determine the current field and move to the next
+    /// one directly, avoiding async `is_focused` race conditions with Iced's
+    /// native Tab handling.
     pub fn handle_user_management_edit_tab_pressed(&mut self) -> Task<Message> {
-        // Check focus state of both edit form fields in parallel
-        let check_username = operation::is_focused(Id::from(InputId::EditNewUsername));
-        let check_password = operation::is_focused(Id::from(InputId::EditNewPassword));
-
-        // Batch the checks and combine results
-        Task::batch([
-            check_username.map(|focused| (0, focused)),
-            check_password.map(|focused| (1, focused)),
-        ])
-        .collect()
-        .map(|results: Vec<(u8, bool)>| {
-            let username_focused = results.iter().any(|(i, f)| *i == 0 && *f);
-            let password_focused = results.iter().any(|(i, f)| *i == 1 && *f);
-            Message::UserManagementEditFocusResult(username_focused, password_focused)
-        })
-    }
-
-    /// Handle focus check result for user management edit Tab navigation
-    pub fn handle_user_management_edit_focus_result(
-        &mut self,
-        username_focused: bool,
-        password_focused: bool,
-    ) -> Task<Message> {
-        // Determine next field based on which is currently focused
-        let next_field = if username_focused {
-            InputId::EditNewPassword
-        } else if password_focused {
-            // Wrap around to first field
-            InputId::EditNewUsername
-        } else {
-            // None focused, start at first field
-            InputId::EditNewUsername
+        // Determine next field based on tracked focused field
+        let next_field = match self.focused_field {
+            InputId::EditNewUsername => InputId::EditNewPassword,
+            InputId::EditNewPassword => InputId::EditNewUsername,
+            _ => InputId::EditNewUsername,
         };
 
         self.focused_field = next_field;
