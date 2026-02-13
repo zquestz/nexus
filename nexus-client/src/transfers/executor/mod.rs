@@ -344,33 +344,48 @@ where
         // Check if a COMPLETE file exists at the destination with DIFFERENT content.
         // This is separate from resume logic - we only auto-rename if:
         // 1. A complete file (not .part) exists at the destination
-        // 2. Its size matches the server's file size (so it's a complete file)
-        // 3. Its hash differs from the server's hash (different content)
+        // 2. Its content differs from the server's file (different size or hash)
         //
         // If a .part file exists, that's a partial download - we'll resume it.
         // If a complete file exists with the SAME hash, we skip the download.
         let local_file_path = if let Ok(metadata) = tokio::fs::metadata(&local_file_path).await
             && metadata.is_file()
-            && metadata.len() == file_size
-            && file_size > 0
         {
-            // Complete file exists - check if it's the same content
-            if let Ok(existing_hash) = compute_file_sha256(&local_file_path).await {
-                if existing_hash != file_sha256 {
-                    // Different file with same size - auto-rename to avoid overwriting
-                    match generate_unique_path(&local_file_path).await {
-                        Ok(path) => path,
-                        Err(_) => {
-                            return Err(send_failed_event(event_tx, id, TransferError::IoError));
+            let existing_size = metadata.len();
+            if existing_size == file_size && file_size > 0 {
+                // Same size, non-zero — hash to determine if content differs
+                if let Ok(existing_hash) = compute_file_sha256(&local_file_path).await {
+                    if existing_hash != file_sha256 {
+                        // Different content, same size — auto-rename
+                        match generate_unique_path(&local_file_path).await {
+                            Ok(path) => path,
+                            Err(_) => {
+                                return Err(send_failed_event(
+                                    event_tx,
+                                    id,
+                                    TransferError::IoError,
+                                ));
+                            }
                         }
+                    } else {
+                        // Same content — will be skipped by the "already complete" check below
+                        local_file_path
                     }
                 } else {
-                    // Same file - will be skipped by the "already complete" check below
+                    // Couldn't hash existing file — just use original path
                     local_file_path
                 }
-            } else {
-                // Couldn't hash existing file - just use original path
+            } else if existing_size == file_size {
+                // Both zero bytes — same content, no rename needed
                 local_file_path
+            } else {
+                // Different sizes — definitely different file, auto-rename
+                match generate_unique_path(&local_file_path).await {
+                    Ok(path) => path,
+                    Err(_) => {
+                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                    }
+                }
             }
         } else {
             local_file_path
