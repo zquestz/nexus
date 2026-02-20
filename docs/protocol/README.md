@@ -153,7 +153,7 @@ The protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.5.32`
+Current version: `0.5.33`
 
 ## Documents
 
