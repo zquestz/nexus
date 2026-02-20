@@ -1,6 +1,6 @@
 [package]
 name = "nexus-client"
-version = "0.5.33"
+version = "0.5.34"
 edition = "2024"
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]
@@ -93,7 +93,7 @@ tempfile = "3.20"
 serial_test = "3.2"
 
 [build-dependencies]
-iced_fontello = "0.13.2"
+iced_fontello = { git = "https://github.com/hecrj/iced_fontello", branch = "master" }
 
 [target.'cfg(unix)'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
