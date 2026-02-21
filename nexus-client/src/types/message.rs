@@ -652,6 +652,8 @@ pub enum Message {
     HandleNexusUri(NexusUri),
     /// URI: Received from another instance via IPC
     UriReceivedFromIpc(String),
+    /// IPC: Another instance requested we take focus
+    FocusRequested,
     /// URI: Connection attempt from URI completed (shows errors in console)
     UriConnectionResult {
         result: Result<NetworkConnection, String>,

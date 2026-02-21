@@ -105,6 +105,8 @@ News posts render links via Markdown syntax.
 
 ## Single Instance
 
+Single-instance is always enforced. Every launch of the client checks for an existing instance via IPC, regardless of whether a `nexus://` URI is present.
+
 ### macOS — Apple Events
 
 On macOS, the OS handles single-instance routing natively for URL scheme clicks. When a user clicks a `nexus://` link in a browser or Finder:
@@ -119,11 +121,13 @@ IPC (below) is still used on macOS for CLI invocations (e.g., `nexus "nexus://..
 
 ### IPC (All Platforms)
 
-When a `nexus://` URI is opened via command line and Nexus is already running, the URI is passed to the existing instance via IPC:
+On every launch, the client attempts to connect to the IPC socket/pipe:
 
 1. New instance attempts to connect to IPC socket/pipe
-2. If successful: sends URI, waits for acknowledgment, exits
+2. If successful: sends URI or `FOCUS` command, waits for acknowledgment, exits
 3. If no existing instance: becomes primary, creates IPC listener
+
+If the existing instance's window is hidden to the system tray, it is restored and focused.
 
 ### IPC Socket Paths
 
@@ -138,8 +142,10 @@ On Linux and macOS, the socket lives inside a per-user directory (`XDG_RUNTIME_D
 
 ### IPC Protocol
 
-1. Client sends URI as UTF-8 line (terminated with `\n`)
-2. Server sends acknowledgment line
+1. Client sends message as UTF-8 line (terminated with `\n`):
+   - A `nexus://` URI to open, **or**
+   - `FOCUS` to bring the existing instance's window to the front
+2. Server sends acknowledgment line (`ok\n`)
 3. Connection closes
 
 Timeout: 5 seconds (Unix only)

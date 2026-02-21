@@ -81,12 +81,20 @@ fn get_ipc_socket_path() -> String {
     }
 }
 
-/// Try to send a URI to an existing instance
+/// IPC command sent when no URI is available — asks existing instance to focus
+const IPC_FOCUS_COMMAND: &str = "FOCUS";
+
+/// Try to contact an existing instance
+///
+/// If `uri` is provided, sends it to the existing instance.
+/// If `uri` is None, sends a focus command instead.
 ///
 /// Returns Ok(true) if successfully sent to existing instance (caller should exit),
 /// Returns Ok(false) if no existing instance (caller should become the primary),
 /// Returns Err if something went wrong.
-fn try_send_to_existing_instance(uri: &str) -> Result<bool, Box<dyn std::error::Error>> {
+fn try_send_to_existing_instance(uri: Option<&str>) -> Result<bool, Box<dyn std::error::Error>> {
+    let message = uri.unwrap_or(IPC_FOCUS_COMMAND);
+
     #[cfg(unix)]
     use std::io::Write;
     use std::io::{BufRead, BufReader};
@@ -107,8 +115,8 @@ fn try_send_to_existing_instance(uri: &str) -> Result<bool, Box<dyn std::error::
                 stream.set_read_timeout(Some(IPC_TIMEOUT))?;
                 stream.set_write_timeout(Some(IPC_TIMEOUT))?;
 
-                // Connected to existing instance - send URI
-                writeln!(stream, "{}", uri)?;
+                // Connected to existing instance - send URI or focus command
+                writeln!(stream, "{}", message)?;
                 stream.flush()?;
 
                 // Wait for acknowledgment
@@ -137,7 +145,7 @@ fn try_send_to_existing_instance(uri: &str) -> Result<bool, Box<dyn std::error::
                 // Note: interprocess named pipes don't support timeouts directly,
                 // but the operations are typically fast. If this becomes an issue,
                 // we could spawn a thread with a timeout wrapper.
-                writeln!(stream, "{}", uri)?;
+                writeln!(stream, "{}", message)?;
                 stream.flush()?;
 
                 // Wait for acknowledgment
@@ -184,23 +192,20 @@ pub fn main() -> iced::Result {
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    // Check for startup URI and single-instance handling
+    // Single-instance enforcement: always check for an existing instance
     let startup_uri = get_startup_uri();
 
-    if let Some(ref uri_str) = startup_uri {
-        // Try to send to existing instance
-        match try_send_to_existing_instance(uri_str) {
-            Ok(true) => {
-                // Successfully sent to existing instance, exit
-                return Ok(());
-            }
-            Ok(false) => {
-                // No existing instance, continue startup
-            }
-            Err(e) => {
-                // Error connecting, log and continue
-                eprintln!("IPC error: {}", e);
-            }
+    match try_send_to_existing_instance(startup_uri.as_deref()) {
+        Ok(true) => {
+            // Successfully contacted existing instance, exit
+            return Ok(());
+        }
+        Ok(false) => {
+            // No existing instance, continue startup
+        }
+        Err(e) => {
+            // Error connecting, log and continue
+            eprintln!("IPC error: {}", e);
         }
     }
 
@@ -1089,17 +1094,15 @@ impl NexusApp {
                 self.update_tray_from_settings()
             }
 
+            // IPC
+            Message::FocusRequested => self.focus_or_show_window(),
+
             // URI scheme
             Message::HandleNexusUri(uri) => self.handle_nexus_uri(uri),
             Message::UriReceivedFromIpc(uri_str) => {
                 if let Ok(parsed) = uri::parse(&uri_str) {
-                    // Focus the window and handle the URI
+                    let focus_task = self.focus_or_show_window();
                     let uri_task = self.handle_nexus_uri(parsed);
-                    let focus_task = iced::window::oldest().then(|opt_id| {
-                        opt_id
-                            .map(iced::window::gain_focus)
-                            .unwrap_or_else(Task::none)
-                    });
                     Task::batch([focus_task, uri_task])
                 } else {
                     Task::none()
@@ -1112,6 +1115,24 @@ impl NexusApp {
                 path,
             } => self.handle_uri_connection_result(result, target_host, display_name, path),
         }
+    }
+
+    /// Show window if hidden to tray, otherwise bring it to focus
+    fn focus_or_show_window(&self) -> Task<Message> {
+        #[cfg(not(target_os = "macos"))]
+        if !self.window_visible {
+            return iced::window::oldest().then(|opt_id| {
+                opt_id
+                    .map(Message::TrayShowWindow)
+                    .map(Task::done)
+                    .unwrap_or_else(Task::none)
+            });
+        }
+        iced::window::oldest().then(|opt_id| {
+            opt_id
+                .map(iced::window::gain_focus)
+                .unwrap_or_else(Task::none)
+        })
     }
 
     /// Set up subscriptions for keyboard events, window events, and network streams
@@ -1446,7 +1467,9 @@ fn ipc_listener_stream() -> impl iced::futures::Stream<Item = Message> {
                             let _ = stream.write_all(b"ok\n").await;
 
                             let uri = line.trim().to_string();
-                            if uri::is_nexus_uri(&uri) {
+                            if uri == IPC_FOCUS_COMMAND {
+                                return Some((Message::FocusRequested, Some(listener)));
+                            } else if uri::is_nexus_uri(&uri) {
                                 return Some((Message::UriReceivedFromIpc(uri), Some(listener)));
                             }
                         }
@@ -1499,7 +1522,9 @@ fn ipc_listener_stream() -> impl iced::futures::Stream<Item = Message> {
                             let _ = inner.write_all(b"ok\n").await;
 
                             let uri = line.trim().to_string();
-                            if uri::is_nexus_uri(&uri) {
+                            if uri == IPC_FOCUS_COMMAND {
+                                return Some((Message::FocusRequested, Some(listener)));
+                            } else if uri::is_nexus_uri(&uri) {
                                 return Some((Message::UriReceivedFromIpc(uri), Some(listener)));
                             }
                         }
