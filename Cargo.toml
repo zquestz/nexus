@@ -12,5 +12,5 @@ version = "0.5.35"
 edition = "2024"
 
 [profile.release]
-strip = true
+strip = false
 lto = "thin"
