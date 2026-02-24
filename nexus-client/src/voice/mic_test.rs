@@ -36,8 +36,10 @@ enum MicTestResult {
 // Constants
 // =============================================================================
 
-/// How often to update the mic level display (60 fps for smooth meter)
-const MIC_LEVEL_UPDATE_INTERVAL_MS: u64 = 16;
+/// How often to update the mic level display (10 fps — 8-segment meter
+/// doesn't benefit from higher rates, and each update triggers a full
+/// iced update/view cycle)
+const MIC_LEVEL_UPDATE_INTERVAL_MS: u64 = 100;
 
 /// Channel size for the stream
 const STREAM_CHANNEL_SIZE: usize = 10;
@@ -174,16 +176,15 @@ mod tests {
 
     #[test]
     fn test_mic_level_update_interval() {
-        // 60 fps = ~16ms per frame
-        // Verify the constant is in a reasonable range
+        // 10 fps for an 8-segment meter — each tick triggers a full view rebuild
         let interval = MIC_LEVEL_UPDATE_INTERVAL_MS;
         assert!(
-            interval <= 20,
-            "Update interval should be <= 20ms for smooth animation"
+            interval <= 200,
+            "Update interval should be <= 200ms for responsive meter"
         );
         assert!(
-            interval >= 10,
-            "Update interval should be >= 10ms to avoid CPU overhead"
+            interval >= 50,
+            "Update interval should be >= 50ms to avoid unnecessary view rebuilds"
         );
     }
 }
