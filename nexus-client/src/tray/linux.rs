@@ -5,7 +5,6 @@
 
 use std::pin::Pin;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use iced::Subscription;
 use iced::futures::Stream;
@@ -16,7 +15,7 @@ use tokio::sync::mpsc;
 use ksni::menu::{MenuItem as KsniMenuItem, StandardItem};
 use ksni::{Icon as KsniIcon, Tray, TrayMethods};
 
-use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_TITLE, TrayState};
+use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_SERVICE_CLOSED_DELAY, TRAY_TITLE, TrayState};
 use crate::i18n::t;
 use crate::types::Message;
 
@@ -177,10 +176,17 @@ impl TrayManager {
         // On first call, OnceLock initializes with the receiver.
         // On subsequent calls (tray recreated after D-Bus death), we replace the
         // inner receiver with the new one.
+        // We use block_in_place + block_on here (same as the tray spawn below)
+        // to guarantee the receiver is stored. try_lock() would silently drop
+        // the receiver if contended, leaving the tray icon visible but
+        // unresponsive to clicks.
         let lock = TRAY_RX.get_or_init(|| AsyncMutex::new(None));
-        if let Ok(mut guard) = lock.try_lock() {
-            *guard = Some(rx);
-        }
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut guard = lock.lock().await;
+                *guard = Some(rx);
+            });
+        });
 
         // Create the tray
         let tray = NexusTray {
@@ -330,7 +336,7 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
                         // Channel closed — tray was dropped or D-Bus died.
                         // Wait briefly then signal service closed so the app
                         // can attempt to recreate the tray.
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        tokio::time::sleep(TRAY_SERVICE_CLOSED_DELAY).await;
                         let _ = output.send(Message::TrayServiceClosed).await;
                         break;
                     }

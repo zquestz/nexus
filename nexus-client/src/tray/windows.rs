@@ -14,7 +14,7 @@ use iced::stream;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-use super::TrayState;
+use super::{TRAY_SERVICE_CLOSED_DELAY, TrayState};
 use crate::i18n::t;
 use crate::types::Message;
 
@@ -32,7 +32,8 @@ const MENU_ID_QUIT: &str = "quit";
 
 /// Poll interval for checking crossbeam receivers in the async stream.
 /// crossbeam-channel doesn't have an async API, so we use try_recv with sleep.
-const RECV_POLL_INTERVAL_MS: u64 = 250;
+/// 100ms balances responsiveness (perceptible click latency) with CPU efficiency.
+const RECV_POLL_INTERVAL_MS: u64 = 100;
 
 // =============================================================================
 // Tray Manager
@@ -212,7 +213,7 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
         |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
             use iced::futures::SinkExt;
 
-            loop {
+            'poll: loop {
                 // Check for tray icon events (clicks)
                 let tray_receiver = TrayIconEvent::receiver();
                 match tray_receiver.try_recv() {
@@ -228,7 +229,7 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
                         // Other tray events (right-click, double-click, mouse down, etc.)
                     }
                     Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => break,
+                    Err(TryRecvError::Disconnected) => break 'poll,
                 }
 
                 // Check for menu events
@@ -247,12 +248,17 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
                         }
                     }
                     Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => break,
+                    Err(TryRecvError::Disconnected) => break 'poll,
                 }
 
                 // No events, sleep briefly before checking again
                 tokio::time::sleep(Duration::from_millis(RECV_POLL_INTERVAL_MS)).await;
             }
+
+            // Receiver disconnected — signal service closed so the app
+            // can attempt to recreate the tray.
+            tokio::time::sleep(TRAY_SERVICE_CLOSED_DELAY).await;
+            let _ = output.send(Message::TrayServiceClosed).await;
         },
     ))
 }

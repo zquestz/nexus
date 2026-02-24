@@ -640,8 +640,8 @@ pub enum Message {
     /// Settings: Minimize to tray toggled
     #[cfg(not(target_os = "macos"))]
     MinimizeToTrayToggled(bool),
-    /// Tray: Service has closed (D-Bus connection dropped, e.g., after system sleep)
-    #[cfg(target_os = "linux")]
+    /// Tray: Service has closed (Linux: D-Bus connection dropped; Windows: tray receiver died)
+    #[cfg(not(target_os = "macos"))]
     TrayServiceClosed,
 
     // ==================== URI Scheme ====================

@@ -49,6 +49,11 @@ pub const TRAY_TITLE: &str = "Nexus BBS";
 #[cfg(target_os = "linux")]
 pub const BYTES_PER_PIXEL: usize = 4;
 
+/// Delay before signaling `TrayServiceClosed` after the tray service dies.
+/// Provides backoff to prevent rapid recreation loops if the underlying
+/// service (D-Bus on Linux, tray receiver on Windows) is persistently broken.
+pub const TRAY_SERVICE_CLOSED_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+
 // =============================================================================
 // Embedded Icons
 // =============================================================================

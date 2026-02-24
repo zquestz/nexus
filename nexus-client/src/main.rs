@@ -1070,9 +1070,9 @@ impl NexusApp {
                 self.config.settings.minimize_to_tray = enabled;
                 Task::none()
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(not(target_os = "macos"))]
             Message::TrayServiceClosed => {
-                // ksni service died (D-Bus connection dropped, e.g., after system sleep)
+                // Tray service died (Linux: D-Bus connection dropped; Windows: receiver disconnected)
                 // Drop the dead manager and let update_tray_from_settings() recreate it
                 self.tray_manager = None;
                 self.update_tray_from_settings()
