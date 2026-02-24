@@ -3,15 +3,18 @@
 //! This implementation uses the native Windows system tray API via tray-icon.
 //! Left-click toggles window visibility, right-click shows the menu.
 
+use std::pin::Pin;
 use std::time::Duration;
 
 use crossbeam_channel::TryRecvError;
 use iced::Subscription;
+use iced::futures::Stream;
+use iced::stream;
 
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-use super::{TRAY_POLL_INTERVAL_MS, TrayState};
+use super::TrayState;
 use crate::i18n::t;
 use crate::types::Message;
 
@@ -26,6 +29,10 @@ const MENU_ID_MUTE: &str = "mute";
 
 /// Menu item ID for quit
 const MENU_ID_QUIT: &str = "quit";
+
+/// Poll interval for checking crossbeam receivers in the async stream.
+/// crossbeam-channel doesn't have an async API, so we use try_recv with sleep.
+const RECV_POLL_INTERVAL_MS: u64 = 250;
 
 // =============================================================================
 // Tray Manager
@@ -186,54 +193,66 @@ fn load_icon(data: &[u8]) -> Option<Icon> {
 // Subscription
 // =============================================================================
 
-/// Create a subscription for tray icon events
+/// Create an event-driven subscription for tray icon events.
+///
+/// Instead of polling every 50ms through iced's update/view cycle, this uses
+/// an async stream that checks the crossbeam receivers with a sleep interval.
+/// The iced event loop only wakes when an actual tray event arrives.
 pub fn tray_subscription() -> Subscription<Message> {
-    iced::time::every(Duration::from_millis(TRAY_POLL_INTERVAL_MS)).map(|_| Message::TrayPoll)
+    Subscription::run(tray_event_stream)
 }
 
-/// Poll for tray events
+/// Async stream that polls tray-icon's crossbeam receivers for events.
 ///
-/// This is called from the main thread via the TrayPoll message handler.
-///
-/// Returns a message if a tray event occurred, otherwise None.
-pub fn poll_tray_events() -> Option<Message> {
-    // Get the event receivers (static globals from tray-icon crate)
-    let tray_receiver = TrayIconEvent::receiver();
-    let menu_receiver = MenuEvent::receiver();
+/// crossbeam-channel doesn't have an async API, so we use try_recv with
+/// a small sleep. This is similar to how PTT hotkey events are handled.
+fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
+    Box::pin(stream::channel(
+        16,
+        |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            use iced::futures::SinkExt;
 
-    // Check for tray icon events (clicks)
-    // Only respond to left-click release to avoid double-toggle (Down + Up events)
-    match tray_receiver.try_recv() {
-        Ok(TrayIconEvent::Click {
-            button: MouseButton::Left,
-            button_state: MouseButtonState::Up,
-            ..
-        }) => {
-            return Some(Message::TrayIconClicked);
-        }
-        Ok(_) => {
-            // Other tray events (right-click, double-click, mouse down, etc.) - ignore
-        }
-        Err(TryRecvError::Empty) => {}
-        Err(TryRecvError::Disconnected) => {}
-    }
+            loop {
+                // Check for tray icon events (clicks)
+                let tray_receiver = TrayIconEvent::receiver();
+                match tray_receiver.try_recv() {
+                    Ok(TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }) => {
+                        let _ = output.send(Message::TrayIconClicked).await;
+                        continue;
+                    }
+                    Ok(_) => {
+                        // Other tray events (right-click, double-click, mouse down, etc.)
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => break,
+                }
 
-    // Check for menu events
-    match menu_receiver.try_recv() {
-        Ok(event) => {
-            let message = match event.id.0.as_str() {
-                MENU_ID_SHOW_HIDE => Some(Message::TrayMenuShowHide),
-                MENU_ID_MUTE => Some(Message::TrayMenuMute),
-                MENU_ID_QUIT => Some(Message::TrayMenuQuit),
-                _ => None,
-            };
-            if message.is_some() {
-                return message;
+                // Check for menu events
+                let menu_receiver = MenuEvent::receiver();
+                match menu_receiver.try_recv() {
+                    Ok(event) => {
+                        let message = match event.id.0.as_str() {
+                            MENU_ID_SHOW_HIDE => Some(Message::TrayMenuShowHide),
+                            MENU_ID_MUTE => Some(Message::TrayMenuMute),
+                            MENU_ID_QUIT => Some(Message::TrayMenuQuit),
+                            _ => None,
+                        };
+                        if let Some(msg) = message {
+                            let _ = output.send(msg).await;
+                            continue;
+                        }
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => break,
+                }
+
+                // No events, sleep briefly before checking again
+                tokio::time::sleep(Duration::from_millis(RECV_POLL_INTERVAL_MS)).await;
             }
-        }
-        Err(TryRecvError::Empty) => {}
-        Err(TryRecvError::Disconnected) => {}
-    }
-
-    None
+        },
+    ))
 }

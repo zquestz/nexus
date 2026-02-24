@@ -29,16 +29,13 @@ mod windows;
 #[cfg(target_os = "linux")]
 pub use linux::{TrayManager, tray_subscription};
 #[cfg(target_os = "windows")]
-pub use windows::{TrayManager, poll_tray_events, tray_subscription};
+pub use windows::{TrayManager, tray_subscription};
 
 use crate::i18n::{t, t_args};
 
 // =============================================================================
 // Constants
 // =============================================================================
-
-/// Poll interval for tray events (milliseconds)
-pub const TRAY_POLL_INTERVAL_MS: u64 = 50;
 
 /// Tray icon identifier (internal, not user-facing)
 #[cfg(target_os = "linux")]

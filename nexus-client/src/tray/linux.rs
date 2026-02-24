@@ -3,15 +3,26 @@
 //! This implementation uses the D-Bus StatusNotifierItem protocol directly,
 //! which supports left-click activation (unlike libappindicator).
 
+use std::pin::Pin;
+use std::sync::OnceLock;
+use std::time::Duration;
+
 use iced::Subscription;
+use iced::futures::Stream;
+use iced::stream;
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 
 use ksni::menu::{MenuItem as KsniMenuItem, StandardItem};
 use ksni::{Icon as KsniIcon, Tray, TrayMethods};
 
-use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_POLL_INTERVAL_MS, TRAY_TITLE, TrayState};
+use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_TITLE, TrayState};
 use crate::i18n::t;
 use crate::types::Message;
+
+/// Global receiver for tray events, set once by `TrayManager::new()`.
+/// The subscription stream takes ownership on first access.
+static TRAY_RX: OnceLock<AsyncMutex<Option<mpsc::UnboundedReceiver<Message>>>> = OnceLock::new();
 
 // =============================================================================
 // Tray Implementation
@@ -150,8 +161,6 @@ fn load_icon_pixmap(data: &[u8]) -> Option<Vec<KsniIcon>> {
 pub struct TrayManager {
     /// Handle to update the tray
     handle: ksni::Handle<NexusTray>,
-    /// Receiver for tray events
-    rx: mpsc::UnboundedReceiver<Message>,
     /// Current state (cached for comparison)
     current_state: TrayState,
 }
@@ -163,6 +172,15 @@ impl TrayManager {
     pub fn new() -> Option<Self> {
         // Create channel for events
         let (tx, rx) = mpsc::unbounded_channel();
+
+        // Store the receiver in the global static for the subscription to consume.
+        // On first call, OnceLock initializes with the receiver.
+        // On subsequent calls (tray recreated after D-Bus death), we replace the
+        // inner receiver with the new one.
+        let lock = TRAY_RX.get_or_init(|| AsyncMutex::new(None));
+        if let Ok(mut guard) = lock.try_lock() {
+            *guard = Some(rx);
+        }
 
         // Create the tray
         let tray = NexusTray {
@@ -181,7 +199,6 @@ impl TrayManager {
 
         Some(Self {
             handle,
-            rx,
             current_state: TrayState::Disconnected,
         })
     }
@@ -251,18 +268,6 @@ impl TrayManager {
                 .await;
         });
     }
-
-    /// Try to receive a pending event (non-blocking)
-    ///
-    /// Returns `Some(Message::TrayServiceClosed)` if the ksni service has died
-    /// (e.g., D-Bus connection dropped after system sleep).
-    pub fn try_recv(&mut self) -> Option<Message> {
-        // Check if ksni service has died (D-Bus connection dropped)
-        if self.handle.is_closed() {
-            return Some(Message::TrayServiceClosed);
-        }
-        self.rx.try_recv().ok()
-    }
 }
 
 impl Drop for TrayManager {
@@ -284,8 +289,53 @@ impl Drop for TrayManager {
 // Subscription
 // =============================================================================
 
-/// Create a subscription for tray icon events
+/// Create an event-driven subscription for tray icon events.
+///
+/// Instead of polling every 50ms through iced's update/view cycle, this
+/// awaits the tray event channel directly. The iced event loop only wakes
+/// when an actual tray event arrives (menu click, left-click on icon, etc.).
 pub fn tray_subscription() -> Subscription<Message> {
-    iced::time::every(std::time::Duration::from_millis(TRAY_POLL_INTERVAL_MS))
-        .map(|_| Message::TrayPoll)
+    Subscription::run(tray_event_stream)
+}
+
+/// Async stream that awaits tray events from the ksni channel.
+fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
+    Box::pin(stream::channel(
+        16,
+        |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            use iced::futures::SinkExt;
+
+            // Take the receiver from the global static
+            let rx = TRAY_RX.get().expect("TRAY_RX not initialized");
+
+            let mut rx = {
+                let mut guard = rx.lock().await;
+                match guard.take() {
+                    Some(rx) => rx,
+                    None => {
+                        // Receiver already taken — shouldn't happen since iced
+                        // deduplicates subscriptions, but sleep forever as fallback
+                        std::future::pending::<()>().await;
+                        return;
+                    }
+                }
+            };
+
+            loop {
+                match rx.recv().await {
+                    Some(msg) => {
+                        let _ = output.send(msg).await;
+                    }
+                    None => {
+                        // Channel closed — tray was dropped or D-Bus died.
+                        // Wait briefly then signal service closed so the app
+                        // can attempt to recreate the tray.
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        let _ = output.send(Message::TrayServiceClosed).await;
+                        break;
+                    }
+                }
+            }
+        },
+    ))
 }

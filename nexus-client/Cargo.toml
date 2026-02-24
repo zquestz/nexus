@@ -1,6 +1,6 @@
 [package]
 name = "nexus-client"
-version = "0.5.35"
+version = "0.5.36"
 edition = "2024"
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]

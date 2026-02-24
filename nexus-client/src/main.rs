@@ -1043,22 +1043,6 @@ impl NexusApp {
 
             // System Tray (Windows/Linux only)
             #[cfg(not(target_os = "macos"))]
-            Message::TrayPoll => {
-                // On Linux, poll from the TrayManager's channel
-                // On Windows, poll from the static tray-icon receivers
-                #[cfg(target_os = "linux")]
-                if let Some(ref mut tray) = self.tray_manager
-                    && let Some(msg) = tray.try_recv()
-                {
-                    return self.update(msg);
-                }
-                #[cfg(target_os = "windows")]
-                if let Some(msg) = tray::poll_tray_events() {
-                    return self.update(msg);
-                }
-                Task::none()
-            }
-            #[cfg(not(target_os = "macos"))]
             Message::TrayIconClicked => self.handle_tray_icon_clicked(),
             #[cfg(not(target_os = "macos"))]
             Message::TrayMenuShowHide => self.handle_tray_show_hide(),

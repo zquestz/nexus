@@ -607,9 +607,6 @@ pub enum Message {
     ShowToast(String),
 
     // ==================== System Tray (Windows/Linux only) ====================
-    /// Tray: Periodic poll for tray events (also pumps GTK on Linux)
-    #[cfg(not(target_os = "macos"))]
-    TrayPoll,
     /// Tray: Icon was clicked (toggle window visibility)
     #[cfg(not(target_os = "macos"))]
     TrayIconClicked,
