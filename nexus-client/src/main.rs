@@ -1249,7 +1249,7 @@ impl NexusApp {
             // Subscribe to VU meter ticks when transmitting (for UI updates)
             if self.is_local_speaking {
                 subscriptions.push(
-                    iced::time::every(std::time::Duration::from_millis(16))
+                    iced::time::every(std::time::Duration::from_millis(100))
                         .map(|_| Message::VoiceMeterTick),
                 );
             }
