@@ -145,6 +145,9 @@ struct ServerContentContext<'a> {
     pub show_tray_icon: bool,
     /// Minimize to tray instead of closing
     pub minimize_to_tray: bool,
+    // ==================== Rendering ====================
+    /// Whether hardware (GPU) rendering is enabled
+    pub hardware_rendering: bool,
 }
 
 // ============================================================================
@@ -337,6 +340,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 is_deafened: config.is_deafened,
                 show_tray_icon: config.show_tray_icon,
                 minimize_to_tray: config.minimize_to_tray,
+                hardware_rendering: config.hardware_rendering,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -393,6 +397,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         mic_boost: config.mic_boost,
                         show_tray_icon: config.show_tray_icon,
                         minimize_to_tray: config.minimize_to_tray,
+                        hardware_rendering: config.hardware_rendering,
                     })
                 ]
                 .width(Fill)
@@ -891,6 +896,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 mic_boost: ctx.mic_boost,
                 show_tray_icon: ctx.show_tray_icon,
                 minimize_to_tray: ctx.minimize_to_tray,
+                hardware_rendering: ctx.hardware_rendering,
             })
         ]
         .width(Fill)

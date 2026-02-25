@@ -1045,6 +1045,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = トレイアイコンを表示
 settings-minimize-to-tray = 閉じる代わりにトレイに最小化
 
+# Rendering
+settings-hardware-rendering = ハードウェアレンダリング（再起動が必要）
+
 # Menu items
 tray-show-window = ウィンドウを表示
 tray-hide-window = ウィンドウを非表示

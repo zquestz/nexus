@@ -1104,6 +1104,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = Show tray icon
 settings-minimize-to-tray = Minimize to tray instead of closing
 
+# Rendering
+settings-hardware-rendering = Hardware rendering (requires restart)
+
 # Menu items
 tray-show-window = Show Window
 tray-hide-window = Hide Window

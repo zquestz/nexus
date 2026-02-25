@@ -1084,6 +1084,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = Afficher l'icône dans la barre des tâches
 settings-minimize-to-tray = Minimiser dans la barre des tâches au lieu de fermer
 
+# Rendering
+settings-hardware-rendering = Rendu matériel (nécessite un redémarrage)
+
 # Menu items
 tray-show-window = Afficher la fenêtre
 tray-hide-window = Masquer la fenêtre

@@ -191,6 +191,10 @@ pub struct ViewConfig<'a> {
 
     /// Minimize to tray instead of closing
     pub minimize_to_tray: bool,
+
+    // ==================== Rendering ====================
+    /// Whether hardware (GPU) rendering is enabled
+    pub hardware_rendering: bool,
 }
 
 /// Toolbar state configuration

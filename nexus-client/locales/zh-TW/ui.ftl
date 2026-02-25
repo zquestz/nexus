@@ -1040,6 +1040,9 @@ audio-transient-suppression = 鍵盤噪音消除
 settings-show-tray-icon = 顯示系統匣圖示
 settings-minimize-to-tray = 最小化至系統匣而非關閉
 
+# Rendering
+settings-hardware-rendering = 硬體渲染（需要重新啟動）
+
 # Menu items
 tray-show-window = 顯示視窗
 tray-hide-window = 隱藏視窗

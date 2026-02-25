@@ -1086,6 +1086,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = Mostrar icono en la bandeja
 settings-minimize-to-tray = Minimizar a la bandeja en lugar de cerrar
 
+# Rendering
+settings-hardware-rendering = Renderizado por hardware (requiere reinicio)
+
 # Menu items
 tray-show-window = Mostrar ventana
 tray-hide-window = Ocultar ventana

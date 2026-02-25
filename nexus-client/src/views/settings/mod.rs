@@ -148,6 +148,8 @@ pub struct SettingsViewData<'a> {
     pub show_tray_icon: bool,
     /// Whether to minimize to tray setting (Windows/Linux only)
     pub minimize_to_tray: bool,
+    /// Whether hardware (GPU) rendering is enabled
+    pub hardware_rendering: bool,
 }
 
 // ============================================================================
@@ -193,6 +195,7 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         data.nickname,
         data.show_tray_icon,
         data.minimize_to_tray,
+        data.hardware_rendering,
     );
     let chat_content = chat::chat_tab_content(
         data.chat_history_retention,

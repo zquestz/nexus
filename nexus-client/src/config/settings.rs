@@ -302,6 +302,10 @@ pub struct Settings {
     /// Minimize to tray instead of closing (Windows/Linux only)
     #[serde(default)]
     pub minimize_to_tray: bool,
+
+    /// Enable hardware (GPU) rendering instead of software rendering (requires restart)
+    #[serde(default)]
+    pub hardware_rendering: bool,
 }
 
 /// Default value for max_scrollback setting
@@ -341,6 +345,7 @@ impl Default for Settings {
             audio: AudioSettings::default(),
             show_tray_icon: false,
             minimize_to_tray: false,
+            hardware_rendering: false,
         }
     }
 }

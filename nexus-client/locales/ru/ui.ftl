@@ -1092,6 +1092,9 @@ audio-transient-suppression = Подавление шума клавиатуры
 settings-show-tray-icon = Показывать значок в трее
 settings-minimize-to-tray = Сворачивать в трей вместо закрытия
 
+# Rendering
+settings-hardware-rendering = Аппаратный рендеринг (требуется перезапуск)
+
 # Menu items
 tray-show-window = Показать окно
 tray-hide-window = Скрыть окно

@@ -1041,6 +1041,9 @@ audio-transient-suppression = 键盘噪音消除
 settings-show-tray-icon = 显示托盘图标
 settings-minimize-to-tray = 最小化到托盘而非关闭
 
+# Rendering
+settings-hardware-rendering = 硬件渲染（需要重启）
+
 # Menu items
 tray-show-window = 显示窗口
 tray-hide-window = 隐藏窗口

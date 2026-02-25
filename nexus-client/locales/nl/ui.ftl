@@ -1084,6 +1084,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = Systeemvakpictogram weergeven
 settings-minimize-to-tray = Minimaliseren naar systeemvak in plaats van sluiten
 
+# Rendering
+settings-hardware-rendering = Hardwarerendering (herstart vereist)
+
 # Menu items
 tray-show-window = Venster weergeven
 tray-hide-window = Venster verbergen

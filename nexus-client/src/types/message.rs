@@ -640,6 +640,8 @@ pub enum Message {
     /// Settings: Minimize to tray toggled
     #[cfg(not(target_os = "macos"))]
     MinimizeToTrayToggled(bool),
+    /// Settings: Hardware rendering toggled (requires restart)
+    HardwareRenderingToggled(bool),
     /// Tray: Service has closed (Linux: D-Bus connection dropped; Windows: tray receiver died)
     #[cfg(not(target_os = "macos"))]
     TrayServiceClosed,

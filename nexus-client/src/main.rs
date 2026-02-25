@@ -216,6 +216,12 @@ pub fn main() -> iced::Result {
 
     // Load config early to get saved window position/size
     let config = config::Config::load();
+
+    // Set rendering backend based on config (must be before iced starts)
+    // SAFETY: Called before any threads are spawned (single-threaded at this point)
+    if !config.settings.hardware_rendering {
+        unsafe { std::env::set_var("ICED_BACKEND", "tiny-skia") };
+    }
     let window_size = iced::Size::new(config.settings.window_width, config.settings.window_height);
     let window_position = match (config.settings.window_x, config.settings.window_y) {
         (Some(x), Some(y)) => {
@@ -1070,6 +1076,10 @@ impl NexusApp {
                 self.config.settings.minimize_to_tray = enabled;
                 Task::none()
             }
+            Message::HardwareRenderingToggled(enabled) => {
+                self.config.settings.hardware_rendering = enabled;
+                Task::none()
+            }
             #[cfg(not(target_os = "macos"))]
             Message::TrayServiceClosed => {
                 // Tray service died (Linux: D-Bus connection dropped; Windows: receiver disconnected)
@@ -1383,6 +1393,8 @@ impl NexusApp {
             // System Tray settings
             show_tray_icon: self.config.settings.show_tray_icon,
             minimize_to_tray: self.config.settings.minimize_to_tray,
+            // Rendering
+            hardware_rendering: self.config.settings.hardware_rendering,
         };
 
         let main_view = views::main_layout(config);

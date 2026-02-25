@@ -1045,6 +1045,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = 트레이 아이콘 표시
 settings-minimize-to-tray = 닫는 대신 트레이로 최소화
 
+# Rendering
+settings-hardware-rendering = 하드웨어 렌더링 (재시작 필요)
+
 # Menu items
 tray-show-window = 창 표시
 tray-hide-window = 창 숨기기

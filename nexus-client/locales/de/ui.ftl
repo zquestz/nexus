@@ -1087,6 +1087,9 @@ mic-boost-18db = +18 dB
 settings-show-tray-icon = Taskleistensymbol anzeigen
 settings-minimize-to-tray = In Taskleiste minimieren statt schließen
 
+# Rendering
+settings-hardware-rendering = Hardware-Rendering (Neustart erforderlich)
+
 # Menu items
 tray-show-window = Fenster anzeigen
 tray-hide-window = Fenster ausblenden

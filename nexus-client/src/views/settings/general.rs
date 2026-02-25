@@ -1,7 +1,6 @@
-//! General settings tab (theme, avatar, nickname, tray settings)
+//! General settings tab (theme, avatar, nickname, rendering, tray settings)
 
 use iced::widget::button as btn;
-#[cfg(not(target_os = "macos"))]
 use iced::widget::checkbox;
 use iced::widget::{Column, Id, Space, button, pick_list, row, text_input};
 use iced::{Center, Element, Fill};
@@ -9,16 +8,17 @@ use iced::{Center, Element, Fill};
 use crate::config::theme::all_themes;
 use crate::i18n::t;
 use crate::image::CachedImage;
+#[cfg(not(target_os = "macos"))]
+use crate::style::CHECKBOX_INDENT;
+use crate::style::SPACER_SIZE_SMALL;
 use crate::style::{
     AVATAR_PREVIEW_SIZE, BUTTON_PADDING, ELEMENT_SPACING, INPUT_PADDING, SPACER_SIZE_MEDIUM,
     TEXT_SIZE, shaped_text,
 };
-#[cfg(not(target_os = "macos"))]
-use crate::style::{CHECKBOX_INDENT, SPACER_SIZE_SMALL};
 use crate::types::{InputId, Message};
 use iced::Theme;
 
-/// Build the General tab content (theme, avatar, nickname, tray settings)
+/// Build the General tab content (theme, avatar, nickname, rendering, tray settings)
 pub(super) fn general_tab_content<'a>(
     current_theme: Theme,
     avatar: Option<&'a CachedImage>,
@@ -26,6 +26,7 @@ pub(super) fn general_tab_content<'a>(
     nickname: &'a str,
     show_tray_icon: bool,
     minimize_to_tray: bool,
+    hardware_rendering: bool,
 ) -> Element<'a, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
 
@@ -116,6 +117,15 @@ pub(super) fn general_tab_content<'a>(
         let _ = show_tray_icon;
         let _ = minimize_to_tray;
     }
+
+    // Hardware rendering (requires restart)
+    items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+
+    let hw_rendering_checkbox = checkbox(hardware_rendering)
+        .label(t("settings-hardware-rendering"))
+        .on_toggle(Message::HardwareRenderingToggled)
+        .text_size(TEXT_SIZE);
+    items.push(hw_rendering_checkbox.into());
 
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)
