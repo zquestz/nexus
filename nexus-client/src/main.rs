@@ -27,6 +27,8 @@ mod widgets;
 mod tray;
 
 #[cfg(target_os = "macos")]
+mod macos_nap;
+#[cfg(target_os = "macos")]
 mod macos_url;
 
 use std::sync::Arc;
@@ -457,6 +459,12 @@ impl NexusApp {
             // If tray creation fails on startup, silently continue without it
             // (user can toggle the setting to see the error)
         }
+
+        // Disable App Nap so keepalive timers fire reliably in the background.
+        // Without this, macOS throttles background apps and the 5-minute ping
+        // never fires, causing NAT routers to drop idle connections.
+        #[cfg(target_os = "macos")]
+        macos_nap::disable_app_nap();
 
         // Install macOS URL scheme delegate to receive nexus:// links via Apple Events
         #[cfg(target_os = "macos")]
