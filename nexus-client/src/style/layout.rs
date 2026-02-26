@@ -110,15 +110,6 @@ pub const STANDARD_BORDER_RADIUS: f32 = 2.0;
 /// Context menu border width
 pub const CONTEXT_MENU_BORDER_WIDTH: f32 = 1.0;
 
-/// Context menu shadow opacity
-pub const CONTEXT_MENU_SHADOW_OPACITY: f32 = 0.3;
-
-/// Context menu shadow offset
-pub const CONTEXT_MENU_SHADOW_OFFSET: f32 = 2.0;
-
-/// Context menu shadow blur radius
-pub const CONTEXT_MENU_SHADOW_BLUR: f32 = 8.0;
-
 /// Small padding (general use)
 pub const SMALL_PADDING: f32 = 5.0;
 
@@ -372,15 +363,6 @@ pub const TOAST_BORDER_WIDTH: f32 = 1.0;
 
 /// Toast border radius
 pub const TOAST_BORDER_RADIUS: f32 = 0.0;
-
-/// Toast shadow opacity
-pub const TOAST_SHADOW_OPACITY: f32 = 0.3;
-
-/// Toast shadow offset (x and y)
-pub const TOAST_SHADOW_OFFSET: f32 = 2.0;
-
-/// Toast shadow blur radius
-pub const TOAST_SHADOW_BLUR: f32 = 8.0;
 
 /// Toast auto-dismiss timeout in seconds
 pub const TOAST_TIMEOUT_SECS: u64 = 3;

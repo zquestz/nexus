@@ -7,17 +7,15 @@
 use super::shaping::shaped_text;
 use super::ui;
 use super::{
-    CONTEXT_MENU_BORDER_WIDTH, CONTEXT_MENU_SHADOW_BLUR, CONTEXT_MENU_SHADOW_OFFSET,
-    CONTEXT_MENU_SHADOW_OPACITY, STANDARD_BORDER_RADIUS, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE,
-    TOAST_BORDER_RADIUS, TOAST_BORDER_WIDTH, TOAST_SHADOW_BLUR, TOAST_SHADOW_OFFSET,
-    TOAST_SHADOW_OPACITY,
+    CONTEXT_MENU_BORDER_WIDTH, STANDARD_BORDER_RADIUS, TITLE_ROW_HEIGHT_WITH_ACTION, TITLE_SIZE,
+    TOAST_BORDER_RADIUS, TOAST_BORDER_WIDTH,
 };
 use crate::types::Message;
 use crate::widgets::{MenuButtonStatus, MenuButtonStyle};
 use std::rc::Rc;
 
 use iced::widget::{Container, button, container, rule, text};
-use iced::{Background, Border, Center, Color, Fill, Shadow, Theme, Vector};
+use iced::{Background, Border, Center, Color, Fill, Shadow, Theme};
 
 // ============================================================================
 // Button Styles
@@ -302,11 +300,7 @@ pub fn context_menu_container_style(theme: &Theme) -> container::Style {
             width: CONTEXT_MENU_BORDER_WIDTH,
             radius: STANDARD_BORDER_RADIUS.into(),
         },
-        shadow: iced::Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, CONTEXT_MENU_SHADOW_OPACITY),
-            offset: iced::Vector::new(CONTEXT_MENU_SHADOW_OFFSET, CONTEXT_MENU_SHADOW_OFFSET),
-            blur_radius: CONTEXT_MENU_SHADOW_BLUR,
-        },
+        shadow: iced::Shadow::default(),
         ..Default::default()
     }
 }
@@ -461,11 +455,7 @@ pub fn toast_style(theme: &Theme) -> iced_toasts::Style<'_> {
             width: TOAST_BORDER_WIDTH,
             radius: TOAST_BORDER_RADIUS.into(),
         },
-        shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, TOAST_SHADOW_OPACITY),
-            offset: Vector::new(TOAST_SHADOW_OFFSET, TOAST_SHADOW_OFFSET),
-            blur_radius: TOAST_SHADOW_BLUR,
-        },
+        shadow: Shadow::default(),
         level_to_color: Rc::new(move |level| match level {
             iced_toasts::ToastLevel::Success => Some(palette.success.strong.color),
             iced_toasts::ToastLevel::Warning => Some(palette.danger.strong.color),
