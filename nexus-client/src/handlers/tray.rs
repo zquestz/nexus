@@ -129,11 +129,12 @@ impl NexusApp {
         // Window wasn't hidden to tray, just minimized via OS
         // Restore it with the correct maximized state
         //
-        // Focus chat input if on chat view (same issue as show from tray).
+        // Restore widget focus lost during minimize. Chat view always focuses
+        // ChatInput; panels restore the last focused field (e.g., form input).
         let focus_task = if self.active_panel() == ActivePanel::None {
             operation::focus(Id::from(InputId::ChatInput))
         } else {
-            Task::none()
+            operation::focus(Id::from(self.focused_field))
         };
 
         #[cfg(target_os = "windows")]
@@ -186,12 +187,13 @@ impl NexusApp {
         // On other platforms, just set mode to Windowed.
         //
         // On Windows, restoring from Hidden mode doesn't trigger Iced's internal
-        // widget focus restoration. Without explicitly focusing the chat input,
-        // keystrokes produce error sounds because no widget has focus.
+        // widget focus restoration. Without explicitly focusing a widget,
+        // keystrokes produce error sounds because nothing has focus. Chat view
+        // always focuses ChatInput; panels restore the last focused field.
         let focus_task = if self.active_panel() == ActivePanel::None {
             operation::focus(Id::from(InputId::ChatInput))
         } else {
-            Task::none()
+            operation::focus(Id::from(self.focused_field))
         };
 
         #[cfg(target_os = "windows")]
