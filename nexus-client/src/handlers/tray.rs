@@ -3,10 +3,11 @@
 #![cfg(not(target_os = "macos"))]
 
 use iced::Task;
+use iced::widget::{Id, operation};
 
 use crate::NexusApp;
 use crate::i18n::t;
-use crate::types::{ChatMessage, ChatTab, Message};
+use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
 impl NexusApp {
     /// Handle tray icon click - toggle window visibility
@@ -127,6 +128,14 @@ impl NexusApp {
     ) -> Task<Message> {
         // Window wasn't hidden to tray, just minimized via OS
         // Restore it with the correct maximized state
+        //
+        // Focus chat input if on chat view (same issue as show from tray).
+        let focus_task = if self.active_panel() == ActivePanel::None {
+            operation::focus(Id::from(InputId::ChatInput))
+        } else {
+            Task::none()
+        };
+
         #[cfg(target_os = "windows")]
         {
             if was_maximized {
@@ -134,11 +143,13 @@ impl NexusApp {
                     iced::window::minimize(id, false),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             }
         }
@@ -150,11 +161,13 @@ impl NexusApp {
                     iced::window::minimize(id, false),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             }
         }
@@ -171,6 +184,16 @@ impl NexusApp {
 
         // On Windows, we minimized before hiding, so we need to unminimize.
         // On other platforms, just set mode to Windowed.
+        //
+        // On Windows, restoring from Hidden mode doesn't trigger Iced's internal
+        // widget focus restoration. Without explicitly focusing the chat input,
+        // keystrokes produce error sounds because no widget has focus.
+        let focus_task = if self.active_panel() == ActivePanel::None {
+            operation::focus(Id::from(InputId::ChatInput))
+        } else {
+            Task::none()
+        };
+
         #[cfg(target_os = "windows")]
         {
             if was_maximized {
@@ -179,12 +202,14 @@ impl NexusApp {
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             }
         }
@@ -196,11 +221,13 @@ impl NexusApp {
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             } else {
                 Task::batch([
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::gain_focus(id),
+                    focus_task,
                 ])
             }
         }
