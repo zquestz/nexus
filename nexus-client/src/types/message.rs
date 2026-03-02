@@ -634,10 +634,14 @@ pub enum Message {
         id: iced::window::Id,
         maximized: bool,
     },
-    /// Tray: Deferred widget focus after window show/restore.
+    /// Tray: Deferred window + widget focus after window show/restore.
     /// Runs on the next update cycle so the window is ready to accept focus.
+    /// Winit's `focus_window()` checks cached visibility flags that may not
+    /// yet reflect `set_visible(true)` from the same batch, causing it to
+    /// silently skip `force_window_active()`. Deferring ensures the flags
+    /// are up to date.
     #[cfg(not(target_os = "macos"))]
-    TrayRestoreFocus,
+    TrayRestoreFocus(iced::window::Id),
     /// Settings: Show tray icon toggled
     #[cfg(not(target_os = "macos"))]
     ShowTrayIconToggled(bool),

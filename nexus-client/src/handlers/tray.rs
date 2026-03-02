@@ -11,13 +11,17 @@ use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
 /// Deferred focus restore after window show/restore.
 ///
-/// Widget focus operations don't take effect when issued in the same update
-/// cycle as window mode changes (Hidden → Windowed). On Windows this causes
-/// every keystroke to produce an error sound because no widget has focus.
-/// Emitting a separate message defers the focus to the next update cycle,
-/// after the window is fully visible.
-fn deferred_focus_task() -> Task<Message> {
-    Task::done(Message::TrayRestoreFocus)
+/// Both `gain_focus` (OS-level) and widget focus must be deferred to the next
+/// update cycle. Winit's `focus_window()` on Windows checks cached visibility
+/// flags (`WindowFlags::VISIBLE`) that may not yet reflect `set_visible(true)`
+/// posted via `execute_in_thread` in the same batch. When the flag is stale,
+/// `focus_window()` silently skips `force_window_active()`, leaving the window
+/// without proper foreground focus — causing Windows to beep on every keypress.
+///
+/// By deferring to the next update cycle via `Task::done`, the window thread
+/// has processed the visibility/minimize changes and the flags are up to date.
+fn deferred_focus_task(id: iced::window::Id) -> Task<Message> {
+    Task::done(Message::TrayRestoreFocus(id))
 }
 
 impl NexusApp {
@@ -132,51 +136,29 @@ impl NexusApp {
     }
 
     /// Restore a minimized window (not tray-hidden, just OS-minimized)
+    ///
+    /// `gain_focus` is deferred to the next update cycle via `TrayRestoreFocus`
+    /// so that winit's cached window flags reflect the actual window state.
     pub fn handle_tray_restore_minimized(
         &mut self,
         id: iced::window::Id,
         was_maximized: bool,
     ) -> Task<Message> {
-        // Window wasn't hidden to tray, just minimized via OS
-        // Restore it with the correct maximized state
-        #[cfg(target_os = "windows")]
-        {
-            if was_maximized {
-                Task::batch([
-                    iced::window::minimize(id, false),
-                    iced::window::maximize(id, true),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
-                ])
-            } else {
-                Task::batch([
-                    iced::window::minimize(id, false),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
-                ])
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            if was_maximized {
-                Task::batch([
-                    iced::window::minimize(id, false),
-                    iced::window::maximize(id, true),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
-                ])
-            } else {
-                Task::batch([
-                    iced::window::minimize(id, false),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
-                ])
-            }
+        if was_maximized {
+            Task::batch([
+                iced::window::minimize(id, false),
+                iced::window::maximize(id, true),
+                deferred_focus_task(id),
+            ])
+        } else {
+            Task::batch([iced::window::minimize(id, false), deferred_focus_task(id)])
         }
     }
 
     /// Show the window from tray (restores maximized state if needed)
+    ///
+    /// `gain_focus` is deferred to the next update cycle via `TrayRestoreFocus`
+    /// so that winit's cached window flags reflect the actual window state.
     pub fn handle_tray_show_window(&mut self, id: iced::window::Id) -> Task<Message> {
         self.window_visible = true;
         let was_maximized = self.window_was_maximized;
@@ -187,7 +169,6 @@ impl NexusApp {
 
         // On Windows, we minimized before hiding, so we need to unminimize.
         // On other platforms, just set mode to Windowed.
-        // Widget focus is deferred to the next update cycle via TrayRestoreFocus.
         #[cfg(target_os = "windows")]
         {
             if was_maximized {
@@ -195,15 +176,13 @@ impl NexusApp {
                     iced::window::minimize(id, false),
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
+                    deferred_focus_task(id),
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
+                    deferred_focus_task(id),
                 ])
             }
         }
@@ -214,14 +193,12 @@ impl NexusApp {
                 Task::batch([
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
+                    deferred_focus_task(id),
                 ])
             } else {
                 Task::batch([
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
-                    iced::window::gain_focus(id),
-                    deferred_focus_task(),
+                    deferred_focus_task(id),
                 ])
             }
         }
@@ -277,13 +254,18 @@ impl NexusApp {
 
     /// Handle deferred focus restore after window show/restore.
     ///
-    /// Chat view focuses ChatInput; panels restore the last focused field.
-    pub fn handle_tray_restore_focus(&mut self) -> Task<Message> {
-        if self.active_panel() == ActivePanel::None {
+    /// This runs on the next update cycle after window mode changes, ensuring
+    /// winit's cached flags are up to date. First applies OS-level window focus
+    /// via `gain_focus`, then focuses the appropriate widget (ChatInput for chat
+    /// view, last focused field for panels).
+    pub fn handle_tray_restore_focus(&mut self, id: iced::window::Id) -> Task<Message> {
+        let widget_focus = if self.active_panel() == ActivePanel::None {
             operation::focus(Id::from(InputId::ChatInput))
         } else {
             operation::focus(Id::from(self.focused_field))
-        }
+        };
+
+        Task::batch([iced::window::gain_focus(id), widget_focus])
     }
 
     /// Get the current voice target (channel name or user nickname)
@@ -356,13 +338,13 @@ impl NexusApp {
                                 iced::window::minimize(id, false),
                                 iced::window::set_mode(id, iced::window::Mode::Windowed),
                                 iced::window::maximize(id, true),
-                                iced::window::gain_focus(id),
+                                deferred_focus_task(id),
                             ])
                         } else {
                             Task::batch([
                                 iced::window::minimize(id, false),
                                 iced::window::set_mode(id, iced::window::Mode::Windowed),
-                                iced::window::gain_focus(id),
+                                deferred_focus_task(id),
                             ])
                         }
                     }
@@ -373,12 +355,12 @@ impl NexusApp {
                             Task::batch([
                                 iced::window::set_mode(id, iced::window::Mode::Windowed),
                                 iced::window::maximize(id, true),
-                                iced::window::gain_focus(id),
+                                deferred_focus_task(id),
                             ])
                         } else {
                             Task::batch([
                                 iced::window::set_mode(id, iced::window::Mode::Windowed),
-                                iced::window::gain_focus(id),
+                                deferred_focus_task(id),
                             ])
                         }
                     }
