@@ -1,6 +1,6 @@
 [package]
 name = "nexus-common"
-version = "0.5.41"
+version = "0.5.42"
 edition = "2024"
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]
