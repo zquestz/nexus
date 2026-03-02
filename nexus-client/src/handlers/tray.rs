@@ -2,6 +2,8 @@
 
 #![cfg(not(target_os = "macos"))]
 
+use std::time::Duration;
+
 use iced::Task;
 use iced::widget::{Id, operation};
 
@@ -9,19 +11,24 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
-/// Deferred focus restore after window show/restore.
+/// Delay before restoring focus after window show/restore.
 ///
-/// Both `gain_focus` (OS-level) and widget focus must be deferred to the next
-/// update cycle. Winit's `focus_window()` on Windows checks cached visibility
-/// flags (`WindowFlags::VISIBLE`) that may not yet reflect `set_visible(true)`
+/// Winit's `focus_window()` on Windows checks cached visibility flags
+/// (`WindowFlags::VISIBLE`) that may not yet reflect `set_visible(true)`
 /// posted via `execute_in_thread` in the same batch. When the flag is stale,
 /// `focus_window()` silently skips `force_window_active()`, leaving the window
 /// without proper foreground focus — causing Windows to beep on every keypress.
 ///
-/// By deferring to the next update cycle via `Task::done`, the window thread
-/// has processed the visibility/minimize changes and the flags are up to date.
+/// A short timer gives the window thread time to process the queued
+/// visibility/minimize changes before we attempt to claim focus.
+const DEFERRED_FOCUS_DELAY: Duration = Duration::from_millis(100);
+
+/// Deferred focus restore after window show/restore.
 fn deferred_focus_task(id: iced::window::Id) -> Task<Message> {
-    Task::done(Message::TrayRestoreFocus(id))
+    Task::future(async move {
+        tokio::time::sleep(DEFERRED_FOCUS_DELAY).await;
+        Message::TrayRestoreFocus(id)
+    })
 }
 
 impl NexusApp {
