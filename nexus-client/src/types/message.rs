@@ -634,6 +634,10 @@ pub enum Message {
         id: iced::window::Id,
         maximized: bool,
     },
+    /// Tray: Deferred widget focus after window show/restore.
+    /// Runs on the next update cycle so the window is ready to accept focus.
+    #[cfg(not(target_os = "macos"))]
+    TrayRestoreFocus,
     /// Settings: Show tray icon toggled
     #[cfg(not(target_os = "macos"))]
     ShowTrayIconToggled(bool),

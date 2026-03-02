@@ -1075,6 +1075,8 @@ impl NexusApp {
                 self.handle_tray_restore_minimized(id, maximized)
             }
             #[cfg(not(target_os = "macos"))]
+            Message::TrayRestoreFocus => self.handle_tray_restore_focus(),
+            #[cfg(not(target_os = "macos"))]
             Message::ShowTrayIconToggled(enabled) => {
                 self.config.settings.show_tray_icon = enabled;
                 self.update_tray_from_settings()

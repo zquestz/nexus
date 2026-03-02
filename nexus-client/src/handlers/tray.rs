@@ -9,6 +9,17 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
+/// Deferred focus restore after window show/restore.
+///
+/// Widget focus operations don't take effect when issued in the same update
+/// cycle as window mode changes (Hidden → Windowed). On Windows this causes
+/// every keystroke to produce an error sound because no widget has focus.
+/// Emitting a separate message defers the focus to the next update cycle,
+/// after the window is fully visible.
+fn deferred_focus_task() -> Task<Message> {
+    Task::done(Message::TrayRestoreFocus)
+}
+
 impl NexusApp {
     /// Handle tray icon click - toggle window visibility
     pub fn handle_tray_icon_clicked(&mut self) -> Task<Message> {
@@ -128,15 +139,6 @@ impl NexusApp {
     ) -> Task<Message> {
         // Window wasn't hidden to tray, just minimized via OS
         // Restore it with the correct maximized state
-        //
-        // Restore widget focus lost during minimize. Chat view always focuses
-        // ChatInput; panels restore the last focused field (e.g., form input).
-        let focus_task = if self.active_panel() == ActivePanel::None {
-            operation::focus(Id::from(InputId::ChatInput))
-        } else {
-            operation::focus(Id::from(self.focused_field))
-        };
-
         #[cfg(target_os = "windows")]
         {
             if was_maximized {
@@ -144,13 +146,13 @@ impl NexusApp {
                     iced::window::minimize(id, false),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             }
         }
@@ -162,13 +164,13 @@ impl NexusApp {
                     iced::window::minimize(id, false),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             }
         }
@@ -185,17 +187,7 @@ impl NexusApp {
 
         // On Windows, we minimized before hiding, so we need to unminimize.
         // On other platforms, just set mode to Windowed.
-        //
-        // On Windows, restoring from Hidden mode doesn't trigger Iced's internal
-        // widget focus restoration. Without explicitly focusing a widget,
-        // keystrokes produce error sounds because nothing has focus. Chat view
-        // always focuses ChatInput; panels restore the last focused field.
-        let focus_task = if self.active_panel() == ActivePanel::None {
-            operation::focus(Id::from(InputId::ChatInput))
-        } else {
-            operation::focus(Id::from(self.focused_field))
-        };
-
+        // Widget focus is deferred to the next update cycle via TrayRestoreFocus.
         #[cfg(target_os = "windows")]
         {
             if was_maximized {
@@ -204,14 +196,14 @@ impl NexusApp {
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             } else {
                 Task::batch([
                     iced::window::minimize(id, false),
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             }
         }
@@ -223,13 +215,13 @@ impl NexusApp {
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::maximize(id, true),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             } else {
                 Task::batch([
                     iced::window::set_mode(id, iced::window::Mode::Windowed),
                     iced::window::gain_focus(id),
-                    focus_task,
+                    deferred_focus_task(),
                 ])
             }
         }
@@ -280,6 +272,17 @@ impl NexusApp {
             if in_voice {
                 tray.set_deafened(is_deafened);
             }
+        }
+    }
+
+    /// Handle deferred focus restore after window show/restore.
+    ///
+    /// Chat view focuses ChatInput; panels restore the last focused field.
+    pub fn handle_tray_restore_focus(&mut self) -> Task<Message> {
+        if self.active_panel() == ActivePanel::None {
+            operation::focus(Id::from(InputId::ChatInput))
+        } else {
+            operation::focus(Id::from(self.focused_field))
         }
     }
 
