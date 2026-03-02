@@ -32,7 +32,8 @@ pub use operations::{
 };
 pub use path::{
     FileError, allows_upload, build_and_validate_candidate_path, build_candidate_path,
-    normalize_client_path, resolve_new_path, resolve_path, validate_and_build_candidate_path,
+    is_hidden_name, normalize_client_path, resolve_new_path, resolve_path,
+    validate_and_build_candidate_path,
 };
 
 /// Get the default file root path for the platform

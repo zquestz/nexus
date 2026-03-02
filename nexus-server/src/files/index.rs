@@ -35,6 +35,8 @@ use walkdir::WalkDir;
 use nexus_common::protocol::FileSearchResult;
 use nexus_common::validators::extract_search_terms;
 
+use super::path::is_hidden_name;
+
 /// Maximum number of search results to return
 pub const MAX_SEARCH_RESULTS: usize = 100;
 
@@ -154,11 +156,17 @@ impl FileIndex {
 
         let mut count = 0;
 
-        // Walk the file area
+        // Walk the file area, skipping hidden entries and their subtrees
+        // Hidden: dotfiles (.), NAS metadata (@eaDir, @tmp), NAS recycle (#recycle)
         for entry in WalkDir::new(&self.file_root)
             .min_depth(1) // Skip the root itself
             .follow_links(true) // Follow symlinks (admin-trusted)
             .into_iter()
+            .filter_entry(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_none_or(|name| !is_hidden_name(name))
+            })
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
@@ -728,6 +736,46 @@ mod tests {
         // All 2-char terms - literal mode "ab cd"
         let results = index.search("ab cd", None).unwrap();
         assert!(results.is_empty()); // no file contains literal "ab cd"
+    }
+
+    #[test]
+    fn test_build_index_skips_hidden_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let file_root = temp_dir.path().join("files");
+
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(file_root.join("shared")).unwrap();
+
+        // Create visible files
+        fs::write(file_root.join("shared/visible.txt"), "content").unwrap();
+
+        // Create hidden entries that should be skipped
+        fs::create_dir_all(file_root.join("shared/@eaDir")).unwrap();
+        fs::write(file_root.join("shared/@eaDir/metadata.db"), "meta").unwrap();
+        fs::create_dir_all(file_root.join("shared/#recycle")).unwrap();
+        fs::write(file_root.join("shared/#recycle/deleted.txt"), "trash").unwrap();
+        fs::write(file_root.join("shared/.hidden"), "secret").unwrap();
+
+        let index = FileIndex::new(&data_dir, &file_root);
+        let count = index.build_index().unwrap();
+
+        // Should only have: shared, shared/visible.txt
+        assert_eq!(count, 2);
+
+        // Search should not find hidden entries
+        let results = index.search("metadata", None).unwrap();
+        assert_eq!(results.len(), 0);
+
+        let results = index.search("deleted", None).unwrap();
+        assert_eq!(results.len(), 0);
+
+        let results = index.search("hidden", None).unwrap();
+        assert_eq!(results.len(), 0);
+
+        // But should find visible files
+        let results = index.search("visible", None).unwrap();
+        assert_eq!(results.len(), 1);
     }
 
     #[test]

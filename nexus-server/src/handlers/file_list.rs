@@ -17,8 +17,8 @@ use super::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    FolderType, allows_upload, build_and_validate_candidate_path, parse_folder_type, resolve_path,
-    resolve_user_area,
+    FolderType, allows_upload, build_and_validate_candidate_path, is_hidden_name,
+    parse_folder_type, resolve_path, resolve_user_area,
 };
 
 /// Read directory entries synchronously (called from spawn_blocking)
@@ -49,8 +49,9 @@ fn read_directory_entries(
             continue; // Skip non-UTF8 filenames
         };
 
-        // Skip hidden files (dotfiles) unless show_hidden is true
-        if !show_hidden && name_str.starts_with('.') {
+        // Skip hidden files unless show_hidden is true
+        // Hidden: dotfiles (.), NAS metadata (@eaDir, @tmp), NAS recycle (#recycle)
+        if !show_hidden && is_hidden_name(name_str) {
             continue;
         }
 
@@ -1311,9 +1312,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a dotfile in shared/
+        // Create hidden entries in shared/
         fs::write(file_area.path().join("shared/.hidden"), "secret")
             .expect("Failed to create dotfile");
+        fs::create_dir(file_area.path().join("shared/@eaDir")).expect("Failed to create @eaDir");
+        fs::create_dir(file_area.path().join("shared/#recycle"))
+            .expect("Failed to create #recycle");
         fs::write(file_area.path().join("shared/visible.txt"), "hello")
             .expect("Failed to create file");
 
@@ -1344,7 +1348,7 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see visible.txt but not .hidden
+                // Should see visible.txt but not hidden entries
                 assert!(
                     entries.iter().any(|e| e.name == "visible.txt"),
                     "Should see visible.txt"
@@ -1352,6 +1356,14 @@ mod tests {
                 assert!(
                     !entries.iter().any(|e| e.name == ".hidden"),
                     "Should not see .hidden"
+                );
+                assert!(
+                    !entries.iter().any(|e| e.name == "@eaDir"),
+                    "Should not see @eaDir"
+                );
+                assert!(
+                    !entries.iter().any(|e| e.name == "#recycle"),
+                    "Should not see #recycle"
                 );
             }
             _ => panic!("Expected FileListResponse"),
@@ -1363,9 +1375,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a dotfile in shared/
+        // Create hidden entries in shared/
         fs::write(file_area.path().join("shared/.hidden"), "secret")
             .expect("Failed to create dotfile");
+        fs::create_dir(file_area.path().join("shared/@eaDir")).expect("Failed to create @eaDir");
+        fs::create_dir(file_area.path().join("shared/#recycle"))
+            .expect("Failed to create #recycle");
         fs::write(file_area.path().join("shared/visible.txt"), "hello")
             .expect("Failed to create file");
 
@@ -1404,6 +1419,14 @@ mod tests {
                 assert!(
                     entries.iter().any(|e| e.name == ".hidden"),
                     "Should see .hidden when show_hidden is true"
+                );
+                assert!(
+                    entries.iter().any(|e| e.name == "@eaDir"),
+                    "Should see @eaDir when show_hidden is true"
+                );
+                assert!(
+                    entries.iter().any(|e| e.name == "#recycle"),
+                    "Should see #recycle when show_hidden is true"
                 );
             }
             _ => panic!("Expected FileListResponse"),

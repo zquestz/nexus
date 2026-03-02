@@ -660,6 +660,19 @@ pub fn normalize_client_path(path: &str) -> String {
         .join("/")
 }
 
+/// Check if a filename should be treated as hidden
+///
+/// Hidden files are filtered from directory listings and the search index
+/// unless the user explicitly requests them via `show_hidden`.
+///
+/// Prefixes treated as hidden:
+/// - `.` — Unix dotfiles (e.g., `.DS_Store`, `.gitignore`)
+/// - `@` — NAS metadata (e.g., Synology `@eaDir`, `@tmp`, `@sharebin`)
+/// - `#` — NAS metadata (e.g., Synology `#recycle`, `#snapshot`)
+pub fn is_hidden_name(name: &str) -> bool {
+    name.starts_with('.') || name.starts_with('@') || name.starts_with('#')
+}
+
 /// Check if a path allows file uploads
 ///
 /// Uploads are allowed if the path is within a folder that has:
@@ -1486,5 +1499,35 @@ mod tests {
     #[test]
     fn test_normalize_client_path_complex() {
         assert_eq!(normalize_client_path("./foo//bar\\.\\baz/"), "foo/bar/baz");
+    }
+
+    #[test]
+    fn test_is_hidden_name_dotfiles() {
+        assert!(is_hidden_name(".DS_Store"));
+        assert!(is_hidden_name(".gitignore"));
+        assert!(is_hidden_name(".hidden"));
+    }
+
+    #[test]
+    fn test_is_hidden_name_nas_at_prefix() {
+        assert!(is_hidden_name("@eaDir"));
+        assert!(is_hidden_name("@tmp"));
+        assert!(is_hidden_name("@sharebin"));
+        assert!(is_hidden_name("@SynoResource"));
+    }
+
+    #[test]
+    fn test_is_hidden_name_nas_hash_prefix() {
+        assert!(is_hidden_name("#recycle"));
+        assert!(is_hidden_name("#snapshot"));
+    }
+
+    #[test]
+    fn test_is_hidden_name_normal_files() {
+        assert!(!is_hidden_name("README.md"));
+        assert!(!is_hidden_name("photo.jpg"));
+        assert!(!is_hidden_name("Documents"));
+        assert!(!is_hidden_name("my file.txt"));
+        assert!(!is_hidden_name("Uploads [NEXUS-UL]"));
     }
 }
