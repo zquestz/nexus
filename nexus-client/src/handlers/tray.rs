@@ -13,14 +13,12 @@ use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
 /// Delay before restoring focus after window show/restore.
 ///
-/// Winit's `focus_window()` on Windows checks cached visibility flags
-/// (`WindowFlags::VISIBLE`) that may not yet reflect `set_visible(true)`
-/// posted via `execute_in_thread` in the same batch. When the flag is stale,
-/// `focus_window()` silently skips `force_window_active()`, leaving the window
-/// without proper foreground focus — causing Windows to beep on every keypress.
-///
-/// A short timer gives the window thread time to process the queued
-/// visibility/minimize changes before we attempt to claim focus.
+/// Winit processes `set_visible(true)` and `set_minimized(false)` via
+/// `execute_in_thread`, queuing them on the window thread. A short timer
+/// ensures those queued `ShowWindow` calls have been processed before we
+/// attempt to claim keyboard focus — otherwise the window may not yet be
+/// in a visible, non-minimized state when `SetFocus` (Windows) or
+/// `gain_focus` (Linux) runs.
 const DEFERRED_FOCUS_DELAY: Duration = Duration::from_millis(100);
 
 /// Deferred focus restore after window show/restore.
@@ -305,18 +303,55 @@ impl NexusApp {
     /// Handle deferred focus restore after window show/restore.
     ///
     /// This runs on the next update cycle after window mode changes, ensuring
-    /// winit's cached flags are up to date. First applies OS-level window focus
-    /// via `gain_focus`, then focuses the appropriate widget (ChatInput for chat
-    /// view, last focused field for panels).
+    /// winit's cached flags are up to date. First applies OS-level window focus,
+    /// then focuses the appropriate widget (ChatInput for chat view, last focused
+    /// field for panels).
+    ///
+    /// On Windows, we call `SetFocus(hwnd)` via raw FFI instead of using iced's
+    /// `gain_focus` (which calls `SetForegroundWindow`). This is necessary because
+    /// winit's `apply_diff()` calls `SetWindowPos` with `SWP_NOACTIVATE` after
+    /// `ShowWindow(SW_SHOW)`, which can break the keyboard input chain. When this
+    /// happens, `WM_CHAR` messages fall through to `DefWindowProcW` which produces
+    /// the system error beep on every keypress.
+    ///
+    /// `SetFocus` directly sends `WM_SETFOCUS` to the window, which resets winit's
+    /// keyboard state machine via `gain_active_focus()`. The callback from
+    /// `iced::window::run` executes on the window-owning thread, satisfying
+    /// `SetFocus`'s thread affinity requirement.
     pub fn handle_tray_restore_focus(&mut self, id: iced::window::Id) -> Task<Message> {
-        eprintln!("DEBUG: tray_restore_focus called, id={id:?}");
         let widget_focus = if self.active_panel() == ActivePanel::None {
             operation::focus(Id::from(InputId::ChatInput))
         } else {
             operation::focus(Id::from(self.focused_field))
         };
 
-        Task::batch([iced::window::gain_focus(id), widget_focus])
+        // On Windows, gain_focus brings the window to the foreground via
+        // SetForegroundWindow, then SetFocus resets the keyboard input chain
+        // by directly sending WM_SETFOCUS (fixing the beep-on-keypress bug).
+        // gain_focus is fire-and-forget so batch ordering is sufficient —
+        // iced processes actions from a batch in order.
+        #[cfg(target_os = "windows")]
+        let os_focus = Task::batch([
+            iced::window::gain_focus(id),
+            iced::window::run(id, |window| {
+                if let Ok(handle) = window.window_handle() {
+                    let raw = handle.as_raw();
+                    if let iced::window::raw_window_handle::RawWindowHandle::Win32(w) = raw {
+                        let hwnd = w.hwnd.get();
+                        unsafe extern "system" {
+                            safe fn SetFocus(hWnd: isize) -> isize;
+                        }
+                        SetFocus(hwnd);
+                    }
+                }
+            })
+            .discard(),
+        ]);
+
+        #[cfg(not(target_os = "windows"))]
+        let os_focus = iced::window::gain_focus(id);
+
+        Task::batch([os_focus, widget_focus])
     }
 
     /// Get the current voice target (channel name or user nickname)
