@@ -54,6 +54,29 @@ impl NexusApp {
 
     /// Handle quit menu item - proper application shutdown
     pub fn handle_tray_quit(&mut self) -> Task<Message> {
+        // When the window is hidden to tray, querying position returns the
+        // Windows minimized parking coordinates (-32000, -32000). Use the
+        // last-known good values from config instead.
+        if !self.window_visible {
+            let width = self.config.settings.window_width;
+            let height = self.config.settings.window_height;
+            let x = self.config.settings.window_x;
+            let y = self.config.settings.window_y;
+            return iced::window::oldest().then(move |opt_id| {
+                if let Some(id) = opt_id {
+                    Task::done(Message::WindowSaveAndClose {
+                        id,
+                        width,
+                        height,
+                        x,
+                        y,
+                    })
+                } else {
+                    Task::none()
+                }
+            });
+        }
+
         // Get the oldest window and trigger a close that bypasses minimize-to-tray
         iced::window::oldest().then(|opt_id| {
             if let Some(id) = opt_id {
@@ -89,11 +112,20 @@ impl NexusApp {
                             })
                         } else {
                             // Window is visible and not minimized - hide it
-                            iced::window::is_maximized(id).map(move |maximized| {
-                                Message::TrayHideWindow {
-                                    id,
-                                    was_maximized: maximized,
-                                }
+                            // Query size, position, and maximized state before hiding
+                            iced::window::size(id).then(move |size| {
+                                iced::window::position(id).then(move |point| {
+                                    iced::window::is_maximized(id).map(move |maximized| {
+                                        Message::TrayHideWindow {
+                                            id,
+                                            was_maximized: maximized,
+                                            width: size.width,
+                                            height: size.height,
+                                            x: point.map(|p| p.x as i32),
+                                            y: point.map(|p| p.y as i32),
+                                        }
+                                    })
+                                })
                             })
                         }
                     })
@@ -113,14 +145,25 @@ impl NexusApp {
         }
     }
 
-    /// Hide the window to tray (called after querying maximized state)
+    /// Hide the window to tray (called after querying size, position, and maximized state)
     pub fn handle_tray_hide_window(
         &mut self,
         id: iced::window::Id,
         was_maximized: bool,
+        width: f32,
+        height: f32,
+        x: Option<i32>,
+        y: Option<i32>,
     ) -> Task<Message> {
         self.window_visible = false;
         self.window_was_maximized = was_maximized;
+
+        // Save window geometry so tray quit uses the last-known good position
+        // instead of the Windows minimized parking coordinates (-32000, -32000).
+        self.config.settings.window_width = width;
+        self.config.settings.window_height = height;
+        self.config.settings.window_x = x;
+        self.config.settings.window_y = y;
 
         if let Some(ref mut tray) = self.tray_manager {
             tray.set_window_visible(false);

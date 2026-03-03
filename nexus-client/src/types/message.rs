@@ -619,11 +619,15 @@ pub enum Message {
     /// Tray: Quit menu item selected
     #[cfg(not(target_os = "macos"))]
     TrayMenuQuit,
-    /// Tray: Hide window (internal, carries maximized state to remember)
+    /// Tray: Hide window (internal, carries window geometry and maximized state)
     #[cfg(not(target_os = "macos"))]
     TrayHideWindow {
         id: iced::window::Id,
         was_maximized: bool,
+        width: f32,
+        height: f32,
+        x: Option<i32>,
+        y: Option<i32>,
     },
     /// Tray: Show window (internal, restores maximized state if needed)
     #[cfg(not(target_os = "macos"))]

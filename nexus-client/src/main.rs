@@ -505,12 +505,20 @@ impl NexusApp {
                     && self.config.settings.show_tray_icon
                     && self.tray_manager.is_some()
                 {
-                    // Query maximized state, then hide window
-                    return iced::window::is_maximized(id).map(move |maximized| {
-                        Message::TrayHideWindow {
-                            id,
-                            was_maximized: maximized,
-                        }
+                    // Query size, position, and maximized state before hiding
+                    return iced::window::size(id).then(move |size| {
+                        iced::window::position(id).then(move |point| {
+                            iced::window::is_maximized(id).map(move |maximized| {
+                                Message::TrayHideWindow {
+                                    id,
+                                    was_maximized: maximized,
+                                    width: size.width,
+                                    height: size.height,
+                                    x: point.map(|p| p.x as i32),
+                                    y: point.map(|p| p.y as i32),
+                                }
+                            })
+                        })
                     });
                 }
 
@@ -1065,9 +1073,14 @@ impl NexusApp {
             #[cfg(not(target_os = "macos"))]
             Message::TrayMenuQuit => self.handle_tray_quit(),
             #[cfg(not(target_os = "macos"))]
-            Message::TrayHideWindow { id, was_maximized } => {
-                self.handle_tray_hide_window(id, was_maximized)
-            }
+            Message::TrayHideWindow {
+                id,
+                was_maximized,
+                width,
+                height,
+                x,
+                y,
+            } => self.handle_tray_hide_window(id, was_maximized, width, height, x, y),
             #[cfg(not(target_os = "macos"))]
             Message::TrayShowWindow(id) => self.handle_tray_show_window(id),
             #[cfg(not(target_os = "macos"))]
