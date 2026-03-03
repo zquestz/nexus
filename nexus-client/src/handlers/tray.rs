@@ -309,6 +309,7 @@ impl NexusApp {
     /// via `gain_focus`, then focuses the appropriate widget (ChatInput for chat
     /// view, last focused field for panels).
     pub fn handle_tray_restore_focus(&mut self, id: iced::window::Id) -> Task<Message> {
+        eprintln!("DEBUG: tray_restore_focus called, id={id:?}");
         let widget_focus = if self.active_panel() == ActivePanel::None {
             operation::focus(Id::from(InputId::ChatInput))
         } else {
