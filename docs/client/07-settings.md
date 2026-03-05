@@ -260,7 +260,7 @@ Supported keys:
 
 - Letters (A-Z)
 - Numbers (0-9)
-- Function keys (F1-F12)
+- Function keys (F1-F24)
 - Special keys (Space, Tab, Backtick, etc.)
 
 **Modifier key combinations** are also supported:

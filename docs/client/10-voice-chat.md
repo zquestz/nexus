@@ -132,7 +132,7 @@ Supported keys include:
 
 - Letter keys (A-Z)
 - Number keys (0-9)
-- Function keys (F1-F12)
+- Function keys (F1-F24)
 - Special keys (Space, Tab, Backtick, etc.)
 
 ### Modifier Key Combinations

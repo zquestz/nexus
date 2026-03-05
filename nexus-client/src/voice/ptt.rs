@@ -454,6 +454,18 @@ pub fn parse_key_code(key: &str) -> Result<Code, String> {
         "f10" => Code::F10,
         "f11" => Code::F11,
         "f12" => Code::F12,
+        "f13" => Code::F13,
+        "f14" => Code::F14,
+        "f15" => Code::F15,
+        "f16" => Code::F16,
+        "f17" => Code::F17,
+        "f18" => Code::F18,
+        "f19" => Code::F19,
+        "f20" => Code::F20,
+        "f21" => Code::F21,
+        "f22" => Code::F22,
+        "f23" => Code::F23,
+        "f24" => Code::F24,
 
         // Number keys
         "0" | "digit0" => Code::Digit0,
@@ -567,6 +579,18 @@ fn code_to_string_internal(code: Code) -> String {
         Code::F10 => "F10".to_string(),
         Code::F11 => "F11".to_string(),
         Code::F12 => "F12".to_string(),
+        Code::F13 => "F13".to_string(),
+        Code::F14 => "F14".to_string(),
+        Code::F15 => "F15".to_string(),
+        Code::F16 => "F16".to_string(),
+        Code::F17 => "F17".to_string(),
+        Code::F18 => "F18".to_string(),
+        Code::F19 => "F19".to_string(),
+        Code::F20 => "F20".to_string(),
+        Code::F21 => "F21".to_string(),
+        Code::F22 => "F22".to_string(),
+        Code::F23 => "F23".to_string(),
+        Code::F24 => "F24".to_string(),
 
         // Number keys
         Code::Digit0 => "0".to_string(),
@@ -677,6 +701,10 @@ mod tests {
         assert_eq!(parse_key_code("F1").unwrap(), Code::F1);
         assert_eq!(parse_key_code("f1").unwrap(), Code::F1);
         assert_eq!(parse_key_code("F12").unwrap(), Code::F12);
+        assert_eq!(parse_key_code("F13").unwrap(), Code::F13);
+        assert_eq!(parse_key_code("f13").unwrap(), Code::F13);
+        assert_eq!(parse_key_code("F24").unwrap(), Code::F24);
+        assert_eq!(parse_key_code("f24").unwrap(), Code::F24);
     }
 
     #[test]
@@ -713,6 +741,8 @@ mod tests {
         let codes = vec![
             Code::Backquote,
             Code::F1,
+            Code::F13,
+            Code::F24,
             Code::KeyA,
             Code::Digit5,
             Code::Space,
