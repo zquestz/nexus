@@ -126,7 +126,7 @@ This guide covers common issues and their solutions when using the Nexus BBS cli
 **Possible causes:**
 
 - You may not have `chat_send` permission
-- The message may be too long (max 4096 characters)
+- The message may be too long (max 1024 characters)
 - Connection may have been lost
 
 **Solutions:**

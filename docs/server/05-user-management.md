@@ -66,12 +66,16 @@ Permissions control what actions users can perform. Admins have all permissions 
 
 ### Chat Permissions
 
-| Permission        | Allows                |
-| ----------------- | --------------------- |
-| `chat_receive`    | Receive chat messages |
-| `chat_send`       | Send chat messages    |
-| `chat_topic`      | View the chat topic   |
-| `chat_topic_edit` | Change the chat topic |
+| Permission        | Allows                          |
+| ----------------- | ------------------------------- |
+| `chat_receive`    | Receive chat messages           |
+| `chat_send`       | Send chat messages              |
+| `chat_join`       | Join existing channels          |
+| `chat_create`     | Create new channels             |
+| `chat_list`       | List available channels         |
+| `chat_secret`     | Toggle secret mode on channels  |
+| `chat_topic`      | View the chat topic             |
+| `chat_topic_edit` | Change the chat topic           |
 
 ### User Permissions
 
@@ -132,6 +136,15 @@ Permissions control what actions users can perform. Admins have all permissions 
 | `trust_list`   | View trusted IPs               |
 
 **Note:** Trusted IPs bypass the ban list entirely. This enables whitelist-only server configurations by banning all IPs and selectively trusting specific ones.
+
+### Voice Permissions
+
+| Permission     | Allows                                    |
+| -------------- | ----------------------------------------- |
+| `voice_listen` | Join voice chat and receive audio         |
+| `voice_talk`   | Transmit audio in voice chat              |
+
+**Note:** `voice_listen` is required to join a voice session. Without `voice_talk`, users can listen but not speak.
 
 ## Permission Presets
 
@@ -259,13 +272,16 @@ You cannot delete the guest account, only disable it.
 
 Admins can configure server-wide settings through the **Server Info** panel:
 
-| Setting                | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| Server name            | Display name shown to users                  |
-| Description            | Server description                           |
-| Server image           | Logo/icon (max 700KB)                        |
-| Max connections per IP | Limit concurrent connections (default: 5)    |
-| Max transfers per IP   | Limit concurrent file transfers (default: 5) |
+| Setting                | Description                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| Server name            | Display name shown to users                                            |
+| Description            | Server description                                                     |
+| Server image           | Logo/icon (max 700KB)                                                  |
+| Max connections per IP | Limit concurrent connections (default: 5)                              |
+| Max transfers per IP   | Limit concurrent file transfers (default: 5)                           |
+| File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)      |
+| Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`) |
+| Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)       |
 
 ### Connection Limits
 

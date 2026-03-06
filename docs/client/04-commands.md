@@ -41,7 +41,7 @@ Show available commands or get help for a specific command.
 
 Set yourself as away, optionally with a status message. Away users are shown with a 💤 indicator.
 
-**Aliases:** `/a`
+**Aliases:** `/a`, `/afk`
 
 **Permission:** None
 
@@ -433,7 +433,7 @@ Set or clear your status message without changing your away state.
 
 View or set the current channel's topic.
 
-**Aliases:** `/t`
+**Aliases:** `/t`, `/chattopic`
 
 **Permission:** `chat_topic` (view), `chat_topic_edit` (set/clear)
 
@@ -507,7 +507,7 @@ Manage chat tabs (channels and user message conversations).
 
 | Command      | Aliases                     | Permission                       | Description                           |
 | ------------ | --------------------------- | -------------------------------- | ------------------------------------- |
-| `/away`      | `/a`                        | None                             | Set yourself as away                  |
+| `/away`      | `/a`, `/afk`                | None                             | Set yourself as away                  |
 | `/back`      | `/b`                        | None                             | Clear away status                     |
 | `/ban`       | —                           | `ban_create`                     | Ban a user by IP, CIDR, or nickname   |
 | `/bans`      | `/banlist`                  | `ban_list`                       | List active bans                      |
@@ -525,10 +525,10 @@ Manage chat tabs (channels and user message conversations).
 | `/message`   | `/m`, `/msg`                | `user_message`                   | Send a message to a user              |
 | `/ping`      | —                           | None                             | Measure server latency                |
 | `/reindex`   | —                           | `file_reindex`                   | Trigger file index rebuild            |
-| `/secret`    | —                           | `chat_secret`                    | Toggle channel secret mode            |
+| `/secret`    | —                           | None / `chat_secret`             | View or toggle channel secret mode    |
 | `/sinfo`     | `/si`, `/serverinfo`        | None                             | Show server information               |
 | `/status`    | `/s`                        | None                             | Set or clear status message           |
-| `/topic`     | `/t`                        | `chat_topic` / `chat_topic_edit` | View or set channel topic             |
+| `/topic`     | `/t`, `/chattopic`          | `chat_topic` / `chat_topic_edit` | View or set channel topic             |
 | `/trust`     | —                           | `trust_create`                   | Trust a user by IP, CIDR, or nickname |
 | `/trusted`   | `/trustlist`                | `trust_list`                     | List trusted IPs                      |
 | `/unban`     | —                           | `ban_delete`                     | Remove an IP ban                      |
