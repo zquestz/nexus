@@ -48,7 +48,7 @@ Client                                        Server
    │ ───────────────────────────────────────►    │
    │                                             │
    │         ChatMessage { ... }                 │
-   │ ◄──── (broadcast to channel members) ──    │
+   │ ◄──── (broadcast to channel members) ──     │
    │                                             │
 ```
 
@@ -95,7 +95,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         ChatUpdated { ... }                 │
-   │ ◄──── (broadcast to channel members) ──    │
+   │ ◄──── (broadcast to channel members) ──     │
    │                                             │
 ```
 
