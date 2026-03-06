@@ -118,7 +118,7 @@ Send a broadcast message to all connected users. Broadcasts appear prominently t
 
 ```
 /broadcast Server maintenance in 10 minutes
-/b Welcome everyone!
+/bc Welcome everyone!
 ```
 
 ### /channels

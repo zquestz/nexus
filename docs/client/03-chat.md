@@ -332,7 +332,7 @@ If you're logged in from multiple devices:
 | `/leave`                   | Leave current channel      |
 | `/channels`                | List available channels    |
 | `/topic [set text\|clear]` | View or set channel topic  |
-| `/secret [on\|off]`        | Toggle secret mode (admin) |
+| `/secret [on\|off]`        | View or toggle secret mode |
 | `/msg user message`        | Send user message          |
 | `/me action`               | Send action message        |
 | `/clear`                   | Clear current tab history  |

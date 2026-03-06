@@ -210,7 +210,7 @@ For shared and guest accounts:
 | Required   | Cannot be empty                                |
 | Unique     | Must not match any username or active nickname |
 | Length     | 1-32 characters                                |
-| Characters | Alphanumeric and ASCII graphic characters      |
+| Characters | Unicode letters and ASCII graphic characters    |
 | Case       | Case-insensitive uniqueness check              |
 
 ## Avatar Format

@@ -3,7 +3,7 @@
 //! Validates server description strings.
 
 /// Maximum length for server description in bytes
-pub const MAX_SERVER_DESCRIPTION_LENGTH: usize = 256;
+pub const MAX_SERVER_DESCRIPTION_LENGTH: usize = 512;
 
 /// Validation error for server description
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +19,7 @@ pub enum ServerDescriptionError {
 /// Validate a server description
 ///
 /// Checks:
-/// - Does not exceed maximum length (256 characters)
+/// - Does not exceed maximum length (512 characters)
 /// - No control characters (newlines reported separately)
 ///
 /// Note: Empty descriptions are allowed (to clear the description).

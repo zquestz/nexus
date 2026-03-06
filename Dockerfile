@@ -5,7 +5,8 @@
 #
 # Run (without WebSocket):
 #   docker run -d \
-#     -p 7500:7500 \
+#     -p 7500:7500/tcp \
+#     -p 7500:7500/udp \
 #     -p 7501:7501 \
 #     -v nexus-data:/home/nexus/.local/share/nexusd \
 #     --name nexusd \
@@ -13,7 +14,8 @@
 #
 # Run (with WebSocket enabled):
 #   docker run -d \
-#     -p 7500:7500 \
+#     -p 7500:7500/tcp \
+#     -p 7500:7500/udp \
 #     -p 7501:7501 \
 #     -p 7502:7502 \
 #     -p 7503:7503 \

@@ -520,17 +520,17 @@ Users without the `chat` feature:
 
 ## Channel Validation
 
-| Rule          | Value                          | Error                            |
-| ------------- | ------------------------------ | -------------------------------- |
-| Prefix        | Must start with `#`            | Channel name must start with '#' |
-| Min length    | 2 characters (including `#`)   | Channel name too short           |
-| Max length    | 32 characters                  | Channel name too long            |
-| Characters    | Letters, numbers, `-`, `_`     | Invalid characters               |
-| No spaces     | Spaces not allowed             | Invalid characters               |
-| No path chars | `/`, `\`, `:`, `.` not allowed | Invalid characters               |
-| Case          | Case-insensitive matching      | —                                |
+| Rule       | Value                                          | Error                            |
+| ---------- | ---------------------------------------------- | -------------------------------- |
+| Prefix     | Must start with `#`                            | Channel name must start with '#' |
+| Min length | 2 characters (including `#`)                   | Channel name too short           |
+| Max length | 32 characters                                  | Channel name too long            |
+| Characters | Unicode letters and ASCII graphic characters   | Invalid characters               |
+| No spaces  | Spaces not allowed                             | Invalid characters               |
+| No `#`     | Additional `#` characters not allowed          | Invalid characters               |
+| Case       | Case-insensitive matching                      | —                                |
 
-Unicode letters are supported (e.g., `#日本語`, `#Россия`).
+Channel names are more permissive than usernames. After the `#` prefix, most printable characters are allowed including `/`, `\`, `:`, `.`, `?`, `*`, etc. Only spaces and additional `#` characters are forbidden. Unicode letters are fully supported (e.g., `#日本語`, `#Россия`).
 
 ## Message Validation
 

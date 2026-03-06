@@ -275,7 +275,7 @@ The `to_nickname` field uses the same validation as usernames:
 | ----------- | ------------------------------ | ----------------- |
 | Not empty   | Required field                 | Nickname is empty |
 | Max length  | 32 characters                  | Nickname too long |
-| Valid chars | Alphanumeric and ASCII graphic | Invalid nickname  |
+| Valid chars | Unicode letters and ASCII graphic (no spaces, no `/\:.<>"|?*#`) | Invalid nickname  |
 
 ## User Message Routing
 

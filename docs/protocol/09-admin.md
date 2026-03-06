@@ -688,7 +688,7 @@ Users cannot:
 | ---------------- | ------------------------------------------------------- |
 | Min length       | 1 character                                             |
 | Max length       | 32 characters                                           |
-| Valid characters | Alphanumeric and ASCII graphic                          |
+| Valid characters | Unicode letters and ASCII graphic (no spaces, no `/\:.<>"|?*#`) |
 | Case sensitivity | Case-insensitive (stored as entered, matched lowercase) |
 | Reserved         | `guest` cannot be renamed                               |
 
