@@ -161,7 +161,7 @@ pub(super) fn audio_tab_content(data: AudioTabData<'_>) -> Element<'_, Message> 
     let mic_test_label = shaped_text(t("audio-input-level")).size(TEXT_SIZE);
 
     // VU meter for mic level (larger size for settings)
-    let mic_meter = build_vu_meter(data.mic_level, &data.theme, 8.0, 16.0);
+    let mic_meter = build_vu_meter(data.settings_mic_level, &data.theme, 8.0, 16.0);
 
     let mic_test_button = if data.mic_testing {
         button(shaped_text(t("audio-stop-test")).size(TEXT_SIZE))

@@ -52,8 +52,9 @@ pub struct AudioTabData<'a> {
     pub ptt_release_delay: PttReleaseDelay,
     /// Whether microphone test is active
     pub mic_testing: bool,
-    /// Current microphone input level (0.0 - 1.0)
-    pub mic_level: f32,
+    /// Microphone level from settings mic test (0.0 - 1.0)
+    /// Separate from voice bar mic_level so voice PTT doesn't bleed into the settings meter.
+    pub settings_mic_level: f32,
     /// Microphone test error message
     pub mic_error: Option<&'a str>,
     /// Noise suppression level
@@ -130,8 +131,8 @@ pub struct SettingsViewData<'a> {
     pub ptt_release_delay: PttReleaseDelay,
     /// Whether microphone test is active
     pub mic_testing: bool,
-    /// Current microphone input level (0.0 - 1.0)
-    pub mic_level: f32,
+    /// Microphone level from settings mic test (0.0 - 1.0)
+    pub settings_mic_level: f32,
     /// Microphone test error message
     pub mic_error: Option<&'a str>,
     /// Noise suppression level
@@ -233,7 +234,7 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         ptt_mode: data.ptt_mode,
         ptt_release_delay: data.ptt_release_delay,
         mic_testing: data.mic_testing,
-        mic_level: data.mic_level,
+        settings_mic_level: data.settings_mic_level,
         mic_error: data.mic_error,
         noise_suppression_level: data.noise_suppression_level,
         echo_cancellation: data.echo_cancellation,

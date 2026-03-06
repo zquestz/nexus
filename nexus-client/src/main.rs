@@ -1321,16 +1321,24 @@ impl NexusApp {
             .map(|f| (f.ptt_capturing, f.mic_testing, f.mic_error.as_deref()))
             .unwrap_or((false, false, None));
 
-        // Get mic level: prefer voice session atomic (when in voice), fallback to settings form (mic test)
+        // Voice bar mic level: from voice session atomic when transmitting, else from settings mic test
         let mic_level = if self.is_local_speaking {
             // In voice and transmitting - read from shared atomic
             f32::from_bits(self.mic_level.load(std::sync::atomic::Ordering::Relaxed))
         } else if let Some(ref form) = self.settings_form {
-            // Mic testing in settings
+            // Mic testing in settings (only used by voice bar when not in voice)
             form.mic_level
         } else {
             0.0
         };
+
+        // Settings mic test level: always from settings form, never from voice session.
+        // This prevents voice PTT activity from bleeding into the settings VU meter.
+        let settings_mic_level = self
+            .settings_form
+            .as_ref()
+            .map(|f| f.mic_level)
+            .unwrap_or(0.0);
 
         // Get audio device lists from settings form cache (if open) or use empty slices
         // Device lists are only needed when settings panel is open, and are cached there
@@ -1405,6 +1413,7 @@ impl NexusApp {
             ptt_release_delay: self.config.settings.audio.ptt_release_delay,
             mic_testing,
             mic_level,
+            settings_mic_level,
             mic_error,
             noise_suppression_level: self.config.settings.audio.noise_suppression_level,
             echo_cancellation: self.config.settings.audio.echo_cancellation,

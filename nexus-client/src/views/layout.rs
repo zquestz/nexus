@@ -122,8 +122,10 @@ struct ServerContentContext<'a> {
     pub ptt_release_delay: PttReleaseDelay,
     /// Whether microphone test is active
     pub mic_testing: bool,
-    /// Current microphone input level (0.0 - 1.0)
+    /// Current microphone input level (0.0 - 1.0) — used by voice bar
     pub mic_level: f32,
+    /// Microphone level from settings mic test (0.0 - 1.0)
+    pub settings_mic_level: f32,
     /// Error message from microphone test (e.g., device not found)
     pub mic_error: Option<&'a str>,
     /// Noise suppression level
@@ -330,6 +332,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 ptt_release_delay: config.ptt_release_delay,
                 mic_testing: config.mic_testing,
                 mic_level: config.mic_level,
+                settings_mic_level: config.settings_mic_level,
                 mic_error: config.mic_error,
                 noise_suppression_level: config.noise_suppression_level,
                 echo_cancellation: config.echo_cancellation,
@@ -388,7 +391,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         ptt_mode: config.ptt_mode,
                         ptt_release_delay: config.ptt_release_delay,
                         mic_testing: config.mic_testing,
-                        mic_level: config.mic_level,
+                        settings_mic_level: config.settings_mic_level,
                         mic_error: config.mic_error,
                         noise_suppression_level: config.noise_suppression_level,
                         echo_cancellation: config.echo_cancellation,
@@ -887,7 +890,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 ptt_mode: ctx.ptt_mode,
                 ptt_release_delay: ctx.ptt_release_delay,
                 mic_testing: ctx.mic_testing,
-                mic_level: ctx.mic_level,
+                settings_mic_level: ctx.settings_mic_level,
                 mic_error: ctx.mic_error,
                 noise_suppression_level: ctx.noise_suppression_level,
                 echo_cancellation: ctx.echo_cancellation,

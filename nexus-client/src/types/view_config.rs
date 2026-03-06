@@ -158,8 +158,12 @@ pub struct ViewConfig<'a> {
     /// Whether microphone test is active
     pub mic_testing: bool,
 
-    /// Current microphone input level (0.0 - 1.0)
+    /// Current microphone input level (0.0 - 1.0) — used by voice bar
     pub mic_level: f32,
+
+    /// Microphone level from settings mic test (0.0 - 1.0) — used by settings VU meter
+    /// Separate from `mic_level` so voice PTT activity doesn't bleed into the settings meter.
+    pub settings_mic_level: f32,
 
     /// Error message from microphone test (e.g., device not found)
     pub mic_error: Option<&'a str>,
