@@ -178,11 +178,20 @@ Current version: `0.5.48`
 
 ## ServerInfo Fields
 
-The `LoginResponse` includes a `ServerInfo` object with connection details:
+The `LoginResponse` includes a `ServerInfo` object with server metadata and connection details:
 
-| Field                     | Type   | Description                                                      |
-| ------------------------- | ------ | ---------------------------------------------------------------- |
-| `transfer_port`           | `u16`  | TCP file transfer port (typically 7501)                          |
-| `transfer_websocket_port` | `u16?` | WebSocket file transfer port (7503 if enabled, absent otherwise) |
+| Field                      | Type      | Description                                                      |
+| -------------------------- | --------- | ---------------------------------------------------------------- |
+| `name`                     | `string?` | Server display name (null if not set)                            |
+| `description`              | `string?` | Server description (null if not set)                             |
+| `version`                  | `string?` | Server software version (null if not set)                        |
+| `transfer_port`            | `u16`     | TCP file transfer port (typically 7501)                          |
+| `transfer_websocket_port`  | `u16?`    | WebSocket file transfer port (7503 if enabled, absent otherwise) |
+| `max_connections_per_ip`   | `u32?`    | Connection limit per IP (null if not set)                        |
+| `max_transfers_per_ip`     | `u32?`    | Transfer connection limit per IP (null if not set)               |
+| `image`                    | `string?` | Server logo as data URI (null if none)                           |
+| `file_reindex_interval`    | `u32?`    | File reindex interval in minutes, 0 = disabled (null if not set) |
+| `persistent_channels`      | `string?` | Space-separated persistent channels (admin only, null otherwise) |
+| `auto_join_channels`       | `string?` | Space-separated auto-join channels (admin only, null otherwise)  |
 
-Clients should use `transfer_websocket_port` for file transfers when connected via WebSocket, and `transfer_port` when connected via TCP.
+Clients should use `transfer_websocket_port` for file transfers when connected via WebSocket, and `transfer_port` when connected via TCP. The `persistent_channels` and `auto_join_channels` fields are only visible to admin users.

@@ -74,17 +74,17 @@ Sent after successful handshake to authenticate.
 
 Server's response to the login attempt.
 
-| Field         | Type    | Required   | Description                             |
-| ------------- | ------- | ---------- | --------------------------------------- |
-| `success`     | boolean | Yes        | Whether login succeeded                 |
-| `error`       | string  | If failure | Error message                           |
-| `session_id`  | integer | If success | Unique session identifier               |
-| `is_admin`    | boolean | If success | Whether user has admin privileges       |
-| `permissions` | array   | If success | List of permission strings              |
-| `server_info` | object  | If success | Server information (see below)          |
-| `chat_info`   | object  | If success | Chat state (see below)                  |
-| `locale`      | string  | If success | Confirmed locale                        |
-| `nickname`    | string  | If success | Server-confirmed display name (v0.5.2+) |
+| Field         | Type    | Required   | Description                                  |
+| ------------- | ------- | ---------- | -------------------------------------------- |
+| `success`     | boolean | Yes        | Whether login succeeded                      |
+| `error`       | string  | If failure | Error message                                |
+| `session_id`  | integer | If success | Unique session identifier                    |
+| `is_admin`    | boolean | If success | Whether user has admin privileges             |
+| `permissions` | array   | If success | List of permission strings                   |
+| `server_info` | object  | If success | Server information (see below)               |
+| `locale`      | string  | If success | Confirmed locale                             |
+| `channels`    | array   | If success | Channels auto-joined on login (see below)    |
+| `nickname`    | string  | If success | Server-confirmed display name (v0.5.2+)      |
 
 The `nickname` field contains the user's actual display name as confirmed by the server:
 
@@ -117,11 +117,16 @@ The `nickname` field contains the user's actual display name as confirmed by the
     "max_transfers_per_ip": 3,
     "image": null
   },
-  "chat_info": {
-    "topic": "Welcome!",
-    "topic_set_by": "admin"
-  },
   "locale": "en",
+  "channels": [
+    {
+      "channel": "general",
+      "topic": "Welcome!",
+      "topic_set_by": "admin",
+      "secret": false,
+      "members": ["alice", "bob"]
+    }
+  ],
   "nickname": "alice"
 }
 ```
@@ -139,24 +144,32 @@ The `nickname` field contains the user's actual display name as confirmed by the
 
 Included in successful login responses.
 
-| Field                    | Type    | Description                                        |
-| ------------------------ | ------- | -------------------------------------------------- |
-| `name`                   | string  | Server display name (null if not set)              |
-| `description`            | string  | Server description (null if not set)               |
-| `version`                | string  | Server software version (null if not set)          |
-| `transfer_port`          | integer | Port for file transfers (required)                 |
-| `max_connections_per_ip` | integer | Connection limit per IP (null if not set)          |
-| `max_transfers_per_ip`   | integer | Transfer connection limit per IP (null if not set) |
-| `image`                  | string  | Server logo as data URI (null if none)             |
+| Field                      | Type    | Description                                                |
+| -------------------------- | ------- | ---------------------------------------------------------- |
+| `name`                     | string  | Server display name (null if not set)                      |
+| `description`              | string  | Server description (null if not set)                       |
+| `version`                  | string  | Server software version (null if not set)                  |
+| `transfer_port`            | integer | Port for file transfers (required)                         |
+| `transfer_websocket_port`  | integer | Port for WebSocket file transfers (null if not enabled)    |
+| `max_connections_per_ip`   | integer | Connection limit per IP (null if not set)                  |
+| `max_transfers_per_ip`     | integer | Transfer connection limit per IP (null if not set)         |
+| `image`                    | string  | Server logo as data URI (null if none)                     |
+| `file_reindex_interval`    | integer | File reindex interval in minutes, 0 = disabled (null if not set) |
+| `persistent_channels`      | string  | Space-separated persistent channels (admin only, null otherwise)  |
+| `auto_join_channels`       | string  | Space-separated auto-join channels (admin only, null otherwise)   |
 
-## Chat Info Object
+## Channel Join Info Object
 
-Provides current chat state.
+Describes a channel the user was auto-joined to on login.
 
-| Field          | Type   | Description                                |
-| -------------- | ------ | ------------------------------------------ |
-| `topic`        | string | Current chat topic (empty if none)         |
-| `topic_set_by` | string | Username who set the topic (empty if none) |
+| Field          | Type    | Description                                                          |
+| -------------- | ------- | -------------------------------------------------------------------- |
+| `channel`      | string  | Channel name                                                         |
+| `topic`        | string  | Current channel topic (null if none)                                 |
+| `topic_set_by` | string  | Nickname who set the topic (null if none)                            |
+| `secret`       | boolean | Whether the channel is secret                                        |
+| `members`      | array   | List of nicknames currently in the channel                           |
+| `voiced`       | array   | Nicknames in voice chat (null if user lacks `voice_listen` permission) |
 
 ## Account Types
 
@@ -278,7 +291,7 @@ The login flow on port 7501 is identical, but `LoginResponse` only includes:
 - `success`
 - `error` (if failed)
 
-No session ID, permissions, server info, or chat info is returned on the transfer port.
+No session ID, permissions, server info, channels, or nickname is returned on the transfer port.
 
 ## Notes
 

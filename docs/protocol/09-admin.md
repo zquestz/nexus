@@ -397,13 +397,16 @@ Response after kicking a user.
 
 Update server configuration.
 
-| Field                    | Type    | Required | Description                           |
-| ------------------------ | ------- | -------- | ------------------------------------- |
-| `name`                   | string  | No       | Server display name (1-64 characters) |
-| `description`            | string  | No       | Server description (0-512 characters) |
-| `max_connections_per_ip` | integer | No       | Max connections per IP                |
-| `max_transfers_per_ip`   | integer | No       | Max transfers per IP                  |
-| `image`                  | string  | No       | Server logo as data URI (max 700KB)   |
+| Field                    | Type    | Required | Description                                              |
+| ------------------------ | ------- | -------- | -------------------------------------------------------- |
+| `name`                   | string  | No       | Server display name (1-64 characters)                    |
+| `description`            | string  | No       | Server description (0-512 characters)                    |
+| `max_connections_per_ip` | integer | No       | Max connections per IP                                   |
+| `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                     |
+| `image`                  | string  | No       | Server logo as data URI (max 700KB)                      |
+| `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)          |
+| `persistent_channels`    | string  | No       | Space-separated persistent channel names                 |
+| `auto_join_channels`     | string  | No       | Space-separated channels users auto-join on login        |
 
 Only include fields you want to change.
 
@@ -486,7 +489,10 @@ Broadcast to all users when server info changes.
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
-    "image": null
+    "image": null,
+    "file_reindex_interval": 60,
+    "persistent_channels": "#general #support",
+    "auto_join_channels": "#general"
   }
 }
 ```
@@ -500,7 +506,6 @@ Sent to a user when their permissions change.
 | `is_admin`    | boolean | Yes      | New admin status                   |
 | `permissions` | array   | Yes      | New permissions list               |
 | `server_info` | object  | No       | Server info (if promoted to admin) |
-| `chat_info`   | object  | No       | Chat info (if promoted to admin)   |
 
 **Permissions changed:**
 
@@ -524,16 +529,15 @@ Sent to a user when their permissions change.
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
-    "image": "data:image/png;base64,..."
-  },
-  "chat_info": {
-    "topic": "Welcome!",
-    "topic_set_by": "admin"
+    "image": "data:image/png;base64,...",
+    "file_reindex_interval": 60,
+    "persistent_channels": "#general",
+    "auto_join_channels": "#general"
   }
 }
 ```
 
-Note: Admins get full server info (including image) which non-admins may not have.
+Note: Admins get full server info (including image and admin-only fields like `persistent_channels` and `auto_join_channels`) which non-admins may not have.
 
 ### UserUpdated (Server → Client)
 
@@ -557,7 +561,9 @@ Broadcast when a user account is modified.
     "is_shared": false,
     "session_ids": [3],
     "locale": "en",
-    "avatar": null
+    "avatar": null,
+    "is_away": false,
+    "status": null
   }
 }
 ```

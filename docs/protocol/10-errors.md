@@ -57,37 +57,55 @@ NX|5|Error|a1b2c3d4e5f6|45|{"message":"Permission denied","command":"ChatSend"}
 
 Most messages have dedicated response types with `success`, `error`, and sometimes `error_kind` fields:
 
-| Message            | Response Type              | Has `error_kind` |
-| ------------------ | -------------------------- | ---------------- |
-| `Handshake`        | `HandshakeResponse`        | No               |
-| `Login`            | `LoginResponse`            | No               |
-| `ChatTopicUpdate`  | `ChatTopicUpdateResponse`  | No               |
-| `UserList`         | `UserListResponse`         | No               |
-| `UserInfo`         | `UserInfoResponse`         | No               |
-| `UserCreate`       | `UserCreateResponse`       | No               |
-| `UserEdit`         | `UserEditResponse`         | No               |
-| `UserUpdate`       | `UserUpdateResponse`       | No               |
-| `UserDelete`       | `UserDeleteResponse`       | No               |
-| `UserKick`         | `UserKickResponse`         | No               |
-| `UserMessage`      | `UserMessageResponse`      | No               |
-| `UserBroadcast`    | `UserBroadcastResponse`    | No               |
-| `ServerInfoUpdate` | `ServerInfoUpdateResponse` | No               |
-| `NewsList`         | `NewsListResponse`         | No               |
-| `NewsShow`         | `NewsShowResponse`         | No               |
-| `NewsCreate`       | `NewsCreateResponse`       | No               |
-| `NewsEdit`         | `NewsEditResponse`         | No               |
-| `NewsUpdate`       | `NewsUpdateResponse`       | No               |
-| `NewsDelete`       | `NewsDeleteResponse`       | No               |
-| `FileList`         | `FileListResponse`         | No               |
-| `FileInfo`         | `FileInfoResponse`         | No               |
-| `FileCreateDir`    | `FileCreateDirResponse`    | No               |
-| `FileRename`       | `FileRenameResponse`       | No               |
-| `FileMove`         | `FileMoveResponse`         | ✅ Yes           |
-| `FileCopy`         | `FileCopyResponse`         | ✅ Yes           |
-| `FileDelete`       | `FileDeleteResponse`       | No               |
-| `FileDownload`     | `FileDownloadResponse`     | ✅ Yes           |
-| `FileUpload`       | `FileUploadResponse`       | ✅ Yes           |
-| —                  | `TransferComplete`         | ✅ Yes           |
+| Message              | Response Type                | Has `error_kind` |
+| -------------------- | ---------------------------- | ---------------- |
+| `Handshake`          | `HandshakeResponse`          | No               |
+| `Login`              | `LoginResponse`              | No               |
+| `ChatJoin`           | `ChatJoinResponse`           | No               |
+| `ChatLeave`          | `ChatLeaveResponse`          | No               |
+| `ChatList`           | `ChatListResponse`           | No               |
+| `ChatSecret`         | `ChatSecretResponse`         | No               |
+| `ChatTopicUpdate`    | `ChatTopicUpdateResponse`    | No               |
+| `UserList`           | `UserListResponse`           | No               |
+| `UserInfo`           | `UserInfoResponse`           | No               |
+| `UserCreate`         | `UserCreateResponse`         | No               |
+| `UserEdit`           | `UserEditResponse`           | No               |
+| `UserUpdate`         | `UserUpdateResponse`         | No               |
+| `UserDelete`         | `UserDeleteResponse`         | No               |
+| `UserKick`           | `UserKickResponse`           | No               |
+| `UserMessage`        | `UserMessageResponse`        | No               |
+| `UserBroadcast`      | `UserBroadcastResponse`      | No               |
+| `UserAway`           | `UserAwayResponse`           | No               |
+| `UserBack`           | `UserBackResponse`           | No               |
+| `UserStatus`         | `UserStatusResponse`         | No               |
+| `ServerInfoUpdate`   | `ServerInfoUpdateResponse`   | No               |
+| `NewsList`           | `NewsListResponse`           | No               |
+| `NewsShow`           | `NewsShowResponse`           | No               |
+| `NewsCreate`         | `NewsCreateResponse`         | No               |
+| `NewsEdit`           | `NewsEditResponse`           | No               |
+| `NewsUpdate`         | `NewsUpdateResponse`         | No               |
+| `NewsDelete`         | `NewsDeleteResponse`         | No               |
+| `FileList`           | `FileListResponse`           | No               |
+| `FileInfo`           | `FileInfoResponse`           | No               |
+| `FileCreateDir`      | `FileCreateDirResponse`      | No               |
+| `FileRename`         | `FileRenameResponse`         | No               |
+| `FileMove`           | `FileMoveResponse`           | ✅ Yes           |
+| `FileCopy`           | `FileCopyResponse`           | ✅ Yes           |
+| `FileDelete`         | `FileDeleteResponse`         | No               |
+| `FileSearch`         | `FileSearchResponse`         | No               |
+| `FileReindex`        | `FileReindexResponse`        | No               |
+| `FileDownload`       | `FileDownloadResponse`       | ✅ Yes           |
+| `FileUpload`         | `FileUploadResponse`         | ✅ Yes           |
+| —                    | `TransferComplete`           | ✅ Yes           |
+| `BanCreate`          | `BanCreateResponse`          | No               |
+| `BanDelete`          | `BanDeleteResponse`          | No               |
+| `BanList`            | `BanListResponse`            | No               |
+| `TrustCreate`        | `TrustCreateResponse`        | No               |
+| `TrustDelete`        | `TrustDeleteResponse`        | No               |
+| `TrustList`          | `TrustListResponse`          | No               |
+| `ConnectionMonitor`  | `ConnectionMonitorResponse`  | No               |
+| `VoiceJoin`          | `VoiceJoinResponse`          | No               |
+| `VoiceLeave`         | `VoiceLeaveResponse`         | No               |
 
 ### Generic Error Messages
 

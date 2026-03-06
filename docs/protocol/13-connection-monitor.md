@@ -145,6 +145,7 @@ Example with a shared account "guests" having two sessions:
       "nickname": "visitor1",
       "username": "guests",
       "ip": "::ffff:192.168.1.50",
+      "port": 54500,
       "login_time": 1704067200,
       "is_admin": false,
       "is_shared": true
@@ -153,6 +154,7 @@ Example with a shared account "guests" having two sessions:
       "nickname": "visitor2",
       "username": "guests",
       "ip": "::ffff:192.168.1.51",
+      "port": 54501,
       "login_time": 1704067300,
       "is_admin": false,
       "is_shared": true

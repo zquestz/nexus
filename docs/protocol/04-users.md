@@ -242,12 +242,13 @@ Response containing detailed user information.
     "is_away": false,
     "status": null,
     "is_admin": false,
-    "addresses": ["192.168.1.100", "10.0.0.5"]
+    "addresses": ["192.168.1.100", "10.0.0.5"],
+    "channels": ["#general", "#support"]
   }
 }
 ```
 
-Note: `is_admin` and `addresses` are only included when an admin is requesting information.
+Note: `is_admin`, `addresses`, and `channels` are only included when an admin is requesting information. Secret channels are only visible to admins.
 
 **Failure example:**
 
@@ -405,10 +406,11 @@ Extended user information for individual queries.
 | `created_at`  | integer | Account creation timestamp            |
 | `locale`      | string  | User's preferred locale               |
 | `avatar`      | string  | Avatar as data URI (null if none)     |
-| `is_away`     | boolean | Whether user is away                  |
-| `status`      | string  | User's status message (null if none)  |
-| `is_admin`    | boolean | Admin status (only visible to admins) |
-| `addresses`   | array   | IP addresses (only visible to admins) |
+| `is_away`     | boolean | Whether user is away                                          |
+| `status`      | string  | User's status message (null if none)                          |
+| `is_admin`    | boolean | Admin status (only visible to admins)                         |
+| `addresses`   | array   | IP addresses (only visible to admins)                         |
+| `channels`    | array   | Channels the user is in (secret channels only visible to admins) |
 
 ## Permissions
 

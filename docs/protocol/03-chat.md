@@ -333,6 +333,7 @@ Broadcast to channel members when a chat message is sent.
 | `message`    | string  | Yes      | Message content                             |
 | `action`     | string  | No       | Action type: `"Normal"` (default) or `"Me"` |
 | `channel`    | string  | Yes      | Channel the message was sent to             |
+| `timestamp`  | integer | Yes      | Unix timestamp in seconds (0 if not set)    |
 
 **Example:**
 
@@ -343,7 +344,8 @@ Broadcast to channel members when a chat message is sent.
   "is_admin": false,
   "is_shared": false,
   "message": "Hello, everyone!",
-  "channel": "#general"
+  "channel": "#general",
+  "timestamp": 1704067200
 }
 ```
 
@@ -435,21 +437,43 @@ Response to the topic update request.
 
 ### ChatUpdated (Server → Client)
 
-Broadcast to channel members when the topic changes.
+Broadcast to channel members when channel properties change (topic, secret mode). Only changed fields are included.
 
-| Field      | Type   | Required | Description                        |
-| ---------- | ------ | -------- | ---------------------------------- |
-| `topic`    | string | Yes      | The new topic (empty if cleared)   |
-| `nickname` | string | Yes      | Nickname of user who set the topic |
-| `channel`  | string | Yes      | Channel whose topic changed        |
+| Field           | Type    | Required | Description                                        |
+| --------------- | ------- | -------- | -------------------------------------------------- |
+| `channel`       | string  | Yes      | Channel whose properties changed                   |
+| `topic`         | string  | No       | New topic (empty string = cleared, absent = no change) |
+| `topic_set_by`  | string  | No       | Nickname of user who set the topic                 |
+| `secret`        | boolean | No       | New secret mode (absent = no change)               |
+| `secret_set_by` | string  | No       | Nickname of user who changed secret mode           |
 
-**Example:**
+**Topic change example:**
 
 ```json
 {
+  "channel": "#general",
   "topic": "Welcome to the server!",
-  "nickname": "alice",
-  "channel": "#general"
+  "topic_set_by": "alice"
+}
+```
+
+**Secret mode change example:**
+
+```json
+{
+  "channel": "#private",
+  "secret": true,
+  "secret_set_by": "admin"
+}
+```
+
+**Topic cleared example:**
+
+```json
+{
+  "channel": "#general",
+  "topic": "",
+  "topic_set_by": "alice"
 }
 ```
 

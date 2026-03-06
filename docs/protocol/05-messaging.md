@@ -129,6 +129,7 @@ Delivered to the recipient when a user message is sent.
 | `to_nickname`   | string  | Yes      | Recipient's display name                    |
 | `message`       | string  | Yes      | Message content                             |
 | `action`        | string  | No       | Action type: `"Normal"` (default) or `"Me"` |
+| `timestamp`     | integer | Yes      | Unix timestamp in seconds (0 if not set)    |
 
 **Example:**
 
@@ -138,7 +139,8 @@ Delivered to the recipient when a user message is sent.
   "from_admin": false,
   "from_shared": false,
   "to_nickname": "bob",
-  "message": "Hey, are you there?"
+  "message": "Hey, are you there?",
+  "timestamp": 1704067200
 }
 ```
 
@@ -151,7 +153,8 @@ Delivered to the recipient when a user message is sent.
   "from_shared": false,
   "to_nickname": "bob",
   "message": "waves at you",
-  "action": "Me"
+  "action": "Me",
+  "timestamp": 1704067200
 }
 ```
 
@@ -163,7 +166,8 @@ Delivered to the recipient when a user message is sent.
   "from_admin": true,
   "from_shared": false,
   "to_nickname": "bob",
-  "message": "Please follow the server rules."
+  "message": "Please follow the server rules.",
+  "timestamp": 1704067200
 }
 ```
 
