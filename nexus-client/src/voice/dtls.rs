@@ -48,6 +48,8 @@ pub struct VoiceDtlsClient {
     sequence: u32,
     /// Current timestamp for outgoing packets (in samples)
     timestamp: u32,
+    /// Pre-allocated receive buffer (reused across recv calls to avoid heap churn)
+    recv_buf: Vec<u8>,
 }
 
 impl VoiceDtlsClient {
@@ -109,6 +111,7 @@ impl VoiceDtlsClient {
             token,
             sequence: 0,
             timestamp: 0,
+            recv_buf: vec![0u8; RECV_BUFFER_SIZE],
         })
     }
 
@@ -166,16 +169,18 @@ impl VoiceDtlsClient {
 
     /// Receive a relayed voice packet
     ///
+    /// Uses a pre-allocated buffer to avoid per-recv heap allocation.
+    /// Over a long voice session (~864k recv calls/day), this eliminates
+    /// heap fragmentation from transient 2KB allocations.
+    ///
     /// # Returns
     /// * `Ok(Some(packet))` - Received a packet
     /// * `Ok(None)` - Connection closed
     /// * `Err(String)` - Error receiving
-    pub async fn recv(&self) -> Result<Option<RelayedVoicePacket>, String> {
-        let mut buf = vec![0u8; RECV_BUFFER_SIZE];
-
+    pub async fn recv(&mut self) -> Result<Option<RelayedVoicePacket>, String> {
         let len = self
             .conn
-            .recv(&mut buf)
+            .recv(&mut self.recv_buf)
             .await
             .map_err(|e| format!("Failed to receive: {}", e))?;
 
@@ -183,7 +188,7 @@ impl VoiceDtlsClient {
             return Ok(None);
         }
 
-        let packet = RelayedVoicePacket::from_bytes(&buf[..len])
+        let packet = RelayedVoicePacket::from_bytes(&self.recv_buf[..len])
             .ok_or_else(|| "Invalid relayed packet".to_string())?;
 
         Ok(Some(packet))
@@ -199,7 +204,7 @@ impl VoiceDtlsClient {
     /// * `Ok(None)` - Timeout or connection closed
     /// * `Err(String)` - Error receiving
     pub async fn recv_timeout(
-        &self,
+        &mut self,
         timeout: Duration,
     ) -> Result<Option<RelayedVoicePacket>, String> {
         match tokio::time::timeout(timeout, self.recv()).await {
