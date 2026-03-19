@@ -212,6 +212,8 @@ pub(crate) fn login_error_response(error: String) -> ServerMessage {
         locale: None,
         channels: None,
         nickname: None,
+        group_id: None,
+        group_name: None,
     }
 }
 

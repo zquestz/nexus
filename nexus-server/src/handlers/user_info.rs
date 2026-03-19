@@ -194,6 +194,8 @@ where
             is_away,
             status,
             channels,
+            group_id: None,
+            group_name: None,
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -212,6 +214,8 @@ where
             is_away,
             status,
             channels,
+            group_id: None,
+            group_name: None,
         }
     };
 

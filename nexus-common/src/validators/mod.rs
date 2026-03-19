@@ -15,6 +15,7 @@ mod duration;
 mod error;
 mod features;
 mod file_path;
+mod group_name;
 mod ip_rule_reason;
 mod locale;
 mod message;
@@ -55,6 +56,7 @@ pub use error::{
 };
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};
+pub use group_name::{GroupNameError, MAX_GROUP_NAME_LENGTH, validate_group_name};
 pub use ip_rule_reason::{IpRuleReasonError, MAX_IP_RULE_REASON_LENGTH, validate_ip_rule_reason};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};
 pub use message::{MAX_MESSAGE_LENGTH, MessageError, validate_message};

@@ -172,6 +172,7 @@ impl NexusApp {
                 is_admin,
                 permissions,
                 server_info,
+                ..
             } => self.handle_permissions_updated(connection_id, is_admin, permissions, server_info),
 
             ServerMessage::ServerBroadcast {
@@ -225,6 +226,7 @@ impl NexusApp {
                 is_shared,
                 enabled,
                 permissions,
+                ..
             } => self.handle_user_edit_response(
                 connection_id,
                 message_id,

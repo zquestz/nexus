@@ -107,6 +107,8 @@ where
                 avatar: None,
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .collect();
 
@@ -145,6 +147,8 @@ where
                 avatar: user.avatar.clone(),
                 is_away: user.is_away,
                 status: user.status.clone(),
+                group_id: None,
+                group_name: None,
             });
         } else {
             // Regular accounts: deduplicate by username and aggregate sessions
@@ -210,6 +214,8 @@ where
                     avatar,
                     is_away,
                     status,
+                    group_id: None,
+                    group_name: None,
                 }
             },
         )

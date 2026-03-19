@@ -69,6 +69,9 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `file_upload`: Upload files to upload/dropbox folders
+/// - `group_create`: Create new account groups
+/// - `group_delete`: Delete account groups
+/// - `group_edit`: Edit account group name and permissions
 /// - `news_create`: Create news posts
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
@@ -111,6 +114,9 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "file_root",
     "file_search",
     "file_upload",
+    "group_create",
+    "group_delete",
+    "group_edit",
     "news_create",
     "news_delete",
     "news_edit",
@@ -246,8 +252,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (41)
-        assert_eq!(ALL_PERMISSIONS.len(), 41);
+        // Verify we have the expected number of permissions (44)
+        assert_eq!(ALL_PERMISSIONS.len(), 44);
     }
 
     #[test]
@@ -296,6 +302,9 @@ mod tests {
         assert!(!is_shared_account_permission("file_rename"));
         assert!(!is_shared_account_permission("file_delete"));
         assert!(!is_shared_account_permission("file_create_dir"));
+        assert!(!is_shared_account_permission("group_create"));
+        assert!(!is_shared_account_permission("group_delete"));
+        assert!(!is_shared_account_permission("group_edit"));
 
         // Invalid permissions
         assert!(!is_shared_account_permission("invalid"));

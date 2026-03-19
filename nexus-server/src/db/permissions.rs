@@ -85,6 +85,12 @@ pub enum Permission {
     FileMove,
     /// Permission to copy files and directories
     FileCopy,
+    /// Permission to create account groups
+    GroupCreate,
+    /// Permission to delete account groups
+    GroupDelete,
+    /// Permission to edit account group name and permissions
+    GroupEdit,
     /// Permission to receive audio from others in voice chat
     VoiceListen,
     /// Permission to transmit audio in voice chat
@@ -138,6 +144,9 @@ impl Permission {
             "news_delete" => Some(Permission::NewsDelete),
             "file_copy" => Some(Permission::FileCopy),
             "file_create_dir" => Some(Permission::FileCreateDir),
+            "group_create" => Some(Permission::GroupCreate),
+            "group_delete" => Some(Permission::GroupDelete),
+            "group_edit" => Some(Permission::GroupEdit),
             "file_delete" => Some(Permission::FileDelete),
             "file_download" => Some(Permission::FileDownload),
             "file_info" => Some(Permission::FileInfo),
@@ -451,6 +460,9 @@ mod tests {
             Permission::FileReindex,
             Permission::FileRename,
             Permission::FileRoot,
+            Permission::GroupCreate,
+            Permission::GroupDelete,
+            Permission::GroupEdit,
             Permission::NewsCreate,
             Permission::NewsDelete,
             Permission::NewsEdit,

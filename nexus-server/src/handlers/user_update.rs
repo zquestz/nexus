@@ -533,6 +533,8 @@ where
                             is_admin: updated_account.is_admin,
                             permissions: permission_strings,
                             server_info,
+                            group_id: None,
+                            group_name: None,
                         };
 
                         // Send to all sessions belonging to the updated user
@@ -710,6 +712,8 @@ where
                         avatar,
                         is_away: false,
                         status: None,
+                        group_id: None,
+                        group_name: None,
                     };
 
                     let user_updated = ServerMessage::UserUpdated {

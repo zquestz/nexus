@@ -8,8 +8,8 @@ use crate::validators::{
     MAX_AUTO_JOIN_CHANNELS_LENGTH, MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH,
     MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH, MAX_COMMAND_LENGTH,
     MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH,
-    MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH,
-    MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH,
+    MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
+    MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH,
     MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
     MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
     MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
@@ -732,7 +732,7 @@ const FILE_CREATE_DIR_RESPONSE_SIZE: usize = json_type_base("FileCreateDirRespon
     + json_string_field("path", MAX_CREATED_DIR_PATH);
 
 /// UserInfo struct size (nested object in responses):
-/// {"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...10...","avatar":"...176000...","is_away":false,"status":"...128..."}
+/// {"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...10...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
 const USER_INFO_STRUCT_SIZE: usize = json_first_string_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("login_time")
@@ -743,6 +743,8 @@ const USER_INFO_STRUCT_SIZE: usize = json_first_string_field("username", MAX_USE
     + json_string_field("avatar", MAX_AVATAR_DATA_URI_LENGTH)
     + json_bool_field("is_away")
     + json_string_field("status", MAX_STATUS_LENGTH)
+    + json_i64_field("group_id")
+    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
     + 2; // {} braces
 
 /// UserConnected: {"type":"UserConnected","user":{...}}
@@ -774,6 +776,8 @@ const USER_INFO_DETAILED_SIZE: usize = json_first_string_field("username", MAX_U
     + json_bool_field("is_away")
     + json_string_field("status", MAX_STATUS_LENGTH)
     + json_string_array_field("channels", MAX_CHANNELS_PER_USER, MAX_CHANNEL_LENGTH)
+    + json_i64_field("group_id")
+    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
     + 2; // {} braces
 
 /// UserInfoResponse: {"type":"UserInfoResponse","success":false,"error":"...2048...","user":{...}}
@@ -783,6 +787,18 @@ const USER_INFO_RESPONSE_SIZE: usize = json_type_base("UserInfoResponse")
     + json_object_field_start("user")
     + USER_INFO_DETAILED_SIZE
     + json_close();
+
+/// Maximum number of groups (reasonable limit for group list responses)
+const MAX_GROUPS: usize = 50;
+
+/// GroupInfo struct size (nested object in responses):
+/// {"id":i64,"name":"...32...","is_shared":false,"member_count":u32,"permissions":["...32...",...]}
+const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_bool_field("is_shared")
+    + json_u32_field("member_count")
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
 /// {"name":"...64...","description":"...256...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512..."}
@@ -888,16 +904,18 @@ const FILE_INFO_RESPONSE_SIZE: usize = json_type_base("FileInfoResponse")
 // Permission-array message size calculations
 // =============================================================================
 
-/// UserCreate: {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...]}
+/// UserCreate: {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"revokes":["...32...",...]}
 const USER_CREATE_SIZE: usize = json_type_base("UserCreate")
     + json_string_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
     + json_bool_field("enabled")
-    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_i64_field("group_id")
+    + json_string_array_field("revokes", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
 
-/// UserUpdate: {"type":"UserUpdate","username":"...32...","current_password":"...256...","requested_username":"...32...","requested_password":"...256...","requested_is_admin":false,"requested_enabled":false,"requested_permissions":["...32...",...]}
+/// UserUpdate: {"type":"UserUpdate","username":"...32...","current_password":"...256...","requested_username":"...32...","requested_password":"...256...","requested_is_admin":false,"requested_enabled":false,"requested_permissions":["...32...",...],"requested_group_id":i64,"remove_group":false,"requested_revokes":["...32...",...]}
 const USER_UPDATE_SIZE: usize = json_type_base("UserUpdate")
     + json_string_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("current_password", MAX_PASSWORD_LENGTH)
@@ -909,9 +927,16 @@ const USER_UPDATE_SIZE: usize = json_type_base("UserUpdate")
         "requested_permissions",
         PERMISSIONS_COUNT,
         MAX_PERMISSION_LENGTH,
+    )
+    + json_i64_field("requested_group_id")
+    + json_bool_field("remove_group")
+    + json_string_array_field(
+        "requested_revokes",
+        PERMISSIONS_COUNT,
+        MAX_PERMISSION_LENGTH,
     );
 
-/// UserEditResponse: {"type":"UserEditResponse","success":false,"error":"...2048...","username":"...32...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...]}
+/// UserEditResponse: {"type":"UserEditResponse","success":false,"error":"...2048...","username":"...32...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"group_name":"...32...","group_permissions":["...32...",...],"revoked_permissions":["...32...",...],"available_groups":[{...},...]}
 const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
@@ -919,7 +944,14 @@ const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
     + json_bool_field("enabled")
-    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_i64_field("group_id")
+    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
+    + json_string_array_field("group_permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_string_array_field("revoked_permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_object_field_start("available_groups") - 1 // -1 because array uses [ not {
+    + (MAX_GROUPS * (GROUP_INFO_STRUCT_SIZE + 1)) // max 50 groups, +1 for comma
+    + json_close();
 
 /// ChannelJoinInfo nested object size (for LoginResponse channels array):
 /// {"channel":"...50...","topic":"...256...","topic_set_by":"...32...","secret":false,"members":["...32...",...]}
@@ -931,7 +963,7 @@ const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_field("channel", MAX_CHA
     + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + 2; // {} braces
 
-/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...10...","channels":[{...},...]}
+/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...10...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
 const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
@@ -945,15 +977,81 @@ const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     // channels array: up to MAX_AUTO_JOIN_CHANNELS_LENGTH channels with members
     + json_object_field_start("channels") - 1 // -1 because array uses [ not {
     + (MAX_AUTO_JOIN_CHANNELS_LENGTH * (CHANNEL_JOIN_INFO_SIZE + 1)) // +1 for comma between elements
-    + json_close();
+    + json_close()
+    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_i64_field("group_id")
+    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH);
 
-/// PermissionsUpdated: {"type":"PermissionsUpdated","is_admin":false,"permissions":["...32...",...],"server_info":{...}}
+/// PermissionsUpdated: {"type":"PermissionsUpdated","is_admin":false,"permissions":["...32...",...],"server_info":{...},"group_id":i64,"group_name":"...32..."}
 const PERMISSIONS_UPDATED_SIZE: usize = json_type_base("PermissionsUpdated")
     + json_bool_field("is_admin")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_object_field_start("server_info")
     + SERVER_INFO_STRUCT_SIZE
-    + json_close();
+    + json_close()
+    + json_i64_field("group_id")
+    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH);
+
+// -----------------------------------------------------------------------------
+// Group client messages
+// -----------------------------------------------------------------------------
+
+/// GroupList: {"type":"GroupList"}
+const GROUP_LIST_SIZE: usize = json_type_base("GroupList");
+
+/// GroupCreate: {"type":"GroupCreate","name":"...32...","is_shared":false,"permissions":["...32...",...]}
+const GROUP_CREATE_SIZE: usize = json_type_base("GroupCreate")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_bool_field("is_shared")
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
+
+/// GroupEdit: {"type":"GroupEdit","id":i64}
+const GROUP_EDIT_SIZE: usize = json_type_base("GroupEdit") + json_i64_field("id");
+
+/// GroupUpdate: {"type":"GroupUpdate","id":i64,"name":"...32...","is_shared":false,"permissions":["...32...",...]}
+const GROUP_UPDATE_SIZE: usize = json_type_base("GroupUpdate")
+    + json_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_bool_field("is_shared")
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
+
+/// GroupDelete: {"type":"GroupDelete","id":i64}
+const GROUP_DELETE_SIZE: usize = json_type_base("GroupDelete") + json_i64_field("id");
+
+// -----------------------------------------------------------------------------
+// Group server messages
+// -----------------------------------------------------------------------------
+
+/// GroupCreateResponse: {"type":"GroupCreateResponse","success":false,"error":"...2048...","id":i64,"name":"...32..."}
+const GROUP_CREATE_RESPONSE_SIZE: usize = json_type_base("GroupCreateResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
+
+/// GroupEditResponse: {"type":"GroupEditResponse","success":false,"error":"...2048...","id":i64,"name":"...32...","is_shared":false,"permissions":["...32...",...],"member_count":u32}
+const GROUP_EDIT_RESPONSE_SIZE: usize = json_type_base("GroupEditResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_bool_field("is_shared")
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_u32_field("member_count");
+
+/// GroupUpdateResponse: {"type":"GroupUpdateResponse","success":false,"error":"...2048...","id":i64,"name":"...32..."}
+const GROUP_UPDATE_RESPONSE_SIZE: usize = json_type_base("GroupUpdateResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
+
+/// GroupDeleteResponse: {"type":"GroupDeleteResponse","success":false,"error":"...2048...","id":i64,"name":"...32..."}
+const GROUP_DELETE_RESPONSE_SIZE: usize = json_type_base("GroupDeleteResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
 
 // =============================================================================
 // Limit padding
@@ -1030,6 +1128,13 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         "ConnectionMonitor",
         pad_limit(CONNECTION_MONITOR_SIZE as u64),
     );
+
+    // Group client messages
+    m.insert("GroupList", pad_limit(GROUP_LIST_SIZE as u64));
+    m.insert("GroupCreate", pad_limit(GROUP_CREATE_SIZE as u64));
+    m.insert("GroupEdit", pad_limit(GROUP_EDIT_SIZE as u64));
+    m.insert("GroupUpdate", pad_limit(GROUP_UPDATE_SIZE as u64));
+    m.insert("GroupDelete", pad_limit(GROUP_DELETE_SIZE as u64));
 
     // News client messages (self-documenting via const calculations)
     m.insert("NewsList", pad_limit(NEWS_LIST_SIZE as u64));
@@ -1175,6 +1280,25 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
 
     // Connection monitor server message
     m.insert("ConnectionMonitorResponse", 0); // unlimited (server-trusted, can have many connections)
+
+    // Group server messages
+    m.insert("GroupListResponse", 0); // unlimited (server-trusted, can have many groups)
+    m.insert(
+        "GroupCreateResponse",
+        pad_limit(GROUP_CREATE_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "GroupEditResponse",
+        pad_limit(GROUP_EDIT_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "GroupUpdateResponse",
+        pad_limit(GROUP_UPDATE_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "GroupDeleteResponse",
+        pad_limit(GROUP_DELETE_RESPONSE_SIZE as u64),
+    );
 
     // News server messages (self-documenting via const calculations)
     m.insert("NewsListResponse", 0); // unlimited (server-trusted, can have many items)
@@ -1732,8 +1856,8 @@ mod tests {
         //
         // Note: Some type names are shared between client and server enums
         // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 52; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 2 Voice client messages + 1 Ping
-        const SERVER_MESSAGE_COUNT: usize = 67; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 4 Voice server messages + 1 Pong
+        const CLIENT_MESSAGE_COUNT: usize = 57; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 2 Voice client messages + 1 Ping
+        const SERVER_MESSAGE_COUNT: usize = 72; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 4 Voice server messages + 1 Pong
         const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
@@ -1933,6 +2057,8 @@ mod tests {
             permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
+            group_id: None,
+            revokes: None,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserCreate") as usize,
@@ -2038,6 +2164,9 @@ mod tests {
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserUpdate") as usize,
@@ -2467,6 +2596,8 @@ mod tests {
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
             channels: Some(channels),
             nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
+            group_id: None,
+            group_name: None,
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("LoginResponse") as usize;
@@ -2498,6 +2629,8 @@ mod tests {
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             }),
+            group_id: None,
+            group_name: None,
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("PermissionsUpdated") as usize;
@@ -2580,6 +2713,8 @@ mod tests {
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
+                group_id: None,
+                group_name: None,
             },
         };
         assert!(
@@ -2652,6 +2787,11 @@ mod tests {
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserEditResponse") as usize,
@@ -2699,6 +2839,8 @@ mod tests {
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
                 channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
+                group_id: None,
+                group_name: None,
             }),
         };
         assert!(
@@ -2786,6 +2928,8 @@ mod tests {
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
+                group_id: None,
+                group_name: None,
             },
         };
         assert!(

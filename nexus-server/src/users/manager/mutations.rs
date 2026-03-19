@@ -131,6 +131,8 @@ impl UserManager {
                                     avatar: newest.avatar.clone(),
                                     is_away: newest.is_away,
                                     status: newest.status.clone(),
+                                    group_id: None,
+                                    group_name: None,
                                 },
                             },
                             Some(session_id),

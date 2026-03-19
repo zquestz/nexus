@@ -375,6 +375,8 @@ impl NexusApp {
             is_shared,
             enabled: conn.user_management.enabled,
             permissions,
+            group_id: None,
+            revokes: None,
         };
 
         // Clear any previous error on new submission
@@ -601,6 +603,9 @@ impl NexusApp {
             requested_is_admin,
             requested_enabled,
             requested_permissions: Some(requested_permissions),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
         };
 
         // Clear any previous error on new submission
@@ -1039,6 +1044,9 @@ impl NexusApp {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
         };
 
         // Clear any previous error

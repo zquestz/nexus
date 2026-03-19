@@ -332,6 +332,8 @@ where
             is_shared,
             enabled,
             permissions,
+            group_id: _,
+            revokes: _,
         } => {
             let request = handlers::UserCreateRequest {
                 username,
@@ -374,6 +376,9 @@ where
             requested_is_admin,
             requested_enabled,
             requested_permissions,
+            requested_group_id: _,
+            remove_group: _,
+            requested_revokes: _,
         } => {
             let request = handlers::UserUpdateRequest {
                 username,
@@ -556,6 +561,15 @@ where
         }
         ClientMessage::Ping => {
             ctx.send_message(&ServerMessage::Pong).await?;
+        }
+        ClientMessage::GroupList
+        | ClientMessage::GroupCreate { .. }
+        | ClientMessage::GroupEdit { .. }
+        | ClientMessage::GroupUpdate { .. }
+        | ClientMessage::GroupDelete { .. } => {
+            // Group management handlers not yet implemented
+            ctx.send_error("Group management is not yet implemented", None)
+                .await?;
         }
     }
 

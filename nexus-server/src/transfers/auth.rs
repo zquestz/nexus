@@ -264,6 +264,8 @@ where
         channels: None,
         locale: None,
         nickname: None,
+        group_id: None,
+        group_name: None,
     };
     send_server_message_with_id(frame_writer, &response, received.message_id).await?;
 

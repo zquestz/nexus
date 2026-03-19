@@ -206,6 +206,8 @@ async fn test_broadcast_respects_user_list_permission() {
                     avatar: None,
                     is_away: false,
                     status: None,
+                    group_id: None,
+                    group_name: None,
                 },
             },
             None, // Don't exclude anyone
@@ -291,6 +293,8 @@ async fn test_broadcast_excludes_specified_session() {
                     avatar: None,
                     is_away: false,
                     status: None,
+                    group_id: None,
+                    group_name: None,
                 },
             },
             Some(session_id1), // Exclude session 1

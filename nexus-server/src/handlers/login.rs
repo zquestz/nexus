@@ -569,6 +569,8 @@ where
         channels,
         nickname: Some(nickname.clone()),
         error: None,
+        group_id: None,
+        group_name: None,
     };
     ctx.send_message(&response).await?;
 
@@ -592,6 +594,8 @@ where
         avatar,
         is_away: false,
         status: None,
+        group_id: None,
+        group_name: None,
     };
     ctx.user_manager
         .broadcast_user_event(

@@ -50,6 +50,11 @@ where
             is_shared: None,
             enabled: None,
             permissions: None,
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -78,6 +83,11 @@ where
             is_shared: None,
             enabled: None,
             permissions: None,
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -96,6 +106,11 @@ where
             is_shared: None,
             enabled: None,
             permissions: None,
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -112,6 +127,11 @@ where
                 is_shared: None,
                 enabled: None,
                 permissions: None,
+                group_id: None,
+                group_name: None,
+                group_permissions: None,
+                revoked_permissions: None,
+                available_groups: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -137,6 +157,11 @@ where
             is_shared: None,
             enabled: None,
             permissions: None,
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -168,6 +193,11 @@ where
         is_shared: Some(target_user.is_shared),
         enabled: Some(target_user.enabled),
         permissions: Some(permissions),
+        group_id: None,
+        group_name: None,
+        group_permissions: None,
+        revoked_permissions: None,
+        available_groups: None,
     };
 
     ctx.send_message(&response).await

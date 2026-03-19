@@ -81,6 +81,12 @@ pub enum ClientMessage {
         is_shared: bool,
         enabled: bool,
         permissions: Vec<String>,
+        /// Optional group assignment
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Permissions to explicitly revoke from group (only meaningful with a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revokes: Option<Vec<String>>,
     },
     UserDelete {
         username: String,
@@ -121,6 +127,15 @@ pub enum ClientMessage {
         requested_enabled: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         requested_permissions: Option<Vec<String>>,
+        /// Assign user to a group (by group ID)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requested_group_id: Option<i64>,
+        /// Remove user from their current group (takes precedence over requested_group_id if both set)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remove_group: Option<bool>,
+        /// Permissions to explicitly revoke from group (only meaningful with a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requested_revokes: Option<Vec<String>>,
     },
     /// Set away status for all sessions of this user
     UserAway {
@@ -334,6 +349,43 @@ pub enum ClientMessage {
     TrustList,
     /// Request list of active connections (admin/connection_monitor permission)
     ConnectionMonitor,
+    /// Request list of all account groups
+    ///
+    /// Requires one of: `user_create`, `user_edit`, `group_create`, `group_edit`, or `group_delete`
+    GroupList,
+    /// Create a new account group
+    GroupCreate {
+        /// Group name
+        name: String,
+        /// Whether this group is for shared accounts only
+        is_shared: bool,
+        /// Permissions to assign to this group
+        permissions: Vec<String>,
+    },
+    /// Request group details for editing
+    GroupEdit {
+        /// Group ID to edit
+        id: i64,
+    },
+    /// Update an existing account group
+    GroupUpdate {
+        /// Group ID to update
+        id: i64,
+        /// New group name (if changing)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// New shared status (if changing)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_shared: Option<bool>,
+        /// New permissions (if changing)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
+    },
+    /// Delete an account group
+    GroupDelete {
+        /// Group ID to delete
+        id: i64,
+    },
     /// Search files in the file area
     FileSearch {
         /// Search query (minimum 3 characters, literal match, case-insensitive)
@@ -539,6 +591,12 @@ pub enum ServerMessage {
         /// Server-confirmed nickname (equals username for regular accounts)
         #[serde(skip_serializing_if = "Option::is_none")]
         nickname: Option<String>,
+        /// Group ID (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Group name (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_name: Option<String>,
     },
     ServerBroadcast {
         session_id: u32,
@@ -576,6 +634,21 @@ pub enum ServerMessage {
         enabled: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
+        /// Group ID (if user belongs to a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Group name (if user belongs to a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_name: Option<String>,
+        /// Base permissions of the assigned group (for computing inherited vs override)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_permissions: Option<Vec<String>>,
+        /// Permissions explicitly revoked from the group for this user
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revoked_permissions: Option<Vec<String>>,
+        /// Available groups for the group dropdown
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        available_groups: Option<Vec<GroupInfo>>,
     },
     UserDisconnected {
         session_id: u32,
@@ -586,6 +659,12 @@ pub enum ServerMessage {
         permissions: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
+        /// Group ID (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Group name (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_name: Option<String>,
     },
     ServerInfoUpdated {
         server_info: ServerInfo,
@@ -910,6 +989,60 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         transfers: Option<Vec<TransferInfo>>,
     },
+    /// Response to GroupList request
+    GroupListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        groups: Option<Vec<GroupInfo>>,
+    },
+    /// Response to GroupCreate request
+    GroupCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to GroupEdit request (fetch group for editing)
+    GroupEditResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_shared: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        member_count: Option<u32>,
+    },
+    /// Response to GroupUpdate request
+    GroupUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to GroupDelete request
+    GroupDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
     /// Response to FileSearch request
     FileSearchResponse {
         success: bool,
@@ -1036,6 +1169,12 @@ pub struct UserInfo {
     pub is_away: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Group ID (if user belongs to a group)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<i64>,
+    /// Group name (if user belongs to a group)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1182,6 +1321,29 @@ pub struct UserInfoDetailed {
     /// Channels the user is currently in (secret channels only visible to admins)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channels: Option<Vec<String>>,
+    /// Group ID (if user belongs to a group)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<i64>,
+    /// Group name (if user belongs to a group)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_name: Option<String>,
+}
+
+/// Information about an account group
+///
+/// Used in `GroupListResponse`, `UserEditResponse.available_groups`, etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupInfo {
+    /// Unique group identifier
+    pub id: i64,
+    /// Group name
+    pub name: String,
+    /// Whether this group is for shared accounts only
+    pub is_shared: bool,
+    /// Number of users assigned to this group
+    pub member_count: u32,
+    /// Permissions granted by this group
+    pub permissions: Vec<String>,
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -1254,6 +1416,8 @@ impl std::fmt::Debug for ClientMessage {
                 is_admin,
                 is_shared,
                 permissions,
+                group_id,
+                revokes,
                 ..
             } => f
                 .debug_struct("UserCreate")
@@ -1261,6 +1425,8 @@ impl std::fmt::Debug for ClientMessage {
                 .field("is_admin", is_admin)
                 .field("is_shared", is_shared)
                 .field("permissions", permissions)
+                .field("group_id", group_id)
+                .field("revokes", revokes)
                 .field("password", &"<REDACTED>")
                 .finish(),
             ClientMessage::UserDelete { username } => f
@@ -1301,6 +1467,9 @@ impl std::fmt::Debug for ClientMessage {
                 requested_is_admin,
                 requested_enabled,
                 requested_permissions,
+                requested_group_id,
+                remove_group,
+                requested_revokes,
             } => f
                 .debug_struct("UserUpdate")
                 .field("username", username)
@@ -1309,6 +1478,9 @@ impl std::fmt::Debug for ClientMessage {
                 .field("requested_is_admin", requested_is_admin)
                 .field("requested_enabled", requested_enabled)
                 .field("requested_permissions", requested_permissions)
+                .field("requested_group_id", requested_group_id)
+                .field("remove_group", remove_group)
+                .field("requested_revokes", requested_revokes)
                 .finish(),
             ClientMessage::UserAway { message } => f
                 .debug_struct("UserAway")
@@ -1517,6 +1689,33 @@ impl std::fmt::Debug for ClientMessage {
                 .finish(),
             ClientMessage::TrustList => f.debug_struct("TrustList").finish(),
             ClientMessage::ConnectionMonitor => f.debug_struct("ConnectionMonitor").finish(),
+            ClientMessage::GroupList => f.debug_struct("GroupList").finish(),
+            ClientMessage::GroupCreate {
+                name,
+                is_shared,
+                permissions,
+            } => f
+                .debug_struct("GroupCreate")
+                .field("name", name)
+                .field("is_shared", is_shared)
+                .field("permissions", permissions)
+                .finish(),
+            ClientMessage::GroupEdit { id } => f.debug_struct("GroupEdit").field("id", id).finish(),
+            ClientMessage::GroupUpdate {
+                id,
+                name,
+                is_shared,
+                permissions,
+            } => f
+                .debug_struct("GroupUpdate")
+                .field("id", id)
+                .field("name", name)
+                .field("is_shared", is_shared)
+                .field("permissions", permissions)
+                .finish(),
+            ClientMessage::GroupDelete { id } => {
+                f.debug_struct("GroupDelete").field("id", id).finish()
+            }
             ClientMessage::FileSearch { query, root } => f
                 .debug_struct("FileSearch")
                 .field("query", query)
@@ -1606,6 +1805,8 @@ mod tests {
             locale: Some("en".to_string()),
             channels: None,
             nickname: Some("testuser".to_string()),
+            group_id: None,
+            group_name: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1626,6 +1827,8 @@ mod tests {
             channels: None,
             nickname: None,
             error: Some("Invalid credentials".to_string()),
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":false"));
@@ -1643,6 +1846,8 @@ mod tests {
             locale: Some("en".to_string()),
             channels: None,
             nickname: Some("admin".to_string()),
+            group_id: None,
+            group_name: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1663,6 +1868,8 @@ mod tests {
             locale: Some("en".to_string()),
             channels: None,
             nickname: Some("regularuser".to_string()),
+            group_id: None,
+            group_name: None,
             error: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1715,6 +1922,8 @@ mod tests {
             avatar: Some(avatar_data.clone()),
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -1734,6 +1943,8 @@ mod tests {
             avatar: None,
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(!json.contains("\"avatar\""));
@@ -1757,6 +1968,8 @@ mod tests {
             is_away: false,
             status: None,
             channels: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -1829,6 +2042,8 @@ mod tests {
             is_shared: true,
             enabled: true,
             permissions: vec!["chat_send".to_string()],
+            group_id: None,
+            revokes: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserCreate\""));
@@ -1892,6 +2107,8 @@ mod tests {
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -1912,6 +2129,8 @@ mod tests {
             session_ids: vec![1],
             locale: "en".to_string(),
             avatar: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"alice\""));
@@ -1936,6 +2155,8 @@ mod tests {
             is_admin: Some(false),
             addresses: None,
             channels: None,
+            group_id: None,
+            group_name: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -1953,6 +2174,11 @@ mod tests {
             is_shared: Some(true),
             enabled: Some(true),
             permissions: Some(vec!["chat_send".to_string()]),
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserEditResponse\""));
@@ -1969,6 +2195,11 @@ mod tests {
             is_shared: Some(false),
             enabled: Some(true),
             permissions: Some(vec![]),
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserEditResponse\""));
@@ -2841,5 +3072,535 @@ mod tests {
         assert!(server_json.contains("\"type\":\"UserMessage\""));
         assert!(!client_json.contains("from_nickname"));
         assert!(server_json.contains("from_nickname"));
+    }
+
+    // =========================================================================
+    // Group protocol message tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize_group_list() {
+        let msg = ClientMessage::GroupList;
+        let json = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json, r#"{"type":"GroupList"}"#);
+    }
+
+    #[test]
+    fn test_serialize_group_create() {
+        let msg = ClientMessage::GroupCreate {
+            name: "Moderators".to_string(),
+            is_shared: false,
+            permissions: vec!["chat_send".to_string(), "user_kick".to_string()],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupCreate\""));
+        assert!(json.contains("\"name\":\"Moderators\""));
+        assert!(json.contains("\"is_shared\":false"));
+        assert!(json.contains("\"permissions\":[\"chat_send\",\"user_kick\"]"));
+    }
+
+    #[test]
+    fn test_serialize_group_create_shared() {
+        let msg = ClientMessage::GroupCreate {
+            name: "SharedGuests".to_string(),
+            is_shared: true,
+            permissions: vec!["chat_send".to_string()],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"is_shared\":true"));
+    }
+
+    #[test]
+    fn test_serialize_group_edit() {
+        let msg = ClientMessage::GroupEdit { id: 42 };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupEdit\""));
+        assert!(json.contains("\"id\":42"));
+    }
+
+    #[test]
+    fn test_serialize_group_update() {
+        let msg = ClientMessage::GroupUpdate {
+            id: 1,
+            name: Some("NewName".to_string()),
+            is_shared: None,
+            permissions: Some(vec!["chat_send".to_string()]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupUpdate\""));
+        assert!(json.contains("\"id\":1"));
+        assert!(json.contains("\"name\":\"NewName\""));
+        assert!(!json.contains("\"is_shared\""));
+        assert!(json.contains("\"permissions\":[\"chat_send\"]"));
+    }
+
+    #[test]
+    fn test_serialize_group_update_minimal() {
+        let msg = ClientMessage::GroupUpdate {
+            id: 5,
+            name: None,
+            is_shared: None,
+            permissions: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"id\":5"));
+        assert!(!json.contains("\"name\""));
+        assert!(!json.contains("\"is_shared\""));
+        assert!(!json.contains("\"permissions\""));
+    }
+
+    #[test]
+    fn test_serialize_group_delete() {
+        let msg = ClientMessage::GroupDelete { id: 7 };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupDelete\""));
+        assert!(json.contains("\"id\":7"));
+    }
+
+    #[test]
+    fn test_serialize_group_list_response_success() {
+        let msg = ServerMessage::GroupListResponse {
+            success: true,
+            error: None,
+            groups: Some(vec![GroupInfo {
+                id: 1,
+                name: "Admins".to_string(),
+                is_shared: false,
+                member_count: 3,
+                permissions: vec!["user_kick".to_string(), "ban_create".to_string()],
+            }]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupListResponse\""));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"name\":\"Admins\""));
+        assert!(json.contains("\"is_shared\":false"));
+        assert!(json.contains("\"member_count\":3"));
+        assert!(json.contains("\"permissions\":[\"user_kick\",\"ban_create\"]"));
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_serialize_group_list_response_error() {
+        let msg = ServerMessage::GroupListResponse {
+            success: false,
+            error: Some("Permission denied".to_string()),
+            groups: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Permission denied\""));
+        assert!(!json.contains("\"groups\""));
+    }
+
+    #[test]
+    fn test_serialize_group_create_response_success() {
+        let msg = ServerMessage::GroupCreateResponse {
+            success: true,
+            error: None,
+            id: Some(42),
+            name: Some("Moderators".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupCreateResponse\""));
+        assert!(json.contains("\"id\":42"));
+        assert!(json.contains("\"name\":\"Moderators\""));
+    }
+
+    #[test]
+    fn test_serialize_group_edit_response_success() {
+        let msg = ServerMessage::GroupEditResponse {
+            success: true,
+            error: None,
+            id: Some(1),
+            name: Some("Editors".to_string()),
+            is_shared: Some(false),
+            permissions: Some(vec!["news_edit".to_string()]),
+            member_count: Some(5),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupEditResponse\""));
+        assert!(json.contains("\"id\":1"));
+        assert!(json.contains("\"name\":\"Editors\""));
+        assert!(json.contains("\"is_shared\":false"));
+        assert!(json.contains("\"member_count\":5"));
+        assert!(json.contains("\"permissions\":[\"news_edit\"]"));
+    }
+
+    #[test]
+    fn test_serialize_group_update_response_success() {
+        let msg = ServerMessage::GroupUpdateResponse {
+            success: true,
+            error: None,
+            id: Some(1),
+            name: Some("Editors".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupUpdateResponse\""));
+        assert!(json.contains("\"id\":1"));
+        assert!(json.contains("\"name\":\"Editors\""));
+    }
+
+    #[test]
+    fn test_serialize_group_delete_response_success() {
+        let msg = ServerMessage::GroupDeleteResponse {
+            success: true,
+            error: None,
+            id: Some(3),
+            name: Some("OldGroup".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"GroupDeleteResponse\""));
+        assert!(json.contains("\"id\":3"));
+        assert!(json.contains("\"name\":\"OldGroup\""));
+    }
+
+    #[test]
+    fn test_serialize_group_delete_response_error() {
+        let msg = ServerMessage::GroupDeleteResponse {
+            success: false,
+            error: Some("Cannot delete group while users are assigned to it".to_string()),
+            id: None,
+            name: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("Cannot delete group"));
+        assert!(!json.contains("\"id\""));
+        assert!(!json.contains("\"name\""));
+    }
+
+    #[test]
+    fn test_deserialize_group_create() {
+        let json =
+            r#"{"type":"GroupCreate","name":"Mods","is_shared":false,"permissions":["chat_send"]}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::GroupCreate {
+                name,
+                is_shared,
+                permissions,
+            } => {
+                assert_eq!(name, "Mods");
+                assert!(!is_shared);
+                assert_eq!(permissions, vec!["chat_send"]);
+            }
+            _ => panic!("Expected GroupCreate"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_group_list_response() {
+        let json = r#"{"type":"GroupListResponse","success":true,"groups":[{"id":1,"name":"Staff","is_shared":false,"member_count":2,"permissions":["user_kick"]}]}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::GroupListResponse {
+                success,
+                groups,
+                error,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let groups = groups.unwrap();
+                assert_eq!(groups.len(), 1);
+                assert_eq!(groups[0].id, 1);
+                assert_eq!(groups[0].name, "Staff");
+                assert!(!groups[0].is_shared);
+                assert_eq!(groups[0].member_count, 2);
+                assert_eq!(groups[0].permissions, vec!["user_kick"]);
+            }
+            _ => panic!("Expected GroupListResponse"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_create_with_group() {
+        let msg = ClientMessage::UserCreate {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: vec!["chat_send".to_string()],
+            group_id: Some(5),
+            revokes: Some(vec!["file_upload".to_string()]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"group_id\":5"));
+        assert!(json.contains("\"revokes\":[\"file_upload\"]"));
+    }
+
+    #[test]
+    fn test_serialize_user_create_without_group() {
+        let msg = ClientMessage::UserCreate {
+            username: "bob".to_string(),
+            password: "pass".to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: vec![],
+            group_id: None,
+            revokes: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(!json.contains("\"group_id\""));
+        assert!(!json.contains("\"revokes\""));
+    }
+
+    #[test]
+    fn test_deserialize_user_create_without_group_defaults() {
+        // Old clients won't send group_id or revokes
+        let json = r#"{"type":"UserCreate","username":"alice","password":"pw","is_admin":false,"enabled":true,"permissions":[]}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::UserCreate {
+                group_id, revokes, ..
+            } => {
+                assert!(group_id.is_none());
+                assert!(revokes.is_none());
+            }
+            _ => panic!("Expected UserCreate"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_update_with_group() {
+        let msg = ClientMessage::UserUpdate {
+            username: "alice".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: Some(3),
+            remove_group: None,
+            requested_revokes: Some(vec!["news_edit".to_string()]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"requested_group_id\":3"));
+        assert!(json.contains("\"requested_revokes\":[\"news_edit\"]"));
+        assert!(!json.contains("\"remove_group\""));
+    }
+
+    #[test]
+    fn test_serialize_user_update_remove_group() {
+        let msg = ClientMessage::UserUpdate {
+            username: "alice".to_string(),
+            current_password: None,
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: Some(true),
+            requested_revokes: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"remove_group\":true"));
+        assert!(!json.contains("\"requested_group_id\""));
+    }
+
+    #[test]
+    fn test_deserialize_user_update_without_group_defaults() {
+        // Old clients won't send group fields
+        let json = r#"{"type":"UserUpdate","username":"alice"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::UserUpdate {
+                requested_group_id,
+                remove_group,
+                requested_revokes,
+                ..
+            } => {
+                assert!(requested_group_id.is_none());
+                assert!(remove_group.is_none());
+                assert!(requested_revokes.is_none());
+            }
+            _ => panic!("Expected UserUpdate"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_login_response_with_group() {
+        let msg = ServerMessage::LoginResponse {
+            success: true,
+            error: None,
+            session_id: Some(1),
+            is_admin: Some(false),
+            permissions: Some(vec!["chat_send".to_string()]),
+            server_info: None,
+            locale: Some("en".to_string()),
+            channels: None,
+            nickname: Some("alice".to_string()),
+            group_id: Some(2),
+            group_name: Some("Editors".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"group_id\":2"));
+        assert!(json.contains("\"group_name\":\"Editors\""));
+    }
+
+    #[test]
+    fn test_deserialize_login_response_without_group_defaults() {
+        // Old servers won't send group fields
+        let json = r#"{"type":"LoginResponse","success":true,"session_id":1,"is_admin":false,"permissions":[],"locale":"en","nickname":"alice"}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::LoginResponse {
+                group_id,
+                group_name,
+                ..
+            } => {
+                assert!(group_id.is_none());
+                assert!(group_name.is_none());
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_edit_response_with_group() {
+        let msg = ServerMessage::UserEditResponse {
+            success: true,
+            error: None,
+            username: Some("alice".to_string()),
+            is_admin: Some(false),
+            is_shared: Some(false),
+            enabled: Some(true),
+            permissions: Some(vec!["chat_send".to_string()]),
+            group_id: Some(1),
+            group_name: Some("Staff".to_string()),
+            group_permissions: Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            revoked_permissions: Some(vec!["user_kick".to_string()]),
+            available_groups: Some(vec![GroupInfo {
+                id: 1,
+                name: "Staff".to_string(),
+                is_shared: false,
+                member_count: 3,
+                permissions: vec!["chat_send".to_string(), "user_kick".to_string()],
+            }]),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"group_id\":1"));
+        assert!(json.contains("\"group_name\":\"Staff\""));
+        assert!(json.contains("\"group_permissions\":[\"chat_send\",\"user_kick\"]"));
+        assert!(json.contains("\"revoked_permissions\":[\"user_kick\"]"));
+        assert!(json.contains("\"available_groups\":[{"));
+    }
+
+    #[test]
+    fn test_deserialize_user_edit_response_without_group_defaults() {
+        // Old servers won't send group fields
+        let json = r#"{"type":"UserEditResponse","success":true,"username":"alice","is_admin":false,"is_shared":false,"enabled":true,"permissions":["chat_send"]}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::UserEditResponse {
+                group_id,
+                group_name,
+                group_permissions,
+                revoked_permissions,
+                available_groups,
+                ..
+            } => {
+                assert!(group_id.is_none());
+                assert!(group_name.is_none());
+                assert!(group_permissions.is_none());
+                assert!(revoked_permissions.is_none());
+                assert!(available_groups.is_none());
+            }
+            _ => panic!("Expected UserEditResponse"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_permissions_updated_with_group() {
+        let msg = ServerMessage::PermissionsUpdated {
+            is_admin: false,
+            permissions: vec!["chat_send".to_string()],
+            server_info: None,
+            group_id: Some(5),
+            group_name: Some("Mods".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"group_id\":5"));
+        assert!(json.contains("\"group_name\":\"Mods\""));
+    }
+
+    #[test]
+    fn test_deserialize_permissions_updated_without_group_defaults() {
+        // Old servers won't send group fields
+        let json = r#"{"type":"PermissionsUpdated","is_admin":false,"permissions":["chat_send"]}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::PermissionsUpdated {
+                group_id,
+                group_name,
+                ..
+            } => {
+                assert!(group_id.is_none());
+                assert!(group_name.is_none());
+            }
+            _ => panic!("Expected PermissionsUpdated"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_user_info_with_group() {
+        let user = UserInfo {
+            username: "alice".to_string(),
+            nickname: "alice".to_string(),
+            login_time: 1718234567,
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: None,
+            is_away: false,
+            status: None,
+            group_id: Some(3),
+            group_name: Some("Editors".to_string()),
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(json.contains("\"group_id\":3"));
+        assert!(json.contains("\"group_name\":\"Editors\""));
+    }
+
+    #[test]
+    fn test_deserialize_user_info_without_group_defaults() {
+        // Old servers won't send group fields
+        let json = r#"{"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
+        let user: UserInfo = serde_json::from_str(json).unwrap();
+        assert!(user.group_id.is_none());
+        assert!(user.group_name.is_none());
+    }
+
+    #[test]
+    fn test_serialize_group_info() {
+        let info = GroupInfo {
+            id: 10,
+            name: "PowerUsers".to_string(),
+            is_shared: false,
+            member_count: 7,
+            permissions: vec!["file_upload".to_string(), "news_create".to_string()],
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"id\":10"));
+        assert!(json.contains("\"name\":\"PowerUsers\""));
+        assert!(json.contains("\"is_shared\":false"));
+        assert!(json.contains("\"member_count\":7"));
+        assert!(json.contains("\"permissions\":[\"file_upload\",\"news_create\"]"));
+    }
+
+    #[test]
+    fn test_deserialize_group_info() {
+        let json = r#"{"id":5,"name":"Staff","is_shared":true,"member_count":0,"permissions":[]}"#;
+        let info: GroupInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, 5);
+        assert_eq!(info.name, "Staff");
+        assert!(info.is_shared);
+        assert_eq!(info.member_count, 0);
+        assert!(info.permissions.is_empty());
     }
 }
