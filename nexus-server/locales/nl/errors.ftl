@@ -240,3 +240,15 @@ err-voice-not-joined = Je bent niet in een spraaksessie
 err-voice-not-channel-member = Je moet lid zijn van { $channel } om deel te nemen aan spraak
 err-voice-target-not-online = { $nickname } is niet online
 err-voice-invalid-target = Ongeldig spraakdoel
+
+# Groepsfouten
+err-group-name-empty = Groepsnaam mag niet leeg zijn
+err-group-name-too-long = Groepsnaam overschrijdt de maximale lengte
+err-group-name-invalid = Groepsnaam bevat ongeldige tekens
+err-group-not-found = Groep niet gevonden
+err-group-already-exists = Een groep met deze naam bestaat al
+err-group-shared-permission = Gedeelde groepen kunnen deze machtiging niet hebben
+err-group-not-empty-delete = Kan groep niet verwijderen zolang er gebruikers aan zijn toegewezen
+err-group-not-empty-modify = Kan gedeelde status niet wijzigen zolang er gebruikers aan zijn toegewezen
+err-group-no-fields = Geen velden om bij te werken
+err-group-shared-mismatch = Accounttype komt niet overeen met groepstype (gedeelde accounts vereisen gedeelde groepen)

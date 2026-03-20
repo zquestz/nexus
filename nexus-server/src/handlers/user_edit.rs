@@ -699,4 +699,90 @@ mod tests {
             _ => panic!("Expected UserEditResponse"),
         }
     }
+
+    #[tokio::test]
+    async fn test_useredit_get_includes_group_info() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a group with permissions
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create a user assigned to the group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        let result = handle_user_edit(
+            "bob".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserEditResponse {
+                success,
+                error,
+                username,
+                group_id,
+                group_name,
+                group_permissions,
+                available_groups,
+                ..
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(username.as_deref(), Some("bob"));
+
+                // Verify group_id is set
+                assert_eq!(group_id, Some(group.id));
+
+                // Verify group_name is populated
+                assert_eq!(group_name.as_deref(), Some("Mods"));
+
+                // Verify group_permissions contains the group's permissions
+                let gp = group_permissions.expect("group_permissions should be populated");
+                assert!(gp.contains(&"chat_send".to_string()));
+                assert!(gp.contains(&"user_kick".to_string()));
+                assert_eq!(gp.len(), 2);
+
+                // Verify available_groups is populated and contains our group
+                let ag = available_groups.expect("available_groups should be populated");
+                assert!(!ag.is_empty(), "available_groups should not be empty");
+                let mods_group = ag.iter().find(|g| g.name == "Mods");
+                assert!(
+                    mods_group.is_some(),
+                    "available_groups should contain Mods group"
+                );
+                let mods_group = mods_group.unwrap();
+                assert_eq!(mods_group.id, group.id);
+                assert!(!mods_group.is_shared);
+                assert!(mods_group.permissions.contains(&"chat_send".to_string()));
+                assert!(mods_group.permissions.contains(&"user_kick".to_string()));
+            }
+            _ => panic!("Expected UserEditResponse"),
+        }
+    }
 }

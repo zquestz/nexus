@@ -3920,4 +3920,172 @@ mod tests {
             "User should stay in voice when only voice_talk is revoked (can still listen)"
         );
     }
+
+    #[tokio::test]
+    async fn test_user_update_assign_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create a user without a group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Verify user has no group initially
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.group_id, None);
+
+        // Update user to assign group
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: Some(group.id),
+            remove_group: None,
+            requested_revokes: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Should successfully assign group");
+                assert!(error.is_none(), "Should have no error");
+                assert_eq!(username, Some("bob".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Verify user is now in the group
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.group_id, Some(group.id));
+    }
+
+    #[tokio::test]
+    async fn test_user_update_remove_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create a user assigned to the group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Verify user is in the group initially
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.group_id, Some(group.id));
+
+        // Update user to remove group
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: Some(true),
+            requested_revokes: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Should successfully remove group");
+                assert!(error.is_none(), "Should have no error");
+                assert_eq!(username, Some("bob".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Verify user no longer has a group
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.group_id, None);
+    }
 }

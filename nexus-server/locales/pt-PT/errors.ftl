@@ -240,3 +240,15 @@ err-voice-not-joined = Não está numa sessão de voz
 err-voice-not-channel-member = Tem de ser membro de { $channel } para entrar no chat de voz
 err-voice-target-not-online = { $nickname } não está online
 err-voice-invalid-target = Destino de voz inválido
+
+# Erros de grupo
+err-group-name-empty = O nome do grupo não pode estar vazio
+err-group-name-too-long = O nome do grupo excede o comprimento máximo
+err-group-name-invalid = O nome do grupo contém caracteres inválidos
+err-group-not-found = Grupo não encontrado
+err-group-already-exists = Já existe um grupo com este nome
+err-group-shared-permission = Grupos partilhados não podem ter esta permissão
+err-group-not-empty-delete = Não é possível eliminar o grupo enquanto houver utilizadores atribuídos
+err-group-not-empty-modify = Não é possível modificar o estado partilhado enquanto houver utilizadores atribuídos
+err-group-no-fields = Nenhum campo para atualizar
+err-group-shared-mismatch = O tipo de conta não corresponde ao tipo de grupo (contas partilhadas requerem grupos partilhados)

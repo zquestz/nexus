@@ -240,3 +240,15 @@ err-voice-not-joined = 您不在语音会话中
 err-voice-not-channel-member = 您必须是 { $channel } 的成员才能加入语音
 err-voice-target-not-online = { $nickname } 不在线
 err-voice-invalid-target = 无效的语音目标
+
+# 群组错误
+err-group-name-empty = 群组名称不能为空
+err-group-name-too-long = 群组名称超过最大长度
+err-group-name-invalid = 群组名称包含无效字符
+err-group-not-found = 群组未找到
+err-group-already-exists = 已存在同名群组
+err-group-shared-permission = 共享群组不能拥有此权限
+err-group-not-empty-delete = 群组中仍有用户，无法删除
+err-group-not-empty-modify = 群组中仍有用户，无法修改共享状态
+err-group-no-fields = 没有要更新的字段
+err-group-shared-mismatch = 账户类型与群组类型不匹配（共享账户需要共享群组）

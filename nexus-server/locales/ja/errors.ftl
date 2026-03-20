@@ -240,3 +240,15 @@ err-voice-not-joined = ボイスセッションに参加していません
 err-voice-not-channel-member = ボイスに参加するには{ $channel }のメンバーである必要があります
 err-voice-target-not-online = { $nickname }はオンラインではありません
 err-voice-invalid-target = 無効なボイス対象です
+
+# グループエラー
+err-group-name-empty = グループ名を空にすることはできません
+err-group-name-too-long = グループ名が最大長を超えています
+err-group-name-invalid = グループ名に無効な文字が含まれています
+err-group-not-found = グループが見つかりません
+err-group-already-exists = この名前のグループは既に存在します
+err-group-shared-permission = 共有グループはこの権限を持つことができません
+err-group-not-empty-delete = ユーザーが割り当てられている間はグループを削除できません
+err-group-not-empty-modify = ユーザーが割り当てられている間は共有ステータスを変更できません
+err-group-no-fields = 更新するフィールドがありません
+err-group-shared-mismatch = アカウントタイプがグループタイプと一致しません（共有アカウントには共有グループが必要です）

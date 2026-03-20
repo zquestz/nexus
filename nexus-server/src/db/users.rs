@@ -41,7 +41,6 @@ pub struct UserAccount {
     pub is_shared: bool,
     pub enabled: bool,
     pub created_at: i64,
-    #[allow(dead_code)] // Used in Step 6 (login/user_create/user_update handlers)
     pub group_id: Option<i64>,
 }
 
@@ -604,18 +603,22 @@ impl UserDb {
         user_id: i64,
         revokes: &[Permission],
     ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
             .bind(user_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         for perm in revokes {
             sqlx::query(SQL_INSERT_PERMISSION_OVERRIDE)
                 .bind(user_id)
                 .bind(perm.as_str())
                 .bind("revoke")
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
         }
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -633,11 +636,13 @@ impl UserDb {
         user_id: i64,
         new_group_id: Option<i64>,
     ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
         if let Some(gid) = new_group_id {
             // Assigned to a group — remove duplicate grants
             let group_perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
                 .bind(gid)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *tx)
                 .await?;
             let group_perms: std::collections::HashSet<String> =
                 group_perm_rows.into_iter().map(|(p,)| p).collect();
@@ -645,28 +650,28 @@ impl UserDb {
             // Get current grant overrides
             let grant_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GRANT_PERMISSIONS)
                 .bind(user_id)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *tx)
                 .await?;
 
             // Delete grants that the group already provides
             for (perm,) in grant_rows {
                 if group_perms.contains(&perm) {
-                    sqlx::query(
-                        "DELETE FROM user_permissions WHERE user_id = ? AND permission = ? AND override_type = 'grant'",
-                    )
-                    .bind(user_id)
-                    .bind(&perm)
-                    .execute(&self.pool)
-                    .await?;
+                    sqlx::query(SQL_DELETE_GRANT_PERMISSION)
+                        .bind(user_id)
+                        .bind(&perm)
+                        .execute(&mut *tx)
+                        .await?;
                 }
             }
         } else {
             // Removed from group — clear revokes, keep grants
             sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
                 .bind(user_id)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
         }
+
+        tx.commit().await?;
 
         Ok(())
     }
@@ -2272,5 +2277,376 @@ mod tests {
 
         assert_eq!(alice.group_id, Some(group.id));
         assert_eq!(bob.group_id, None);
+    }
+
+    // ========================================================================
+    // update_user_group Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_update_user_group_success() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group1 = group_db
+            .create_group("Group1", false, &["chat_send".into()])
+            .await
+            .unwrap();
+        let group2 = group_db
+            .create_group("Group2", false, &["user_kick".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group1.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(user.group_id, Some(group1.id));
+
+        // Update group
+        let updated = db
+            .update_user_group(user.id, Some(group2.id))
+            .await
+            .unwrap();
+        assert!(updated);
+
+        // Verify group changed
+        let fetched = db.get_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(fetched.group_id, Some(group2.id));
+    }
+
+    #[tokio::test]
+    async fn test_update_user_group_nonexistent_user() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Team", false, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        let result = db.update_user_group(99999, Some(group.id)).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_group_remove_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Team", false, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(user.group_id, Some(group.id));
+
+        // Remove group by setting to None
+        let updated = db.update_user_group(user.id, None).await.unwrap();
+        assert!(updated);
+
+        let fetched = db.get_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(fetched.group_id, None);
+    }
+
+    // ========================================================================
+    // get_revoke_permissions Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_revoke_permissions_empty() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert!(revokes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_revoke_permissions_returns_revokes() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[Permission::UserKick],
+            })
+            .await
+            .unwrap();
+
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 1);
+        assert!(revokes.contains(&"user_kick".to_string()));
+    }
+
+    // ========================================================================
+    // set_revoke_permissions Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_set_revoke_permissions_replaces_existing() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group(
+                "Mods",
+                false,
+                &["chat_send".into(), "user_kick".into(), "ban_create".into()],
+            )
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Set initial revokes
+        db.set_revoke_permissions(user.id, &[Permission::UserKick])
+            .await
+            .unwrap();
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 1);
+        assert!(revokes.contains(&"user_kick".to_string()));
+
+        // Replace with different revokes
+        db.set_revoke_permissions(user.id, &[Permission::BanCreate, Permission::ChatSend])
+            .await
+            .unwrap();
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 2);
+        assert!(revokes.contains(&"ban_create".to_string()));
+        assert!(revokes.contains(&"chat_send".to_string()));
+        // Old revoke should be gone
+        assert!(!revokes.contains(&"user_kick".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_set_revoke_permissions_empty_clears() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[Permission::UserKick],
+            })
+            .await
+            .unwrap();
+
+        // Verify revoke exists
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 1);
+
+        // Set empty revokes to clear
+        db.set_revoke_permissions(user.id, &[]).await.unwrap();
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert!(revokes.is_empty());
+    }
+
+    // ========================================================================
+    // cleanup_overrides_for_group_change Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_cleanup_overrides_assigned_to_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send and user_kick
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create user with no group initially
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Add grant overrides: chat_send (overlaps group) and user_list (does not)
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("chat_send")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("user_list")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Now assign user to group and clean up
+        db.update_user_group(user.id, Some(group.id)).await.unwrap();
+        db.cleanup_overrides_for_group_change(user.id, Some(group.id))
+            .await
+            .unwrap();
+
+        // chat_send grant should be removed (duplicate with group)
+        // user_list grant should be kept (not in group)
+        let grant_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT permission FROM user_permissions WHERE user_id = ? AND override_type = 'grant'",
+        )
+        .bind(user.id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let grant_perms: Vec<String> = grant_rows.into_iter().map(|(p,)| p).collect();
+        assert_eq!(grant_perms.len(), 1);
+        assert!(grant_perms.contains(&"user_list".to_string()));
+        assert!(!grant_perms.contains(&"chat_send".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_overrides_removed_from_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send and user_kick
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create user in the group
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[Permission::UserKick],
+            })
+            .await
+            .unwrap();
+
+        // Add a grant override too
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("user_list")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Verify revoke exists
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 1);
+
+        // Remove user from group and clean up
+        db.update_user_group(user.id, None).await.unwrap();
+        db.cleanup_overrides_for_group_change(user.id, None)
+            .await
+            .unwrap();
+
+        // Grants should be kept (become individual permissions)
+        let grant_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT permission FROM user_permissions WHERE user_id = ? AND override_type = 'grant'",
+        )
+        .bind(user.id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let grant_perms: Vec<String> = grant_rows.into_iter().map(|(p,)| p).collect();
+        assert_eq!(grant_perms.len(), 1);
+        assert!(grant_perms.contains(&"user_list".to_string()));
+
+        // Revokes should be cleared (no group to revoke against)
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert!(revokes.is_empty());
     }
 }

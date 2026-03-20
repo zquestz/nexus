@@ -152,6 +152,14 @@ pub const SQL_SELECT_REVOKE_PERMISSIONS: &str =
 pub const SQL_DELETE_REVOKE_PERMISSIONS: &str =
     "DELETE FROM user_permissions WHERE user_id = ? AND override_type = 'revoke'";
 
+/// Delete a specific grant override for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+pub const SQL_DELETE_GRANT_PERMISSION: &str =
+    "DELETE FROM user_permissions WHERE user_id = ? AND permission = ? AND override_type = 'grant'";
+
 /// Select a user's group_id
 ///
 /// **Parameters:**

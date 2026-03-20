@@ -1436,4 +1436,151 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
     }
+
+    #[tokio::test]
+    async fn test_usercreate_with_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // Create a user assigned to the group
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(group.id),
+                revokes: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should succeed creating user with group");
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "Should successfully create user with group");
+                assert!(error.is_none(), "Should have no error");
+                assert_eq!(username, Some("bob".to_string()));
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+
+        // Verify user is in the group
+        let created_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(created_user.group_id, Some(group.id));
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_shared_group_mismatch() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create admin user
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a non-shared group
+        let regular_group = test_ctx
+            .db
+            .groups
+            .create_group("Regular", false, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        // Create a shared group
+        let shared_group = test_ctx
+            .db
+            .groups
+            .create_group("Shared", true, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        // Try: shared user + non-shared group → error
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "shared_acct".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(regular_group.id),
+                revokes: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response");
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Shared user + non-shared group should fail");
+                assert!(error.is_some(), "Should have error message");
+                assert!(username.is_none());
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+
+        // Try: non-shared user + shared group → error
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "regular_user".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(shared_group.id),
+                revokes: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response");
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success, "Non-shared user + shared group should fail");
+                assert!(error.is_some(), "Should have error message");
+                assert!(username.is_none());
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+    }
 }

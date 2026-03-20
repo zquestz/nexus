@@ -240,3 +240,15 @@ err-voice-not-joined = Sie sind nicht in einer Voice-Sitzung
 err-voice-not-channel-member = Sie müssen Mitglied von { $channel } sein, um Voice beizutreten
 err-voice-target-not-online = { $nickname } ist nicht online
 err-voice-invalid-target = Ungültiges Voice-Ziel
+
+# Gruppenfehler
+err-group-name-empty = Gruppenname darf nicht leer sein
+err-group-name-too-long = Gruppenname überschreitet die maximale Länge
+err-group-name-invalid = Gruppenname enthält ungültige Zeichen
+err-group-not-found = Gruppe nicht gefunden
+err-group-already-exists = Eine Gruppe mit diesem Namen existiert bereits
+err-group-shared-permission = Gemeinsame Gruppen können diese Berechtigung nicht haben
+err-group-not-empty-delete = Gruppe kann nicht gelöscht werden, solange Benutzer zugewiesen sind
+err-group-not-empty-modify = Der gemeinsame Status kann nicht geändert werden, solange Benutzer zugewiesen sind
+err-group-no-fields = Keine Felder zum Aktualisieren
+err-group-shared-mismatch = Kontotyp stimmt nicht mit dem Gruppentyp überein (gemeinsame Konten erfordern gemeinsame Gruppen)

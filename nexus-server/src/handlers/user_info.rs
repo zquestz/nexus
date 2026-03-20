@@ -139,6 +139,26 @@ where
         .map(|s| (s.is_away, s.status.clone()))
         .unwrap_or((false, None));
 
+    // Get group info from most recent login session ("latest login wins"),
+    // falling back to account group_id + DB lookup if no session has it
+    let (group_id, group_name) = target_sessions
+        .iter()
+        .max_by_key(|s| s.login_time)
+        .map(|s| (s.group_id, s.group_name.clone()))
+        .unwrap_or((None, None));
+    let (group_id, group_name) = if group_id.is_some() {
+        (group_id, group_name)
+    } else if let Some(gid) = target_account.group_id {
+        // Session didn't have group info; fall back to account's group_id and look up the name
+        let gname = match ctx.db.groups.get_group_by_id(gid).await {
+            Ok(Some(record)) => Some(record.name),
+            _ => None,
+        };
+        (Some(gid), gname)
+    } else {
+        (None, None)
+    };
+
     // Get nickname (display name) for the user from the session
     // (nickname is always populated - equals username for regular accounts)
     let display_nickname = target_sessions
@@ -194,8 +214,8 @@ where
             is_away,
             status,
             channels,
-            group_id: None,
-            group_name: None,
+            group_id,
+            group_name: group_name.clone(),
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -214,8 +234,8 @@ where
             is_away,
             status,
             channels,
-            group_id: None,
-            group_name: None,
+            group_id,
+            group_name,
         }
     };
 

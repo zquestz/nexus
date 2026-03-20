@@ -240,3 +240,15 @@ err-voice-not-joined = 您不在語音會話中
 err-voice-not-channel-member = 您必須是 { $channel } 的成員才能加入語音
 err-voice-target-not-online = { $nickname } 不在線上
 err-voice-invalid-target = 無效的語音目標
+
+# 群組錯誤
+err-group-name-empty = 群組名稱不能為空
+err-group-name-too-long = 群組名稱超過最大長度
+err-group-name-invalid = 群組名稱包含無效字元
+err-group-not-found = 找不到群組
+err-group-already-exists = 已存在同名群組
+err-group-shared-permission = 共享群組不能擁有此權限
+err-group-not-empty-delete = 群組中仍有使用者，無法刪除
+err-group-not-empty-modify = 群組中仍有使用者，無法修改共享狀態
+err-group-no-fields = 沒有要更新的欄位
+err-group-shared-mismatch = 帳戶類型與群組類型不相符（共享帳戶需要共享群組）

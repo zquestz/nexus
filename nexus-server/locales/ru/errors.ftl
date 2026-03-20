@@ -240,3 +240,15 @@ err-voice-not-joined = Вы не находитесь в голосовой се
 err-voice-not-channel-member = Для подключения к голосовому чату вы должны быть участником { $channel }
 err-voice-target-not-online = { $nickname } не в сети
 err-voice-invalid-target = Недопустимая цель голосового чата
+
+# Ошибки групп
+err-group-name-empty = Название группы не может быть пустым
+err-group-name-too-long = Название группы превышает максимальную длину
+err-group-name-invalid = Название группы содержит недопустимые символы
+err-group-not-found = Группа не найдена
+err-group-already-exists = Группа с таким названием уже существует
+err-group-shared-permission = Общие группы не могут иметь это разрешение
+err-group-not-empty-delete = Невозможно удалить группу, пока к ней привязаны пользователи
+err-group-not-empty-modify = Невозможно изменить общий статус, пока к группе привязаны пользователи
+err-group-no-fields = Нет полей для обновления
+err-group-shared-mismatch = Тип учетной записи не соответствует типу группы (общие учетные записи требуют общих групп)

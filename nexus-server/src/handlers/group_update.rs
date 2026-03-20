@@ -142,6 +142,17 @@ where
         }
     };
 
+    // Fetch current permissions once and reuse everywhere
+    let current_permissions: Vec<String> = match ctx.db.groups.get_group_permissions(id).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Database error getting group permissions: {}", e);
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
+                .await;
+        }
+    };
+
     // Shared status toggle check: if changing is_shared, group must have no members
     if let Some(new_shared) = is_shared
         && new_shared != group.is_shared
@@ -191,19 +202,8 @@ where
             // Admins can set any permissions directly
             requested_perms.clone()
         } else {
-            // Get current group permissions
-            let current_perms = match ctx.db.groups.get_group_permissions(id).await {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("Database error getting group permissions: {}", e);
-                    return ctx
-                        .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
-                        .await;
-                }
-            };
-
             // Preserved = current permissions the requester does NOT have
-            let mut final_perms: Vec<String> = current_perms
+            let mut final_perms: Vec<String> = current_permissions
                 .iter()
                 .filter(|p| {
                     Permission::parse(p)
@@ -227,15 +227,7 @@ where
         }
     } else {
         // No permission changes requested — pass through current permissions unchanged
-        match ctx.db.groups.get_group_permissions(id).await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Database error getting group permissions: {}", e);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
-                    .await;
-            }
-        }
+        current_permissions.clone()
     };
 
     // Shared group permission validation: if final group is shared, all permissions must be allowed
@@ -255,15 +247,7 @@ where
 
     // Capture old state for diff detection
     let old_name = group.name.clone();
-    let old_permissions: HashSet<String> = match ctx.db.groups.get_group_permissions(id).await {
-        Ok(p) => p.into_iter().collect(),
-        Err(e) => {
-            eprintln!("Database error getting old group permissions: {}", e);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
-                .await;
-        }
-    };
+    let old_permissions: HashSet<String> = current_permissions.into_iter().collect();
 
     // Update group in database
     match ctx
