@@ -332,8 +332,8 @@ where
             is_shared,
             enabled,
             permissions,
-            group_id: _,
-            revokes: _,
+            group_id,
+            revokes,
         } => {
             let request = handlers::UserCreateRequest {
                 username,
@@ -342,6 +342,8 @@ where
                 is_shared,
                 enabled,
                 permissions,
+                group_id,
+                revokes,
             };
             handlers::handle_user_create(request, conn_state.session_id, ctx).await?;
         }
@@ -376,9 +378,9 @@ where
             requested_is_admin,
             requested_enabled,
             requested_permissions,
-            requested_group_id: _,
-            remove_group: _,
-            requested_revokes: _,
+            requested_group_id,
+            remove_group,
+            requested_revokes,
         } => {
             let request = handlers::UserUpdateRequest {
                 username,
@@ -388,6 +390,9 @@ where
                 requested_is_admin,
                 requested_enabled,
                 requested_permissions,
+                requested_group_id,
+                remove_group,
+                requested_revokes,
                 session_id: conn_state.session_id,
             };
             handlers::handle_user_update(request, ctx).await?;

@@ -260,6 +260,7 @@ pub async fn login_user_from_ip(
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -286,6 +287,8 @@ pub async fn login_user_from_ip(
             nickname: username.to_string(), // Regular account: nickname == username
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         })
         .await
         .expect("Failed to add user to UserManager")
@@ -323,6 +326,7 @@ pub async fn login_user_with_features(
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -346,6 +350,8 @@ pub async fn login_user_with_features(
             nickname: username.to_string(), // Regular account: nickname == username
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         })
         .await
         .expect("Failed to add user to UserManager")
@@ -382,6 +388,7 @@ pub async fn login_shared_user(
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -405,6 +412,8 @@ pub async fn login_shared_user(
             nickname: nickname.to_string(), // Shared account: custom nickname
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         })
         .await
         .expect("Failed to add shared user to UserManager")

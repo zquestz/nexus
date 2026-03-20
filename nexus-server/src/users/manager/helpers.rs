@@ -85,8 +85,8 @@ impl UserManager {
             avatar: session.avatar.clone(),
             is_away: session.is_away,
             status: session.status.clone(),
-            group_id: None,
-            group_name: None,
+            group_id: session.group_id,
+            group_name: session.group_name.clone(),
         }
     }
 
@@ -134,8 +134,8 @@ impl UserManager {
             avatar: latest_session.avatar.clone(),
             is_away: latest_session.is_away,
             status: latest_session.status.clone(),
-            group_id: None,
-            group_name: None,
+            group_id: latest_session.group_id,
+            group_name: latest_session.group_name.clone(),
         })
     }
 }

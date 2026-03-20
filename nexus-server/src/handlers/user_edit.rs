@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{GroupInfo, ServerMessage};
 use nexus_common::validators::{self, UsernameError};
 
 #[cfg(test)]
@@ -184,6 +184,62 @@ where
         .map(|p| p.as_str().to_string())
         .collect();
 
+    // Fetch group info if user belongs to a group
+    let (group_name, group_permissions_list) = if let Some(gid) = target_user.group_id {
+        match ctx.db.groups.get_group_by_id(gid).await {
+            Ok(Some(group)) => {
+                let group_perms = ctx
+                    .db
+                    .groups
+                    .get_group_permissions(gid)
+                    .await
+                    .unwrap_or_default();
+                (Some(group.name), Some(group_perms))
+            }
+            _ => (None, None),
+        }
+    } else {
+        (None, None)
+    };
+
+    // Fetch revoke overrides for this user
+    let revoked_permissions = if target_user.group_id.is_some() {
+        match ctx.db.users.get_revoke_permissions(target_user.id).await {
+            Ok(revokes) if !revokes.is_empty() => Some(revokes),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    // Fetch available groups for the dropdown
+    let available_groups = match ctx.db.groups.get_all_groups().await {
+        Ok(groups) => {
+            let mut group_infos = Vec::new();
+            for group in groups {
+                let member_count = ctx.db.groups.get_member_count(group.id).await.unwrap_or(0);
+                let perms = ctx
+                    .db
+                    .groups
+                    .get_group_permissions(group.id)
+                    .await
+                    .unwrap_or_default();
+                group_infos.push(GroupInfo {
+                    id: group.id,
+                    name: group.name,
+                    is_shared: group.is_shared,
+                    member_count,
+                    permissions: perms,
+                });
+            }
+            Some(group_infos)
+        }
+        Err(e) => {
+            eprintln!("Error fetching groups: {}", e);
+            None
+        }
+    };
+
     // Send user details for editing
     let response = ServerMessage::UserEditResponse {
         success: true,
@@ -193,11 +249,11 @@ where
         is_shared: Some(target_user.is_shared),
         enabled: Some(target_user.enabled),
         permissions: Some(permissions),
-        group_id: None,
-        group_name: None,
-        group_permissions: None,
-        revoked_permissions: None,
-        available_groups: None,
+        group_id: target_user.group_id,
+        group_name,
+        group_permissions: group_permissions_list,
+        revoked_permissions,
+        available_groups,
     };
 
     ctx.send_message(&response).await
@@ -242,6 +298,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -315,6 +372,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -379,6 +437,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -440,6 +499,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -553,6 +613,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -610,6 +671,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

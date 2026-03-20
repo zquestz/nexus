@@ -328,6 +328,23 @@ where
         }
     };
 
+    // Look up group name if user belongs to a group
+    let (group_id, group_name) = if let Some(gid) = authenticated_account.group_id {
+        match ctx.db.groups.get_group_by_id(gid).await {
+            Ok(Some(group)) => (Some(gid), Some(group.name)),
+            Ok(None) => (None, None), // Group was deleted (ON DELETE SET NULL)
+            Err(e) => {
+                eprintln!(
+                    "Error fetching group for {}: {}",
+                    authenticated_account.username, e
+                );
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
+    };
+
     // Check if user can auto-join channels BEFORE features is moved into NewSessionParams
     // Auto-join only happens if:
     // 1. User has the chat feature enabled (passed in login request)
@@ -386,6 +403,8 @@ where
                 .unwrap_or_else(|| authenticated_account.username.clone()),
             is_away: inherited_is_away,
             status: inherited_status,
+            group_id,
+            group_name: group_name.clone(),
         })
         .await
     {
@@ -569,8 +588,8 @@ where
         channels,
         nickname: Some(nickname.clone()),
         error: None,
-        group_id: None,
-        group_name: None,
+        group_id,
+        group_name: group_name.clone(),
     };
     ctx.send_message(&response).await?;
 
@@ -594,8 +613,8 @@ where
         avatar,
         is_away: false,
         status: None,
-        group_id: None,
-        group_name: None,
+        group_id,
+        group_name,
     };
     ctx.user_manager
         .broadcast_user_event(
@@ -724,6 +743,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -802,6 +822,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -844,6 +865,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -889,6 +911,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -916,6 +939,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1002,6 +1026,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1064,6 +1089,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1174,6 +1200,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1253,6 +1280,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(), // No permissions
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1339,6 +1367,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1415,6 +1444,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1500,6 +1530,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1593,6 +1624,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1609,6 +1641,7 @@ mod tests {
                 enabled: false,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1668,6 +1701,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1724,6 +1758,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1983,6 +2018,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2048,6 +2084,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2137,6 +2174,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2189,6 +2227,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2241,6 +2280,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2316,6 +2356,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2401,6 +2442,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2448,6 +2490,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2495,6 +2538,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2568,6 +2612,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2916,6 +2961,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2940,6 +2986,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: true,
                 status: Some("grabbing lunch".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add first session");
@@ -3002,6 +3050,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3025,6 +3074,8 @@ mod tests {
                 nickname: "user_one".to_string(),
                 is_away: true,
                 status: Some("away message".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add first session");
@@ -3086,6 +3137,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3109,6 +3161,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: true,
                 status: Some("old status".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add first session");
@@ -3135,6 +3189,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: false,
                 status: Some("new status".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add second session");
@@ -3196,6 +3252,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3210,6 +3267,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

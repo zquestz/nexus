@@ -301,6 +301,8 @@ mod tests {
                 nickname: username.to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add second session")
@@ -337,6 +339,8 @@ mod tests {
                 nickname: nickname.to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add shared session")

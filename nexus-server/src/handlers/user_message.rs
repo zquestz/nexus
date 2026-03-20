@@ -404,6 +404,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -548,6 +549,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -624,6 +626,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -695,6 +698,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

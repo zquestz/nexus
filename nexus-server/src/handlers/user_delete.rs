@@ -225,6 +225,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -405,6 +406,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -528,6 +530,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -544,6 +547,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -568,6 +572,8 @@ mod tests {
                 nickname: "online_user".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -657,6 +663,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

@@ -15,6 +15,7 @@ pub struct CreateUserParams<'a> {
     pub enabled: bool,
     pub permissions: &'a Permissions,
     pub group_id: Option<i64>,
+    pub revokes: &'a [Permission],
 }
 
 /// User account stored in database
@@ -261,26 +262,40 @@ impl UserDb {
 
     /// Set permissions within an existing transaction
     ///
-    /// Deletes all existing permissions and inserts the new ones.
+    /// Deletes all existing permissions and inserts the new ones as grants.
+    /// Optionally inserts revoke overrides for group-based permission denial.
     /// The caller is responsible for committing or rolling back the transaction.
     async fn set_permissions_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         user_id: i64,
         permissions: &Permissions,
+        revokes: Option<&[Permission]>,
     ) -> Result<(), sqlx::Error> {
-        // Delete existing permissions
+        // Delete existing permissions (both grants and revokes)
         sqlx::query(SQL_DELETE_PERMISSIONS)
             .bind(user_id)
             .execute(&mut **tx)
             .await?;
 
-        // Insert new permissions
+        // Insert new permissions as grants
         for perm in permissions.to_vec() {
             sqlx::query(SQL_INSERT_PERMISSION)
                 .bind(user_id)
                 .bind(perm.as_str())
                 .execute(&mut **tx)
                 .await?;
+        }
+
+        // Insert revoke overrides if provided
+        if let Some(revoke_perms) = revokes {
+            for perm in revoke_perms {
+                sqlx::query(SQL_INSERT_PERMISSION_OVERRIDE)
+                    .bind(user_id)
+                    .bind(perm.as_str())
+                    .bind("revoke")
+                    .execute(&mut **tx)
+                    .await?;
+            }
         }
 
         Ok(())
@@ -322,7 +337,12 @@ impl UserDb {
         // Only set permissions for non-admin users
         // Admins automatically get all permissions via has_permission()
         if !params.is_admin {
-            Self::set_permissions_in_tx(&mut tx, user_id, params.permissions).await?;
+            let revokes = if params.revokes.is_empty() {
+                None
+            } else {
+                Some(params.revokes)
+            };
+            Self::set_permissions_in_tx(&mut tx, user_id, params.permissions, revokes).await?;
         }
 
         tx.commit().await?;
@@ -536,7 +556,7 @@ impl UserDb {
         if let Some(perms) = requested_permissions {
             // Only set permissions for non-admin users
             if !final_is_admin {
-                Self::set_permissions_in_tx(&mut tx, user.id, perms).await?;
+                Self::set_permissions_in_tx(&mut tx, user.id, perms, None).await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
                 sqlx::query(SQL_DELETE_PERMISSIONS)
@@ -549,6 +569,106 @@ impl UserDb {
         tx.commit().await?;
 
         Ok(true)
+    }
+
+    /// Update a user's group assignment
+    ///
+    /// Sets the user's group_id. Pass `None` to remove from group.
+    pub async fn update_user_group(
+        &self,
+        user_id: i64,
+        group_id: Option<i64>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(SQL_UPDATE_USER_GROUP)
+            .bind(group_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get revoke override permissions for a user
+    pub async fn get_revoke_permissions(&self, user_id: i64) -> Result<Vec<String>, sqlx::Error> {
+        let rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_REVOKE_PERMISSIONS)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(p,)| p).collect())
+    }
+
+    /// Set revoke override permissions for a user
+    ///
+    /// Replaces all revoke overrides with the given list.
+    pub async fn set_revoke_permissions(
+        &self,
+        user_id: i64,
+        revokes: &[Permission],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        for perm in revokes {
+            sqlx::query(SQL_INSERT_PERMISSION_OVERRIDE)
+                .bind(user_id)
+                .bind(perm.as_str())
+                .bind("revoke")
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Clean up overrides when a user's group changes
+    ///
+    /// When assigned to a group / moved between groups:
+    /// - Remove duplicate grants (permissions the new group already provides)
+    /// - Keep non-overlapping grants and all revokes
+    ///
+    /// When removed from group (new_group_id is None):
+    /// - Keep grant overrides (become regular individual permissions)
+    /// - Clear revoke overrides (no group to revoke against)
+    pub async fn cleanup_overrides_for_group_change(
+        &self,
+        user_id: i64,
+        new_group_id: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        if let Some(gid) = new_group_id {
+            // Assigned to a group — remove duplicate grants
+            let group_perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
+                .bind(gid)
+                .fetch_all(&self.pool)
+                .await?;
+            let group_perms: std::collections::HashSet<String> =
+                group_perm_rows.into_iter().map(|(p,)| p).collect();
+
+            // Get current grant overrides
+            let grant_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GRANT_PERMISSIONS)
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await?;
+
+            // Delete grants that the group already provides
+            for (perm,) in grant_rows {
+                if group_perms.contains(&perm) {
+                    sqlx::query(
+                        "DELETE FROM user_permissions WHERE user_id = ? AND permission = ? AND override_type = 'grant'",
+                    )
+                    .bind(user_id)
+                    .bind(&perm)
+                    .execute(&self.pool)
+                    .await?;
+                }
+            }
+        } else {
+            // Removed from group — clear revokes, keep grants
+            sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -577,6 +697,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -613,6 +734,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -641,6 +763,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
@@ -661,6 +784,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -705,6 +829,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -743,6 +868,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -777,6 +903,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -834,6 +961,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -900,6 +1028,7 @@ mod tests {
                 enabled: true,
                 permissions: &initial_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -971,6 +1100,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -994,6 +1124,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1049,6 +1180,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1080,6 +1212,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1092,6 +1225,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1123,6 +1257,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1137,6 +1272,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1169,6 +1305,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1181,6 +1318,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1224,6 +1362,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1238,6 +1377,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1330,6 +1470,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1375,6 +1516,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1404,6 +1546,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1428,6 +1571,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1459,6 +1603,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1488,6 +1633,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1515,6 +1661,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1548,6 +1695,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1559,6 +1707,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1570,6 +1719,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1612,6 +1762,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -1626,6 +1777,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1685,6 +1837,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1710,6 +1863,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1741,6 +1895,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1774,6 +1929,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1807,6 +1963,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1848,6 +2005,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1892,6 +2050,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1944,6 +2103,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1980,6 +2140,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2027,6 +2188,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2053,6 +2215,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2086,6 +2249,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: Some(group.id),
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -2097,6 +2261,7 @@ mod tests {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();

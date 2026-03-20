@@ -16,13 +16,14 @@ use super::{
     HandlerContext, err_account_disabled_by_admin, err_authentication,
     err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
     err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
-    err_current_password_incorrect, err_current_password_required, err_database, err_not_logged_in,
-    err_password_empty, err_password_too_long, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
-    err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_shared_cannot_change_password, err_shared_invalid_permissions,
-    err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
-    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
+    err_current_password_incorrect, err_current_password_required, err_database,
+    err_group_not_found, err_group_shared_mismatch, err_not_logged_in, err_password_empty,
+    err_password_too_long, err_permission_denied, err_permissions_contains_newlines,
+    err_permissions_empty_permission, err_permissions_invalid_characters,
+    err_permissions_permission_too_long, err_permissions_too_many,
+    err_shared_cannot_change_password, err_shared_invalid_permissions, err_update_failed,
+    err_user_not_found, err_username_empty, err_username_exists, err_username_invalid,
+    err_username_too_long, remove_user_with_voice_cleanup,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Permission, Permissions, hash_password, verify_password};
@@ -37,6 +38,9 @@ pub struct UserUpdateRequest {
     pub requested_is_admin: Option<bool>,
     pub requested_enabled: Option<bool>,
     pub requested_permissions: Option<Vec<String>>,
+    pub requested_group_id: Option<i64>,
+    pub remove_group: Option<bool>,
+    pub requested_revokes: Option<Vec<String>>,
     pub session_id: Option<u32>,
 }
 
@@ -107,6 +111,9 @@ where
             || request.requested_is_admin.is_some()
             || request.requested_enabled.is_some()
             || request.requested_permissions.is_some()
+            || request.requested_group_id.is_some()
+            || request.remove_group == Some(true)
+            || request.requested_revokes.is_some()
         {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
@@ -392,6 +399,195 @@ where
         None
     };
 
+    // Handle group assignment/removal
+    let group_changed = if !is_self_edit {
+        if request.remove_group == Some(true) {
+            // Remove from group — takes precedence over requested_group_id
+            if let Some(ref account) = target_user_account {
+                if account.group_id.is_some() {
+                    // Update DB
+                    if let Err(e) = ctx.db.users.update_user_group(account.id, None).await {
+                        eprintln!("Error removing group: {}", e);
+                        return ctx
+                            .send_error_and_disconnect(
+                                &err_database(ctx.locale),
+                                Some("UserUpdate"),
+                            )
+                            .await;
+                    }
+                    // Cleanup: clear revokes, keep grants
+                    if let Err(e) = ctx
+                        .db
+                        .users
+                        .cleanup_overrides_for_group_change(account.id, None)
+                        .await
+                    {
+                        eprintln!("Error cleaning up overrides: {}", e);
+                    }
+                    true
+                } else {
+                    false // Already no group
+                }
+            } else {
+                false
+            }
+        } else if let Some(new_group_id) = request.requested_group_id {
+            if let Some(ref account) = target_user_account {
+                // Skip if already in this group
+                if account.group_id == Some(new_group_id) {
+                    false
+                } else {
+                    // Fetch the group
+                    let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
+                        Ok(Some(g)) => g,
+                        Ok(None) => {
+                            let response = ServerMessage::UserUpdateResponse {
+                                success: false,
+                                error: Some(err_group_not_found(ctx.locale)),
+                                username: None,
+                            };
+                            return ctx.send_message(&response).await;
+                        }
+                        Err(e) => {
+                            eprintln!("Database error fetching group: {}", e);
+                            return ctx
+                                .send_error_and_disconnect(
+                                    &err_database(ctx.locale),
+                                    Some("UserUpdate"),
+                                )
+                                .await;
+                        }
+                    };
+
+                    // Shared compatibility check
+                    if account.is_shared && !group.is_shared {
+                        let response = ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_group_shared_mismatch(ctx.locale)),
+                            username: None,
+                        };
+                        return ctx.send_message(&response).await;
+                    }
+                    if !account.is_shared && group.is_shared {
+                        let response = ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_group_shared_mismatch(ctx.locale)),
+                            username: None,
+                        };
+                        return ctx.send_message(&response).await;
+                    }
+
+                    // Non-admin delegation: requester must have all group permissions
+                    if !requesting_user.is_admin {
+                        let group_perms = ctx
+                            .db
+                            .groups
+                            .get_group_permissions(new_group_id)
+                            .await
+                            .unwrap_or_default();
+                        for perm_str in &group_perms {
+                            if let Some(perm) = Permission::parse(perm_str)
+                                && !requesting_user.has_permission(perm)
+                            {
+                                return ctx
+                                    .send_error(
+                                        &err_permission_denied(ctx.locale),
+                                        Some("UserUpdate"),
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+
+                    // Update DB
+                    if let Err(e) = ctx
+                        .db
+                        .users
+                        .update_user_group(account.id, Some(new_group_id))
+                        .await
+                    {
+                        eprintln!("Error updating group: {}", e);
+                        return ctx
+                            .send_error_and_disconnect(
+                                &err_database(ctx.locale),
+                                Some("UserUpdate"),
+                            )
+                            .await;
+                    }
+                    // Cleanup: remove duplicate grants
+                    if let Err(e) = ctx
+                        .db
+                        .users
+                        .cleanup_overrides_for_group_change(account.id, Some(new_group_id))
+                        .await
+                    {
+                        eprintln!("Error cleaning up overrides: {}", e);
+                    }
+                    true
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Handle revoke override changes
+    if !is_self_edit
+        && let Some(ref revoke_strings) = request.requested_revokes
+        && let Some(ref account) = target_user_account
+    {
+        // Determine effective group_id after any group change
+        let effective_group_id = if request.remove_group == Some(true) {
+            None
+        } else if let Some(gid) = request.requested_group_id {
+            Some(gid)
+        } else {
+            account.group_id
+        };
+
+        if effective_group_id.is_some() {
+            // Parse revoke permissions
+            let mut parsed_revokes = Vec::new();
+            for perm_str in revoke_strings {
+                if let Some(perm) = Permission::parse(perm_str) {
+                    // Non-admins can only set revokes for permissions they have
+                    if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
+                        // Skip — preserve existing revokes for perms requester can't control
+                        continue;
+                    }
+                    parsed_revokes.push(perm);
+                }
+            }
+
+            // Non-admin merge: preserve revokes the requester can't control
+            if !requesting_user.is_admin
+                && let Ok(existing_revokes) = ctx.db.users.get_revoke_permissions(account.id).await
+            {
+                for existing in existing_revokes {
+                    if let Some(perm) = Permission::parse(&existing)
+                        && !requesting_user.has_permission(perm)
+                        && !parsed_revokes.contains(&perm)
+                    {
+                        parsed_revokes.push(perm);
+                    }
+                }
+            }
+
+            if let Err(e) = ctx
+                .db
+                .users
+                .set_revoke_permissions(account.id, &parsed_revokes)
+                .await
+            {
+                eprintln!("Error setting revoke permissions: {}", e);
+            }
+        }
+    }
+
     // Process password change request
     let requested_password_hash = if let Some(ref password) = request.requested_password {
         // Empty/whitespace password = no change
@@ -496,7 +692,8 @@ where
                     let enabled_changed = old_enabled != updated_account.enabled;
                     let permissions_changed =
                         old_permissions.permissions != final_permissions.permissions;
-                    let actually_changed = admin_changed || enabled_changed || permissions_changed;
+                    let actually_changed =
+                        admin_changed || enabled_changed || permissions_changed || group_changed;
 
                     // Always update cached permissions in UserManager for all sessions of this user
                     // (even if we don't broadcast, keeps cache in sync)
@@ -529,12 +726,23 @@ where
                             None
                         };
 
+                        // Fetch group info for the updated user
+                        let (perm_group_id, perm_group_name) =
+                            if let Some(gid) = updated_account.group_id {
+                                match ctx.db.groups.get_group_by_id(gid).await {
+                                    Ok(Some(g)) => (Some(gid), Some(g.name)),
+                                    _ => (None, None),
+                                }
+                            } else {
+                                (None, None)
+                            };
+
                         let permissions_update = ServerMessage::PermissionsUpdated {
                             is_admin: updated_account.is_admin,
                             permissions: permission_strings,
                             server_info,
-                            group_id: None,
-                            group_name: None,
+                            group_id: perm_group_id,
+                            group_name: perm_group_name,
                         };
 
                         // Send to all sessions belonging to the updated user
@@ -662,8 +870,23 @@ where
                         .await;
                 }
 
-                // Only broadcast UserUpdated if username or admin status changed
-                if username_changed || admin_status_changed {
+                // If group changed, update UserManager sessions
+                if group_changed {
+                    let (new_gid, new_gname) = if let Some(gid) = updated_account.group_id {
+                        match ctx.db.groups.get_group_by_id(gid).await {
+                            Ok(Some(g)) => (Some(gid), Some(g.name)),
+                            _ => (None, None),
+                        }
+                    } else {
+                        (None, None)
+                    };
+                    ctx.user_manager
+                        .update_group(updated_account.id, new_gid, new_gname)
+                        .await;
+                }
+
+                // Broadcast UserUpdated if username, admin status, or group changed
+                if username_changed || admin_status_changed || group_changed {
                     let session_ids = ctx
                         .user_manager
                         .get_session_ids_for_user(&updated_account.username)
@@ -671,6 +894,18 @@ where
 
                     // Get earliest login time, locale, and avatar from all sessions
                     // Avatar uses "latest login wins"
+                    // Resolve group info for UserUpdated broadcast
+                    // (reuse from update_group block if available, otherwise look up)
+                    let (updated_group_id, updated_group_name) =
+                        if let Some(gid) = updated_account.group_id {
+                            match ctx.db.groups.get_group_by_id(gid).await {
+                                Ok(Some(g)) => (Some(gid), Some(g.name)),
+                                _ => (None, None),
+                            }
+                        } else {
+                            (None, None)
+                        };
+
                     let (login_time, locale, avatar) = if !session_ids.is_empty() {
                         let user_sessions = ctx
                             .user_manager
@@ -712,8 +947,8 @@ where
                         avatar,
                         is_away: false,
                         status: None,
-                        group_id: None,
-                        group_name: None,
+                        group_id: updated_group_id,
+                        group_name: updated_group_name,
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
@@ -803,6 +1038,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: None, // Not logged in
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -829,6 +1067,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -841,6 +1080,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -870,6 +1112,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -901,6 +1146,9 @@ mod tests {
             requested_is_admin: Some(false), // Trying to demote self
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -932,6 +1180,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false), // Trying to disable self
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -963,6 +1214,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["user_edit".to_string()]), // Trying to give self more permissions
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -994,6 +1248,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1030,6 +1287,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1064,6 +1324,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1101,6 +1364,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1113,6 +1377,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1159,6 +1426,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1194,6 +1464,9 @@ mod tests {
             requested_is_admin: Some(false), // Demote to non-admin
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1222,6 +1495,9 @@ mod tests {
             requested_is_admin: Some(false), // Try to demote last admin
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin2_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1262,6 +1538,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1274,6 +1551,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1320,6 +1600,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1333,6 +1614,9 @@ mod tests {
             requested_is_admin: Some(true), // Try to make admin
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1366,6 +1650,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1380,6 +1665,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1393,6 +1679,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1427,6 +1716,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1440,6 +1730,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1489,6 +1782,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1502,6 +1796,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1560,6 +1857,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1573,6 +1871,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1654,6 +1955,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["user_list".to_string()]), // Bob only grants user_list
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(bob_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1723,6 +2027,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false), // Try to disable
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1755,6 +2062,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false),
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1785,6 +2095,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(true),
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1799,6 +2112,9 @@ mod tests {
             requested_is_admin: Some(false),
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1812,6 +2128,9 @@ mod tests {
             requested_is_admin: Some(false),
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1868,6 +2187,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1891,6 +2211,8 @@ mod tests {
                 nickname: "editor".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -1904,6 +2226,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1943,6 +2268,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1959,6 +2285,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false), // Disable
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1998,6 +2327,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(true), // Enable
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2058,6 +2390,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false), // Disable
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2091,6 +2426,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2105,6 +2441,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2128,6 +2465,8 @@ mod tests {
                 nickname: "editor".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -2150,6 +2489,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -2163,6 +2504,9 @@ mod tests {
             requested_is_admin: Some(false), // Demote to non-admin
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2269,6 +2613,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2304,6 +2649,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: shared_session_id,
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2346,6 +2694,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2363,6 +2712,9 @@ mod tests {
                 "user_kick".to_string(),   // forbidden
                 "news_create".to_string(), // forbidden
             ]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2404,6 +2756,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -2422,6 +2775,9 @@ mod tests {
                 "user_list".to_string(),
                 "user_message".to_string(),
             ]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2461,6 +2817,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2484,6 +2841,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2497,6 +2856,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2538,6 +2900,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2561,6 +2924,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2575,6 +2940,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(true), // Enable guest
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2611,6 +2979,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2634,6 +3003,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2651,6 +3022,9 @@ mod tests {
                 "chat_receive".to_string(),
                 "user_list".to_string(),
             ]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2687,6 +3061,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2710,6 +3085,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2723,6 +3100,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2761,6 +3141,7 @@ mod tests {
                 enabled: true,
                 permissions: &bob_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2784,6 +3165,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2797,6 +3180,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2845,6 +3231,7 @@ mod tests {
                 enabled: true,
                 permissions: &bob_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2868,6 +3255,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2881,6 +3270,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2940,6 +3332,7 @@ mod tests {
                 enabled: true,
                 permissions: &bob_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -2963,6 +3356,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -2976,6 +3371,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3021,6 +3419,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3044,6 +3443,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -3057,6 +3458,9 @@ mod tests {
             requested_is_admin: Some(true),
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3114,6 +3518,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3137,6 +3542,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -3150,6 +3557,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: Some(false),
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3210,6 +3620,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3233,6 +3644,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .unwrap();
@@ -3246,6 +3659,9 @@ mod tests {
             requested_is_admin: Some(false), // Same as current
             requested_enabled: None,
             requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3292,6 +3708,7 @@ mod tests {
                 enabled: true,
                 permissions: &voice_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3319,6 +3736,8 @@ mod tests {
                 avatar: None,
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add voice user session");
@@ -3356,6 +3775,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec![]), // Remove all permissions including voice_listen
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3402,6 +3824,7 @@ mod tests {
                 enabled: true,
                 permissions: &voice_perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -3432,6 +3855,8 @@ mod tests {
                 avatar: None,
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add voice user session");
@@ -3468,6 +3893,9 @@ mod tests {
             requested_is_admin: None,
             requested_enabled: None,
             requested_permissions: Some(vec!["voice_listen".to_string()]), // Keep voice_listen, remove voice_talk
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;

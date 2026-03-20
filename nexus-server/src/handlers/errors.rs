@@ -1147,3 +1147,8 @@ pub fn err_group_not_empty_modify(locale: &str) -> String {
 pub fn err_group_no_fields(locale: &str) -> String {
     t(locale, "err-group-no-fields")
 }
+
+/// Get translated "group shared mismatch" error
+pub fn err_group_shared_mismatch(locale: &str) -> String {
+    t(locale, "err-group-shared-mismatch")
+}

@@ -272,6 +272,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
+                revokes: &[],
             })
             .await
             .unwrap();

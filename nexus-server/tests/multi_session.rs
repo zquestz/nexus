@@ -33,6 +33,7 @@ async fn test_multi_session_partial_disconnect() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -159,6 +160,7 @@ async fn test_broadcast_respects_user_list_permission() {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -176,6 +178,7 @@ async fn test_broadcast_respects_user_list_permission() {
             enabled: true,
             permissions: &perms_with,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -191,6 +194,7 @@ async fn test_broadcast_respects_user_list_permission() {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -289,6 +293,7 @@ async fn test_broadcast_excludes_specified_session() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -302,6 +307,7 @@ async fn test_broadcast_excludes_specified_session() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -382,6 +388,7 @@ async fn test_broadcast_detects_closed_channels() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -395,6 +402,7 @@ async fn test_broadcast_detects_closed_channels() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();

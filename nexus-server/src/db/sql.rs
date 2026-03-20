@@ -127,6 +127,31 @@ pub const SQL_COUNT_PERMISSION: &str =
 pub const SQL_SELECT_PERMISSIONS: &str =
     "SELECT permission, override_type FROM user_permissions WHERE user_id = ?";
 
+/// Select only grant overrides for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** Multiple rows of `(permission: String)`
+pub const SQL_SELECT_GRANT_PERMISSIONS: &str =
+    "SELECT permission FROM user_permissions WHERE user_id = ? AND override_type = 'grant'";
+
+/// Select only revoke overrides for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** Multiple rows of `(permission: String)`
+pub const SQL_SELECT_REVOKE_PERMISSIONS: &str =
+    "SELECT permission FROM user_permissions WHERE user_id = ? AND override_type = 'revoke'";
+
+/// Delete only revoke overrides for a user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+pub const SQL_DELETE_REVOKE_PERMISSIONS: &str =
+    "DELETE FROM user_permissions WHERE user_id = ? AND override_type = 'revoke'";
+
 /// Select a user's group_id
 ///
 /// **Parameters:**
@@ -153,6 +178,15 @@ pub const SQL_DELETE_PERMISSIONS: &str = "DELETE FROM user_permissions WHERE use
 /// 2. `permission: &str` - Permission name (snake_case)
 pub const SQL_INSERT_PERMISSION: &str =
     "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)";
+
+/// Insert a permission for a user with override type
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+/// 3. `override_type: &str` - Either `'grant'` or `'revoke'`
+pub const SQL_INSERT_PERMISSION_OVERRIDE: &str =
+    "INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, ?)";
 
 // ========================================================================
 // User Mutation Operations
@@ -209,6 +243,13 @@ pub const SQL_UPDATE_USER: &str = "UPDATE users
         OR is_admin = 0
         OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
     )";
+
+/// Update a user's group assignment
+///
+/// **Parameters:**
+/// 1. `group_id: Option<i64>` - New group ID (NULL to remove)
+/// 2. `user_id: i64` - User ID
+pub const SQL_UPDATE_USER_GROUP: &str = "UPDATE users SET group_id = ? WHERE id = ?";
 
 /// Delete user with atomic protection for last admin
 ///

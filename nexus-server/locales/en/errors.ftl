@@ -249,3 +249,4 @@ err-group-shared-permission = Shared groups cannot have this permission
 err-group-not-empty-delete = Cannot delete group while users are assigned to it
 err-group-not-empty-modify = Cannot modify shared status while users are assigned to it
 err-group-no-fields = No fields to update
+err-group-shared-mismatch = Account type does not match group type (shared accounts require shared groups)

@@ -131,8 +131,8 @@ impl UserManager {
                                     avatar: newest.avatar.clone(),
                                     is_away: newest.is_away,
                                     status: newest.status.clone(),
-                                    group_id: None,
-                                    group_name: None,
+                                    group_id: newest.group_id,
+                                    group_name: newest.group_name.clone(),
                                 },
                             },
                             Some(session_id),
@@ -200,6 +200,28 @@ impl UserManager {
         for user in users.values_mut() {
             if user.db_user_id == db_user_id {
                 user.permissions = permissions.clone();
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Update group info for all sessions of a user by database user ID
+    /// Returns the number of sessions updated
+    pub async fn update_group(
+        &self,
+        db_user_id: i64,
+        group_id: Option<i64>,
+        group_name: Option<String>,
+    ) -> usize {
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for user in users.values_mut() {
+            if user.db_user_id == db_user_id {
+                user.group_id = group_id;
+                user.group_name = group_name.clone();
                 count += 1;
             }
         }

@@ -30,6 +30,10 @@ pub struct NewSessionParams {
     pub is_away: bool,
     /// Optional status message (used for both away messages and general status)
     pub status: Option<String>,
+    /// Group ID (if user belongs to a group)
+    pub group_id: Option<i64>,
+    /// Group name (if user belongs to a group)
+    pub group_name: Option<String>,
 }
 
 /// Represents a logged-in user session
@@ -71,6 +75,10 @@ pub struct UserSession {
     pub is_away: bool,
     /// Optional status message (used for both away messages and general status)
     pub status: Option<String>,
+    /// Group ID (if user belongs to a group)
+    pub group_id: Option<i64>,
+    /// Group name (if user belongs to a group)
+    pub group_name: Option<String>,
 }
 
 impl UserSession {
@@ -93,6 +101,8 @@ impl UserSession {
             nickname: params.nickname,
             is_away: params.is_away,
             status: params.status,
+            group_id: params.group_id,
+            group_name: params.group_name,
         }
     }
 

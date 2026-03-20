@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::io;
 
 /// Aggregated user data for deduplication
-/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status)
-/// Note: avatar, is_away, and status all use "latest login wins" - tracked via latest_session_login_time
+/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status, group_id, group_name)
+/// Note: avatar, is_away, status, group_id, and group_name all use "latest login wins" - tracked via latest_session_login_time
 type UserAggregateData = (
     i64,
     bool,
@@ -15,6 +15,8 @@ type UserAggregateData = (
     Option<String>,
     i64,
     bool,
+    Option<String>,
+    Option<i64>,
     Option<String>,
 );
 
@@ -107,7 +109,7 @@ where
                 avatar: None,
                 is_away: false,
                 status: None,
-                group_id: None,
+                group_id: db_user.group_id,
                 group_name: None,
             })
             .collect();
@@ -147,8 +149,8 @@ where
                 avatar: user.avatar.clone(),
                 is_away: user.is_away,
                 status: user.status.clone(),
-                group_id: None,
-                group_name: None,
+                group_id: user.group_id,
+                group_name: user.group_name.clone(),
             });
         } else {
             // Regular accounts: deduplicate by username and aggregate sessions
@@ -167,16 +169,20 @@ where
                         latest_session_login_time,
                         is_away,
                         status,
+                        group_id,
+                        group_name,
                     )| {
                         // Keep earliest login time for display
                         *login_time = (*login_time).min(user.login_time);
                         session_ids.push(user.session_id);
-                        // Avatar, away status, and status message: latest login wins
+                        // Avatar, away status, status message, group info: latest login wins
                         if user.login_time > *latest_session_login_time {
                             *avatar = user.avatar.clone();
                             *latest_session_login_time = user.login_time;
                             *is_away = user.is_away;
                             *status = user.status.clone();
+                            *group_id = user.group_id;
+                            *group_name = user.group_name.clone();
                         }
                     },
                 )
@@ -190,6 +196,8 @@ where
                     user.login_time, // Track login time for avatar selection
                     user.is_away,
                     user.status.clone(),
+                    user.group_id,
+                    user.group_name.clone(),
                 ));
         }
     }
@@ -200,7 +208,19 @@ where
         .map(
             |(
                 username,
-                (login_time, is_admin, is_shared, session_ids, locale, avatar, _, is_away, status),
+                (
+                    login_time,
+                    is_admin,
+                    is_shared,
+                    session_ids,
+                    locale,
+                    avatar,
+                    _,
+                    is_away,
+                    status,
+                    group_id,
+                    group_name,
+                ),
             )| {
                 UserInfo {
                     // For regular accounts, nickname == username
@@ -214,8 +234,8 @@ where
                     avatar,
                     is_away,
                     status,
-                    group_id: None,
-                    group_name: None,
+                    group_id,
+                    group_name,
                 }
             },
         )
@@ -399,6 +419,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -424,6 +445,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -471,6 +494,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -497,6 +521,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -523,6 +549,8 @@ mod tests {
                 nickname: "bob".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -570,6 +598,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -593,6 +622,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -726,6 +757,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -853,6 +885,7 @@ mod tests {
                 enabled: true,
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .expect("shared account creation should succeed");
@@ -916,6 +949,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -930,6 +964,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -944,6 +979,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             }) // admin
             .await
             .unwrap();
@@ -958,6 +994,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -972,6 +1009,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -986,6 +1024,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1002,6 +1041,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1075,6 +1115,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1089,6 +1130,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1103,6 +1145,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1117,6 +1160,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1185,6 +1229,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1208,6 +1253,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: true,
                 status: Some("old status".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add first session");
@@ -1234,6 +1281,8 @@ mod tests {
                 nickname: "alice".to_string(),
                 is_away: false,
                 status: Some("new status".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add second session");
@@ -1285,6 +1334,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -1308,6 +1358,8 @@ mod tests {
                 nickname: "user_one".to_string(),
                 is_away: true,
                 status: Some("user one away".to_string()),
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add first session");
@@ -1331,6 +1383,8 @@ mod tests {
                 nickname: "user_two".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add second session");

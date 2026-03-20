@@ -221,6 +221,7 @@ async fn test_file_download_permission_in_db() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -249,6 +250,7 @@ async fn test_admin_has_implicit_permissions() {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -919,6 +921,7 @@ async fn test_file_upload_permission_in_db() {
             enabled: true,
             permissions: &perms,
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();
@@ -947,6 +950,7 @@ async fn test_admin_has_implicit_upload_permission() {
             enabled: true,
             permissions: &Permissions::new(),
             group_id: None,
+            revokes: &[],
         })
         .await
         .unwrap();

@@ -11,9 +11,9 @@ use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameEr
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_not_logged_in,
-    err_password_empty, err_password_too_long, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
+    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_group_not_found,
+    err_group_shared_mismatch, err_not_logged_in, err_password_empty, err_password_too_long,
+    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
     err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
@@ -29,6 +29,8 @@ pub struct UserCreateRequest {
     pub is_shared: bool,
     pub enabled: bool,
     pub permissions: Vec<String>,
+    pub group_id: Option<i64>,
+    pub revokes: Option<Vec<String>>,
 }
 
 /// Handle a user creation request from the client
@@ -47,6 +49,8 @@ where
         is_shared,
         enabled,
         permissions,
+        group_id,
+        revokes,
     } = request;
 
     // Verify authentication first (before revealing validation errors to unauthenticated users)
@@ -174,6 +178,111 @@ where
         }
     }
 
+    // Validate group assignment if provided
+    let validated_group_id = if let Some(gid) = group_id {
+        // Fetch the group to verify it exists and check shared compatibility
+        let group = match ctx.db.groups.get_group_by_id(gid).await {
+            Ok(Some(g)) => g,
+            Ok(None) => {
+                let response = ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_group_not_found(ctx.locale)),
+                    username: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+            Err(e) => {
+                eprintln!("Database error fetching group: {}", e);
+                return ctx
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                    .await;
+            }
+        };
+
+        // Shared account / shared group compatibility
+        if is_shared && !group.is_shared {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_group_shared_mismatch(ctx.locale)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        if !is_shared && group.is_shared {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_group_shared_mismatch(ctx.locale)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+
+        // Non-admin group assignment check: requester must have all group permissions
+        if !requesting_user.is_admin {
+            let group_perms = ctx
+                .db
+                .groups
+                .get_group_permissions(gid)
+                .await
+                .unwrap_or_default();
+            for perm_str in &group_perms {
+                if let Some(perm) = Permission::parse(perm_str)
+                    && !requesting_user.has_permission(perm)
+                {
+                    eprintln!(
+                        "UserCreate from {} (user: {}) trying to assign group with permission they don't have: {}",
+                        ctx.peer_addr, requesting_user.username, perm_str
+                    );
+                    return ctx
+                        .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+                        .await;
+                }
+            }
+        }
+
+        Some(gid)
+    } else {
+        None
+    };
+
+    // Parse and validate revoke permissions (only meaningful with a group)
+    let parsed_revokes: Vec<Permission> = if let Some(ref revoke_strings) = revokes {
+        if validated_group_id.is_none() {
+            // Revokes without a group are ignored
+            Vec::new()
+        } else {
+            let mut parsed = Vec::new();
+            for perm_str in revoke_strings {
+                match Permission::parse(perm_str) {
+                    Some(perm) => {
+                        // Non-admins can only revoke permissions they themselves have
+                        if !requesting_user.has_permission(perm) {
+                            eprintln!(
+                                "UserCreate from {} (user: {}) trying to revoke permission they don't have: {}",
+                                ctx.peer_addr, requesting_user.username, perm_str
+                            );
+                            return ctx
+                                .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+                                .await;
+                        }
+                        parsed.push(perm);
+                    }
+                    None => {
+                        let response = ServerMessage::UserCreateResponse {
+                            success: false,
+                            error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            username: None,
+                        };
+                        return ctx.send_message(&response).await;
+                    }
+                }
+            }
+            parsed
+        }
+    } else {
+        Vec::new()
+    };
+
     // Parse and validate requested permissions
     let mut perms = Permissions::new();
     for perm_str in &permissions {
@@ -249,11 +358,23 @@ where
             is_shared,
             enabled,
             permissions: &perms,
-            group_id: None,
+            group_id: validated_group_id,
+            revokes: &parsed_revokes,
         })
         .await
     {
-        Ok(_user) => {
+        Ok(user) => {
+            // Clean up duplicate grants if assigned to a group
+            if validated_group_id.is_some()
+                && let Err(e) = ctx
+                    .db
+                    .users
+                    .cleanup_overrides_for_group_change(user.id, validated_group_id)
+                    .await
+            {
+                eprintln!("Error cleaning up overrides: {}", e);
+            }
+
             // Success
             let response = ServerMessage::UserCreateResponse {
                 success: true,
@@ -293,6 +414,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             None,
             &mut test_ctx.handler_context(),
@@ -319,6 +442,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -349,6 +474,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -406,6 +533,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -422,6 +550,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -445,6 +574,8 @@ mod tests {
                 nickname: "admin".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -458,6 +589,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -505,6 +638,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -567,6 +702,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec!["user_list".to_string()],
+                group_id: None,
+                revokes: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -636,6 +773,8 @@ mod tests {
                     "user_info".to_string(),
                     "chat_send".to_string(),
                 ],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -741,6 +880,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -764,6 +904,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -787,6 +928,8 @@ mod tests {
                 nickname: "creator".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -800,6 +943,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -831,6 +976,7 @@ mod tests {
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -855,6 +1001,7 @@ mod tests {
                 enabled: true,
                 permissions: &perms,
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -878,6 +1025,8 @@ mod tests {
                 nickname: "creator".to_string(),
                 is_away: false,
                 status: None,
+                group_id: None,
+                group_name: None,
             })
             .await
             .expect("Failed to add user");
@@ -894,6 +1043,8 @@ mod tests {
                     "chat_send".to_string(),   // creator has this - OK
                     "user_delete".to_string(), // creator doesn't have this - FAIL
                 ],
+                group_id: None,
+                revokes: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -924,6 +1075,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -949,6 +1102,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -985,6 +1140,8 @@ mod tests {
                     "user_kick".to_string(),
                     "user_message".to_string(),
                 ],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1061,6 +1218,8 @@ mod tests {
                 is_shared: false,
                 enabled: false,
                 permissions: vec!["chat_send".to_string()],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1102,6 +1261,8 @@ mod tests {
                 is_shared: true,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1149,6 +1310,8 @@ mod tests {
                     "user_create".to_string(), // forbidden
                     "user_kick".to_string(),   // forbidden
                 ],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1199,6 +1362,8 @@ mod tests {
                     "user_list".to_string(),
                     "user_message".to_string(),
                 ],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1250,6 +1415,8 @@ mod tests {
                 is_shared: true,
                 enabled: true,
                 permissions: vec![],
+                group_id: None,
+                revokes: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),

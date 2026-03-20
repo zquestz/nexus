@@ -173,6 +173,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -205,6 +206,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -235,6 +237,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -267,6 +270,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -309,6 +313,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -344,6 +349,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -398,6 +404,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -434,6 +441,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -466,6 +474,7 @@ mod tests {
                 enabled: true,
                 permissions: &Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

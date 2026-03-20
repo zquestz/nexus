@@ -438,6 +438,7 @@ mod tests {
                 enabled: true,
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -450,6 +451,7 @@ mod tests {
                 enabled: true,
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -722,6 +724,7 @@ mod tests {
                 enabled: true,
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();
@@ -763,6 +766,7 @@ mod tests {
                 enabled: true,
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
+                revokes: &[],
             })
             .await
             .unwrap();

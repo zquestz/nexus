@@ -239,6 +239,8 @@ mod tests {
             nickname: nickname.to_string(),
             is_away: false,
             status: None,
+            group_id: None,
+            group_name: None,
         }
     }
 
