@@ -154,8 +154,8 @@ impl NewsDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::Permissions;
     use crate::db::testing::create_test_db;
+    use crate::db::{CreateUserParams, Permissions};
 
     #[tokio::test]
     async fn test_create_news_with_body() {
@@ -165,7 +165,15 @@ mod tests {
 
         // Create a user first
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -189,7 +197,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("bob", "hash", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -211,7 +227,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("charlie", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "charlie",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -235,7 +259,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -269,7 +301,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -296,7 +336,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -342,7 +390,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -370,7 +426,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -394,7 +458,15 @@ mod tests {
         let users_db = crate::db::UserDb::new(pool.clone());
 
         let user = users_db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 

@@ -22,7 +22,7 @@ use nexus_common::protocol::ServerMessage;
 use super::HandlerContext;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
-use crate::db::Database;
+use crate::db::{CreateUserParams, Database};
 use crate::files::FileIndex;
 use crate::ip_rule_cache::IpRuleCache;
 use crate::transfers::TransferRegistry;
@@ -252,7 +252,15 @@ pub async fn login_user_from_ip(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username,
+            hashed_password: &hashed,
+            is_admin,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -307,7 +315,15 @@ pub async fn login_user_with_features(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username,
+            hashed_password: &hashed,
+            is_admin,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -358,7 +374,15 @@ pub async fn login_shared_user(
     let user = test_ctx
         .db
         .users
-        .create_user(account_username, &hashed, false, true, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: account_username,
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: true,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 

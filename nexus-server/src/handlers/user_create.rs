@@ -19,7 +19,7 @@ use super::{
     err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
     err_username_too_long,
 };
-use crate::db::{Permission, Permissions, hash_password};
+use crate::db::{CreateUserParams, Permission, Permissions, hash_password};
 
 /// User creation request parameters
 pub struct UserCreateRequest {
@@ -242,15 +242,15 @@ where
     match ctx
         .db
         .users
-        .create_user(
-            &username,
-            &password_hash,
+        .create_user(CreateUserParams {
+            username: &username,
+            hashed_password: &password_hash,
             is_admin,
             is_shared,
             enabled,
-            &perms,
-            None,
-        )
+            permissions: &perms,
+            group_id: None,
+        })
         .await
     {
         Ok(_user) => {
@@ -398,7 +398,15 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -406,15 +414,15 @@ mod tests {
         let _existing = test_ctx
             .db
             .users
-            .create_user(
-                "existing",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "existing",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -725,7 +733,15 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -740,7 +756,15 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, false, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "creator",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -799,7 +823,15 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -815,7 +847,15 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, false, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "creator",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 

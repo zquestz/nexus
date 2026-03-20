@@ -366,7 +366,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("offline_user", &hashed, false, false, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "offline_user",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -532,15 +540,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user(
-                "shared_acct",
-                &hashed,
-                false,
-                true,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -614,7 +622,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 

@@ -217,7 +217,15 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &db::Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -389,15 +397,15 @@ mod tests {
         test_ctx2
             .db
             .users
-            .create_user(
-                "target",
-                "hash",
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -512,15 +520,15 @@ mod tests {
         let offline_user = test_ctx
             .db
             .users
-            .create_user(
-                "offline_user",
-                "hash",
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "offline_user",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -528,15 +536,15 @@ mod tests {
         let online_user = test_ctx
             .db
             .users
-            .create_user(
-                "online_user",
-                "hash",
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "online_user",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -641,15 +649,15 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user(
-                "target",
-                "hash",
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 

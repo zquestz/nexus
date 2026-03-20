@@ -259,15 +259,15 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user(
-                "alice",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -326,7 +326,15 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -409,7 +417,15 @@ mod tests {
         let requester = test_ctx
             .db
             .users
-            .create_user("requester", &hashed, false, false, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "requester",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -417,15 +433,15 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user(
-                "target",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -538,7 +554,15 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -546,15 +570,15 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user(
-                "target",
-                &hashed,
-                false,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -673,30 +697,30 @@ mod tests {
         let admin1 = test_ctx
             .db
             .users
-            .create_user(
-                "admin1",
-                &hashed,
-                true,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "admin1",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
         let admin2 = test_ctx
             .db
             .users
-            .create_user(
-                "admin2",
-                &hashed,
-                true,
-                false,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "admin2",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -850,15 +874,15 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user(
-                "alice",
-                &hashed,
-                false,
-                false,
-                true,
-                &crate::db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -924,15 +948,15 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user(
-                "alice",
-                &hashed,
-                false,
-                false,
-                true,
-                &crate::db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1060,15 +1084,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user(
-                "shared_acct",
-                &hashed,
-                false,
-                true,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1135,15 +1159,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user(
-                "shared_acct",
-                &hashed,
-                false,
-                true,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 

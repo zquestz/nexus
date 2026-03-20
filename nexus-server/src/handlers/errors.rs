@@ -1098,3 +1098,52 @@ pub fn err_voice_target_not_online(locale: &str, nickname: &str) -> String {
 pub fn err_voice_invalid_target(locale: &str) -> String {
     t(locale, "err-voice-invalid-target")
 }
+
+// ========================================================================
+// Group Errors
+// ========================================================================
+
+/// Get translated "group name empty" error
+pub fn err_group_name_empty(locale: &str) -> String {
+    t(locale, "err-group-name-empty")
+}
+
+/// Get translated "group name too long" error
+pub fn err_group_name_too_long(locale: &str) -> String {
+    t(locale, "err-group-name-too-long")
+}
+
+/// Get translated "group name invalid" error
+pub fn err_group_name_invalid(locale: &str) -> String {
+    t(locale, "err-group-name-invalid")
+}
+
+/// Get translated "group not found" error
+pub fn err_group_not_found(locale: &str) -> String {
+    t(locale, "err-group-not-found")
+}
+
+/// Get translated "group already exists" error
+pub fn err_group_already_exists(locale: &str) -> String {
+    t(locale, "err-group-already-exists")
+}
+
+/// Get translated "shared group invalid permission" error
+pub fn err_group_shared_permission(locale: &str) -> String {
+    t(locale, "err-group-shared-permission")
+}
+
+/// Get translated "cannot delete group with members" error
+pub fn err_group_not_empty_delete(locale: &str) -> String {
+    t(locale, "err-group-not-empty-delete")
+}
+
+/// Get translated "cannot modify shared status with members" error
+pub fn err_group_not_empty_modify(locale: &str) -> String {
+    t(locale, "err-group-not-empty-modify")
+}
+
+/// Get translated "group no fields to update" error
+pub fn err_group_no_fields(locale: &str) -> String {
+    t(locale, "err-group-no-fields")
+}

@@ -116,15 +116,6 @@ pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 pub const SQL_COUNT_PERMISSION: &str =
     "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
 
-/// Select all permissions for a user
-///
-/// **Parameters:**
-/// 1. `user_id: i64` - User ID
-///
-/// **Returns:** Multiple rows of `(permission: String)`
-pub const SQL_SELECT_PERMISSIONS: &str =
-    "SELECT permission FROM user_permissions WHERE user_id = ?";
-
 /// Select all permissions for a user with override type
 ///
 /// **Parameters:**
@@ -132,9 +123,8 @@ pub const SQL_SELECT_PERMISSIONS: &str =
 ///
 /// **Returns:** Multiple rows of `(permission: String, override_type: String)`
 ///
-/// **Note:** Used by `get_user_permissions()` to resolve group + override permissions.
-/// The `override_type` is either `'grant'` or `'revoke'`.
-pub const SQL_SELECT_PERMISSIONS_WITH_OVERRIDE: &str =
+/// **Note:** The `override_type` is either `'grant'` or `'revoke'`.
+pub const SQL_SELECT_PERMISSIONS: &str =
     "SELECT permission, override_type FROM user_permissions WHERE user_id = ?";
 
 /// Select a user's group_id
@@ -543,7 +533,8 @@ pub const SQL_DELETE_EXPIRED_TRUSTS: &str = "
 /// **Returns:** Multiple rows of `(id: i64, name: String, is_shared: bool)`
 ///
 /// **Note:** Member count and permissions are fetched separately per group.
-pub const SQL_SELECT_ALL_GROUPS: &str = "SELECT id, name, is_shared FROM groups ORDER BY LOWER(name)";
+pub const SQL_SELECT_ALL_GROUPS: &str =
+    "SELECT id, name, is_shared FROM groups ORDER BY LOWER(name)";
 
 /// Select a group by ID
 ///
@@ -567,7 +558,8 @@ pub const SQL_COUNT_GROUP_MEMBERS: &str = "SELECT COUNT(*) FROM users WHERE grou
 /// 1. `group_id: i64` - Group ID
 ///
 /// **Returns:** Multiple rows of `(permission: String)`
-pub const SQL_SELECT_GROUP_PERMISSIONS: &str = "SELECT permission FROM group_permissions WHERE group_id = ? ORDER BY permission";
+pub const SQL_SELECT_GROUP_PERMISSIONS: &str =
+    "SELECT permission FROM group_permissions WHERE group_id = ? ORDER BY permission";
 
 /// Delete all permissions for a group
 ///
@@ -582,7 +574,8 @@ pub const SQL_DELETE_GROUP_PERMISSIONS: &str = "DELETE FROM group_permissions WH
 /// **Parameters:**
 /// 1. `group_id: i64` - Group ID
 /// 2. `permission: &str` - Permission name (snake_case)
-pub const SQL_INSERT_GROUP_PERMISSION: &str = "INSERT INTO group_permissions (group_id, permission) VALUES (?, ?)";
+pub const SQL_INSERT_GROUP_PERMISSION: &str =
+    "INSERT INTO group_permissions (group_id, permission) VALUES (?, ?)";
 
 /// Insert a new group
 ///

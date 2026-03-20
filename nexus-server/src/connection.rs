@@ -562,14 +562,38 @@ where
         ClientMessage::Ping => {
             ctx.send_message(&ServerMessage::Pong).await?;
         }
-        ClientMessage::GroupList
-        | ClientMessage::GroupCreate { .. }
-        | ClientMessage::GroupEdit { .. }
-        | ClientMessage::GroupUpdate { .. }
-        | ClientMessage::GroupDelete { .. } => {
-            // Group management handlers not yet implemented
-            ctx.send_error("Group management is not yet implemented", None)
+        ClientMessage::GroupList => {
+            handlers::handle_group_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::GroupCreate {
+            name,
+            is_shared,
+            permissions,
+        } => {
+            handlers::handle_group_create(name, is_shared, permissions, conn_state.session_id, ctx)
                 .await?;
+        }
+        ClientMessage::GroupEdit { id } => {
+            handlers::handle_group_edit(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::GroupUpdate {
+            id,
+            name,
+            is_shared,
+            permissions,
+        } => {
+            handlers::handle_group_update(
+                id,
+                name,
+                is_shared,
+                permissions,
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
+        }
+        ClientMessage::GroupDelete { id } => {
+            handlers::handle_group_delete(id, conn_state.session_id, ctx).await?;
         }
     }
 

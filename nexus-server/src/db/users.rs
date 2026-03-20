@@ -6,6 +6,17 @@ use sqlx::SqlitePool;
 use super::permissions::{Permission, Permissions};
 use super::sql::*;
 
+/// Parameters for creating a new user account
+pub struct CreateUserParams<'a> {
+    pub username: &'a str,
+    pub hashed_password: &'a str,
+    pub is_admin: bool,
+    pub is_shared: bool,
+    pub enabled: bool,
+    pub permissions: &'a Permissions,
+    pub group_id: Option<i64>,
+}
+
 /// User account stored in database
 ///
 /// Represents a complete user record retrieved from the database.
@@ -29,7 +40,26 @@ pub struct UserAccount {
     pub is_shared: bool,
     pub enabled: bool,
     pub created_at: i64,
+    #[allow(dead_code)] // Used in Step 6 (login/user_create/user_update handlers)
     pub group_id: Option<i64>,
+}
+
+/// Row type for user queries
+type UserRow = (i64, String, String, bool, bool, bool, i64, Option<i64>);
+
+impl From<UserRow> for UserAccount {
+    fn from(row: UserRow) -> Self {
+        Self {
+            id: row.0,
+            username: row.1,
+            hashed_password: row.2,
+            is_admin: row.3,
+            is_shared: row.4,
+            enabled: row.5,
+            created_at: row.6,
+            group_id: row.7,
+        }
+    }
 }
 
 /// Database operations for user accounts
@@ -73,26 +103,12 @@ impl UserDb {
     /// Note: Only used in tests. Production code looks up users by username.
     #[cfg(test)]
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
-            sqlx::query_as(SQL_SELECT_USER_BY_ID)
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<UserRow> = sqlx::query_as(SQL_SELECT_USER_BY_ID)
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
-        Ok(user.map(
-            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
-                UserAccount {
-                    id,
-                    username,
-                    hashed_password,
-                    is_admin,
-                    is_shared,
-                    enabled,
-                    created_at,
-                    group_id,
-                }
-            },
-        ))
+        Ok(row.map(UserAccount::from))
     }
 
     /// Get a user by username (case-insensitive lookup)
@@ -106,26 +122,12 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let user: Option<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
-            sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
-                .bind(username)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<UserRow> = sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
+            .bind(username)
+            .fetch_optional(&self.pool)
+            .await?;
 
-        Ok(user.map(
-            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
-                UserAccount {
-                    id,
-                    username,
-                    hashed_password,
-                    is_admin,
-                    is_shared,
-                    enabled,
-                    created_at,
-                    group_id,
-                }
-            },
-        ))
+        Ok(row.map(UserAccount::from))
     }
 
     /// Check if a username exists in the database (case-insensitive)
@@ -149,28 +151,11 @@ impl UserDb {
     ///
     /// Used by the `/list all` command for user management.
     pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
-        let rows: Vec<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
-            sqlx::query_as(SQL_SELECT_ALL_USERS)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<UserRow> = sqlx::query_as(SQL_SELECT_ALL_USERS)
+            .fetch_all(&self.pool)
+            .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(
-                |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
-                    UserAccount {
-                        id,
-                        username,
-                        hashed_password,
-                        is_admin,
-                        is_shared,
-                        enabled,
-                        created_at,
-                        group_id,
-                    }
-                },
-            )
-            .collect())
+        Ok(rows.into_iter().map(UserAccount::from).collect())
     }
 
     // ========================================================================
@@ -184,11 +169,10 @@ impl UserDb {
     /// - If user has no group: grant overrides only (legacy behavior)
     pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
         // Check if user has a group assignment
-        let group_id: Option<(Option<i64>,)> =
-            sqlx::query_as(SQL_SELECT_USER_GROUP_ID)
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let group_id: Option<(Option<i64>,)> = sqlx::query_as(SQL_SELECT_USER_GROUP_ID)
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         // User doesn't exist — return empty permissions
         let Some((group_id,)) = group_id else {
@@ -196,21 +180,19 @@ impl UserDb {
         };
 
         // Fetch user's individual permissions with override type
-        let perm_rows: Vec<(String, String)> =
-            sqlx::query_as(SQL_SELECT_PERMISSIONS_WITH_OVERRIDE)
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let perm_rows: Vec<(String, String)> = sqlx::query_as(SQL_SELECT_PERMISSIONS)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut permissions = Permissions::new();
 
         if let Some(gid) = group_id {
             // User has a group — resolve: (group_perms ∪ grants) - revokes
-            let group_perm_rows: Vec<(String,)> =
-                sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
-                    .bind(gid)
-                    .fetch_all(&self.pool)
-                    .await?;
+            let group_perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
+                .bind(gid)
+                .fetch_all(&self.pool)
+                .await?;
 
             // Start with group permissions
             for (perm_str,) in &group_perm_rows {
@@ -232,10 +214,10 @@ impl UserDb {
         } else {
             // No group — legacy behavior (grants only)
             for (perm_str, override_type) in &perm_rows {
-                if override_type == "grant" {
-                    if let Some(perm) = Permission::parse(perm_str) {
-                        permissions.permissions.insert(perm);
-                    }
+                if override_type == "grant"
+                    && let Some(perm) = Permission::parse(perm_str)
+                {
+                    permissions.permissions.insert(perm);
                 }
             }
         }
@@ -311,17 +293,11 @@ impl UserDb {
     /// Create a new user account with permissions
     pub async fn create_user(
         &self,
-        username: &str,
-        hashed_password: &str,
-        is_admin: bool,
-        is_shared: bool,
-        enabled: bool,
-        permissions: &Permissions,
-        group_id: Option<i64>,
+        params: CreateUserParams<'_>,
     ) -> Result<UserAccount, sqlx::Error> {
         // Validate username format (failsafe - handlers should also validate)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Err(e) = validators::validate_username(username) {
+        if let Err(e) = validators::validate_username(params.username) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
@@ -331,13 +307,13 @@ impl UserDb {
         let mut tx = self.pool.begin().await?;
 
         let result = sqlx::query(SQL_INSERT_USER)
-            .bind(username)
-            .bind(hashed_password)
-            .bind(is_admin)
-            .bind(is_shared)
-            .bind(enabled)
+            .bind(params.username)
+            .bind(params.hashed_password)
+            .bind(params.is_admin)
+            .bind(params.is_shared)
+            .bind(params.enabled)
             .bind(created_at)
-            .bind(group_id)
+            .bind(params.group_id)
             .execute(&mut *tx)
             .await?;
 
@@ -345,21 +321,21 @@ impl UserDb {
 
         // Only set permissions for non-admin users
         // Admins automatically get all permissions via has_permission()
-        if !is_admin {
-            Self::set_permissions_in_tx(&mut tx, user_id, permissions).await?;
+        if !params.is_admin {
+            Self::set_permissions_in_tx(&mut tx, user_id, params.permissions).await?;
         }
 
         tx.commit().await?;
 
         Ok(UserAccount {
             id: user_id,
-            username: username.to_string(),
-            hashed_password: hashed_password.to_string(),
-            is_admin,
-            is_shared,
-            enabled,
+            username: params.username.to_string(),
+            hashed_password: params.hashed_password.to_string(),
+            is_admin: params.is_admin,
+            is_shared: params.is_shared,
+            enabled: params.enabled,
             created_at,
-            group_id,
+            group_id: params.group_id,
         })
     }
 
@@ -578,6 +554,7 @@ impl UserDb {
 
 #[cfg(test)]
 mod tests {
+    use super::CreateUserParams;
     use super::*;
     use crate::db::testing::*;
 
@@ -592,7 +569,15 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash123",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -620,9 +605,17 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific casing
-        db.create_user("Alice", "hash123", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "Alice",
+            hashed_password: "hash123",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // All case variations should match (case-insensitive lookup)
         let user1 = db.get_user_by_username("Alice").await.unwrap().unwrap();
@@ -640,7 +633,15 @@ mod tests {
 
         // Cannot create another user with different casing
         let result = db
-            .create_user("alice", "hash456", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash456",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
     }
@@ -652,7 +653,15 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash123",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -688,7 +697,15 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash123", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash123",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -718,7 +735,15 @@ mod tests {
         };
 
         let admin = db
-            .create_user("admin", "hash123", true, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash123",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -744,7 +769,15 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -793,7 +826,15 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -851,7 +892,15 @@ mod tests {
         };
 
         let _user = db
-            .create_user("alice", "hash", false, false, true, &initial_perms, None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &initial_perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -914,9 +963,17 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first
-        db.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: "hash0",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Create user with permissions
         let mut perms = Permissions::new();
@@ -929,7 +986,15 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -976,7 +1041,15 @@ mod tests {
 
         // Create single admin
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -999,11 +1072,27 @@ mod tests {
 
         // Create two admins
         let admin1 = db
-            .create_user("admin1", "hash1", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin1",
+                hashed_password: "hash1",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
         let admin2 = db
-            .create_user("admin2", "hash2", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin2",
+                hashed_password: "hash2",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1026,13 +1115,29 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin (so system has an admin)
-        db.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: "hash0",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Create regular user
         let user = db
-            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1056,11 +1161,27 @@ mod tests {
 
         // Create exactly 2 admins
         let admin1 = db1
-            .create_user("admin1", "hash1", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin1",
+                hashed_password: "hash1",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
         let admin2 = db1
-            .create_user("admin2", "hash2", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin2",
+                hashed_password: "hash2",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1095,13 +1216,29 @@ mod tests {
         let db2 = UserDb::new(pool.clone());
 
         // Create admin first
-        db1.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db1.create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: "hash0",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Create user
         let user = db1
-            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1185,9 +1322,17 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create a non-guest user first
-        db.create_user("existing", "hash", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "existing",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Try to create first user when non-guest users already exist
         let result = db
@@ -1222,7 +1367,15 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1243,7 +1396,15 @@ mod tests {
 
         // Create user with no permissions
         let user = db
-            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1259,7 +1420,15 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1282,9 +1451,17 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create a user
-        db.create_user("alice", "hash", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Check existence - exact match
         assert!(db.username_exists("alice").await.unwrap());
@@ -1303,9 +1480,17 @@ mod tests {
         assert!(!db.username_exists("alice").await.unwrap());
 
         // Create a different user
-        db.create_user("bob", "hash", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "bob",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // alice still doesn't exist
         assert!(!db.username_exists("alice").await.unwrap());
@@ -1322,15 +1507,15 @@ mod tests {
 
         // Create a shared account
         let shared = db
-            .create_user(
-                "shared_acct",
-                "hash",
-                false,
-                true,
-                true,
-                &Permissions::new(),
-                None,
-            )
+            .create_user(CreateUserParams {
+                username: "shared_acct",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1355,23 +1540,39 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create mix of regular and shared accounts
-        db.create_user("alice", "hash", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
-        db.create_user(
-            "shared_acct",
-            "hash",
-            false,
-            true,
-            true,
-            &Permissions::new(),
-            None,
-        )
+        db.create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
         .await
         .unwrap();
-        db.create_user("bob", "hash", true, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "shared_acct",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: true,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
+        db.create_user(CreateUserParams {
+            username: "bob",
+            hashed_password: "hash",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         let all_users = db.get_all_users().await.unwrap();
         assert_eq!(
@@ -1403,21 +1604,29 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first (needed for system to function)
-        db.create_user("admin", "hash", true, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: "hash",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         // Create a shared account
         let shared = db
-            .create_user(
-                "shared_acct",
-                "hash",
-                false,
-                true,
-                true,
-                &Permissions::new(),
-                None,
-            )
+            .create_user(CreateUserParams {
+                username: "shared_acct",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1468,7 +1677,15 @@ mod tests {
             .unwrap();
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1485,7 +1702,15 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1508,7 +1733,15 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1533,7 +1766,15 @@ mod tests {
 
         // User assigned to group, no individual overrides
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1558,7 +1799,15 @@ mod tests {
 
         // User assigned to group with an additional grant override
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1591,7 +1840,15 @@ mod tests {
 
         // User assigned to group
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1627,7 +1884,15 @@ mod tests {
             .unwrap();
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1671,7 +1936,15 @@ mod tests {
             .unwrap();
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1699,7 +1972,15 @@ mod tests {
         perms.permissions.insert(Permission::ChatSend);
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &perms, None)
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -1735,13 +2016,18 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         // Group with no permissions
-        let group = group_db
-            .create_group("Empty", false, &[])
-            .await
-            .unwrap();
+        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1756,13 +2042,18 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         // Group with no permissions, but user has a grant override
-        let group = group_db
-            .create_group("Empty", false, &[])
-            .await
-            .unwrap();
+        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+            })
             .await
             .unwrap();
 
@@ -1785,17 +2076,30 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        let group = group_db
-            .create_group("Team", false, &[])
-            .await
-            .unwrap();
+        let group = group_db.create_group("Team", false, &[]).await.unwrap();
 
-        db.create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
-            .await
-            .unwrap();
-        db.create_user("bob", "hash", false, false, true, &Permissions::new(), None)
-            .await
-            .unwrap();
+        db.create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: Some(group.id),
+        })
+        .await
+        .unwrap();
+        db.create_user(CreateUserParams {
+            username: "bob",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
+        .await
+        .unwrap();
 
         let all = db.get_all_users().await.unwrap();
         let alice = all.iter().find(|u| u.username == "alice").unwrap();

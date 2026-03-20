@@ -238,3 +238,14 @@ err-voice-not-joined = You are not in a voice session
 err-voice-not-channel-member = You must be a member of { $channel } to join voice
 err-voice-target-not-online = { $nickname } is not online
 err-voice-invalid-target = Invalid voice target
+
+# Group Errors
+err-group-name-empty = Group name cannot be empty
+err-group-name-too-long = Group name exceeds maximum length
+err-group-name-invalid = Group name contains invalid characters
+err-group-not-found = Group not found
+err-group-already-exists = A group with this name already exists
+err-group-shared-permission = Shared groups cannot have this permission
+err-group-not-empty-delete = Cannot delete group while users are assigned to it
+err-group-not-empty-modify = Cannot modify shared status while users are assigned to it
+err-group-no-fields = No fields to update

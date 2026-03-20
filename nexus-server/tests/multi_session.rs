@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use common::{add_test_user, create_test_db};
 use nexus_common::protocol::{ChatAction, ServerMessage, UserInfo};
 use nexus_common::validators::DEFAULT_CHANNEL;
-use nexus_server::db::{self, Permission, Permissions};
+use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use nexus_server::users::UserManager;
 
 // ============================================================================
@@ -25,7 +25,15 @@ async fn test_multi_session_partial_disconnect() {
     perms.add(Permission::UserList);
     let alice = db
         .users
-        .create_user("alice", &hashed_password, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: &hashed_password,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -143,7 +151,15 @@ async fn test_broadcast_respects_user_list_permission() {
     let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
-        .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
+        .create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: &hashed,
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -152,22 +168,30 @@ async fn test_broadcast_respects_user_list_permission() {
     perms_with.add(Permission::UserList);
     let user_with = db
         .users
-        .create_user("user_with", &hashed, false, false, true, &perms_with, None)
+        .create_user(CreateUserParams {
+            username: "user_with",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms_with,
+            group_id: None,
+        })
         .await
         .unwrap();
 
     // Create user WITHOUT user_list permission
     let user_without = db
         .users
-        .create_user(
-            "user_without",
-            &hashed,
-            false,
-            false,
-            true,
-            &Permissions::new(),
-            None,
-        )
+        .create_user(CreateUserParams {
+            username: "user_without",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -257,12 +281,28 @@ async fn test_broadcast_excludes_specified_session() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "user1",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "user2",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -334,12 +374,28 @@ async fn test_broadcast_detects_closed_channels() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "user1",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "user2",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 

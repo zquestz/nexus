@@ -67,10 +67,7 @@ impl GroupDb {
     /// Get all permissions for a group
     ///
     /// Returns permission strings sorted alphabetically.
-    pub async fn get_group_permissions(
-        &self,
-        group_id: i64,
-    ) -> Result<Vec<String>, sqlx::Error> {
+    pub async fn get_group_permissions(&self, group_id: i64) -> Result<Vec<String>, sqlx::Error> {
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
             .bind(group_id)
             .fetch_all(&self.pool)
@@ -244,7 +241,11 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Moderators", false, &["chat_send".into(), "user_kick".into()])
+            .create_group(
+                "Moderators",
+                false,
+                &["chat_send".into(), "user_kick".into()],
+            )
             .await
             .unwrap();
 
@@ -259,7 +260,11 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("SharedUsers", true, &["chat_send".into(), "chat_receive".into()])
+            .create_group(
+                "SharedUsers",
+                true,
+                &["chat_send".into(), "chat_receive".into()],
+            )
             .await
             .unwrap();
 
@@ -283,10 +288,7 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db
-            .create_group("Admins", false, &[])
-            .await
-            .unwrap();
+        group_db.create_group("Admins", false, &[]).await.unwrap();
 
         // Same name (exact case) should fail
         let result = group_db.create_group("Admins", false, &[]).await;
@@ -298,10 +300,7 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db
-            .create_group("Admins", false, &[])
-            .await
-            .unwrap();
+        group_db.create_group("Admins", false, &[]).await.unwrap();
 
         // Different case should also fail (case-insensitive unique index)
         let result = group_db.create_group("admins", false, &[]).await;
@@ -391,11 +390,7 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[
-                    "user_kick".into(),
-                    "chat_send".into(),
-                    "ban_create".into(),
-                ],
+                &["user_kick".into(), "chat_send".into(), "ban_create".into()],
             )
             .await
             .unwrap();
@@ -435,11 +430,27 @@ mod tests {
 
         // Create users and assign them to the group
         let user1 = user_db
-            .create_user("alice", "hash", false, false, true, &crate::db::Permissions::new(), None)
+            .create_user(crate::db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
         let user2 = user_db
-            .create_user("bob", "hash", false, false, true, &crate::db::Permissions::new(), None)
+            .create_user(crate::db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -567,14 +578,8 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db
-            .create_group("GroupA", false, &[])
-            .await
-            .unwrap();
-        let group_b = group_db
-            .create_group("GroupB", false, &[])
-            .await
-            .unwrap();
+        group_db.create_group("GroupA", false, &[]).await.unwrap();
+        let group_b = group_db.create_group("GroupB", false, &[]).await.unwrap();
 
         // Try to rename GroupB to GroupA
         let result = group_db
@@ -588,14 +593,8 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db
-            .create_group("GroupA", false, &[])
-            .await
-            .unwrap();
-        let group_b = group_db
-            .create_group("GroupB", false, &[])
-            .await
-            .unwrap();
+        group_db.create_group("GroupA", false, &[]).await.unwrap();
+        let group_b = group_db.create_group("GroupB", false, &[]).await.unwrap();
 
         // Try to rename GroupB to "groupa" (case-insensitive conflict)
         let result = group_db
@@ -609,10 +608,7 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db
-            .create_group("MyGroup", false, &[])
-            .await
-            .unwrap();
+        let group = group_db.create_group("MyGroup", false, &[]).await.unwrap();
 
         // Updating with the same name (same case) should succeed
         let updated = group_db
@@ -629,10 +625,7 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db
-            .create_group("mygroup", false, &[])
-            .await
-            .unwrap();
+        let group = group_db.create_group("mygroup", false, &[]).await.unwrap();
 
         // Changing case of own name should succeed (same row, no conflict)
         let updated = group_db
@@ -721,7 +714,15 @@ mod tests {
 
         // Create a user and assign to group
         let user = user_db
-            .create_user("alice", "hash", false, false, true, &crate::db::Permissions::new(), None)
+            .create_user(crate::db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -754,7 +755,15 @@ mod tests {
         let group = group_db.create_group("Temp", false, &[]).await.unwrap();
 
         let user = user_db
-            .create_user("alice", "hash", false, false, true, &crate::db::Permissions::new(), None)
+            .create_user(crate::db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &crate::db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -787,7 +796,11 @@ mod tests {
             .await
             .unwrap();
         let group_b = group_db
-            .create_group("GroupB", true, &["file_download".into(), "file_list".into()])
+            .create_group(
+                "GroupB",
+                true,
+                &["file_download".into(), "file_list".into()],
+            )
             .await
             .unwrap();
 

@@ -10,7 +10,7 @@ use std::io::Cursor;
 use common::create_test_db;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId, RawFrame};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
-use nexus_server::db::{self, Permission, Permissions};
+use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::io::BufReader;
@@ -213,7 +213,15 @@ async fn test_file_download_permission_in_db() {
 
     let user = db
         .users
-        .create_user("downloader", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "downloader",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -233,7 +241,15 @@ async fn test_admin_has_implicit_permissions() {
     let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
-        .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
+        .create_user(CreateUserParams {
+            username: "admin",
+            hashed_password: &hashed,
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -895,7 +911,15 @@ async fn test_file_upload_permission_in_db() {
 
     let user = db
         .users
-        .create_user("uploader", &hashed, false, false, true, &perms, None)
+        .create_user(CreateUserParams {
+            username: "uploader",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+        })
         .await
         .unwrap();
 
@@ -915,15 +939,15 @@ async fn test_admin_has_implicit_upload_permission() {
     let hashed = db::hash_password("adminpass", true).unwrap();
     let admin = db
         .users
-        .create_user(
-            "admin_user",
-            &hashed,
-            true,
-            false,
-            true,
-            &Permissions::new(),
-            None,
-        )
+        .create_user(CreateUserParams {
+            username: "admin_user",
+            hashed_password: &hashed,
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+        })
         .await
         .unwrap();
 

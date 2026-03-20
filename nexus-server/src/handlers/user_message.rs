@@ -174,6 +174,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
     use crate::db::Permission;
     use crate::handlers::testing::{
         create_test_context, get_cached_password_hash, login_shared_user, login_user,
@@ -395,7 +396,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("target", "pass456", false, false, true, &Permissions::new(), None)
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: "pass456",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -531,15 +540,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user(
-                "shared_acct",
-                &hashed,
-                false,
-                true,
-                true,
-                &db::Permissions::new(),
-                None,
-            )
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -607,7 +616,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
@@ -670,7 +687,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+            })
             .await
             .unwrap();
 
