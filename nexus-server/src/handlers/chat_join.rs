@@ -44,20 +44,13 @@ pub async fn handle_chat_join<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("ChatJoin request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatJoin"))
             .await;
     };
-
-    // Validate channel name
-    if let Err(e) = validators::validate_channel(&channel) {
-        return ctx
-            .send_message(&error_response(channel_error_to_message(e, ctx.locale)))
-            .await;
-    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -84,6 +77,13 @@ where
         );
         return ctx
             .send_message(&error_response(err_permission_denied(ctx.locale)))
+            .await;
+    }
+
+    // Validate channel name
+    if let Err(e) = validators::validate_channel(&channel) {
+        return ctx
+            .send_message(&error_response(channel_error_to_message(e, ctx.locale)))
             .await;
     }
 

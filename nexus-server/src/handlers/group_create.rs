@@ -31,13 +31,38 @@ pub async fn handle_group_create<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         eprintln!("GroupCreate request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupCreate"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
+        Some(u) => u,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("GroupCreate"))
+                .await;
+        }
+    };
+
+    // Check GroupCreate permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::GroupCreate) {
+        eprintln!(
+            "GroupCreate from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        return ctx
+            .send_error(&err_permission_denied(ctx.locale), Some("GroupCreate"))
+            .await;
+    }
 
     // Validate group name format
     if let Err(e) = validators::validate_group_name(&name) {
@@ -77,31 +102,6 @@ where
             name: None,
         };
         return ctx.send_message(&response).await;
-    }
-
-    // Get requesting user from session
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("GroupCreate"))
-                .await;
-        }
-    };
-
-    // Check GroupCreate permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::GroupCreate) {
-        eprintln!(
-            "GroupCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("GroupCreate"))
-            .await;
     }
 
     // For shared groups, validate that only shared-account permissions are requested

@@ -28,30 +28,13 @@ pub async fn handle_user_info<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(id) = session_id else {
         eprintln!("UserInfo request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
             .await;
     };
-
-    // Validate nickname format
-    if let Err(e) = validators::validate_nickname(&nickname) {
-        let error_msg = match e {
-            NicknameError::Empty => err_nickname_empty(ctx.locale),
-            NicknameError::TooLong => {
-                err_nickname_too_long(ctx.locale, validators::MAX_NICKNAME_LENGTH)
-            }
-            NicknameError::InvalidCharacters => err_nickname_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserInfoResponse {
-            success: false,
-            error: Some(error_msg),
-            user: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
@@ -72,6 +55,23 @@ where
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserInfo"))
             .await;
+    }
+
+    // Validate nickname format
+    if let Err(e) = validators::validate_nickname(&nickname) {
+        let error_msg = match e {
+            NicknameError::Empty => err_nickname_empty(ctx.locale),
+            NicknameError::TooLong => {
+                err_nickname_too_long(ctx.locale, validators::MAX_NICKNAME_LENGTH)
+            }
+            NicknameError::InvalidCharacters => err_nickname_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserInfoResponse {
+            success: false,
+            error: Some(error_msg),
+            user: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Get all sessions by nickname

@@ -24,7 +24,7 @@ pub async fn handle_chat_leave<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("ChatLeave request from {} without login", ctx.peer_addr);
         return ctx

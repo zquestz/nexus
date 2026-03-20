@@ -27,30 +27,13 @@ pub async fn handle_user_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("UserDelete request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserDelete"))
             .await;
     };
-
-    // Validate username format
-    if let Err(e) = validators::validate_username(&target_username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(error_msg),
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -91,6 +74,23 @@ where
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&target_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(error_msg),
             username: None,
         };
         return ctx.send_message(&response).await;

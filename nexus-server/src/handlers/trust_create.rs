@@ -34,13 +34,38 @@ pub async fn handle_trust_create<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("TrustCreate request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrustCreate"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
+        Some(user) => user,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrustCreate"))
+                .await;
+        }
+    };
+
+    // Check trust_create permission
+    if !requesting_user.has_permission(Permission::TrustCreate) {
+        eprintln!(
+            "TrustCreate from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        let response = ServerMessage::TrustCreateResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            ips: None,
+            nickname: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Validate target length
     if let Err(e) = validators::validate_target(&target) {
@@ -83,31 +108,6 @@ where
         let response = ServerMessage::TrustCreateResponse {
             success: false,
             error: Some(error_msg),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Get requesting user from session
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrustCreate"))
-                .await;
-        }
-    };
-
-    // Check trust_create permission
-    if !requesting_user.has_permission(Permission::TrustCreate) {
-        eprintln!(
-            "TrustCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        let response = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
             ips: None,
             nickname: None,
         };

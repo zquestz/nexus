@@ -26,7 +26,7 @@ pub async fn handle_file_search<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("FileSearch request from {} without login", ctx.peer_addr);
         return ctx

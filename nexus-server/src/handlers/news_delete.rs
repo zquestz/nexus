@@ -24,7 +24,7 @@ pub async fn handle_news_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         eprintln!("NewsDelete request from {} without login", ctx.peer_addr);
         return ctx

@@ -29,28 +29,13 @@ pub async fn handle_ban_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("BanDelete request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("BanDelete"))
             .await;
     };
-
-    // Validate target length
-    if let Err(e) = validators::validate_target(&target) {
-        let error_msg = match e {
-            TargetError::Empty => err_ban_not_found(ctx.locale, &target),
-            TargetError::TooLong => err_target_too_long(ctx.locale, validators::MAX_TARGET_LENGTH),
-        };
-        let response = ServerMessage::BanDeleteResponse {
-            success: false,
-            error: Some(error_msg),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -71,6 +56,21 @@ where
         let response = ServerMessage::BanDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            ips: None,
+            nickname: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate target length
+    if let Err(e) = validators::validate_target(&target) {
+        let error_msg = match e {
+            TargetError::Empty => err_ban_not_found(ctx.locale, &target),
+            TargetError::TooLong => err_target_too_long(ctx.locale, validators::MAX_TARGET_LENGTH),
+        };
+        let response = ServerMessage::BanDeleteResponse {
+            success: false,
+            error: Some(error_msg),
             ips: None,
             nickname: None,
         };

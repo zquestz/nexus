@@ -25,35 +25,13 @@ pub async fn handle_chat_topic_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(id) = session_id else {
         eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);
         return ctx
             .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
             .await;
     };
-
-    // Validate topic format
-    if let Err(e) = validators::validate_chat_topic(&topic) {
-        let error_msg = match e {
-            ChatTopicError::TooLong => {
-                err_topic_too_long(ctx.locale, validators::MAX_CHAT_TOPIC_LENGTH)
-            }
-            ChatTopicError::ContainsNewlines => err_topic_contains_newlines(ctx.locale),
-            ChatTopicError::InvalidCharacters => err_topic_invalid_characters(ctx.locale),
-        };
-        return ctx.send_error(&error_msg, Some("ChatTopicUpdate")).await;
-    }
-
-    // Validate channel name
-    if let Err(e) = validators::validate_channel(&channel) {
-        return ctx
-            .send_error(
-                &channel_error_to_message(e, ctx.locale),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
-    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
@@ -83,6 +61,28 @@ where
         );
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("ChatTopicUpdate"))
+            .await;
+    }
+
+    // Validate topic format
+    if let Err(e) = validators::validate_chat_topic(&topic) {
+        let error_msg = match e {
+            ChatTopicError::TooLong => {
+                err_topic_too_long(ctx.locale, validators::MAX_CHAT_TOPIC_LENGTH)
+            }
+            ChatTopicError::ContainsNewlines => err_topic_contains_newlines(ctx.locale),
+            ChatTopicError::InvalidCharacters => err_topic_invalid_characters(ctx.locale),
+        };
+        return ctx.send_error(&error_msg, Some("ChatTopicUpdate")).await;
+    }
+
+    // Validate channel name
+    if let Err(e) = validators::validate_channel(&channel) {
+        return ctx
+            .send_error(
+                &channel_error_to_message(e, ctx.locale),
+                Some("ChatTopicUpdate"),
+            )
             .await;
     }
 
@@ -207,13 +207,14 @@ mod tests {
     async fn test_chattopic_requires_channel() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatTopicEdit permission
-        let session_id = login_user(
+        // Login user with ChatTopicEdit permission and chat feature
+        let session_id = login_user_with_features(
             &mut test_ctx,
             "testuser",
             "password",
             &[Permission::ChatTopicEdit],
             false,
+            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 

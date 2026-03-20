@@ -29,7 +29,7 @@ pub async fn handle_news_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         eprintln!("NewsUpdate request from {} without login", ctx.peer_addr);
         return ctx
@@ -54,55 +54,6 @@ where
             return ctx.send_message(&response).await;
         }
     };
-
-    // Normalize empty strings to None
-    let body = body.filter(|s| !s.trim().is_empty());
-    let image = image.filter(|s| !s.is_empty());
-
-    // Validate that at least one of body or image is provided
-    if body.is_none() && image.is_none() {
-        let response = ServerMessage::NewsUpdateResponse {
-            success: false,
-            error: Some(err_news_empty_content(ctx.locale)),
-            news: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate body if provided
-    if let Some(ref body_text) = body
-        && let Err(e) = validators::validate_news_body(body_text)
-    {
-        let error_msg = match e {
-            NewsBodyError::TooLong => {
-                err_news_body_too_long(ctx.locale, validators::MAX_NEWS_BODY_LENGTH)
-            }
-            NewsBodyError::InvalidCharacters => err_news_body_invalid_characters(ctx.locale),
-        };
-        let response = ServerMessage::NewsUpdateResponse {
-            success: false,
-            error: Some(error_msg),
-            news: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate image if provided
-    if let Some(ref image_data) = image
-        && let Err(e) = validators::validate_news_image(image_data)
-    {
-        let error_msg = match e {
-            NewsImageError::TooLarge => err_news_image_too_large(ctx.locale),
-            NewsImageError::InvalidFormat => err_news_image_invalid_format(ctx.locale),
-            NewsImageError::UnsupportedType => err_news_image_unsupported_type(ctx.locale),
-        };
-        let response = ServerMessage::NewsUpdateResponse {
-            success: false,
-            error: Some(error_msg),
-            news: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Fetch existing news item to check authorship and admin status
     let existing_news = match ctx.db.news.get_news_by_id(id).await {
@@ -149,6 +100,55 @@ where
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
             error: Some(err_cannot_edit_admin_news(ctx.locale)),
+            news: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Normalize empty strings to None
+    let body = body.filter(|s| !s.trim().is_empty());
+    let image = image.filter(|s| !s.is_empty());
+
+    // Validate that at least one of body or image is provided
+    if body.is_none() && image.is_none() {
+        let response = ServerMessage::NewsUpdateResponse {
+            success: false,
+            error: Some(err_news_empty_content(ctx.locale)),
+            news: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate body if provided
+    if let Some(ref body_text) = body
+        && let Err(e) = validators::validate_news_body(body_text)
+    {
+        let error_msg = match e {
+            NewsBodyError::TooLong => {
+                err_news_body_too_long(ctx.locale, validators::MAX_NEWS_BODY_LENGTH)
+            }
+            NewsBodyError::InvalidCharacters => err_news_body_invalid_characters(ctx.locale),
+        };
+        let response = ServerMessage::NewsUpdateResponse {
+            success: false,
+            error: Some(error_msg),
+            news: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate image if provided
+    if let Some(ref image_data) = image
+        && let Err(e) = validators::validate_news_image(image_data)
+    {
+        let error_msg = match e {
+            NewsImageError::TooLarge => err_news_image_too_large(ctx.locale),
+            NewsImageError::InvalidFormat => err_news_image_invalid_format(ctx.locale),
+            NewsImageError::UnsupportedType => err_news_image_unsupported_type(ctx.locale),
+        };
+        let response = ServerMessage::NewsUpdateResponse {
+            success: false,
+            error: Some(error_msg),
             news: None,
         };
         return ctx.send_message(&response).await;

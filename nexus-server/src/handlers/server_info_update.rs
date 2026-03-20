@@ -54,7 +54,7 @@ where
         session_id,
     } = request;
 
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(id) = session_id else {
         eprintln!("ServerInfoUpdate from {} without login", ctx.peer_addr);
         return ctx

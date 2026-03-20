@@ -28,33 +28,13 @@ pub async fn handle_chat_send<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(id) = session_id else {
         eprintln!("ChatSend from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
             .await;
     };
-
-    // Validate message content
-    if let Err(e) = validators::validate_message(&message) {
-        let error_msg = match e {
-            MessageError::Empty => err_message_empty(ctx.locale),
-            MessageError::TooLong => err_chat_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH),
-            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
-            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
-        };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some("ChatSend"))
-            .await;
-    }
-
-    // Validate channel name
-    if let Err(e) = validators::validate_channel(&channel) {
-        return ctx
-            .send_error(&channel_error_to_message(e, ctx.locale), Some("ChatSend"))
-            .await;
-    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
@@ -81,6 +61,26 @@ where
         );
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("ChatSend"))
+            .await;
+    }
+
+    // Validate message content
+    if let Err(e) = validators::validate_message(&message) {
+        let error_msg = match e {
+            MessageError::Empty => err_message_empty(ctx.locale),
+            MessageError::TooLong => err_chat_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH),
+            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
+            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
+        };
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some("ChatSend"))
+            .await;
+    }
+
+    // Validate channel name
+    if let Err(e) = validators::validate_channel(&channel) {
+        return ctx
+            .send_error(&channel_error_to_message(e, ctx.locale), Some("ChatSend"))
             .await;
     }
 

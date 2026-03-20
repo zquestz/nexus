@@ -36,13 +36,38 @@ pub async fn handle_group_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("GroupUpdate request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupUpdate"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
+        Some(u) => u,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("GroupUpdate"))
+                .await;
+        }
+    };
+
+    // Check GroupEdit permission
+    if !requesting_user.has_permission(Permission::GroupEdit) {
+        eprintln!(
+            "GroupUpdate from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        let response = ServerMessage::GroupUpdateResponse {
+            success: false,
+            id: None,
+            name: None,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // If all optional fields are None, there's nothing to update
     if name.is_none() && is_shared.is_none() && permissions.is_none() {
@@ -95,31 +120,6 @@ where
             id: None,
             name: None,
             error: Some(error_msg),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Get requesting user from session
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("GroupUpdate"))
-                .await;
-        }
-    };
-
-    // Check GroupEdit permission
-    if !requesting_user.has_permission(Permission::GroupEdit) {
-        eprintln!(
-            "GroupUpdate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        let response = ServerMessage::GroupUpdateResponse {
-            success: false,
-            id: None,
-            name: None,
-            error: Some(err_permission_denied(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }

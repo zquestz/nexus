@@ -25,13 +25,37 @@ pub async fn handle_user_kick<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("UserKick request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserKick"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
+        Some(user) => user,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserKick"))
+                .await;
+        }
+    };
+
+    // Check UserKick permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user_session.has_permission(Permission::UserKick) {
+        eprintln!(
+            "UserKick from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user_session.username
+        );
+        let response = ServerMessage::UserKickResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            nickname: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Validate nickname format
     if let Err(e) = validators::validate_nickname(&nickname) {
@@ -50,16 +74,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get requesting user from session
-    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserKick"))
-                .await;
-        }
-    };
-
     // Prevent self-kick (cheap check before DB queries)
     // Check against the requesting user's nickname (which is the display name)
     let target_lower = nickname.to_lowercase();
@@ -68,20 +82,6 @@ where
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_cannot_kick_self(ctx.locale)),
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Check UserKick permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user_session.has_permission(Permission::UserKick) {
-        eprintln!(
-            "UserKick from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user_session.username
-        );
-        let response = ServerMessage::UserKickResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
             nickname: None,
         };
         return ctx.send_message(&response).await;

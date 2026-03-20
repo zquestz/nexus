@@ -53,13 +53,38 @@ where
         revokes,
     } = request;
 
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         eprintln!("UserCreate request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
+        Some(u) => u,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserCreate"))
+                .await;
+        }
+    };
+
+    // Check UserCreate permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user.has_permission(Permission::UserCreate) {
+        eprintln!(
+            "UserCreate from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user.username
+        );
+        return ctx
+            .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
+            .await;
+    }
 
     // Validate username format
     if let Err(e) = validators::validate_username(&username) {
@@ -113,31 +138,6 @@ where
             username: None,
         };
         return ctx.send_message(&response).await;
-    }
-
-    // Get requesting user from session
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserCreate"))
-                .await;
-        }
-    };
-
-    // Check UserCreate permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::UserCreate) {
-        eprintln!(
-            "UserCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-            .await;
     }
 
     // Verify admin creation privilege (use is_admin from UserManager)

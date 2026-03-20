@@ -24,22 +24,13 @@ pub async fn handle_chat_secret<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("ChatSecret request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSecret"))
             .await;
     };
-
-    // Validate channel name
-    if let Err(e) = validators::validate_channel(&channel) {
-        let response = ServerMessage::ChatSecretResponse {
-            success: false,
-            error: Some(channel_error_to_message(e, ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -69,6 +60,15 @@ where
         let response = ServerMessage::ChatSecretResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate channel name
+    if let Err(e) = validators::validate_channel(&channel) {
+        let response = ServerMessage::ChatSecretResponse {
+            success: false,
+            error: Some(channel_error_to_message(e, ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }

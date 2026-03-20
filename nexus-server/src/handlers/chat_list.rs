@@ -21,7 +21,7 @@ pub async fn handle_chat_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("ChatList request from {} without login", ctx.peer_addr);
         return ctx

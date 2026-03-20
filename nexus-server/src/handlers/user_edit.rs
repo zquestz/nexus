@@ -25,39 +25,13 @@ pub async fn handle_user_edit<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         eprintln!("UserEdit request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserEdit"))
             .await;
     };
-
-    // Validate username format
-    if let Err(e) = validators::validate_username(&username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserEditResponse {
-            success: false,
-            error: Some(error_msg),
-            username: None,
-            is_admin: None,
-            is_shared: None,
-            enabled: None,
-            permissions: None,
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Get requesting user from session
     let requesting_user = match ctx
@@ -101,6 +75,32 @@ where
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            username: None,
+            is_admin: None,
+            is_shared: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            group_name: None,
+            group_permissions: None,
+            revoked_permissions: None,
+            available_groups: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate username format
+    if let Err(e) = validators::validate_username(&username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(ctx.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserEditResponse {
+            success: false,
+            error: Some(error_msg),
             username: None,
             is_admin: None,
             is_shared: None,

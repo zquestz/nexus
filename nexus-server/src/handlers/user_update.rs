@@ -21,9 +21,9 @@ use super::{
     err_password_too_long, err_permission_denied, err_permissions_contains_newlines,
     err_permissions_empty_permission, err_permissions_invalid_characters,
     err_permissions_permission_too_long, err_permissions_too_many,
-    err_shared_cannot_change_password, err_shared_invalid_permissions, err_update_failed,
-    err_user_not_found, err_username_empty, err_username_exists, err_username_invalid,
-    err_username_too_long, remove_user_with_voice_cleanup,
+    err_shared_cannot_change_password, err_shared_invalid_permissions, err_unknown_permission,
+    err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
+    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Permission, Permissions, hash_password, verify_password};
@@ -52,12 +52,26 @@ pub async fn handle_user_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(requesting_session_id) = request.session_id else {
         eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
             .await;
+    };
+
+    // Get requesting user from session
+    let requesting_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
+        Some(u) => u,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserUpdate"))
+                .await;
+        }
     };
 
     // Validate target username format
@@ -76,20 +90,6 @@ where
         };
         return ctx.send_message(&response).await;
     }
-
-    // Get requesting user from session
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserUpdate"))
-                .await;
-        }
-    };
 
     // Check if this is a self-edit (user changing their own password)
     let is_self_edit = request.username.to_lowercase() == requesting_user.username.to_lowercase();
@@ -553,13 +553,23 @@ where
             // Parse revoke permissions
             let mut parsed_revokes = Vec::new();
             for perm_str in revoke_strings {
-                if let Some(perm) = Permission::parse(perm_str) {
-                    // Non-admins can only set revokes for permissions they have
-                    if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
-                        // Skip — preserve existing revokes for perms requester can't control
-                        continue;
+                match Permission::parse(perm_str) {
+                    Some(perm) => {
+                        // Non-admins can only set revokes for permissions they have
+                        if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
+                            // Skip — preserve existing revokes for perms requester can't control
+                            continue;
+                        }
+                        parsed_revokes.push(perm);
                     }
-                    parsed_revokes.push(perm);
+                    None => {
+                        let response = ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            username: None,
+                        };
+                        return ctx.send_message(&response).await;
+                    }
                 }
             }
 
@@ -2002,6 +2012,69 @@ mod tests {
                 .unwrap(),
             "Alice should keep chat_send (Bob can't modify it)"
         );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_unknown_revoke_permission_returns_error() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create target user with a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Staff", false, &["chat_send".to_string()])
+            .await
+            .unwrap();
+
+        let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob and assign to group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hashed",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Try to set an unknown revoke permission
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: Some(vec!["totally_fake_permission".to_string()]),
+            session_id: Some(admin_session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should fail for unknown revoke permission");
+                let err = error.unwrap();
+                assert!(
+                    err.contains("totally_fake_permission"),
+                    "Error should mention the unknown permission: {}",
+                    err
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
     }
 
     #[tokio::test]

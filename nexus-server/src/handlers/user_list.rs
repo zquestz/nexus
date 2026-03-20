@@ -42,7 +42,7 @@ pub async fn handle_user_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first
+    // Verify authentication
     let Some(id) = session_id else {
         eprintln!("UserList request from {} without login", ctx.peer_addr);
         return ctx

@@ -27,13 +27,38 @@ pub async fn handle_user_message<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication first (before revealing validation errors to unauthenticated users)
+    // Verify authentication
     let Some(session_id) = session_id else {
         eprintln!("UserMessage request from {} without login", ctx.peer_addr);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserMessage"))
             .await;
     };
+
+    // Get requesting user from session
+    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
+        Some(user) => user,
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
+                .await;
+        }
+    };
+
+    // Check UserMessage permission (uses cached permissions, admin bypass built-in)
+    if !requesting_user_session.has_permission(Permission::UserMessage) {
+        eprintln!(
+            "UserMessage from {} (user: {}) without permission",
+            ctx.peer_addr, requesting_user_session.username
+        );
+        let response = ServerMessage::UserMessageResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            is_away: None,
+            status: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Validate to_nickname format
     if let Err(e) = validators::validate_nickname(&to_nickname) {
@@ -70,16 +95,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get requesting user from session
-    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
-                .await;
-        }
-    };
-
     // Prevent self-messaging (cheap check before DB queries)
     // Check against the requesting user's nickname (which is the display name)
     let to_nickname_lower = to_nickname.to_lowercase();
@@ -88,21 +103,6 @@ where
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_cannot_message_self(ctx.locale)),
-            is_away: None,
-            status: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Check UserMessage permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user_session.has_permission(Permission::UserMessage) {
-        eprintln!(
-            "UserMessage from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user_session.username
-        );
-        let response = ServerMessage::UserMessageResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
             is_away: None,
             status: None,
         };
