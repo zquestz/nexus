@@ -205,9 +205,8 @@ err-upload-path-invalid = 업로드에 잘못된 파일 경로가 있습니다
 err-upload-conflict = 이 파일 이름에 대한 다른 업로드가 진행 중이거나 중단되었습니다. 다른 파일 이름을 시도해 주세요.
 err-upload-file-exists = 이 이름의 파일이 이미 존재합니다. 다른 파일 이름을 선택하거나 관리자에게 기존 파일 삭제를 요청하세요.
 err-upload-empty = 업로드에는 최소 하나의 파일이 포함되어야 합니다
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = 업로드 프로토콜 오류
+err-upload-connection-lost = 업로드 중 연결이 끊어졌습니다
 
 # Ban System Errors
 err-ban-self = 자기 자신을 차단할 수 없습니다
@@ -243,7 +242,7 @@ err-voice-invalid-target = 잘못된 음성 대상입니다
 
 # 그룹 오류
 err-group-name-empty = 그룹 이름은 비워둘 수 없습니다
-err-group-name-too-long = 그룹 이름이 최대 길이를 초과합니다
+err-group-name-too-long = 그룹 이름이 너무 깁니다 (최대 { $max_length }자)
 err-group-name-invalid = 그룹 이름에 잘못된 문자가 포함되어 있습니다
 err-group-not-found = 그룹을 찾을 수 없습니다
 err-group-already-exists = 이 이름의 그룹이 이미 존재합니다

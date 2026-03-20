@@ -104,7 +104,8 @@ where
     match ctx.db.groups.delete_group(id).await {
         Ok(true) => {}
         Ok(false) => {
-            // Race condition - group was deleted between check and delete
+            // Race condition: group was deleted by another admin, or a member
+            // was assigned between our pre-check and the atomic delete
             let response = ServerMessage::GroupDeleteResponse {
                 success: false,
                 error: Some(err_group_not_found(ctx.locale)),

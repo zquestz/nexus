@@ -110,7 +110,7 @@ where
                 is_away: false,
                 status: None,
                 group_id: db_user.group_id,
-                group_name: None,
+                group_name: None, // Client resolves name from its cached group list
             })
             .collect();
 

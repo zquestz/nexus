@@ -241,7 +241,7 @@ err-voice-invalid-target = Invalid voice target
 
 # Group Errors
 err-group-name-empty = Group name cannot be empty
-err-group-name-too-long = Group name exceeds maximum length
+err-group-name-too-long = Group name is too long (max { $max_length } characters)
 err-group-name-invalid = Group name contains invalid characters
 err-group-not-found = Group not found
 err-group-already-exists = A group with this name already exists

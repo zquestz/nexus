@@ -1109,8 +1109,12 @@ pub fn err_group_name_empty(locale: &str) -> String {
 }
 
 /// Get translated "group name too long" error
-pub fn err_group_name_too_long(locale: &str) -> String {
-    t(locale, "err-group-name-too-long")
+pub fn err_group_name_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-group-name-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
 }
 
 /// Get translated "group name invalid" error

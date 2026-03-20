@@ -205,9 +205,8 @@ err-upload-path-invalid = Недопустимый путь к файлу при
 err-upload-conflict = Другая загрузка с этим именем файла выполняется или была прервана. Пожалуйста, попробуйте другое имя файла.
 err-upload-file-exists = Файл с таким именем уже существует. Пожалуйста, выберите другое имя файла или попросите администратора удалить существующий файл.
 err-upload-empty = Загрузка должна содержать хотя бы один файл
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = Ошибка протокола загрузки
+err-upload-connection-lost = Соединение потеряно во время загрузки
 
 # Ban System Errors
 err-ban-self = Вы не можете заблокировать себя
@@ -243,7 +242,7 @@ err-voice-invalid-target = Недопустимая цель голосовог�
 
 # Ошибки групп
 err-group-name-empty = Название группы не может быть пустым
-err-group-name-too-long = Название группы превышает максимальную длину
+err-group-name-too-long = Название группы слишком длинное (максимум { $max_length } символов)
 err-group-name-invalid = Название группы содержит недопустимые символы
 err-group-not-found = Группа не найдена
 err-group-already-exists = Группа с таким названием уже существует

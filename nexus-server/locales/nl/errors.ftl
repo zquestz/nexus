@@ -205,9 +205,8 @@ err-upload-path-invalid = Ongeldig bestandspad in upload
 err-upload-conflict = Een andere upload naar deze bestandsnaam is bezig of werd onderbroken. Probeer een andere bestandsnaam.
 err-upload-file-exists = Een bestand met deze naam bestaat al. Kies een andere bestandsnaam of vraag een beheerder om het bestaande bestand te verwijderen.
 err-upload-empty = Upload moet minimaal één bestand bevatten
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = Upload-protocolfout
+err-upload-connection-lost = Verbinding verloren tijdens upload
 
 # Ban System Errors
 err-ban-self = U kunt uzelf niet verbannen
@@ -243,7 +242,7 @@ err-voice-invalid-target = Ongeldig spraakdoel
 
 # Groepsfouten
 err-group-name-empty = Groepsnaam mag niet leeg zijn
-err-group-name-too-long = Groepsnaam overschrijdt de maximale lengte
+err-group-name-too-long = Groepsnaam is te lang (maximaal { $max_length } tekens)
 err-group-name-invalid = Groepsnaam bevat ongeldige tekens
 err-group-not-found = Groep niet gevonden
 err-group-already-exists = Een groep met deze naam bestaat al

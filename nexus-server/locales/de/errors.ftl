@@ -205,9 +205,8 @@ err-upload-path-invalid = Ungültiger Dateipfad beim Upload
 err-upload-conflict = Ein anderer Upload zu diesem Dateinamen läuft oder wurde unterbrochen. Bitte versuchen Sie einen anderen Dateinamen.
 err-upload-file-exists = Eine Datei mit diesem Namen existiert bereits. Bitte wählen Sie einen anderen Dateinamen oder bitten Sie einen Administrator, die vorhandene Datei zu löschen.
 err-upload-empty = Upload muss mindestens eine Datei enthalten
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = Upload-Protokollfehler
+err-upload-connection-lost = Verbindung während des Uploads verloren
 
 # Ban System Errors
 err-ban-self = Sie können sich nicht selbst sperren
@@ -243,7 +242,7 @@ err-voice-invalid-target = Ungültiges Voice-Ziel
 
 # Gruppenfehler
 err-group-name-empty = Gruppenname darf nicht leer sein
-err-group-name-too-long = Gruppenname überschreitet die maximale Länge
+err-group-name-too-long = Gruppenname ist zu lang (maximal { $max_length } Zeichen)
 err-group-name-invalid = Gruppenname enthält ungültige Zeichen
 err-group-not-found = Gruppe nicht gefunden
 err-group-already-exists = Eine Gruppe mit diesem Namen existiert bereits

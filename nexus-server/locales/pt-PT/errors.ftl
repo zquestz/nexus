@@ -205,9 +205,8 @@ err-upload-path-invalid = Caminho de ficheiro inválido no carregamento
 err-upload-conflict = Outro carregamento para este nome de ficheiro está em curso ou foi interrompido. Por favor, tente um nome de ficheiro diferente.
 err-upload-file-exists = Um ficheiro com este nome já existe. Por favor, escolha um nome de ficheiro diferente ou peça a um administrador para eliminar o ficheiro existente.
 err-upload-empty = O carregamento deve conter pelo menos um ficheiro
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = Erro de protocolo de carregamento
+err-upload-connection-lost = Ligação perdida durante o carregamento
 
 # Ban System Errors
 err-ban-self = Não se pode banir a si próprio
@@ -243,7 +242,7 @@ err-voice-invalid-target = Destino de voz inválido
 
 # Erros de grupo
 err-group-name-empty = O nome do grupo não pode estar vazio
-err-group-name-too-long = O nome do grupo excede o comprimento máximo
+err-group-name-too-long = O nome do grupo é demasiado longo (máximo { $max_length } caracteres)
 err-group-name-invalid = O nome do grupo contém caracteres inválidos
 err-group-not-found = Grupo não encontrado
 err-group-already-exists = Já existe um grupo com este nome

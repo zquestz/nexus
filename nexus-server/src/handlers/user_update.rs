@@ -870,9 +870,9 @@ where
                         .await;
                 }
 
-                // If group changed, update UserManager sessions
-                if group_changed {
-                    let (new_gid, new_gname) = if let Some(gid) = updated_account.group_id {
+                // Resolve group info once (used by both update_group and UserUpdated broadcast)
+                let (updated_group_id, updated_group_name) =
+                    if let Some(gid) = updated_account.group_id {
                         match ctx.db.groups.get_group_by_id(gid).await {
                             Ok(Some(g)) => (Some(gid), Some(g.name)),
                             _ => (None, None),
@@ -880,8 +880,15 @@ where
                     } else {
                         (None, None)
                     };
+
+                // If group changed, update UserManager sessions
+                if group_changed {
                     ctx.user_manager
-                        .update_group(updated_account.id, new_gid, new_gname)
+                        .update_group(
+                            updated_account.id,
+                            updated_group_id,
+                            updated_group_name.clone(),
+                        )
                         .await;
                 }
 
@@ -891,20 +898,6 @@ where
                         .user_manager
                         .get_session_ids_for_user(&updated_account.username)
                         .await;
-
-                    // Get earliest login time, locale, and avatar from all sessions
-                    // Avatar uses "latest login wins"
-                    // Resolve group info for UserUpdated broadcast
-                    // (reuse from update_group block if available, otherwise look up)
-                    let (updated_group_id, updated_group_name) =
-                        if let Some(gid) = updated_account.group_id {
-                            match ctx.db.groups.get_group_by_id(gid).await {
-                                Ok(Some(g)) => (Some(gid), Some(g.name)),
-                                _ => (None, None),
-                            }
-                        } else {
-                            (None, None)
-                        };
 
                     let (login_time, locale, avatar) = if !session_ids.is_empty() {
                         let user_sessions = ctx

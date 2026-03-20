@@ -100,7 +100,7 @@ pub enum ClientMessage {
     UserKick {
         nickname: String,
         /// Optional reason for the kick (shown to kicked user)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
     UserList {
@@ -115,17 +115,17 @@ pub enum ClientMessage {
     },
     UserUpdate {
         username: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         current_password: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         requested_username: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         requested_password: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         requested_is_admin: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         requested_enabled: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         requested_permissions: Option<Vec<String>>,
         /// Assign user to a group (by group ID)
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,7 +140,7 @@ pub enum ClientMessage {
     /// Set away status for all sessions of this user
     UserAway {
         /// Optional status message (max 128 bytes)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<String>,
     },
     /// Clear away status for all sessions of this user
@@ -148,28 +148,28 @@ pub enum ClientMessage {
     /// Set status message without changing away status
     UserStatus {
         /// Status message (None to clear)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
     },
     ServerInfoUpdate {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_connections_per_ip: Option<u32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max_transfers_per_ip: Option<u32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         image: Option<String>,
         /// File reindex interval in minutes (0 to disable automatic reindexing)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         file_reindex_interval: Option<u32>,
         /// Persistent channels (space-separated, survive restart)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         persistent_channels: Option<String>,
         /// Auto-join channels (space-separated, joined on login)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         auto_join_channels: Option<String>,
     },
     NewsList,
@@ -177,9 +177,9 @@ pub enum ClientMessage {
         id: i64,
     },
     NewsCreate {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         image: Option<String>,
     },
     NewsEdit {
@@ -187,9 +187,9 @@ pub enum ClientMessage {
     },
     NewsUpdate {
         id: i64,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         image: Option<String>,
     },
     NewsDelete {
@@ -279,7 +279,7 @@ pub enum ClientMessage {
         /// Size of local file (0 if no local file exists)
         size: u64,
         /// SHA-256 hash of local file (None if size is 0)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
     },
     /// Request a file upload (port 7501 only)
@@ -316,10 +316,10 @@ pub enum ClientMessage {
         /// Target: nickname, IP address, or hostname
         target: String,
         /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         duration: Option<String>,
         /// Reason for the ban (admin notes)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
     /// Delete an IP ban
@@ -334,10 +334,10 @@ pub enum ClientMessage {
         /// Target: nickname, IP address, or CIDR range
         target: String,
         /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         duration: Option<String>,
         /// Reason for the trust entry (admin notes)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
     /// Remove an IP from the trusted list
@@ -372,13 +372,13 @@ pub enum ClientMessage {
         /// Group ID to update
         id: i64,
         /// New group name (if changing)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         /// New shared status (if changing)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         is_shared: Option<bool>,
         /// New permissions (if changing)
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
     },
     /// Delete an account group
@@ -1415,6 +1415,7 @@ impl std::fmt::Debug for ClientMessage {
                 username,
                 is_admin,
                 is_shared,
+                enabled,
                 permissions,
                 group_id,
                 revokes,
@@ -1424,6 +1425,7 @@ impl std::fmt::Debug for ClientMessage {
                 .field("username", username)
                 .field("is_admin", is_admin)
                 .field("is_shared", is_shared)
+                .field("enabled", enabled)
                 .field("permissions", permissions)
                 .field("group_id", group_id)
                 .field("revokes", revokes)

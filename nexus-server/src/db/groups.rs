@@ -199,25 +199,15 @@ impl GroupDb {
         }))
     }
 
-    /// Delete a group by ID
+    /// Atomically delete a group by ID, only if it has no assigned members
     ///
-    /// Returns `true` if the group was deleted, `false` if it doesn't exist.
-    ///
-    /// # Errors
-    ///
-    /// Returns `sqlx::Error::Protocol` if the group still has members assigned.
-    /// The caller should check member count and show a user-friendly error,
-    /// but this serves as defense-in-depth.
+    /// Returns `true` if the group was deleted, `false` if it doesn't exist
+    /// or has members. The caller should pre-check member count to provide
+    /// the appropriate user-facing error message; this atomic SQL ensures
+    /// no TOCTOU race between the check and the delete.
     pub async fn delete_group(&self, id: i64) -> Result<bool, sqlx::Error> {
-        // Defense-in-depth: reject delete if group has members
-        let member_count = self.get_member_count(id).await?;
-        if member_count > 0 {
-            return Err(sqlx::Error::Protocol(
-                "Cannot delete group with assigned members".to_string(),
-            ));
-        }
-
         let result = sqlx::query(sql::SQL_DELETE_GROUP)
+            .bind(id)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -736,9 +726,12 @@ mod tests {
             .await
             .unwrap();
 
-        // Delete should fail
-        let result = group_db.delete_group(group.id).await;
-        assert!(result.is_err());
+        // Delete should return false (atomic SQL prevents delete when members exist)
+        let result = group_db.delete_group(group.id).await.unwrap();
+        assert!(
+            !result,
+            "delete_group should return false when group has members"
+        );
 
         // Group should still exist
         let fetched = group_db.get_group_by_id(group.id).await.unwrap();

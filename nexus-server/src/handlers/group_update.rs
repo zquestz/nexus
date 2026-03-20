@@ -61,7 +61,9 @@ where
     {
         let error_msg = match e {
             GroupNameError::Empty => err_group_name_empty(ctx.locale),
-            GroupNameError::TooLong => err_group_name_too_long(ctx.locale),
+            GroupNameError::TooLong => {
+                err_group_name_too_long(ctx.locale, validators::MAX_GROUP_NAME_LENGTH)
+            }
             GroupNameError::InvalidCharacters => err_group_name_invalid(ctx.locale),
         };
         let response = ServerMessage::GroupUpdateResponse {

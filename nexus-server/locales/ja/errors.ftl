@@ -205,9 +205,8 @@ err-upload-path-invalid = アップロードのファイルパスが無効です
 err-upload-conflict = このファイル名への別のアップロードが進行中または中断されています。別のファイル名をお試しください。
 err-upload-file-exists = この名前のファイルは既に存在します。別のファイル名を選択するか、管理者に既存のファイルの削除を依頼してください。
 err-upload-empty = アップロードには少なくとも1つのファイルが必要です
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = アップロードプロトコルエラー
+err-upload-connection-lost = アップロード中に接続が切断されました
 
 # Ban System Errors
 err-ban-self = 自分自身をBANすることはできません
@@ -243,7 +242,7 @@ err-voice-invalid-target = 無効なボイス対象です
 
 # グループエラー
 err-group-name-empty = グループ名を空にすることはできません
-err-group-name-too-long = グループ名が最大長を超えています
+err-group-name-too-long = グループ名が長すぎます（最大{ $max_length }文字）
 err-group-name-invalid = グループ名に無効な文字が含まれています
 err-group-not-found = グループが見つかりません
 err-group-already-exists = この名前のグループは既に存在します

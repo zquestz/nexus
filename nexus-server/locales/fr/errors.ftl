@@ -205,9 +205,8 @@ err-upload-path-invalid = Chemin de fichier invalide dans le téléversement
 err-upload-conflict = Un autre téléversement vers ce nom de fichier est en cours ou a été interrompu. Veuillez essayer un autre nom de fichier.
 err-upload-file-exists = Un fichier avec ce nom existe déjà. Veuillez choisir un autre nom de fichier ou demander à un administrateur de supprimer le fichier existant.
 err-upload-empty = Le téléversement doit contenir au moins un fichier
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = Erreur de protocole de téléversement
+err-upload-connection-lost = Connexion perdue pendant le téléversement
 
 # Ban System Errors
 err-ban-self = Vous ne pouvez pas vous bannir vous-même
@@ -243,7 +242,7 @@ err-voice-invalid-target = Cible vocale invalide
 
 # Erreurs de groupe
 err-group-name-empty = Le nom du groupe ne peut pas être vide
-err-group-name-too-long = Le nom du groupe dépasse la longueur maximale
+err-group-name-too-long = Le nom du groupe est trop long (maximum { $max_length } caractères)
 err-group-name-invalid = Le nom du groupe contient des caractères invalides
 err-group-not-found = Groupe introuvable
 err-group-already-exists = Un groupe avec ce nom existe déjà

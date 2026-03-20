@@ -640,10 +640,11 @@ const ERROR_SIZE: usize = json_type_base("Error")
     + json_string_field("message", MAX_ERROR_LENGTH)
     + json_string_field("command", MAX_COMMAND_LENGTH);
 
-/// ServerBroadcast: {"type":"ServerBroadcast","message":"...1024...","from_nickname":"...64..."}
+/// ServerBroadcast: {"type":"ServerBroadcast","session_id":4294967295,"username":"...32...","message":"...1024..."}
 const SERVER_BROADCAST_SIZE: usize = json_type_base("ServerBroadcast")
-    + json_string_field("message", MAX_MESSAGE_LENGTH)
-    + json_string_field("from_nickname", MAX_NICKNAME_LENGTH);
+    + json_u32_field("session_id")
+    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_field("message", MAX_MESSAGE_LENGTH);
 
 /// UserDisconnected: {"type":"UserDisconnected","session_id":4294967295,"nickname":"...64..."}
 const USER_DISCONNECTED_SIZE: usize = json_type_base("UserDisconnected")
@@ -1419,17 +1420,17 @@ pub fn known_message_types() -> Vec<&'static str> {
 mod tests {
     use super::*;
     use crate::protocol::{
-        ChannelJoinInfo, ChatAction, ClientMessage, ServerInfo, ServerMessage, UserInfo,
+        ChannelJoinInfo, ChatAction, ClientMessage, GroupInfo, ServerInfo, ServerMessage, UserInfo,
         UserInfoDetailed,
     };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
         MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
-        MAX_FILE_PATH_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH,
-        MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH,
-        MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-        MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH,
-        MAX_VERSION_LENGTH,
+        MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH,
+        MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+        MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
+        MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH,
+        MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -1889,6 +1890,7 @@ mod tests {
             "FileStart",   // True mirror - identical fields
             "FileStartResponse", // True mirror - identical fields
             "FileData",    // True mirror - no fields (raw bytes)
+            "FileHashing", // True mirror - identical fields (keepalive during hash)
         ];
 
         for type_name in &shared_type_names {
@@ -1899,10 +1901,10 @@ mod tests {
             );
         }
 
-        // Verify count matches SHARED_MESSAGE_COUNT constant
+        // Verify count matches SHARED_MESSAGE_COUNT constant in test_all_protocol_types_have_limits
         assert_eq!(
             shared_type_names.len(),
-            4,
+            5, // Must match SHARED_MESSAGE_COUNT
             "Update SHARED_MESSAGE_COUNT if shared type names change"
         );
     }
@@ -2057,8 +2059,12 @@ mod tests {
             permissions: (0..PERMISSIONS_COUNT)
                 .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                 .collect(),
-            group_id: None,
-            revokes: None,
+            group_id: Some(i64::MAX),
+            revokes: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserCreate") as usize,
@@ -2164,9 +2170,13 @@ mod tests {
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
-            requested_group_id: None,
-            remove_group: None,
-            requested_revokes: None,
+            requested_group_id: Some(i64::MAX),
+            remove_group: Some(false),
+            requested_revokes: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserUpdate") as usize,
@@ -2596,8 +2606,8 @@ mod tests {
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
             channels: Some(channels),
             nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            group_id: None,
-            group_name: None,
+            group_id: Some(i64::MAX),
+            group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("LoginResponse") as usize;
@@ -2629,8 +2639,8 @@ mod tests {
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             }),
-            group_id: None,
-            group_name: None,
+            group_id: Some(i64::MAX),
+            group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("PermissionsUpdated") as usize;
@@ -2713,8 +2723,8 @@ mod tests {
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
-                group_id: None,
-                group_name: None,
+                group_id: Some(i64::MAX),
+                group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
             },
         };
         assert!(
@@ -2787,11 +2797,31 @@ mod tests {
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
+            group_id: Some(i64::MAX),
+            group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+            group_permissions: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
+            revoked_permissions: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
+            available_groups: Some(
+                (0..MAX_GROUPS)
+                    .map(|_| GroupInfo {
+                        id: i64::MAX,
+                        name: str_of_len(MAX_GROUP_NAME_LENGTH),
+                        is_shared: false,
+                        member_count: u32::MAX,
+                        permissions: (0..PERMISSIONS_COUNT)
+                            .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                            .collect(),
+                    })
+                    .collect(),
+            ),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserEditResponse") as usize,
@@ -2839,8 +2869,8 @@ mod tests {
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
                 channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
-                group_id: None,
-                group_name: None,
+                group_id: Some(i64::MAX),
+                group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
             }),
         };
         assert!(
@@ -3317,6 +3347,175 @@ mod tests {
             server_size <= limit,
             "ServerMessage::FileHashing size {} exceeds limit {}",
             server_size,
+            limit
+        );
+    }
+
+    // =========================================================================
+    // Group message size tests
+    // =========================================================================
+
+    #[test]
+    fn test_limit_group_list() {
+        let msg = ClientMessage::GroupList;
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupList") as usize;
+        assert!(
+            size <= limit,
+            "GroupList size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_create() {
+        let msg = ClientMessage::GroupCreate {
+            name: str_of_len(MAX_GROUP_NAME_LENGTH),
+            is_shared: false,
+            permissions: (0..PERMISSIONS_COUNT)
+                .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                .collect(),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupCreate") as usize;
+        assert!(
+            size <= limit,
+            "GroupCreate size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_edit() {
+        let msg = ClientMessage::GroupEdit { id: i64::MAX };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupEdit") as usize;
+        assert!(
+            size <= limit,
+            "GroupEdit size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_update() {
+        let msg = ClientMessage::GroupUpdate {
+            id: i64::MAX,
+            name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+            is_shared: Some(false),
+            permissions: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupUpdate") as usize;
+        assert!(
+            size <= limit,
+            "GroupUpdate size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_delete() {
+        let msg = ClientMessage::GroupDelete { id: i64::MAX };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupDelete") as usize;
+        assert!(
+            size <= limit,
+            "GroupDelete size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_list_response_unlimited() {
+        // GroupListResponse has unlimited payload (like UserListResponse)
+        assert_eq!(max_payload_for_type("GroupListResponse"), 0);
+    }
+
+    #[test]
+    fn test_limit_group_create_response() {
+        let msg = ServerMessage::GroupCreateResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupCreateResponse") as usize;
+        assert!(
+            size <= limit,
+            "GroupCreateResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_edit_response() {
+        let msg = ServerMessage::GroupEditResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+            is_shared: Some(false),
+            permissions: Some(
+                (0..PERMISSIONS_COUNT)
+                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
+                    .collect(),
+            ),
+            member_count: Some(u32::MAX),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupEditResponse") as usize;
+        assert!(
+            size <= limit,
+            "GroupEditResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_update_response() {
+        let msg = ServerMessage::GroupUpdateResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupUpdateResponse") as usize;
+        assert!(
+            size <= limit,
+            "GroupUpdateResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_group_delete_response() {
+        let msg = ServerMessage::GroupDeleteResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("GroupDeleteResponse") as usize;
+        assert!(
+            size <= limit,
+            "GroupDeleteResponse size {} exceeds limit {}",
+            size,
             limit
         );
     }

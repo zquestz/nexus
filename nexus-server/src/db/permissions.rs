@@ -269,9 +269,15 @@ mod tests {
         assert_eq!(Permission::FileMove.as_str(), "file_move");
         assert_eq!(Permission::FileRename.as_str(), "file_rename");
         assert_eq!(Permission::FileRoot.as_str(), "file_root");
+        assert_eq!(Permission::ConnectionMonitor.as_str(), "connection_monitor");
+        assert_eq!(Permission::GroupCreate.as_str(), "group_create");
+        assert_eq!(Permission::GroupDelete.as_str(), "group_delete");
+        assert_eq!(Permission::GroupEdit.as_str(), "group_edit");
         assert_eq!(Permission::TrustCreate.as_str(), "trust_create");
         assert_eq!(Permission::TrustDelete.as_str(), "trust_delete");
         assert_eq!(Permission::TrustList.as_str(), "trust_list");
+        assert_eq!(Permission::VoiceListen.as_str(), "voice_listen");
+        assert_eq!(Permission::VoiceTalk.as_str(), "voice_talk");
     }
 
     #[test]
@@ -368,6 +374,28 @@ mod tests {
             Some(Permission::TrustDelete)
         );
         assert_eq!(Permission::parse("trust_list"), Some(Permission::TrustList));
+        assert_eq!(
+            Permission::parse("chat_create"),
+            Some(Permission::ChatCreate)
+        );
+        assert_eq!(
+            Permission::parse("connection_monitor"),
+            Some(Permission::ConnectionMonitor)
+        );
+        assert_eq!(
+            Permission::parse("group_create"),
+            Some(Permission::GroupCreate)
+        );
+        assert_eq!(
+            Permission::parse("group_delete"),
+            Some(Permission::GroupDelete)
+        );
+        assert_eq!(Permission::parse("group_edit"), Some(Permission::GroupEdit));
+        assert_eq!(
+            Permission::parse("voice_listen"),
+            Some(Permission::VoiceListen)
+        );
+        assert_eq!(Permission::parse("voice_talk"), Some(Permission::VoiceTalk));
     }
 
     #[test]

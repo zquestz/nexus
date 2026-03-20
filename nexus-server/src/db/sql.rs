@@ -103,19 +103,6 @@ pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 // Permission Query Operations
 // ========================================================================
 
-/// Count permissions for a user
-///
-/// **Parameters:**
-/// 1. `user_id: i64` - User ID
-/// 2. `permission: &str` - Permission name (snake_case)
-///
-/// **Returns:** `(count: i64)` - Number of matching permissions (0 or 1)
-///
-/// Note: Only used in tests. Production code uses cached permissions.
-#[cfg(test)]
-pub const SQL_COUNT_PERMISSION: &str =
-    "SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?";
-
 /// Select all permissions for a user with override type
 ///
 /// **Parameters:**
@@ -643,11 +630,13 @@ pub const SQL_INSERT_GROUP: &str = "INSERT INTO groups (name, is_shared) VALUES 
 /// 3. `id: i64` - Group ID to update
 pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ? WHERE id = ?";
 
-/// Delete a group by ID
+/// Atomically delete a group by ID, only if it has no assigned members
 ///
 /// **Parameters:**
 /// 1. `id: i64` - Group ID to delete
+/// 2. `id: i64` - Group ID (repeated for subquery bind)
 ///
-/// **Note:** The handler must verify the group has no members before calling this.
-/// The schema uses `ON DELETE SET NULL` as a safety net.
-pub const SQL_DELETE_GROUP: &str = "DELETE FROM groups WHERE id = ?";
+/// Returns rows_affected = 1 on success, 0 if group not found OR has members.
+/// Caller should distinguish those cases with a follow-up SELECT if needed.
+pub const SQL_DELETE_GROUP: &str =
+    "DELETE FROM groups WHERE id = ? AND (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0";

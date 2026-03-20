@@ -205,9 +205,8 @@ err-upload-path-invalid = 上傳中的檔案路徑無效
 err-upload-conflict = 另一個上傳到此檔案名稱的操作正在進行中或已中斷。請嘗試使用其他檔案名稱。
 err-upload-file-exists = 具有此名稱的檔案已存在。請選擇其他檔案名稱或請求管理員刪除現有檔案。
 err-upload-empty = 上傳必須包含至少一個檔案
-
-err-upload-protocol-error = Upload protocol error
-err-upload-connection-lost = Connection lost during upload
+err-upload-protocol-error = 上傳協議錯誤
+err-upload-connection-lost = 上傳過程中連線中斷
 
 # Ban System Errors
 err-ban-self = 您不能封鎖自己
@@ -243,7 +242,7 @@ err-voice-invalid-target = 無效的語音目標
 
 # 群組錯誤
 err-group-name-empty = 群組名稱不能為空
-err-group-name-too-long = 群組名稱超過最大長度
+err-group-name-too-long = 群組名稱太長（最多{ $max_length }個字元）
 err-group-name-invalid = 群組名稱包含無效字元
 err-group-not-found = 找不到群組
 err-group-already-exists = 已存在同名群組

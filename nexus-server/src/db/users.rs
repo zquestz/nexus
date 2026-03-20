@@ -225,7 +225,7 @@ impl UserDb {
         Ok(permissions)
     }
 
-    /// Check if user has a specific permission (with admin override)
+    /// Check if user has a specific permission (with admin override and group resolution)
     ///
     /// Note: This method is only used in tests. Production code uses cached
     /// permissions in the User struct via `User::has_permission()`.
@@ -250,13 +250,10 @@ impl UserDb {
             return Ok(true);
         }
 
-        let count: (i64,) = sqlx::query_as(SQL_COUNT_PERMISSION)
-            .bind(user_id)
-            .bind(permission.as_str())
-            .fetch_one(&self.pool)
-            .await?;
-
-        Ok(count.0 > 0)
+        // Use get_user_permissions() which correctly resolves group + overrides:
+        // (group_perms ∪ grants) - revokes
+        let permissions = self.get_user_permissions(user_id).await?;
+        Ok(permissions.permissions.contains(&permission))
     }
 
     /// Set permissions within an existing transaction
