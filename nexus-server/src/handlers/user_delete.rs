@@ -217,7 +217,7 @@ mod tests {
         let target = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -396,6 +396,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -518,6 +519,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -533,6 +535,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -645,6 +648,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();

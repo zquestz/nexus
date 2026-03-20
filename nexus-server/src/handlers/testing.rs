@@ -252,7 +252,7 @@ pub async fn login_user_from_ip(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, false, true, &perms)
+        .create_user(username, &hashed, is_admin, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -307,7 +307,7 @@ pub async fn login_user_with_features(
     let user = test_ctx
         .db
         .users
-        .create_user(username, &hashed, is_admin, false, true, &perms)
+        .create_user(username, &hashed, is_admin, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -358,7 +358,7 @@ pub async fn login_shared_user(
     let user = test_ctx
         .db
         .users
-        .create_user(account_username, &hashed, false, true, true, &perms)
+        .create_user(account_username, &hashed, false, true, true, &perms, None)
         .await
         .unwrap();
 

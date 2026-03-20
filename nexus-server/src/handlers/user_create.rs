@@ -249,6 +249,7 @@ where
             is_shared,
             enabled,
             &perms,
+            None,
         )
         .await
     {
@@ -397,7 +398,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -412,6 +413,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -723,7 +725,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -738,7 +740,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, false, true, &perms)
+            .create_user("creator", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -797,7 +799,7 @@ mod tests {
         let _admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -813,7 +815,7 @@ mod tests {
         let creator = test_ctx
             .db
             .users
-            .create_user("creator", &hashed, false, false, true, &perms)
+            .create_user("creator", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 

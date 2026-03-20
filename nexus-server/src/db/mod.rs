@@ -3,6 +3,7 @@
 pub mod bans;
 pub mod channels;
 pub mod config;
+pub mod groups;
 pub mod news;
 pub mod password;
 pub mod permissions;
@@ -16,6 +17,7 @@ pub mod testing;
 pub use bans::BanDb;
 pub use channels::ChannelDb;
 pub use config::ConfigDb;
+pub use groups::GroupDb;
 pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
@@ -37,6 +39,7 @@ pub struct Database {
     pub bans: BanDb,
     pub trusts: TrustDb,
     pub channels: ChannelDb,
+    pub groups: GroupDb,
 }
 
 impl Database {
@@ -48,7 +51,8 @@ impl Database {
             news: NewsDb::new(pool.clone()),
             bans: BanDb::new(pool.clone()),
             trusts: TrustDb::new(pool.clone()),
-            channels: ChannelDb::new(pool),
+            channels: ChannelDb::new(pool.clone()),
+            groups: GroupDb::new(pool),
         }
     }
 }

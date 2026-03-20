@@ -25,7 +25,7 @@ async fn test_multi_session_partial_disconnect() {
     perms.add(Permission::UserList);
     let alice = db
         .users
-        .create_user("alice", &hashed_password, false, false, true, &perms)
+        .create_user("alice", &hashed_password, false, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -143,7 +143,7 @@ async fn test_broadcast_respects_user_list_permission() {
     let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
-        .create_user("admin", &hashed, true, false, true, &Permissions::new())
+        .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
         .await
         .unwrap();
 
@@ -152,7 +152,7 @@ async fn test_broadcast_respects_user_list_permission() {
     perms_with.add(Permission::UserList);
     let user_with = db
         .users
-        .create_user("user_with", &hashed, false, false, true, &perms_with)
+        .create_user("user_with", &hashed, false, false, true, &perms_with, None)
         .await
         .unwrap();
 
@@ -166,6 +166,7 @@ async fn test_broadcast_respects_user_list_permission() {
             false,
             true,
             &Permissions::new(),
+            None,
         )
         .await
         .unwrap();
@@ -256,12 +257,12 @@ async fn test_broadcast_excludes_specified_session() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, false, true, &perms)
+        .create_user("user1", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, false, true, &perms)
+        .create_user("user2", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -333,12 +334,12 @@ async fn test_broadcast_detects_closed_channels() {
 
     let user1 = db
         .users
-        .create_user("user1", &hashed, false, false, true, &perms)
+        .create_user("user1", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
     let user2 = db
         .users
-        .create_user("user2", &hashed, false, false, true, &perms)
+        .create_user("user2", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
 

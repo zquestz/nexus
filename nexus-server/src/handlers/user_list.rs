@@ -391,7 +391,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -455,7 +455,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -546,7 +546,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -694,7 +694,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", &hashed, false, false, true, &perms)
+            .create_user("bob", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -820,6 +820,7 @@ mod tests {
                 true,  // is_shared
                 true,  // enabled
                 &crate::db::Permissions::new(),
+                None,
             )
             .await
             .expect("shared account creation should succeed");
@@ -875,37 +876,37 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("bob", &hashed, false, false, true, &perms)
+            .create_user("bob", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("kalani", &hashed, true, false, true, &perms) // admin
+            .create_user("kalani", &hashed, true, false, true, &perms, None) // admin
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("love", &hashed, false, false, true, &perms)
+            .create_user("love", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("Lovelady", &hashed, false, false, true, &perms)
+            .create_user("Lovelady", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("steve", &hashed, false, false, true, &perms)
+            .create_user("steve", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -913,7 +914,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared", &hashed, false, true, true, &perms)
+            .create_user("shared", &hashed, false, true, true, &perms, None)
             .await
             .unwrap();
 
@@ -978,25 +979,25 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("Zebra", &hashed, false, false, true, &perms)
+            .create_user("Zebra", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("apple", &hashed, false, false, true, &perms)
+            .create_user("apple", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("Banana", &hashed, false, false, true, &perms)
+            .create_user("Banana", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("cherry", &hashed, false, false, true, &perms)
+            .create_user("cherry", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -1056,7 +1057,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -1148,7 +1149,7 @@ mod tests {
         let account = test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms)
+            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
             .await
             .unwrap();
 

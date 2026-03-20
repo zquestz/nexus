@@ -29,6 +29,7 @@ pub struct UserAccount {
     pub is_shared: bool,
     pub enabled: bool,
     pub created_at: i64,
+    pub group_id: Option<i64>,
 }
 
 /// Database operations for user accounts
@@ -72,14 +73,14 @@ impl UserDb {
     /// Note: Only used in tests. Production code looks up users by username.
     #[cfg(test)]
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let user: Option<(i64, String, String, bool, bool, bool, i64)> =
+        let user: Option<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
             sqlx::query_as(SQL_SELECT_USER_BY_ID)
                 .bind(user_id)
                 .fetch_optional(&self.pool)
                 .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
                 UserAccount {
                     id,
                     username,
@@ -88,6 +89,7 @@ impl UserDb {
                     is_shared,
                     enabled,
                     created_at,
+                    group_id,
                 }
             },
         ))
@@ -104,14 +106,14 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let user: Option<(i64, String, String, bool, bool, bool, i64)> =
+        let user: Option<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
             sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
                 .bind(username)
                 .fetch_optional(&self.pool)
                 .await?;
 
         Ok(user.map(
-            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+            |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
                 UserAccount {
                     id,
                     username,
@@ -120,6 +122,7 @@ impl UserDb {
                     is_shared,
                     enabled,
                     created_at,
+                    group_id,
                 }
             },
         ))
@@ -146,7 +149,7 @@ impl UserDb {
     ///
     /// Used by the `/list all` command for user management.
     pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
-        let rows: Vec<(i64, String, String, bool, bool, bool, i64)> =
+        let rows: Vec<(i64, String, String, bool, bool, bool, i64, Option<i64>)> =
             sqlx::query_as(SQL_SELECT_ALL_USERS)
                 .fetch_all(&self.pool)
                 .await?;
@@ -154,7 +157,7 @@ impl UserDb {
         Ok(rows
             .into_iter()
             .map(
-                |(id, username, hashed_password, is_admin, is_shared, enabled, created_at)| {
+                |(id, username, hashed_password, is_admin, is_shared, enabled, created_at, group_id)| {
                     UserAccount {
                         id,
                         username,
@@ -163,6 +166,7 @@ impl UserDb {
                         is_shared,
                         enabled,
                         created_at,
+                        group_id,
                     }
                 },
             )
@@ -173,17 +177,66 @@ impl UserDb {
     // Permission Methods
     // ========================================================================
 
-    /// Get all permissions for a user
+    /// Get effective permissions for a user, resolving group + overrides
+    ///
+    /// Resolution logic:
+    /// - If user has a group: `(group_permissions ∪ grant_overrides) - revoke_overrides`
+    /// - If user has no group: grant overrides only (legacy behavior)
     pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
-        let perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_PERMISSIONS)
-            .bind(user_id)
-            .fetch_all(&self.pool)
-            .await?;
+        // Check if user has a group assignment
+        let group_id: Option<(Option<i64>,)> =
+            sqlx::query_as(SQL_SELECT_USER_GROUP_ID)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        // User doesn't exist — return empty permissions
+        let Some((group_id,)) = group_id else {
+            return Ok(Permissions::new());
+        };
+
+        // Fetch user's individual permissions with override type
+        let perm_rows: Vec<(String, String)> =
+            sqlx::query_as(SQL_SELECT_PERMISSIONS_WITH_OVERRIDE)
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut permissions = Permissions::new();
-        for (perm_str,) in perm_rows {
-            if let Some(perm) = Permission::parse(&perm_str) {
-                permissions.permissions.insert(perm);
+
+        if let Some(gid) = group_id {
+            // User has a group — resolve: (group_perms ∪ grants) - revokes
+            let group_perm_rows: Vec<(String,)> =
+                sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
+                    .bind(gid)
+                    .fetch_all(&self.pool)
+                    .await?;
+
+            // Start with group permissions
+            for (perm_str,) in &group_perm_rows {
+                if let Some(perm) = Permission::parse(perm_str) {
+                    permissions.permissions.insert(perm);
+                }
+            }
+
+            // Apply overrides
+            for (perm_str, override_type) in &perm_rows {
+                if let Some(perm) = Permission::parse(perm_str) {
+                    if override_type == "grant" {
+                        permissions.permissions.insert(perm);
+                    } else if override_type == "revoke" {
+                        permissions.permissions.remove(&perm);
+                    }
+                }
+            }
+        } else {
+            // No group — legacy behavior (grants only)
+            for (perm_str, override_type) in &perm_rows {
+                if override_type == "grant" {
+                    if let Some(perm) = Permission::parse(perm_str) {
+                        permissions.permissions.insert(perm);
+                    }
+                }
             }
         }
 
@@ -264,6 +317,7 @@ impl UserDb {
         is_shared: bool,
         enabled: bool,
         permissions: &Permissions,
+        group_id: Option<i64>,
     ) -> Result<UserAccount, sqlx::Error> {
         // Validate username format (failsafe - handlers should also validate)
         // If this fails, it indicates a bug or attack bypassing handler validation
@@ -283,6 +337,7 @@ impl UserDb {
             .bind(is_shared)
             .bind(enabled)
             .bind(created_at)
+            .bind(group_id)
             .execute(&mut *tx)
             .await?;
 
@@ -304,6 +359,7 @@ impl UserDb {
             is_shared,
             enabled,
             created_at,
+            group_id,
         })
     }
 
@@ -353,6 +409,7 @@ impl UserDb {
             .bind(false) // is_shared = false (first user cannot be shared)
             .bind(true) // enabled = true
             .bind(created_at)
+            .bind(None::<i64>) // group_id = None (first user never has a group)
             .execute(&mut *tx)
             .await?;
 
@@ -369,6 +426,7 @@ impl UserDb {
             is_shared: false,
             enabled: true,
             created_at,
+            group_id: None,
         }))
     }
 
@@ -534,7 +592,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, false, true, &Permissions::new())
+            .create_user("alice", "hash123", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -562,7 +620,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific casing
-        db.create_user("Alice", "hash123", false, false, true, &Permissions::new())
+        db.create_user("Alice", "hash123", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -582,7 +640,7 @@ mod tests {
 
         // Cannot create another user with different casing
         let result = db
-            .create_user("alice", "hash456", false, false, true, &Permissions::new())
+            .create_user("alice", "hash456", false, false, true, &Permissions::new(), None)
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
     }
@@ -594,7 +652,7 @@ mod tests {
 
         // Create user
         let created = db
-            .create_user("alice", "hash123", false, false, true, &Permissions::new())
+            .create_user("alice", "hash123", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -630,7 +688,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash123", false, false, true, &perms)
+            .create_user("alice", "hash123", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -660,7 +718,7 @@ mod tests {
         };
 
         let admin = db
-            .create_user("admin", "hash123", true, false, true, &perms)
+            .create_user("admin", "hash123", true, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -686,7 +744,7 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -735,7 +793,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -793,7 +851,7 @@ mod tests {
         };
 
         let _user = db
-            .create_user("alice", "hash", false, false, true, &initial_perms)
+            .create_user("alice", "hash", false, false, true, &initial_perms, None)
             .await
             .unwrap();
 
@@ -856,7 +914,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first
-        db.create_user("admin", "hash0", true, false, true, &Permissions::new())
+        db.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -871,7 +929,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("bob", "hash", false, false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -918,7 +976,7 @@ mod tests {
 
         // Create single admin
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -941,11 +999,11 @@ mod tests {
 
         // Create two admins
         let admin1 = db
-            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
         let admin2 = db
-            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -968,13 +1026,13 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin (so system has an admin)
-        db.create_user("admin", "hash0", true, false, true, &Permissions::new())
+        db.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
         // Create regular user
         let user = db
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -998,11 +1056,11 @@ mod tests {
 
         // Create exactly 2 admins
         let admin1 = db1
-            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
         let admin2 = db1
-            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1037,13 +1095,13 @@ mod tests {
         let db2 = UserDb::new(pool.clone());
 
         // Create admin first
-        db1.create_user("admin", "hash0", true, false, true, &Permissions::new())
+        db1.create_user("admin", "hash0", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
         // Create user
         let user = db1
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1127,7 +1185,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create a non-guest user first
-        db.create_user("existing", "hash", false, false, true, &Permissions::new())
+        db.create_user("existing", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1164,7 +1222,7 @@ mod tests {
         };
 
         let user = db
-            .create_user("alice", "hash", false, false, true, &perms)
+            .create_user("alice", "hash", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -1185,7 +1243,7 @@ mod tests {
 
         // Create user with no permissions
         let user = db
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1201,7 +1259,7 @@ mod tests {
 
         // Create admin (no permissions stored in DB)
         let admin = db
-            .create_user("admin", "hash", true, false, true, &Permissions::new())
+            .create_user("admin", "hash", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1224,7 +1282,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create a user
-        db.create_user("alice", "hash", false, false, true, &Permissions::new())
+        db.create_user("alice", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1245,7 +1303,7 @@ mod tests {
         assert!(!db.username_exists("alice").await.unwrap());
 
         // Create a different user
-        db.create_user("bob", "hash", false, false, true, &Permissions::new())
+        db.create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1271,6 +1329,7 @@ mod tests {
                 true,
                 true,
                 &Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1296,7 +1355,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create mix of regular and shared accounts
-        db.create_user("alice", "hash", false, false, true, &Permissions::new())
+        db.create_user("alice", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
         db.create_user(
@@ -1306,10 +1365,11 @@ mod tests {
             true,
             true,
             &Permissions::new(),
+            None,
         )
         .await
         .unwrap();
-        db.create_user("bob", "hash", true, false, true, &Permissions::new())
+        db.create_user("bob", "hash", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1343,7 +1403,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin first (needed for system to function)
-        db.create_user("admin", "hash", true, false, true, &Permissions::new())
+        db.create_user("admin", "hash", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1356,6 +1416,7 @@ mod tests {
                 true,
                 true,
                 &Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1389,5 +1450,358 @@ mod tests {
             "is_shared should remain true after update"
         );
         assert_eq!(retrieved.hashed_password, "new_hash");
+    }
+
+    // ========================================================================
+    // Group + Override Permission Resolution
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_create_user_with_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        assert_eq!(user.group_id, Some(group.id));
+
+        // Verify via fetch
+        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
+        assert_eq!(fetched.group_id, Some(group.id));
+    }
+
+    #[tokio::test]
+    async fn test_create_user_without_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(user.group_id, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_no_group_legacy() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // User with no group — legacy behavior (individual grants only)
+        use std::collections::HashSet;
+        let mut perms = Permissions::new();
+        perms.permissions = {
+            let mut set = HashSet::new();
+            set.insert(Permission::ChatSend);
+            set.insert(Permission::UserList);
+            set
+        };
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &perms, None)
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 2);
+        assert!(vec.contains(&Permission::ChatSend));
+        assert!(vec.contains(&Permission::UserList));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_with_group_base() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send + user_kick
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // User assigned to group, no individual overrides
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 2);
+        assert!(vec.contains(&Permission::ChatSend));
+        assert!(vec.contains(&Permission::UserKick));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_group_plus_grant_override() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send
+        let group = group_db
+            .create_group("Basic", false, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        // User assigned to group with an additional grant override
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        // Add a grant override for user_list (not in group)
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("user_list")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 2);
+        assert!(vec.contains(&Permission::ChatSend)); // from group
+        assert!(vec.contains(&Permission::UserList)); // from grant override
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_group_with_revoke_override() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send + user_kick
+        let group = group_db
+            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .await
+            .unwrap();
+
+        // User assigned to group
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        // Revoke user_kick for this user
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'revoke')")
+            .bind(user.id)
+            .bind("user_kick")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 1);
+        assert!(vec.contains(&Permission::ChatSend)); // from group
+        assert!(!vec.contains(&Permission::UserKick)); // revoked
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_group_grant_and_revoke_overrides() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send + user_kick + ban_create
+        let group = group_db
+            .create_group(
+                "Mods",
+                false,
+                &["chat_send".into(), "user_kick".into(), "ban_create".into()],
+            )
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        // Grant override: user_list (not in group)
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("user_list")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Revoke override: ban_create (in group but revoked for this user)
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'revoke')")
+            .bind(user.id)
+            .bind("ban_create")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Effective = (chat_send, user_kick, ban_create) ∪ (user_list) - (ban_create)
+        //           = chat_send, user_kick, user_list
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 3);
+        assert!(vec.contains(&Permission::ChatSend));
+        assert!(vec.contains(&Permission::UserKick));
+        assert!(vec.contains(&Permission::UserList));
+        assert!(!vec.contains(&Permission::BanCreate));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_revoke_nonexistent_is_noop() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with chat_send only
+        let group = group_db
+            .create_group("Basic", false, &["chat_send".into()])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        // Revoke user_kick — not in group, so this is a no-op
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'revoke')")
+            .bind(user.id)
+            .bind("user_kick")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 1);
+        assert!(vec.contains(&Permission::ChatSend));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_no_group_ignores_revokes() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // User with no group, but has both grant and revoke overrides
+        let mut perms = Permissions::new();
+        perms.permissions.insert(Permission::ChatSend);
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &perms, None)
+            .await
+            .unwrap();
+
+        // Manually insert a revoke override (shouldn't happen in practice
+        // without a group, but test defense-in-depth)
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'revoke')")
+            .bind(user.id)
+            .bind("user_kick")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Legacy path: only grants are considered
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 1);
+        assert!(vec.contains(&Permission::ChatSend));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_nonexistent_user() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let effective = db.get_user_permissions(99999).await.unwrap();
+        assert_eq!(effective.to_vec().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_empty_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with no permissions
+        let group = group_db
+            .create_group("Empty", false, &[])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        assert_eq!(effective.to_vec().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_permissions_empty_group_with_grant_override() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Group with no permissions, but user has a grant override
+        let group = group_db
+            .create_group("Empty", false, &[])
+            .await
+            .unwrap();
+
+        let user = db
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant')")
+            .bind(user.id)
+            .bind("chat_send")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let effective = db.get_user_permissions(user.id).await.unwrap();
+        let vec = effective.to_vec();
+        assert_eq!(vec.len(), 1);
+        assert!(vec.contains(&Permission::ChatSend));
+    }
+
+    #[tokio::test]
+    async fn test_get_all_users_includes_group_id() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group("Team", false, &[])
+            .await
+            .unwrap();
+
+        db.create_user("alice", "hash", false, false, true, &Permissions::new(), Some(group.id))
+            .await
+            .unwrap();
+        db.create_user("bob", "hash", false, false, true, &Permissions::new(), None)
+            .await
+            .unwrap();
+
+        let all = db.get_all_users().await.unwrap();
+        let alice = all.iter().find(|u| u.username == "alice").unwrap();
+        let bob = all.iter().find(|u| u.username == "bob").unwrap();
+
+        assert_eq!(alice.group_id, Some(group.id));
+        assert_eq!(bob.group_id, None);
     }
 }

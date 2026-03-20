@@ -395,7 +395,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("target", "pass456", false, false, true, &Permissions::new())
+            .create_user("target", "pass456", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -538,6 +538,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -606,7 +607,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms)
+            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
             .await
             .unwrap();
 
@@ -669,7 +670,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("shared_acct", &hashed, false, true, true, &perms)
+            .create_user("shared_acct", &hashed, false, true, true, &perms, None)
             .await
             .unwrap();
 

@@ -234,7 +234,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -299,7 +299,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &perms)
+            .create_user("bob", "hash", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -355,7 +355,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin2", "hash", true, false, true, &db::Permissions::new())
+            .create_user("admin2", "hash", true, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -408,7 +408,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -520,6 +520,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -569,7 +570,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &db::Permissions::new())
+            .create_user("bob", "hash", false, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 

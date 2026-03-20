@@ -821,7 +821,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1085,7 +1085,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1238,7 +1238,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1288,7 +1288,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1326,13 +1326,13 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "hash", false, false, true, &Permissions::new())
+            .create_user("alice", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
         test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1371,7 +1371,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("alice", "oldhash", false, false, true, &Permissions::new())
+            .create_user("alice", "oldhash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1425,7 +1425,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -1495,6 +1495,7 @@ mod tests {
                 false,
                 true,
                 &Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1795,7 +1796,7 @@ mod tests {
         let editor = test_ctx
             .db
             .users
-            .create_user("editor", "hash", false, false, true, &perms)
+            .create_user("editor", "hash", false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -1862,7 +1863,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2002,13 +2003,13 @@ mod tests {
         let admin1 = test_ctx
             .db
             .users
-            .create_user("admin1", "hash1", true, false, true, &Permissions::new())
+            .create_user("admin1", "hash1", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
         let admin2 = test_ctx
             .db
             .users
-            .create_user("admin2", "hash2", true, false, true, &Permissions::new())
+            .create_user("admin2", "hash2", true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2171,6 +2172,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .expect("shared account creation should succeed");
@@ -2247,6 +2249,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .expect("shared account creation should succeed");
@@ -2304,6 +2307,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .expect("shared account creation should succeed");
@@ -2353,7 +2357,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2422,7 +2426,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2487,7 +2491,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2555,7 +2559,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2621,7 +2625,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .create_user("bob", "hash", false, false, true, &bob_perms, None)
             .await
             .unwrap();
 
@@ -2697,7 +2701,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .create_user("bob", "hash", false, false, true, &bob_perms, None)
             .await
             .unwrap();
 
@@ -2784,7 +2788,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &bob_perms)
+            .create_user("bob", "hash", false, false, true, &bob_perms, None)
             .await
             .unwrap();
 
@@ -2857,7 +2861,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -2942,7 +2946,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -3030,7 +3034,7 @@ mod tests {
         let bob = test_ctx
             .db
             .users
-            .create_user("bob", "hash", false, false, true, &Permissions::new())
+            .create_user("bob", "hash", false, false, true, &Permissions::new(), None)
             .await
             .unwrap();
 
@@ -3104,7 +3108,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("voiceuser", "hash", false, false, true, &voice_perms)
+            .create_user("voiceuser", "hash", false, false, true, &voice_perms, None)
             .await
             .unwrap();
 
@@ -3206,7 +3210,7 @@ mod tests {
         test_ctx
             .db
             .users
-            .create_user("voiceuser", "hash", false, false, true, &voice_perms)
+            .create_user("voiceuser", "hash", false, false, true, &voice_perms, None)
             .await
             .unwrap();
 

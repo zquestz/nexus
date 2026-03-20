@@ -213,7 +213,7 @@ async fn test_file_download_permission_in_db() {
 
     let user = db
         .users
-        .create_user("downloader", &hashed, false, false, true, &perms)
+        .create_user("downloader", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -233,7 +233,7 @@ async fn test_admin_has_implicit_permissions() {
     let hashed = db::hash_password("password", true).unwrap();
     let admin = db
         .users
-        .create_user("admin", &hashed, true, false, true, &Permissions::new())
+        .create_user("admin", &hashed, true, false, true, &Permissions::new(), None)
         .await
         .unwrap();
 
@@ -895,7 +895,7 @@ async fn test_file_upload_permission_in_db() {
 
     let user = db
         .users
-        .create_user("uploader", &hashed, false, false, true, &perms)
+        .create_user("uploader", &hashed, false, false, true, &perms, None)
         .await
         .unwrap();
 
@@ -922,6 +922,7 @@ async fn test_admin_has_implicit_upload_permission() {
             false,
             true,
             &Permissions::new(),
+            None,
         )
         .await
         .unwrap();

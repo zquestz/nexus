@@ -50,32 +50,32 @@ pub const SQL_COUNT_NON_GUEST_USERS: &str =
 /// **Parameters:**
 /// 1. `username: &str` - Username to search for
 ///
-/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
+/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
 /// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
 /// the original case in the returned username.
-pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users WHERE LOWER(username) = LOWER(?)";
+pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE LOWER(username) = LOWER(?)";
 
 /// Select user by ID
 ///
 /// **Parameters:**
 /// 1. `user_id: i64` - User ID to look up
 ///
-/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
+/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
 /// Note: Only used in tests. Production code looks up users by username.
 #[cfg(test)]
-pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users WHERE id = ?";
+pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE id = ?";
 
 /// Select all users (for user management listing)
 ///
 /// **Parameters:** None
 ///
-/// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, is_shared, enabled, created_at)`
+/// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
 /// **Note:** Used by `/list all` command for user management.
 /// Results are sorted alphabetically by username (case-insensitive).
-pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at FROM users ORDER BY LOWER(username)";
+pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users ORDER BY LOWER(username)";
 
 /// Check if a username exists (case-insensitive)
 ///
@@ -125,6 +125,29 @@ pub const SQL_COUNT_PERMISSION: &str =
 pub const SQL_SELECT_PERMISSIONS: &str =
     "SELECT permission FROM user_permissions WHERE user_id = ?";
 
+/// Select all permissions for a user with override type
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** Multiple rows of `(permission: String, override_type: String)`
+///
+/// **Note:** Used by `get_user_permissions()` to resolve group + override permissions.
+/// The `override_type` is either `'grant'` or `'revoke'`.
+pub const SQL_SELECT_PERMISSIONS_WITH_OVERRIDE: &str =
+    "SELECT permission, override_type FROM user_permissions WHERE user_id = ?";
+
+/// Select a user's group_id
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** `(group_id: Option<i64>)`
+///
+/// **Note:** Lightweight query used by `get_user_permissions()` to check
+/// if group-based permission resolution is needed.
+pub const SQL_SELECT_USER_GROUP_ID: &str = "SELECT group_id FROM users WHERE id = ?";
+
 /// Delete all permissions for a user
 ///
 /// **Parameters:**
@@ -154,9 +177,10 @@ pub const SQL_INSERT_PERMISSION: &str =
 /// 4. `is_shared: bool` - Shared account status
 /// 5. `enabled: bool` - Enabled status
 /// 6. `created_at: i64` - Unix timestamp
+/// 7. `group_id: Option<i64>` - Optional group assignment
 ///
 /// **Returns:** `last_insert_rowid()` - The new user's ID
-pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)";
+pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at, group_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
 /// Update user with atomic protection for last admin/enabled admin
 ///
@@ -507,3 +531,81 @@ pub const SQL_SELECT_ACTIVE_TRUSTS: &str = "
 pub const SQL_DELETE_EXPIRED_TRUSTS: &str = "
     DELETE FROM ip_trusted
     WHERE expires_at IS NOT NULL AND expires_at <= ?";
+
+// ========================================================================
+// Group Query Operations
+// ========================================================================
+
+/// Select all groups ordered by name (case-insensitive)
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(id: i64, name: String, is_shared: bool)`
+///
+/// **Note:** Member count and permissions are fetched separately per group.
+pub const SQL_SELECT_ALL_GROUPS: &str = "SELECT id, name, is_shared FROM groups ORDER BY LOWER(name)";
+
+/// Select a group by ID
+///
+/// **Parameters:**
+/// 1. `id: i64` - Group ID
+///
+/// **Returns:** `(id: i64, name: String, is_shared: bool)`
+pub const SQL_SELECT_GROUP_BY_ID: &str = "SELECT id, name, is_shared FROM groups WHERE id = ?";
+
+/// Count users assigned to a group
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+///
+/// **Returns:** `(count: i64)`
+pub const SQL_COUNT_GROUP_MEMBERS: &str = "SELECT COUNT(*) FROM users WHERE group_id = ?";
+
+/// Select all permissions for a group
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+///
+/// **Returns:** Multiple rows of `(permission: String)`
+pub const SQL_SELECT_GROUP_PERMISSIONS: &str = "SELECT permission FROM group_permissions WHERE group_id = ? ORDER BY permission";
+
+/// Delete all permissions for a group
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+///
+/// **Note:** Used when replacing group permissions during an update.
+pub const SQL_DELETE_GROUP_PERMISSIONS: &str = "DELETE FROM group_permissions WHERE group_id = ?";
+
+/// Insert a permission for a group
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+/// 2. `permission: &str` - Permission name (snake_case)
+pub const SQL_INSERT_GROUP_PERMISSION: &str = "INSERT INTO group_permissions (group_id, permission) VALUES (?, ?)";
+
+/// Insert a new group
+///
+/// **Parameters:**
+/// 1. `name: &str` - Group name
+/// 2. `is_shared: bool` - Whether this is a shared account group
+///
+/// **Returns:** `last_insert_rowid()` - The new group's ID
+pub const SQL_INSERT_GROUP: &str = "INSERT INTO groups (name, is_shared) VALUES (?, ?)";
+
+/// Update a group's name and shared status
+///
+/// **Parameters:**
+/// 1. `name: &str` - New group name
+/// 2. `is_shared: bool` - New shared status
+/// 3. `id: i64` - Group ID to update
+pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ? WHERE id = ?";
+
+/// Delete a group by ID
+///
+/// **Parameters:**
+/// 1. `id: i64` - Group ID to delete
+///
+/// **Note:** The handler must verify the group has no members before calling this.
+/// The schema uses `ON DELETE SET NULL` as a safety net.
+pub const SQL_DELETE_GROUP: &str = "DELETE FROM groups WHERE id = ?";

@@ -266,6 +266,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -325,7 +326,7 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .create_user("alice", &hashed, false, false, true, &perms)
+            .create_user("alice", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -408,7 +409,7 @@ mod tests {
         let requester = test_ctx
             .db
             .users
-            .create_user("requester", &hashed, false, false, true, &perms)
+            .create_user("requester", &hashed, false, false, true, &perms, None)
             .await
             .unwrap();
 
@@ -423,6 +424,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -536,7 +538,7 @@ mod tests {
         let admin = test_ctx
             .db
             .users
-            .create_user("admin", &hashed, true, false, true, &db::Permissions::new())
+            .create_user("admin", &hashed, true, false, true, &db::Permissions::new(), None)
             .await
             .unwrap();
 
@@ -551,6 +553,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -677,6 +680,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -691,6 +695,7 @@ mod tests {
                 false,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -852,6 +857,7 @@ mod tests {
                 false,
                 true,
                 &crate::db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -925,6 +931,7 @@ mod tests {
                 false,
                 true,
                 &crate::db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1060,6 +1067,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1134,6 +1142,7 @@ mod tests {
                 true,
                 true,
                 &db::Permissions::new(),
+                None,
             )
             .await
             .unwrap();
