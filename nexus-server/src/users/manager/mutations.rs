@@ -229,6 +229,25 @@ impl UserManager {
         count
     }
 
+    /// Update cached group name for all sessions with a specific group ID
+    /// Returns the number of sessions updated
+    ///
+    /// Used when a group is renamed — updates the cached `group_name` on all
+    /// member sessions so UserInfo broadcasts reflect the new name.
+    pub async fn update_group_name(&self, group_id: i64, new_group_name: &str) -> usize {
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for user in users.values_mut() {
+            if user.group_id == Some(group_id) {
+                user.group_name = Some(new_group_name.to_string());
+                count += 1;
+            }
+        }
+
+        count
+    }
+
     /// Set status and away flag for a session (by session_id)
     /// Returns the updated session if found
     pub async fn set_status(

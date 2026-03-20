@@ -68,6 +68,19 @@ impl UserManager {
             .collect()
     }
 
+    /// Get all sessions for users assigned to a specific group
+    ///
+    /// Returns cloned sessions for all online users whose `group_id` matches.
+    /// Used for group edit cascade (updating permissions for all group members).
+    pub async fn get_sessions_by_group_id(&self, group_id: i64) -> Vec<UserSession> {
+        let users = self.users.read().await;
+        users
+            .values()
+            .filter(|u| u.group_id == Some(group_id))
+            .cloned()
+            .collect()
+    }
+
     /// Check if a nickname is already in use by an active session (case-insensitive)
     ///
     /// Used during login to ensure nickname uniqueness for shared accounts.
