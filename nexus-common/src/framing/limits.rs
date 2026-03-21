@@ -473,10 +473,11 @@ const MAX_VOICE_PARTICIPANTS: usize = 100;
 /// UUID string length when serialized (e.g., "550e8400-e29b-41d4-a716-446655440000")
 const UUID_STRING_LENGTH: usize = 36;
 
-/// VoiceJoinResponse: {"type":"VoiceJoinResponse","success":false,"token":"...36...","participants":["...64...",...100...],"error":"...2048..."}
+/// VoiceJoinResponse: {"type":"VoiceJoinResponse","success":false,"token":"...36...","target":"...32...","participants":["...64...",...100...],"error":"...2048..."}
 const VOICE_JOIN_RESPONSE_SIZE: usize = json_type_base("VoiceJoinResponse")
     + json_bool_field("success")
     + json_string_field("token", UUID_STRING_LENGTH)
+    + json_string_field("target", MAX_CHANNEL_LENGTH)
     + json_string_array_field("participants", MAX_VOICE_PARTICIPANTS, MAX_NICKNAME_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
@@ -535,8 +536,9 @@ const CHAT_SECRET_RESPONSE_SIZE: usize = json_type_base("ChatSecretResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH);
 
-/// ChatLeaveResponse: {"type":"ChatLeaveResponse","channel":"...32...","error":"...2048..."}
+/// ChatLeaveResponse: {"type":"ChatLeaveResponse","success":false,"channel":"...32...","error":"...2048..."}
 const CHAT_LEAVE_RESPONSE_SIZE: usize = json_type_base("ChatLeaveResponse")
+    + json_bool_field("success")
     + json_string_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
@@ -676,9 +678,10 @@ const USER_STATUS_RESPONSE_SIZE: usize = json_type_base("UserStatusResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH);
 
-/// NewsDeleteResponse: {"type":"NewsDeleteResponse","success":false,"error":"...2048..."}
+/// NewsDeleteResponse: {"type":"NewsDeleteResponse","success":false,"id":-9223372036854775808,"error":"...2048..."}
 const NEWS_DELETE_RESPONSE_SIZE: usize = json_type_base("NewsDeleteResponse")
     + json_bool_field("success")
+    + json_i64_field("id")
     + json_string_field("error", MAX_ERROR_LENGTH);
 
 /// NewsUpdated: {"type":"NewsUpdated","action":"Created","id":-9223372036854775808}
@@ -708,11 +711,14 @@ const FILE_COPY_RESPONSE_SIZE: usize = json_type_base("FileCopyResponse")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
 
-/// FileDownloadResponse: {"type":"FileDownloadResponse","success":false,"error":"...2048...","error_kind":"...16..."}
+/// FileDownloadResponse: {"type":"FileDownloadResponse","success":false,"error":"...2048...","error_kind":"...16...","size":18446744073709551615,"file_count":18446744073709551615,"transfer_id":"...8..."}
 const FILE_DOWNLOAD_RESPONSE_SIZE: usize = json_type_base("FileDownloadResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
+    + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH)
+    + json_u64_field("size")
+    + json_u64_field("file_count")
+    + json_string_field("transfer_id", TRANSFER_ID_LENGTH);
 
 /// FileUploadResponse: {"type":"FileUploadResponse","success":false,"error":"...2048...","error_kind":"...16...","transfer_id":"...8..."}
 const FILE_UPLOAD_RESPONSE_SIZE: usize = json_type_base("FileUploadResponse")

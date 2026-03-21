@@ -28,22 +28,18 @@ where
     // Verify authentication
     let Some(id) = session_id else {
         eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);
-        let response = ServerMessage::ChatTopicUpdateResponse {
-            success: false,
-            error: Some(err_not_logged_in(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
+            .await;
     };
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            let response = ServerMessage::ChatTopicUpdateResponse {
-                success: false,
-                error: Some(err_authentication(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatTopicUpdate"))
+                .await;
         }
     };
 
@@ -199,17 +195,10 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_ok());
-
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::ChatTopicUpdateResponse { success, error } => {
-                assert!(!success);
-                assert!(error.is_some());
-                assert_eq!(error.unwrap(), err_not_logged_in(DEFAULT_TEST_LOCALE));
-            }
-            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
-        }
+        assert!(
+            result.is_err(),
+            "Should disconnect on unauthenticated request"
+        );
     }
 
     #[tokio::test]

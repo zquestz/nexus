@@ -378,37 +378,36 @@ where
             perms.permissions.insert(perm);
         }
 
-        // Apply permission merge logic for non-admins
-        if !requesting_user.is_admin {
-            // Get target user's account
-            if let Ok(Some(target_account)) =
-                ctx.db.users.get_user_by_username(&request.username).await
-            {
-                // Get target user's current permissions
-                if let Ok(target_perms) = ctx.db.users.get_user_permissions(target_account.id).await
-                {
-                    // Start with an empty set for the final permissions
-                    let mut final_perms = Permissions::new();
+        // Apply permission merge logic for non-admins: preserve permissions
+        // the requester can't control, layer in their requested changes
+        if !requesting_user.is_admin
+            && let Some(ref account) = target_user_account
+        {
+            let target_perms = match ctx.db.users.get_user_permissions(account.id).await {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("Database error fetching permissions for merge: {}", e);
+                    return ctx
+                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                        .await;
+                }
+            };
 
-                    // Add all permissions from target that requesting user DOESN'T have
-                    // (these are preserved and cannot be modified)
-                    for target_perm in &target_perms.permissions {
-                        if !requesting_user.has_permission(*target_perm) {
-                            // Preserve this permission - requester can't modify it
-                            final_perms.permissions.insert(*target_perm);
-                        }
-                    }
+            let mut final_perms = Permissions::new();
 
-                    // Add all requested permissions that the requester DOES have
-                    // (these are the ones the requester can control)
-                    for requested_perm in &perms.permissions {
-                        final_perms.permissions.insert(*requested_perm);
-                    }
-
-                    // Replace the requested permissions with the merged set
-                    perms = final_perms;
+            // Preserve target's permissions the requester can't control
+            for target_perm in &target_perms.permissions {
+                if !requesting_user.has_permission(*target_perm) {
+                    final_perms.permissions.insert(*target_perm);
                 }
             }
+
+            // Add all requested permissions (already validated as requester-held)
+            for requested_perm in &perms.permissions {
+                final_perms.permissions.insert(*requested_perm);
+            }
+
+            perms = final_perms;
         }
 
         Some(perms)
