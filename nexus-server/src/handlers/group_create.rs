@@ -166,7 +166,16 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            if e.to_string().contains("UNIQUE") {
+            // Check if failure was due to duplicate name
+            if ctx
+                .db
+                .groups
+                .get_group_by_name(&name)
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
                 let response = ServerMessage::GroupCreateResponse {
                     success: false,
                     error: Some(err_group_already_exists(ctx.locale)),

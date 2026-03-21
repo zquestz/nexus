@@ -580,6 +580,18 @@ pub const SQL_SELECT_ALL_GROUPS: &str =
 /// **Returns:** `(id: i64, name: String, is_shared: bool)`
 pub const SQL_SELECT_GROUP_BY_ID: &str = "SELECT id, name, is_shared FROM groups WHERE id = ?";
 
+/// Select a group by name (case-insensitive)
+///
+/// **Parameters:**
+/// 1. `name: &str` - Group name
+///
+/// **Returns:** `(id: i64, name: String, is_shared: bool)`
+///
+/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
+/// the original case in the returned name.
+pub const SQL_SELECT_GROUP_BY_NAME: &str =
+    "SELECT id, name, is_shared FROM groups WHERE LOWER(name) = LOWER(?)";
+
 /// Count users assigned to a group
 ///
 /// **Parameters:**

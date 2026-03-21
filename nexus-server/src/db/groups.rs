@@ -65,6 +65,16 @@ impl GroupDb {
         Ok(row.map(GroupRecord::from))
     }
 
+    /// Get a single group by name (case-insensitive)
+    pub async fn get_group_by_name(&self, name: &str) -> Result<Option<GroupRecord>, sqlx::Error> {
+        let row: Option<GroupRow> = sqlx::query_as(sql::SQL_SELECT_GROUP_BY_NAME)
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(GroupRecord::from))
+    }
+
     /// Get all permissions for a group
     ///
     /// Returns permissions sorted alphabetically.

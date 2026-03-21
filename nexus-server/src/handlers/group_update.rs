@@ -435,7 +435,16 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            if e.to_string().contains("UNIQUE") {
+            // Check if failure was due to duplicate name
+            if ctx
+                .db
+                .groups
+                .get_group_by_name(&final_name)
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|existing| existing.id != id)
+            {
                 let response = ServerMessage::GroupUpdateResponse {
                     success: false,
                     id: None,

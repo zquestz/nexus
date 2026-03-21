@@ -343,22 +343,30 @@ where
 
         let mut perms = Permissions::new();
         for perm_str in perm_strings {
-            if let Some(perm) = Permission::parse(perm_str) {
-                // Check permission delegation authority (uses cached permissions, admin bypass built-in)
-                if !requesting_user.has_permission(perm) {
-                    eprintln!(
-                        "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
-                        ctx.peer_addr, requesting_user.username, perm_str
-                    );
-                    return ctx
-                        .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-                        .await;
+            let perm = match Permission::parse(perm_str) {
+                Some(p) => p,
+                None => {
+                    let response = ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
                 }
+            };
 
-                perms.permissions.insert(perm);
-            } else {
-                eprintln!("Warning: unknown permission '{}'", perm_str);
+            // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+            if !requesting_user.has_permission(perm) {
+                eprintln!(
+                    "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
+                    ctx.peer_addr, requesting_user.username, perm_str
+                );
+                return ctx
+                    .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
+                    .await;
             }
+
+            perms.permissions.insert(perm);
         }
 
         // Apply permission merge logic for non-admins
@@ -2061,6 +2069,64 @@ mod tests {
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success, "Should fail for unknown revoke permission");
+                let err = error.unwrap();
+                assert!(
+                    err.contains("totally_fake_permission"),
+                    "Error should mention the unknown permission: {}",
+                    err
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_unknown_grant_permission_returns_error() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hashed",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Try to set an unknown grant permission
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec![
+                "chat_send".to_string(),
+                "totally_fake_permission".to_string(),
+            ]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: None,
+            session_id: Some(admin_session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should fail for unknown grant permission");
                 let err = error.unwrap();
                 assert!(
                     err.contains("totally_fake_permission"),
