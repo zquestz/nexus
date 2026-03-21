@@ -2788,4 +2788,135 @@ mod tests {
         let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
         assert_eq!(fetched.group_id, None);
     }
+
+    #[tokio::test]
+    async fn test_update_user_permissions_revokes_and_group_change_simultaneously() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        // Create two groups with different permissions
+        let group1 = group_db
+            .create_group(
+                "OldGroup",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::ChatReceive]),
+            )
+            .await
+            .unwrap();
+        let group2 = group_db
+            .create_group(
+                "NewGroup",
+                false,
+                &Permissions::from(&[Permission::UserList, Permission::UserKick]),
+            )
+            .await
+            .unwrap();
+
+        // Create user in group1 with a direct grant override and a revoke
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::from(&[Permission::VoiceListen]),
+                group_id: Some(group1.id),
+                revokes: &[Permission::ChatReceive],
+            })
+            .await
+            .unwrap();
+
+        // Verify initial state: group1 base (chat_send, chat_receive)
+        //   + grant override (voice_listen) - revoke (chat_receive)
+        //   = chat_send, voice_listen
+        let initial_perms = db.get_user_permissions(user.id).await.unwrap();
+        assert!(initial_perms.permissions.contains(&Permission::ChatSend));
+        assert!(initial_perms.permissions.contains(&Permission::VoiceListen));
+        assert!(!initial_perms.permissions.contains(&Permission::ChatReceive));
+        assert_eq!(initial_perms.permissions.len(), 2);
+
+        // Now do the combo update: change permissions + revokes + group all at once
+        // - New permissions: voice_listen (grant override on new group)
+        // - New revokes: user_kick (revoke from new group)
+        // - New group: group2 (user_list, user_kick)
+        let updated = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: Some(&Permissions::from(&[Permission::VoiceListen])),
+                requested_revokes: Some(&[Permission::UserKick]),
+                remove_group: false,
+                requested_group_id: Some(group2.id),
+            })
+            .await
+            .unwrap();
+        assert!(updated);
+
+        // Verify group changed
+        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
+        assert_eq!(fetched.group_id, Some(group2.id));
+
+        // Verify effective permissions:
+        // group2 base (user_list, user_kick)
+        //   + grant override (voice_listen) - revoke (user_kick)
+        //   = user_list, voice_listen
+        let final_perms = db.get_user_permissions(user.id).await.unwrap();
+        assert!(
+            final_perms.permissions.contains(&Permission::UserList),
+            "Should have user_list from new group"
+        );
+        assert!(
+            final_perms.permissions.contains(&Permission::VoiceListen),
+            "Should have voice_listen from grant override"
+        );
+        assert!(
+            !final_perms.permissions.contains(&Permission::UserKick),
+            "user_kick should be revoked"
+        );
+        assert!(
+            !final_perms.permissions.contains(&Permission::ChatSend),
+            "chat_send was from old group, should be gone"
+        );
+        assert!(
+            !final_perms.permissions.contains(&Permission::ChatReceive),
+            "chat_receive was from old group, should be gone"
+        );
+        assert_eq!(final_perms.permissions.len(), 2);
+
+        // Verify revokes are stored correctly
+        let revokes = db.get_revoke_permissions(user.id).await.unwrap();
+        assert_eq!(revokes.len(), 1);
+        assert!(revokes.contains(&Permission::UserKick));
+
+        // Verify raw override rows: voice_listen should remain as a grant
+        // (it doesn't overlap with group2's permissions, so cleanup shouldn't remove it)
+        let override_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
+            .bind(user.id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        // Should have 2 rows: voice_listen (grant) + user_kick (revoke)
+        assert_eq!(
+            override_rows.len(),
+            2,
+            "Should have exactly 2 override rows"
+        );
+        assert!(
+            override_rows
+                .iter()
+                .any(|(p, t)| p == "voice_listen" && t == "grant"),
+            "voice_listen should be stored as a grant override"
+        );
+        assert!(
+            override_rows
+                .iter()
+                .any(|(p, t)| p == "user_kick" && t == "revoke"),
+            "user_kick should be stored as a revoke override"
+        );
+    }
 }
