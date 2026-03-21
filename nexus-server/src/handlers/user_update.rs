@@ -407,43 +407,25 @@ where
         None
     };
 
-    // Handle group assignment/removal
-    let group_changed = if !is_self_edit {
+    // Validate group assignment/removal. DB writes happen atomically inside
+    // update_user's transaction via remove_group + requested_group_id.
+    let (validated_remove_group, validated_group_id): (bool, Option<i64>) = if !is_self_edit {
         if request.remove_group == Some(true) {
             // Remove from group — takes precedence over requested_group_id
             if let Some(ref account) = target_user_account {
                 if account.group_id.is_some() {
-                    // Update DB
-                    if let Err(e) = ctx.db.users.update_user_group(account.id, None).await {
-                        eprintln!("Error removing group: {}", e);
-                        return ctx
-                            .send_error_and_disconnect(
-                                &err_database(ctx.locale),
-                                Some("UserUpdate"),
-                            )
-                            .await;
-                    }
-                    // Cleanup: clear revokes, keep grants
-                    if let Err(e) = ctx
-                        .db
-                        .users
-                        .cleanup_overrides_for_group_change(account.id, None)
-                        .await
-                    {
-                        eprintln!("Error cleaning up overrides: {}", e);
-                    }
-                    true
+                    (true, None)
                 } else {
-                    false // Already no group
+                    (false, None) // Already no group
                 }
             } else {
-                false
+                (false, None)
             }
         } else if let Some(new_group_id) = request.requested_group_id {
             if let Some(ref account) = target_user_account {
                 // Skip if already in this group
                 if account.group_id == Some(new_group_id) {
-                    false
+                    (false, None)
                 } else {
                     // Fetch the group
                     let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
@@ -505,40 +487,16 @@ where
                         }
                     }
 
-                    // Update DB
-                    if let Err(e) = ctx
-                        .db
-                        .users
-                        .update_user_group(account.id, Some(new_group_id))
-                        .await
-                    {
-                        eprintln!("Error updating group: {}", e);
-                        return ctx
-                            .send_error_and_disconnect(
-                                &err_database(ctx.locale),
-                                Some("UserUpdate"),
-                            )
-                            .await;
-                    }
-                    // Cleanup: remove duplicate grants
-                    if let Err(e) = ctx
-                        .db
-                        .users
-                        .cleanup_overrides_for_group_change(account.id, Some(new_group_id))
-                        .await
-                    {
-                        eprintln!("Error cleaning up overrides: {}", e);
-                    }
-                    true
+                    (false, Some(new_group_id))
                 }
             } else {
-                false
+                (false, None)
             }
         } else {
-            false
+            (false, None)
         }
     } else {
-        false
+        (false, None)
     };
 
     // Handle revoke override changes
@@ -639,6 +597,7 @@ where
 
     // Get old state before update (to detect actual changes for PermissionsUpdated and UserUpdated)
     // We need: username, is_admin, enabled, and permissions
+    // NOTE: This must be captured BEFORE the group change is applied so the diff is accurate
     let (old_username, old_is_admin, old_enabled, old_permissions) = {
         // We already fetched target_user_account above, use it
         if let Some(ref account) = target_user_account {
@@ -672,6 +631,8 @@ where
             requested_enabled: request.requested_enabled,
             requested_permissions: parsed_permissions.as_ref(),
             requested_revokes: parsed_revokes.as_deref(),
+            remove_group: validated_remove_group,
+            requested_group_id: validated_group_id,
         })
         .await
     {
@@ -689,6 +650,8 @@ where
                 username: Some(final_username.clone()),
             };
             ctx.send_message(&response).await?;
+
+            let group_changed = validated_remove_group || validated_group_id.is_some();
 
             // We'll determine if permissions actually changed after fetching new state
 
@@ -2387,6 +2350,8 @@ mod tests {
                 requested_enabled: Some(false),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2794,6 +2759,8 @@ mod tests {
                 requested_enabled: None,
                 requested_permissions: Some(&perms),
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2812,6 +2779,8 @@ mod tests {
                 requested_enabled: None,
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await;
 

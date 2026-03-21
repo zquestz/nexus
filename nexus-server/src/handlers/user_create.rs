@@ -361,19 +361,8 @@ where
         })
         .await
     {
-        Ok(user) => {
-            // Clean up duplicate grants if assigned to a group
-            if validated_group_id.is_some()
-                && let Err(e) = ctx
-                    .db
-                    .users
-                    .cleanup_overrides_for_group_change(user.id, validated_group_id)
-                    .await
-            {
-                eprintln!("Error cleaning up overrides: {}", e);
-            }
-
-            // Success
+        Ok(_user) => {
+            // Success (group override cleanup is handled atomically inside create_user)
             let response = ServerMessage::UserCreateResponse {
                 success: true,
                 error: None,

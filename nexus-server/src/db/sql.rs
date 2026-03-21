@@ -740,3 +740,19 @@ pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 
 #[cfg(test)]
 pub const SQL_COUNT_CHANNEL_SETTINGS: &str =
     "SELECT COUNT(*) FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+
+/// Count all user_permissions rows for a given user
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Note:** Used in tests to verify permission insertion and cascade deletion.
+#[cfg(test)]
+pub const SQL_COUNT_USER_PERMISSIONS: &str =
+    "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?";
+
+/// Count all users in the database
+///
+/// **Note:** Used in tests to verify user creation and first-user logic.
+#[cfg(test)]
+pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";

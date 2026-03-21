@@ -2659,6 +2659,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2708,6 +2710,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2746,6 +2750,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2808,6 +2814,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2846,6 +2854,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
@@ -2884,6 +2894,8 @@ mod tests {
                 requested_enabled: Some(true),
                 requested_permissions: None,
                 requested_revokes: None,
+                remove_group: false,
+                requested_group_id: None,
             })
             .await
             .unwrap();
