@@ -202,27 +202,26 @@ where
             }
         }
 
-        // Non-admin delegation: merge pattern
-        if requesting_user.is_admin {
-            // Admins can set any permissions directly
-            parsed_requested
-        } else {
-            // Preserved = current permissions the requester does NOT have
-            let mut final_perms: Vec<Permission> = current_permissions
-                .iter()
-                .filter(|perm| !requesting_user.has_permission(**perm))
-                .copied()
-                .collect();
-
-            // Add from requested permissions only those the requester has
+        // Non-admins can only set permissions they themselves hold
+        if !requesting_user.is_admin {
             for perm in &parsed_requested {
-                if requesting_user.has_permission(*perm) && !final_perms.contains(perm) {
-                    final_perms.push(*perm);
+                if !requesting_user.has_permission(*perm) {
+                    eprintln!(
+                        "GroupUpdate from {} (user: {}) trying to grant permission they don't have: {:?}",
+                        ctx.peer_addr, requesting_user.username, perm
+                    );
+                    let response = ServerMessage::GroupUpdateResponse {
+                        success: false,
+                        id: None,
+                        name: None,
+                        error: Some(err_permission_denied(ctx.locale)),
+                    };
+                    return ctx.send_message(&response).await;
                 }
             }
-
-            final_perms
         }
+
+        parsed_requested
     } else {
         // No permission changes requested — pass through current permissions unchanged
         current_permissions.clone()
@@ -964,6 +963,119 @@ mod tests {
         assert_eq!(perms.len(), 2);
         assert!(perms.contains(&Permission::BanCreate));
         assert!(perms.contains(&Permission::UserKick));
+    }
+
+    #[tokio::test]
+    async fn test_group_update_non_admin_cannot_set_unowned_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin with GroupEdit + ChatSend (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[Permission::GroupEdit, Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group (must be done via DB since editor can't create groups)
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .await
+            .expect("Failed to create group");
+
+        // Try to update permissions including one the editor doesn't have
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should reject unowned permission");
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+
+        // Verify permissions unchanged in DB
+        let perms = test_ctx
+            .db
+            .groups
+            .get_group_permissions(group.id)
+            .await
+            .unwrap();
+        assert_eq!(perms.len(), 1);
+        assert!(perms.contains(&Permission::ChatSend));
+    }
+
+    #[tokio::test]
+    async fn test_group_update_non_admin_can_set_owned_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin with GroupEdit + ChatSend + UserList
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[
+                Permission::GroupEdit,
+                Permission::ChatSend,
+                Permission::UserList,
+            ],
+            false,
+        )
+        .await;
+
+        // Create a group with ChatSend
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .await
+            .expect("Failed to create group");
+
+        // Update to ChatSend + UserList — both owned by editor
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            Some(vec!["chat_send".to_string(), "user_list".to_string()]),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "Should accept owned permissions");
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+
+        // Verify permissions updated in DB
+        let perms = test_ctx
+            .db
+            .groups
+            .get_group_permissions(group.id)
+            .await
+            .unwrap();
+        assert_eq!(perms.len(), 2);
+        assert!(perms.contains(&Permission::ChatSend));
+        assert!(perms.contains(&Permission::UserList));
     }
 
     // ========================================================================
