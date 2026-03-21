@@ -145,7 +145,7 @@ where
     };
 
     // Fetch current permissions once and reuse everywhere
-    let current_permissions: Vec<String> = match ctx.db.groups.get_group_permissions(id).await {
+    let current_permissions: Vec<Permission> = match ctx.db.groups.get_group_permissions(id).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("Database error getting group permissions: {}", e);
@@ -185,43 +185,40 @@ where
     let final_is_shared = is_shared.unwrap_or(group.is_shared);
 
     // Resolve final permissions
-    let final_permissions = if let Some(ref requested_perms) = permissions {
+    let final_permissions: Vec<Permission> = if let Some(ref requested_perms) = permissions {
         // Parse and validate each permission string
+        let mut parsed_requested: Vec<Permission> = Vec::new();
         for perm_str in requested_perms {
-            if Permission::parse(perm_str).is_none() {
-                let response = ServerMessage::GroupUpdateResponse {
-                    success: false,
-                    id: None,
-                    name: None,
-                    error: Some(err_unknown_permission(ctx.locale, perm_str)),
-                };
-                return ctx.send_message(&response).await;
+            match Permission::parse(perm_str) {
+                Some(perm) => parsed_requested.push(perm),
+                None => {
+                    let response = ServerMessage::GroupUpdateResponse {
+                        success: false,
+                        id: None,
+                        name: None,
+                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                    };
+                    return ctx.send_message(&response).await;
+                }
             }
         }
 
         // Non-admin delegation: merge pattern
         if requesting_user.is_admin {
             // Admins can set any permissions directly
-            requested_perms.clone()
+            parsed_requested
         } else {
             // Preserved = current permissions the requester does NOT have
-            let mut final_perms: Vec<String> = current_permissions
+            let mut final_perms: Vec<Permission> = current_permissions
                 .iter()
-                .filter(|p| {
-                    Permission::parse(p)
-                        .map(|perm| !requesting_user.has_permission(perm))
-                        .unwrap_or(true)
-                })
-                .cloned()
+                .filter(|perm| !requesting_user.has_permission(**perm))
+                .copied()
                 .collect();
 
             // Add from requested permissions only those the requester has
-            for perm_str in requested_perms {
-                if let Some(perm) = Permission::parse(perm_str)
-                    && requesting_user.has_permission(perm)
-                    && !final_perms.contains(perm_str)
-                {
-                    final_perms.push(perm_str.clone());
+            for perm in &parsed_requested {
+                if requesting_user.has_permission(*perm) && !final_perms.contains(perm) {
+                    final_perms.push(*perm);
                 }
             }
 
@@ -234,8 +231,8 @@ where
 
     // Shared group permission validation: if final group is shared, all permissions must be allowed
     if final_is_shared {
-        for perm_str in &final_permissions {
-            if !is_shared_account_permission(perm_str) {
+        for perm in &final_permissions {
+            if !is_shared_account_permission(perm.as_str()) {
                 let response = ServerMessage::GroupUpdateResponse {
                     success: false,
                     id: None,
@@ -249,7 +246,7 @@ where
 
     // Capture old state for diff detection
     let old_name = group.name.clone();
-    let old_permissions: HashSet<String> = current_permissions.into_iter().collect();
+    let old_permissions: HashSet<Permission> = current_permissions.into_iter().collect();
 
     // Update group in database
     match ctx
@@ -270,7 +267,7 @@ where
             // === Cascade to member sessions ===
 
             let name_changed = old_name != final_name;
-            let new_permissions: HashSet<String> = final_permissions.iter().cloned().collect();
+            let new_permissions: HashSet<Permission> = final_permissions.iter().copied().collect();
             let permissions_changed = old_permissions != new_permissions;
 
             // Name change cascade: update cached group_name on all member sessions,
@@ -704,7 +701,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -740,8 +737,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(perms.len(), 2);
-        assert!(perms.contains(&"chat_send".to_string()));
-        assert!(perms.contains(&"user_kick".to_string()));
+        assert!(perms.contains(&Permission::ChatSend));
+        assert!(perms.contains(&Permission::UserKick));
     }
 
     #[tokio::test]
@@ -871,7 +868,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["user_kick".to_string()])
+            .create_group("Staff", false, &[Permission::UserKick])
             .await
             .expect("Failed to create group");
 
@@ -960,8 +957,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(perms.len(), 2);
-        assert!(perms.contains(&"ban_create".to_string()));
-        assert!(perms.contains(&"user_kick".to_string()));
+        assert!(perms.contains(&Permission::BanCreate));
+        assert!(perms.contains(&Permission::UserKick));
     }
 
     // ========================================================================
@@ -979,7 +976,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -1097,7 +1094,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -1213,7 +1210,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -1273,7 +1270,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -1362,7 +1359,7 @@ mod tests {
             .create_group(
                 "Listeners",
                 false,
-                &["voice_listen".to_string(), "chat_send".to_string()],
+                &[Permission::VoiceListen, Permission::ChatSend],
             )
             .await
             .expect("Failed to create group");
@@ -1472,7 +1469,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &["chat_send".to_string(), "user_kick".to_string()],
+                &[Permission::ChatSend, Permission::UserKick],
             )
             .await
             .expect("Failed to create group");
@@ -1593,7 +1590,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &["chat_send".to_string(), "user_kick".to_string()],
+                &[Permission::ChatSend, Permission::UserKick],
             )
             .await
             .expect("Failed to create group");
@@ -1695,7 +1692,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 
@@ -1831,7 +1828,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[Permission::ChatSend])
             .await
             .expect("Failed to create group");
 

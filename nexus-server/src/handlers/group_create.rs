@@ -120,6 +120,7 @@ where
     }
 
     // Parse and validate requested permissions
+    let mut parsed_permissions: Vec<Permission> = Vec::new();
     for perm_str in &permissions {
         let perm = match Permission::parse(perm_str) {
             Some(p) => p,
@@ -144,13 +145,15 @@ where
                 .send_error(&err_permission_denied(ctx.locale), Some("GroupCreate"))
                 .await;
         }
+
+        parsed_permissions.push(perm);
     }
 
     // Create group in database
     match ctx
         .db
         .groups
-        .create_group(&name, is_shared, &permissions)
+        .create_group(&name, is_shared, &parsed_permissions)
         .await
     {
         Ok(group) => {

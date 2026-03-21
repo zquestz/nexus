@@ -485,10 +485,8 @@ where
                             .get_group_permissions(new_group_id)
                             .await
                             .unwrap_or_default();
-                        for perm_str in &group_perms {
-                            if let Some(perm) = Permission::parse(perm_str)
-                                && !requesting_user.has_permission(perm)
-                            {
+                        for perm in &group_perms {
+                            if !requesting_user.has_permission(*perm) {
                                 return ctx
                                     .send_error(
                                         &err_permission_denied(ctx.locale),
@@ -2022,7 +2020,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &["chat_send".to_string()])
+            .create_group("Staff", false, &[db::Permission::ChatSend])
             .await
             .unwrap();
 
@@ -3998,7 +3996,11 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group(
+                "Mods",
+                false,
+                &[db::Permission::ChatSend, db::Permission::UserKick],
+            )
             .await
             .unwrap();
 
@@ -4082,7 +4084,11 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group(
+                "Mods",
+                false,
+                &[db::Permission::ChatSend, db::Permission::UserKick],
+            )
             .await
             .unwrap();
 

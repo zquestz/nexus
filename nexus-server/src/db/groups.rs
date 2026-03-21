@@ -6,6 +6,7 @@
 use nexus_common::validators;
 use sqlx::sqlite::SqlitePool;
 
+use crate::db::permissions::Permission;
 use crate::db::sql;
 
 /// A group record from the database
@@ -66,14 +67,20 @@ impl GroupDb {
 
     /// Get all permissions for a group
     ///
-    /// Returns permission strings sorted alphabetically.
-    pub async fn get_group_permissions(&self, group_id: i64) -> Result<Vec<String>, sqlx::Error> {
+    /// Returns permissions sorted alphabetically.
+    pub async fn get_group_permissions(
+        &self,
+        group_id: i64,
+    ) -> Result<Vec<Permission>, sqlx::Error> {
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
             .bind(group_id)
             .fetch_all(&self.pool)
             .await?;
 
-        Ok(rows.into_iter().map(|(p,)| p).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|(p,)| Permission::parse(&p))
+            .collect())
     }
 
     /// Count the number of users assigned to a group
@@ -96,7 +103,7 @@ impl GroupDb {
     async fn set_permissions_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         group_id: i64,
-        permissions: &[String],
+        permissions: &[Permission],
     ) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_DELETE_GROUP_PERMISSIONS)
             .bind(group_id)
@@ -126,7 +133,7 @@ impl GroupDb {
         &self,
         name: &str,
         is_shared: bool,
-        permissions: &[String],
+        permissions: &[Permission],
     ) -> Result<GroupRecord, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
@@ -167,7 +174,7 @@ impl GroupDb {
         id: i64,
         name: &str,
         is_shared: bool,
-        permissions: &[String],
+        permissions: &[Permission],
     ) -> Result<Option<GroupRecord>, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
@@ -219,6 +226,7 @@ impl GroupDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::permissions::Permission;
     use crate::db::testing::create_test_db;
 
     // ========================================================================
@@ -234,7 +242,7 @@ mod tests {
             .create_group(
                 "Moderators",
                 false,
-                &["chat_send".into(), "user_kick".into()],
+                &[Permission::ChatSend, Permission::UserKick],
             )
             .await
             .unwrap();
@@ -253,7 +261,7 @@ mod tests {
             .create_group(
                 "SharedUsers",
                 true,
-                &["chat_send".into(), "chat_receive".into()],
+                &[Permission::ChatSend, Permission::ChatReceive],
             )
             .await
             .unwrap();
@@ -380,14 +388,25 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &["user_kick".into(), "chat_send".into(), "ban_create".into()],
+                &[
+                    Permission::UserKick,
+                    Permission::ChatSend,
+                    Permission::BanCreate,
+                ],
             )
             .await
             .unwrap();
 
         let perms = group_db.get_group_permissions(group.id).await.unwrap();
         // Sorted alphabetically by the SQL query
-        assert_eq!(perms, vec!["ban_create", "chat_send", "user_kick"]);
+        assert_eq!(
+            perms,
+            vec![
+                Permission::BanCreate,
+                Permission::ChatSend,
+                Permission::UserKick
+            ]
+        );
     }
 
     #[tokio::test]
@@ -474,12 +493,12 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("OldName", false, &["chat_send".into()])
+            .create_group("OldName", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
         let updated = group_db
-            .update_group(group.id, "NewName", false, &["chat_send".into()])
+            .update_group(group.id, "NewName", false, &[Permission::ChatSend])
             .await
             .unwrap()
             .unwrap();
@@ -511,12 +530,12 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into()])
+            .create_group("Mods", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
         let perms_before = group_db.get_group_permissions(group.id).await.unwrap();
-        assert_eq!(perms_before, vec!["chat_send"]);
+        assert_eq!(perms_before, vec![Permission::ChatSend]);
 
         // Replace permissions
         group_db
@@ -524,13 +543,16 @@ mod tests {
                 group.id,
                 "Mods",
                 false,
-                &["user_kick".into(), "ban_create".into()],
+                &[Permission::UserKick, Permission::BanCreate],
             )
             .await
             .unwrap();
 
         let perms_after = group_db.get_group_permissions(group.id).await.unwrap();
-        assert_eq!(perms_after, vec!["ban_create", "user_kick"]);
+        assert_eq!(
+            perms_after,
+            vec![Permission::BanCreate, Permission::UserKick]
+        );
     }
 
     #[tokio::test]
@@ -539,7 +561,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -604,7 +626,7 @@ mod tests {
 
         // Updating with the same name (same case) should succeed
         let updated = group_db
-            .update_group(group.id, "MyGroup", false, &["chat_send".into()])
+            .update_group(group.id, "MyGroup", false, &[Permission::ChatSend])
             .await
             .unwrap()
             .unwrap();
@@ -657,7 +679,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("ToDelete", false, &["chat_send".into()])
+            .create_group("ToDelete", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
@@ -789,14 +811,14 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group_a = group_db
-            .create_group("GroupA", false, &["chat_send".into()])
+            .create_group("GroupA", false, &[Permission::ChatSend])
             .await
             .unwrap();
         let group_b = group_db
             .create_group(
                 "GroupB",
                 true,
-                &["file_download".into(), "file_list".into()],
+                &[Permission::FileDownload, Permission::FileList],
             )
             .await
             .unwrap();
@@ -804,13 +826,19 @@ mod tests {
         let perms_a = group_db.get_group_permissions(group_a.id).await.unwrap();
         let perms_b = group_db.get_group_permissions(group_b.id).await.unwrap();
 
-        assert_eq!(perms_a, vec!["chat_send"]);
-        assert_eq!(perms_b, vec!["file_download", "file_list"]);
+        assert_eq!(perms_a, vec![Permission::ChatSend]);
+        assert_eq!(
+            perms_b,
+            vec![Permission::FileDownload, Permission::FileList]
+        );
 
         // Deleting A doesn't affect B
         group_db.delete_group(group_a.id).await.unwrap();
 
         let perms_b_after = group_db.get_group_permissions(group_b.id).await.unwrap();
-        assert_eq!(perms_b_after, vec!["file_download", "file_list"]);
+        assert_eq!(
+            perms_b_after,
+            vec![Permission::FileDownload, Permission::FileList]
+        );
     }
 }

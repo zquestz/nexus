@@ -188,12 +188,15 @@ where
     let (group_name, group_permissions_list) = if let Some(gid) = target_user.group_id {
         match ctx.db.groups.get_group_by_id(gid).await {
             Ok(Some(group)) => {
-                let group_perms = ctx
+                let group_perms: Vec<String> = ctx
                     .db
                     .groups
                     .get_group_permissions(gid)
                     .await
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| p.as_str().to_string())
+                    .collect();
                 (Some(group.name), Some(group_perms))
             }
             _ => (None, None),
@@ -218,12 +221,15 @@ where
             let mut group_infos = Vec::new();
             for group in groups {
                 let member_count = ctx.db.groups.get_member_count(group.id).await.unwrap_or(0);
-                let perms = ctx
+                let perms: Vec<String> = ctx
                     .db
                     .groups
                     .get_group_permissions(group.id)
                     .await
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| p.as_str().to_string())
+                    .collect();
                 group_infos.push(GroupInfo {
                     id: group.id,
                     name: group.name,
@@ -711,7 +717,11 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group(
+                "Mods",
+                false,
+                &[db::Permission::ChatSend, db::Permission::UserKick],
+            )
             .await
             .unwrap();
 

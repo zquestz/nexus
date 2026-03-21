@@ -90,8 +90,8 @@ where
             }
         };
 
-        let permissions = match ctx.db.groups.get_group_permissions(record.id).await {
-            Ok(perms) => perms,
+        let permissions: Vec<String> = match ctx.db.groups.get_group_permissions(record.id).await {
+            Ok(perms) => perms.into_iter().map(|p| p.as_str().to_string()).collect(),
             Err(e) => {
                 eprintln!(
                     "Database error getting permissions for group {}: {}",
@@ -209,7 +209,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &["user_kick".to_string(), "ban_create".to_string()],
+                &[Permission::UserKick, Permission::BanCreate],
             )
             .await
             .expect("Failed to create Staff group");

@@ -87,8 +87,8 @@ where
     };
 
     // Fetch group permissions
-    let permissions = match ctx.db.groups.get_group_permissions(id).await {
-        Ok(perms) => perms,
+    let permissions: Vec<String> = match ctx.db.groups.get_group_permissions(id).await {
+        Ok(perms) => perms.into_iter().map(|p| p.as_str().to_string()).collect(),
         Err(e) => {
             eprintln!("Database error getting group permissions: {}", e);
             return ctx
@@ -196,7 +196,7 @@ mod tests {
             .create_group(
                 "Editors",
                 false,
-                &["news_edit".to_string(), "chat_send".to_string()],
+                &[Permission::NewsEdit, Permission::ChatSend],
             )
             .await
             .unwrap();

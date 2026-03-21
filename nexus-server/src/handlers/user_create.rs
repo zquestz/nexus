@@ -225,13 +225,11 @@ where
                 .get_group_permissions(gid)
                 .await
                 .unwrap_or_default();
-            for perm_str in &group_perms {
-                if let Some(perm) = Permission::parse(perm_str)
-                    && !requesting_user.has_permission(perm)
-                {
+            for perm in &group_perms {
+                if !requesting_user.has_permission(*perm) {
                     eprintln!(
-                        "UserCreate from {} (user: {}) trying to assign group with permission they don't have: {}",
-                        ctx.peer_addr, requesting_user.username, perm_str
+                        "UserCreate from {} (user: {}) trying to assign group with permission they don't have: {:?}",
+                        ctx.peer_addr, requesting_user.username, perm
                     );
                     return ctx
                         .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
@@ -1448,7 +1446,11 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group(
+                "Mods",
+                false,
+                &[db::Permission::ChatSend, db::Permission::UserKick],
+            )
             .await
             .unwrap();
 
@@ -1507,7 +1509,7 @@ mod tests {
         let regular_group = test_ctx
             .db
             .groups
-            .create_group("Regular", false, &["chat_send".into()])
+            .create_group("Regular", false, &[db::Permission::ChatSend])
             .await
             .unwrap();
 
@@ -1515,7 +1517,7 @@ mod tests {
         let shared_group = test_ctx
             .db
             .groups
-            .create_group("Shared", true, &["chat_send".into()])
+            .create_group("Shared", true, &[db::Permission::ChatSend])
             .await
             .unwrap();
 

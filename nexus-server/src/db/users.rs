@@ -1826,7 +1826,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -1917,7 +1917,7 @@ mod tests {
 
         // Group with chat_send + user_kick
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -1951,7 +1951,7 @@ mod tests {
 
         // Group with chat_send
         let group = group_db
-            .create_group("Basic", false, &["chat_send".into()])
+            .create_group("Basic", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
@@ -1993,7 +1993,7 @@ mod tests {
 
         // Group with chat_send + user_kick
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -2038,7 +2038,11 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &["chat_send".into(), "user_kick".into(), "ban_create".into()],
+                &[
+                    Permission::ChatSend,
+                    Permission::UserKick,
+                    Permission::BanCreate,
+                ],
             )
             .await
             .unwrap();
@@ -2092,7 +2096,7 @@ mod tests {
 
         // Group with chat_send only
         let group = group_db
-            .create_group("Basic", false, &["chat_send".into()])
+            .create_group("Basic", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
@@ -2287,11 +2291,11 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group1 = group_db
-            .create_group("Group1", false, &["chat_send".into()])
+            .create_group("Group1", false, &[Permission::ChatSend])
             .await
             .unwrap();
         let group2 = group_db
-            .create_group("Group2", false, &["user_kick".into()])
+            .create_group("Group2", false, &[Permission::UserKick])
             .await
             .unwrap();
 
@@ -2330,7 +2334,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &["chat_send".into()])
+            .create_group("Team", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
@@ -2345,7 +2349,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &["chat_send".into()])
+            .create_group("Team", false, &[Permission::ChatSend])
             .await
             .unwrap();
 
@@ -2407,7 +2411,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -2444,7 +2448,11 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &["chat_send".into(), "user_kick".into(), "ban_create".into()],
+                &[
+                    Permission::ChatSend,
+                    Permission::UserKick,
+                    Permission::BanCreate,
+                ],
             )
             .await
             .unwrap();
@@ -2490,7 +2498,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -2530,7 +2538,7 @@ mod tests {
 
         // Group with chat_send and user_kick
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
@@ -2593,7 +2601,7 @@ mod tests {
 
         // Group with chat_send and user_kick
         let group = group_db
-            .create_group("Mods", false, &["chat_send".into(), "user_kick".into()])
+            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
             .await
             .unwrap();
 
