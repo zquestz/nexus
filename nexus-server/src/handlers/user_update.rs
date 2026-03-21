@@ -177,9 +177,12 @@ where
                 "UserUpdate from {} (user: {}) without permission",
                 ctx.peer_addr, requesting_user.username
             );
-            return ctx
-                .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-                .await;
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
         }
 
         // Prevent non-admins from editing admin users
@@ -268,9 +271,12 @@ where
     // Verify admin flag modification privilege (use is_admin from UserManager)
     // Skip for self-edit since we already rejected admin changes above
     if !is_self_edit && request.requested_is_admin.is_some() && !requesting_user.is_admin {
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-            .await;
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Fetch target user to check if they're a shared account (needed for permission validation)
@@ -361,9 +367,12 @@ where
                     "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
                     ctx.peer_addr, requesting_user.username, perm_str
                 );
-                return ctx
-                    .send_error(&err_permission_denied(ctx.locale), Some("UserUpdate"))
-                    .await;
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_permission_denied(ctx.locale)),
+                    username: None,
+                };
+                return ctx.send_message(&response).await;
             }
 
             perms.permissions.insert(perm);
@@ -413,7 +422,27 @@ where
         if request.remove_group == Some(true) {
             // Remove from group — takes precedence over requested_group_id
             if let Some(ref account) = target_user_account {
-                if account.group_id.is_some() {
+                if let Some(current_group_id) = account.group_id {
+                    // Non-admin delegation: requester must have all current group
+                    // permissions (removal changes effective perms the editor can't grant back)
+                    if !requesting_user.is_admin {
+                        let group_perms = ctx
+                            .db
+                            .groups
+                            .get_group_permissions(current_group_id)
+                            .await
+                            .unwrap_or_default();
+                        for perm in &group_perms {
+                            if !requesting_user.has_permission(*perm) {
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_permission_denied(ctx.locale)),
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
+                            }
+                        }
+                    }
                     (true, None)
                 } else {
                     (false, None) // Already no group
@@ -477,12 +506,12 @@ where
                             .unwrap_or_default();
                         for perm in &group_perms {
                             if !requesting_user.has_permission(*perm) {
-                                return ctx
-                                    .send_error(
-                                        &err_permission_denied(ctx.locale),
-                                        Some("UserUpdate"),
-                                    )
-                                    .await;
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_permission_denied(ctx.locale)),
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
                             }
                         }
                     }
@@ -1059,10 +1088,17 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(username.is_none());
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserUpdateResponse"),
         }
     }
 
@@ -1474,10 +1510,17 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(username.is_none());
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserUpdateResponse"),
         }
     }
 
@@ -1593,10 +1636,17 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, .. } => {
-                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(username.is_none());
             }
-            _ => panic!("Expected Error message"),
+            _ => panic!("Expected UserUpdateResponse"),
         }
     }
 
@@ -4310,5 +4360,101 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(bob.group_id, None);
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_remove_group_with_unowned_perms() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin editor with UserEdit + ChatSend (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group with a permission the editor doesn't have
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Mods",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+            )
+            .await
+            .unwrap();
+
+        // Create a user assigned to that group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Non-admin editor tries to remove bob from the group
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: Some(true),
+            requested_revokes: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Should send error, not disconnect");
+
+        // Should be rejected — editor doesn't have UserKick
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                let err_msg = error.unwrap();
+                assert!(
+                    err_msg.contains("ermission"),
+                    "Should be a permission error, got: {err_msg}"
+                );
+                assert!(username.is_none());
+            }
+            other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
+        }
+
+        // Verify bob is still in the group
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            bob.group_id,
+            Some(group.id),
+            "Group should not have been removed"
+        );
     }
 }

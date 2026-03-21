@@ -50,9 +50,11 @@ where
             "UserBroadcast from {} (user: {}) without permission",
             ctx.peer_addr, user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserBroadcast"))
-            .await;
+        let response = ServerMessage::UserBroadcastResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate message content

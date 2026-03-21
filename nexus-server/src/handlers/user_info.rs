@@ -52,9 +52,12 @@ where
             "UserInfo from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserInfo"))
-            .await;
+        let response = ServerMessage::UserInfoResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            user: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate nickname format

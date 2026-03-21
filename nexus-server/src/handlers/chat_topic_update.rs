@@ -28,29 +28,32 @@ where
     // Verify authentication
     let Some(id) = session_id else {
         eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);
-        return ctx
-            .send_error(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
-            .await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(err_not_logged_in(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     };
 
     // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            return ctx
-                .send_error(&err_authentication(ctx.locale), Some("ChatTopicUpdate"))
-                .await;
+            let response = ServerMessage::ChatTopicUpdateResponse {
+                success: false,
+                error: Some(err_authentication(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
         }
     };
 
     // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
-        return ctx
-            .send_error(
-                &err_chat_feature_not_enabled(ctx.locale),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(err_chat_feature_not_enabled(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Check ChatTopicEdit permission (uses cached permissions, admin bypass built-in)
@@ -59,9 +62,11 @@ where
             "ChatTopicUpdate from {} (user: {}) without permission",
             ctx.peer_addr, user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("ChatTopicUpdate"))
-            .await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate topic format
@@ -73,29 +78,31 @@ where
             ChatTopicError::ContainsNewlines => err_topic_contains_newlines(ctx.locale),
             ChatTopicError::InvalidCharacters => err_topic_invalid_characters(ctx.locale),
         };
-        return ctx.send_error(&error_msg, Some("ChatTopicUpdate")).await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
-        return ctx
-            .send_error(
-                &channel_error_to_message(e, ctx.locale),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(channel_error_to_message(e, ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Check if user is a member of the channel
     // For security, always return "not found" to non-members to avoid leaking
     // existence of secret channels
     if !ctx.channel_manager.is_member(&channel, id).await {
-        return ctx
-            .send_error(
-                &err_channel_not_found(ctx.locale, &channel),
-                Some("ChatTopicUpdate"),
-            )
-            .await;
+        let response = ServerMessage::ChatTopicUpdateResponse {
+            success: false,
+            error: Some(err_channel_not_found(ctx.locale, &channel)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Update topic in channel manager (handles persistence for persistent channels)
@@ -113,18 +120,19 @@ where
         Ok(true) => {} // Success, channel exists
         Ok(false) => {
             // Channel doesn't exist (race condition - was deleted after membership check)
-            return ctx
-                .send_error(
-                    &err_channel_not_found(ctx.locale, &channel),
-                    Some("ChatTopicUpdate"),
-                )
-                .await;
+            let response = ServerMessage::ChatTopicUpdateResponse {
+                success: false,
+                error: Some(err_channel_not_found(ctx.locale, &channel)),
+            };
+            return ctx.send_message(&response).await;
         }
         Err(e) => {
             eprintln!("Database error setting topic: {}", e);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some("ChatTopicUpdate"))
-                .await;
+            let response = ServerMessage::ChatTopicUpdateResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
         }
     }
 
@@ -195,11 +203,12 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_not_logged_in(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(error.unwrap(), err_not_logged_in(DEFAULT_TEST_LOCALE));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -230,11 +239,12 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert!(message.to_lowercase().contains("channel")); // Error about channel
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert!(error.unwrap().to_lowercase().contains("channel")); // Error about channel
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -271,11 +281,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_chat_feature_not_enabled(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(
+                    error.unwrap(),
+                    err_chat_feature_not_enabled(DEFAULT_TEST_LOCALE)
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -313,11 +327,12 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_permission_denied(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -358,20 +373,22 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                let error_msg = error.unwrap();
                 assert!(
-                    message.contains("256"),
+                    error_msg.contains("256"),
                     "Error should mention max length: {}",
-                    message
+                    error_msg
                 );
                 assert!(
-                    message.contains("Topic cannot exceed"),
+                    error_msg.contains("Topic cannot exceed"),
                     "Error should be about topic length: {}",
-                    message
+                    error_msg
                 );
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -497,11 +514,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_topic_contains_newlines(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+                assert_eq!(
+                    error.unwrap(),
+                    err_topic_contains_newlines(DEFAULT_TEST_LOCALE)
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -574,14 +595,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
                 assert_eq!(
-                    message,
+                    error.unwrap(),
                     err_channel_not_found(DEFAULT_TEST_LOCALE, "#nonexistent")
                 );
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 
@@ -615,14 +637,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
                 assert_eq!(
-                    message,
+                    error.unwrap(),
                     err_channel_not_found(DEFAULT_TEST_LOCALE, "#general")
                 );
-                assert_eq!(command, Some("ChatTopicUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
     }
 

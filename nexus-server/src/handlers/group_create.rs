@@ -59,9 +59,13 @@ where
             "GroupCreate from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("GroupCreate"))
-            .await;
+        let response = ServerMessage::GroupCreateResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            id: None,
+            name: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate group name format
@@ -141,9 +145,13 @@ where
                 "GroupCreate from {} (user: {}) trying to grant permission they don't have: {}",
                 ctx.peer_addr, requesting_user.username, perm_str
             );
-            return ctx
-                .send_error(&err_permission_denied(ctx.locale), Some("GroupCreate"))
-                .await;
+            let response = ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
 
         parsed_permissions.add(perm);

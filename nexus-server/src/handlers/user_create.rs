@@ -81,9 +81,12 @@ where
             "UserCreate from {} (user: {}) without permission",
             ctx.peer_addr, requesting_user.username
         );
-        return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-            .await;
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Validate username format
@@ -231,9 +234,12 @@ where
                         "UserCreate from {} (user: {}) trying to assign group with permission they don't have: {:?}",
                         ctx.peer_addr, requesting_user.username, perm
                     );
-                    return ctx
-                        .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-                        .await;
+                    let response = ServerMessage::UserCreateResponse {
+                        success: false,
+                        error: Some(err_permission_denied(ctx.locale)),
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
                 }
             }
         }
@@ -259,9 +265,12 @@ where
                                 "UserCreate from {} (user: {}) trying to revoke permission they don't have: {}",
                                 ctx.peer_addr, requesting_user.username, perm_str
                             );
-                            return ctx
-                                .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-                                .await;
+                            let response = ServerMessage::UserCreateResponse {
+                                success: false,
+                                error: Some(err_permission_denied(ctx.locale)),
+                                username: None,
+                            };
+                            return ctx.send_message(&response).await;
                         }
                         parsed.push(perm);
                     }
@@ -304,9 +313,12 @@ where
                 "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
                 ctx.peer_addr, requesting_user.username, perm_str
             );
-            return ctx
-                .send_error(&err_permission_denied(ctx.locale), Some("UserCreate"))
-                .await;
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                username: None,
+            };
+            return ctx.send_message(&response).await;
         }
 
         perms.permissions.insert(perm);
