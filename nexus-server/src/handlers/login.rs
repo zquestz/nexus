@@ -3390,4 +3390,130 @@ mod tests {
             "Alice should have received ChatUserJoined for Bob when Bob auto-joined the channel"
         );
     }
+
+    #[tokio::test]
+    async fn test_login_group_permissions_resolved_end_to_end() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create an admin first
+        let admin_password = "adminpass";
+        let admin_hashed = get_cached_password_hash(admin_password);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &admin_hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Create a group with chat_send + user_list
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserList]),
+            )
+            .await
+            .unwrap();
+
+        // Create a user assigned to the group with NO direct permissions
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Login as bob
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok(), "Login should succeed");
+
+        // Verify LoginResponse includes group info and resolved permissions
+        let response = read_login_response(&mut test_ctx).await;
+        match response {
+            ServerMessage::LoginResponse {
+                success,
+                permissions,
+                group_id,
+                group_name,
+                error,
+                ..
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+
+                // Group fields populated
+                assert_eq!(group_id, Some(group.id));
+                assert_eq!(group_name, Some("Staff".to_string()));
+
+                // Permissions resolved from group (bob has no direct grants)
+                let perms = permissions.expect("Should return permissions");
+                assert!(
+                    perms.contains(&"chat_send".to_string()),
+                    "Should have chat_send from group"
+                );
+                assert!(
+                    perms.contains(&"user_list".to_string()),
+                    "Should have user_list from group"
+                );
+                assert_eq!(perms.len(), 2, "Should have exactly the group permissions");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
+
+        // Verify session cache has the permissions (the actual runtime check path)
+        let bob_session_id = session_id.unwrap();
+        let bob_session = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session_id)
+            .await
+            .expect("Bob should be in UserManager");
+        assert!(
+            bob_session.has_permission(db::Permission::ChatSend),
+            "Session should have chat_send from group"
+        );
+        assert!(
+            bob_session.has_permission(db::Permission::UserList),
+            "Session should have user_list from group"
+        );
+        assert!(
+            !bob_session.has_permission(db::Permission::UserKick),
+            "Session should NOT have user_kick"
+        );
+
+        // Verify group info cached on session
+        assert_eq!(bob_session.group_id, Some(group.id));
+        assert_eq!(bob_session.group_name, Some("Staff".to_string()));
+    }
 }
