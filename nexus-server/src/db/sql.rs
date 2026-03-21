@@ -546,6 +546,14 @@ pub const SQL_SELECT_GROUP_BY_NAME: &str =
 /// **Returns:** `(count: i64)`
 pub const SQL_COUNT_GROUP_MEMBERS: &str = "SELECT COUNT(*) FROM users WHERE group_id = ?";
 
+/// Count users assigned to each group (bulk)
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(group_id: i64, count: i64)`
+pub const SQL_COUNT_ALL_GROUP_MEMBERS: &str =
+    "SELECT group_id, COUNT(*) FROM users WHERE group_id IS NOT NULL GROUP BY group_id";
+
 /// Select all permissions for a group
 ///
 /// **Parameters:**
@@ -554,6 +562,14 @@ pub const SQL_COUNT_GROUP_MEMBERS: &str = "SELECT COUNT(*) FROM users WHERE grou
 /// **Returns:** Multiple rows of `(permission: String)`
 pub const SQL_SELECT_GROUP_PERMISSIONS: &str =
     "SELECT permission FROM group_permissions WHERE group_id = ? ORDER BY permission";
+
+/// Select all permissions for all groups (bulk)
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(group_id: i64, permission: String)`
+pub const SQL_SELECT_ALL_GROUP_PERMISSIONS: &str =
+    "SELECT group_id, permission FROM group_permissions ORDER BY group_id, permission";
 
 /// Delete all permissions for a group
 ///

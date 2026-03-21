@@ -1600,4 +1600,74 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
     }
+
+    #[tokio::test]
+    async fn test_usercreate_non_admin_cannot_assign_group_with_unowned_perms() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin with UserCreate + ChatSend (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserCreate, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group with a permission the editor doesn't have
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Mods",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+            )
+            .await
+            .unwrap();
+
+        // Non-admin tries to create a user assigned to the group
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(group.id),
+                revokes: None,
+            },
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error, not disconnect");
+
+        // Should be rejected — editor doesn't have UserKick
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                let err_msg = error.unwrap();
+                assert!(
+                    err_msg.contains("ermission"),
+                    "Should be a permission error, got: {err_msg}"
+                );
+                assert!(username.is_none());
+            }
+            other => panic!("Expected UserCreateResponse (permission denied), got: {other:?}"),
+        }
+
+        // Verify bob was NOT created
+        let bob = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
+        assert!(bob.is_none(), "User should not have been created");
+    }
 }

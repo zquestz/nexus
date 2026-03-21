@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{GroupInfo, ServerMessage};
+use nexus_common::protocol::ServerMessage;
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
@@ -63,9 +63,9 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Fetch all groups from database
-    let group_records = match ctx.db.groups.get_all_groups().await {
-        Ok(records) => records,
+    // Fetch all groups with member counts and permissions (3 queries total)
+    let groups = match ctx.db.groups.get_all_groups_with_details().await {
+        Ok(groups) => groups,
         Err(e) => {
             eprintln!("Database error getting groups: {}", e);
             return ctx
@@ -73,44 +73,6 @@ where
                 .await;
         }
     };
-
-    // Build GroupInfo list with member counts and permissions
-    let mut groups = Vec::with_capacity(group_records.len());
-    for record in group_records {
-        let member_count = match ctx.db.groups.get_member_count(record.id).await {
-            Ok(count) => count,
-            Err(e) => {
-                eprintln!(
-                    "Database error getting member count for group {}: {}",
-                    record.id, e
-                );
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupList"))
-                    .await;
-            }
-        };
-
-        let permissions: Vec<String> = match ctx.db.groups.get_group_permissions(record.id).await {
-            Ok(perms) => perms.into_iter().map(|p| p.as_str().to_string()).collect(),
-            Err(e) => {
-                eprintln!(
-                    "Database error getting permissions for group {}: {}",
-                    record.id, e
-                );
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupList"))
-                    .await;
-            }
-        };
-
-        groups.push(GroupInfo {
-            id: record.id,
-            name: record.name,
-            is_shared: record.is_shared,
-            member_count,
-            permissions,
-        });
-    }
 
     let response = ServerMessage::GroupListResponse {
         success: true,

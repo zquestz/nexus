@@ -4,7 +4,7 @@ use std::io;
 
 use tokio::io::AsyncWrite;
 
-use nexus_common::protocol::{GroupInfo, ServerMessage};
+use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, UsernameError};
 
 #[cfg(test)]
@@ -217,31 +217,9 @@ where
         None
     };
 
-    // Fetch available groups for the dropdown
-    let available_groups = match ctx.db.groups.get_all_groups().await {
-        Ok(groups) => {
-            let mut group_infos = Vec::new();
-            for group in groups {
-                let member_count = ctx.db.groups.get_member_count(group.id).await.unwrap_or(0);
-                let perms: Vec<String> = ctx
-                    .db
-                    .groups
-                    .get_group_permissions(group.id)
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|p| p.as_str().to_string())
-                    .collect();
-                group_infos.push(GroupInfo {
-                    id: group.id,
-                    name: group.name,
-                    is_shared: group.is_shared,
-                    member_count,
-                    permissions: perms,
-                });
-            }
-            Some(group_infos)
-        }
+    // Fetch available groups for the dropdown (3 queries total, not 1 + 2N)
+    let available_groups = match ctx.db.groups.get_all_groups_with_details().await {
+        Ok(groups) => Some(groups),
         Err(e) => {
             eprintln!("Error fetching groups: {}", e);
             None

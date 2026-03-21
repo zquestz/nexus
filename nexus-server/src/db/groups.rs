@@ -3,6 +3,9 @@
 //! CRUD operations for permission groups and their associated permissions.
 //! Groups serve as permission templates that can be assigned to users.
 
+use std::collections::HashMap;
+
+use nexus_common::protocol::GroupInfo;
 use nexus_common::validators;
 use sqlx::sqlite::SqlitePool;
 
@@ -101,6 +104,47 @@ impl GroupDb {
             .await?;
 
         Ok(count as u32)
+    }
+
+    /// Get all groups with member counts and permissions in bulk (3 queries total)
+    ///
+    /// More efficient than calling `get_all_groups()` + `get_member_count()` +
+    /// `get_group_permissions()` per group (which is 1 + 2N queries).
+    pub async fn get_all_groups_with_details(&self) -> Result<Vec<GroupInfo>, sqlx::Error> {
+        // 1. Fetch all groups
+        let groups = self.get_all_groups().await?;
+
+        // 2. Fetch all member counts in one query
+        let count_rows: Vec<(i64, i64)> = sqlx::query_as(sql::SQL_COUNT_ALL_GROUP_MEMBERS)
+            .fetch_all(&self.pool)
+            .await?;
+        let member_counts: HashMap<i64, u32> = count_rows
+            .into_iter()
+            .map(|(gid, count)| (gid, count as u32))
+            .collect();
+
+        // 3. Fetch all permissions in one query
+        let perm_rows: Vec<(i64, String)> = sqlx::query_as(sql::SQL_SELECT_ALL_GROUP_PERMISSIONS)
+            .fetch_all(&self.pool)
+            .await?;
+        let mut group_perms: HashMap<i64, Vec<String>> = HashMap::new();
+        for (gid, perm_str) in perm_rows {
+            if Permission::parse(&perm_str).is_some() {
+                group_perms.entry(gid).or_default().push(perm_str);
+            }
+        }
+
+        // Assemble GroupInfo list
+        Ok(groups
+            .into_iter()
+            .map(|g| GroupInfo {
+                member_count: member_counts.get(&g.id).copied().unwrap_or(0),
+                permissions: group_perms.remove(&g.id).unwrap_or_default(),
+                id: g.id,
+                name: g.name,
+                is_shared: g.is_shared,
+            })
+            .collect())
     }
 
     // ========================================================================
