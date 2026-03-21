@@ -222,12 +222,18 @@ where
 
         // Non-admin group assignment check: requester must have all group permissions
         if !requesting_user.is_admin {
-            let group_perms = ctx
-                .db
-                .groups
-                .get_group_permissions(gid)
-                .await
-                .unwrap_or_default();
+            let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("Database error fetching group permissions: {}", e);
+                    let response = ServerMessage::UserCreateResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
+                }
+            };
             for perm in &group_perms {
                 if !requesting_user.has_permission(*perm) {
                     eprintln!(

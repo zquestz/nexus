@@ -586,7 +586,23 @@ pub const SQL_INSERT_GROUP: &str = "INSERT INTO groups (name, is_shared) VALUES 
 /// 1. `name: &str` - New group name
 /// 2. `is_shared: bool` - New shared status
 /// 3. `id: i64` - Group ID to update
-pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ? WHERE id = ?";
+/// 4. `is_shared: bool` - (Duplicate) New shared status for atomic shared-toggle check
+/// 5. `id: i64` - (Duplicate) Group ID for member-count subquery
+///
+/// **Atomic Protection:**
+/// - Prevents toggling `is_shared` while the group has assigned members
+/// - When `is_shared` is unchanged, the `is_shared = ?` condition passes and
+///   the member-count subquery is never evaluated
+/// - When `is_shared` IS changing, the update only proceeds if the group has
+///   zero members, preventing a TOCTOU race between the handler's pre-check
+///   and the actual update
+/// - Returns 0 rows affected if blocked by protection
+pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?
+    WHERE id = ?
+    AND (
+        is_shared = ?
+        OR (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0
+    )";
 
 /// Atomically delete a group by ID, only if it has no assigned members
 ///

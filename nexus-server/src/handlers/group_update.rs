@@ -438,11 +438,19 @@ where
             Ok(())
         }
         Ok(None) => {
+            // 0 rows affected — either group was deleted by another admin
+            // between our fetch and the update, or the atomic shared-toggle
+            // protection blocked the update (members exist).
+            // Query member count to distinguish the two cases.
+            let error = match ctx.db.groups.get_member_count(id).await {
+                Ok(count) if count > 0 => err_group_not_empty_modify(ctx.locale),
+                _ => err_group_not_found(ctx.locale),
+            };
             let response = ServerMessage::GroupUpdateResponse {
                 success: false,
                 id: None,
                 name: None,
-                error: Some(err_group_not_found(ctx.locale)),
+                error: Some(error),
             };
             ctx.send_message(&response).await
         }

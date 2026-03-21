@@ -425,12 +425,19 @@ where
                     // Non-admin delegation: requester must have all current group
                     // permissions (removal changes effective perms the editor can't grant back)
                     if !requesting_user.is_admin {
-                        let group_perms = ctx
-                            .db
-                            .groups
-                            .get_group_permissions(current_group_id)
-                            .await
-                            .unwrap_or_default();
+                        let group_perms =
+                            match ctx.db.groups.get_group_permissions(current_group_id).await {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!("Database error fetching group permissions: {}", e);
+                                    let response = ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_database(ctx.locale)),
+                                        username: None,
+                                    };
+                                    return ctx.send_message(&response).await;
+                                }
+                            };
                         for perm in &group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {
@@ -460,12 +467,19 @@ where
                     if !requesting_user.is_admin
                         && let Some(current_group_id) = account.group_id
                     {
-                        let old_group_perms = ctx
-                            .db
-                            .groups
-                            .get_group_permissions(current_group_id)
-                            .await
-                            .unwrap_or_default();
+                        let old_group_perms =
+                            match ctx.db.groups.get_group_permissions(current_group_id).await {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!("Database error fetching group permissions: {}", e);
+                                    let response = ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_database(ctx.locale)),
+                                        username: None,
+                                    };
+                                    return ctx.send_message(&response).await;
+                                }
+                            };
                         for perm in &old_group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {
@@ -520,12 +534,19 @@ where
 
                     // Non-admin delegation: requester must have all group permissions
                     if !requesting_user.is_admin {
-                        let group_perms = ctx
-                            .db
-                            .groups
-                            .get_group_permissions(new_group_id)
-                            .await
-                            .unwrap_or_default();
+                        let group_perms =
+                            match ctx.db.groups.get_group_permissions(new_group_id).await {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!("Database error fetching group permissions: {}", e);
+                                    let response = ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_database(ctx.locale)),
+                                        username: None,
+                                    };
+                                    return ctx.send_message(&response).await;
+                                }
+                            };
                         for perm in &group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {

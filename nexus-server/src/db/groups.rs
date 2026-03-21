@@ -197,6 +197,8 @@ impl GroupDb {
             .bind(name)
             .bind(is_shared)
             .bind(id)
+            .bind(is_shared) // Duplicate: atomic shared-toggle check (is_shared = ?)
+            .bind(id) // Duplicate: member-count subquery (group_id = ?)
             .execute(&mut *tx)
             .await?;
 
