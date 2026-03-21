@@ -56,17 +56,6 @@ pub const SQL_COUNT_NON_GUEST_USERS: &str =
 /// the original case in the returned username.
 pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE LOWER(username) = LOWER(?)";
 
-/// Select user by ID
-///
-/// **Parameters:**
-/// 1. `user_id: i64` - User ID to look up
-///
-/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
-///
-/// Note: Only used in tests. Production code looks up users by username.
-#[cfg(test)]
-pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE id = ?";
-
 /// Select all users (for user management listing)
 ///
 /// **Parameters:** None
@@ -87,17 +76,6 @@ pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_a
 /// **Note:** Used to check if a shared account nickname collides with an existing username.
 pub const SQL_CHECK_USERNAME_EXISTS: &str =
     "SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(?)";
-
-/// Check if user is admin
-///
-/// **Parameters:**
-/// 1. `user_id: i64` - User ID to check
-///
-/// **Returns:** `(is_admin: bool)`
-///
-/// Note: Only used in tests. Production code uses cached permissions.
-#[cfg(test)]
-pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 
 // ========================================================================
 // Permission Query Operations
@@ -377,24 +355,6 @@ pub const SQL_UPSERT_BAN: &str = "
         created_at = excluded.created_at,
         expires_at = excluded.expires_at";
 
-/// Select a ban by IP address (only if not expired)
-///
-/// **Parameters:**
-/// 1. `ip_address: &str` - IP address to look up
-/// 2. `now: i64` - Current Unix timestamp
-///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
-///
-/// **Note:** Only returns bans that are either permanent (expires_at IS NULL)
-/// or not yet expired (expires_at > now).
-/// Used in tests only - production code uses the in-memory BanCache.
-#[cfg(test)]
-pub const SQL_SELECT_BAN_BY_IP: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_bans
-    WHERE ip_address = ?
-    AND (expires_at IS NULL OR expires_at > ?)";
-
 /// Select a ban by IP address (regardless of expiry status)
 ///
 /// **Parameters:**
@@ -484,20 +444,6 @@ pub const SQL_UPSERT_TRUST: &str = "
         created_by = excluded.created_by,
         created_at = excluded.created_at,
         expires_at = excluded.expires_at";
-
-/// Select a trusted IP entry by IP address (only if not expired)
-///
-/// **Parameters:**
-/// 1. `ip_address: &str` - IP address to look up
-/// 2. `now: i64` - Current Unix timestamp
-///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
-#[cfg(test)]
-pub const SQL_SELECT_TRUST_BY_IP: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_trusted
-    WHERE ip_address = ?
-    AND (expires_at IS NULL OR expires_at > ?)";
 
 /// Select a trusted IP entry by IP address (regardless of expiry status)
 ///
@@ -652,3 +598,145 @@ pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ? WH
 /// Caller should distinguish those cases with a follow-up SELECT if needed.
 pub const SQL_DELETE_GROUP: &str =
     "DELETE FROM groups WHERE id = ? AND (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0";
+
+// ========================================================================
+// Channel Settings Query Operations
+// ========================================================================
+
+/// Select channel settings by name (case-insensitive)
+///
+/// **Parameters:**
+/// 1. `name: &str` - Channel name
+///
+/// **Returns:** `(name: String, topic: String, topic_set_by: String, secret: i32)`
+///
+/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
+/// the original case in the returned name.
+pub const SQL_SELECT_CHANNEL_SETTINGS: &str =
+    "SELECT name, topic, topic_set_by, secret FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+
+/// Select all channel settings
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(name: String, topic: String, topic_set_by: String, secret: i32)`
+pub const SQL_SELECT_ALL_CHANNEL_SETTINGS: &str =
+    "SELECT name, topic, topic_set_by, secret FROM channel_settings";
+
+/// Insert or update channel settings (upsert)
+///
+/// **Parameters:**
+/// 1. `name: &str` - Channel name
+/// 2. `topic: &str` - Channel topic
+/// 3. `topic_set_by: &str` - Username of who set the topic
+/// 4. `secret: i32` - Whether the channel is secret (0 or 1)
+///
+/// **Note:** Uses SQLite `ON CONFLICT` for upsert semantics — creates if
+/// the channel doesn't exist, updates if it does.
+pub const SQL_UPSERT_CHANNEL_SETTINGS: &str = "INSERT INTO channel_settings (name, topic, topic_set_by, secret) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET topic = excluded.topic, topic_set_by = excluded.topic_set_by, secret = excluded.secret";
+
+/// Update topic for a channel (case-insensitive name match)
+///
+/// **Parameters:**
+/// 1. `topic: &str` - New topic text
+/// 2. `topic_set_by: &str` - Username of who set the topic
+/// 3. `name: &str` - Channel name
+pub const SQL_UPDATE_CHANNEL_TOPIC: &str =
+    "UPDATE channel_settings SET topic = ?, topic_set_by = ? WHERE LOWER(name) = LOWER(?)";
+
+/// Update secret flag for a channel (case-insensitive name match)
+///
+/// **Parameters:**
+/// 1. `secret: i32` - Whether the channel is secret (0 or 1)
+/// 2. `name: &str` - Channel name
+pub const SQL_UPDATE_CHANNEL_SECRET: &str =
+    "UPDATE channel_settings SET secret = ? WHERE LOWER(name) = LOWER(?)";
+
+/// Delete channel settings (case-insensitive name match)
+///
+/// **Parameters:**
+/// 1. `name: &str` - Channel name
+pub const SQL_DELETE_CHANNEL_SETTINGS: &str =
+    "DELETE FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+
+// ========================================================================
+// Test-Only Query Operations
+// ========================================================================
+
+/// Select user by ID
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID to look up
+///
+/// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
+///
+/// **Note:** Only used in tests. Production code looks up users by username.
+#[cfg(test)]
+pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE id = ?";
+
+/// Check if user is admin
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID to check
+///
+/// **Returns:** `(is_admin: bool)`
+///
+/// **Note:** Only used in tests. Production code uses cached permissions.
+#[cfg(test)]
+pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
+
+/// Select a ban by IP address (only if not expired)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+/// 2. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+///
+/// **Note:** Only returns bans that are either permanent (expires_at IS NULL)
+/// or not yet expired (expires_at > now).
+/// Used in tests only — production code uses the in-memory BanCache.
+#[cfg(test)]
+pub const SQL_SELECT_BAN_BY_IP: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_bans
+    WHERE ip_address = ?
+    AND (expires_at IS NULL OR expires_at > ?)";
+
+/// Select a trusted IP entry by IP address (only if not expired)
+///
+/// **Parameters:**
+/// 1. `ip_address: &str` - IP address to look up
+/// 2. `now: i64` - Current Unix timestamp
+///
+/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+///
+/// **Note:** Used in tests only — production code uses the in-memory TrustCache.
+#[cfg(test)]
+pub const SQL_SELECT_TRUST_BY_IP: &str = "
+    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    FROM ip_trusted
+    WHERE ip_address = ?
+    AND (expires_at IS NULL OR expires_at > ?)";
+
+/// Count admin users in the database
+///
+/// **Parameters:** None
+///
+/// **Returns:** `(count: i64)` - Number of admin users
+///
+/// **Note:** Used in test utilities to verify admin count in race condition tests.
+#[cfg(test)]
+pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
+
+/// Check if channel settings exist (case-insensitive name match)
+///
+/// **Parameters:**
+/// 1. `name: &str` - Channel name
+///
+/// **Returns:** `(count: i32)`
+///
+/// **Note:** Used in tests only — production code does not need this check.
+#[cfg(test)]
+pub const SQL_COUNT_CHANNEL_SETTINGS: &str =
+    "SELECT COUNT(*) FROM channel_settings WHERE LOWER(name) = LOWER(?)";

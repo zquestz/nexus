@@ -4,7 +4,7 @@ use nexus_common::validators;
 use sqlx::SqlitePool;
 
 use super::permissions::{Permission, Permissions};
-use super::sql::*;
+use crate::db::sql;
 
 /// Parameters for creating a new user account
 pub struct CreateUserParams<'a> {
@@ -103,7 +103,7 @@ impl UserDb {
     /// Note: Only used in tests. Production code looks up users by username.
     #[cfg(test)]
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
-        let row: Option<UserRow> = sqlx::query_as(SQL_SELECT_USER_BY_ID)
+        let row: Option<UserRow> = sqlx::query_as(sql::SQL_SELECT_USER_BY_ID)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -122,7 +122,7 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let row: Option<UserRow> = sqlx::query_as(SQL_SELECT_USER_BY_USERNAME)
+        let row: Option<UserRow> = sqlx::query_as(sql::SQL_SELECT_USER_BY_USERNAME)
             .bind(username)
             .fetch_optional(&self.pool)
             .await?;
@@ -140,7 +140,7 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let (count,): (i64,) = sqlx::query_as(SQL_CHECK_USERNAME_EXISTS)
+        let (count,): (i64,) = sqlx::query_as(sql::SQL_CHECK_USERNAME_EXISTS)
             .bind(username)
             .fetch_one(&self.pool)
             .await?;
@@ -151,7 +151,7 @@ impl UserDb {
     ///
     /// Used by the `/list all` command for user management.
     pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
-        let rows: Vec<UserRow> = sqlx::query_as(SQL_SELECT_ALL_USERS)
+        let rows: Vec<UserRow> = sqlx::query_as(sql::SQL_SELECT_ALL_USERS)
             .fetch_all(&self.pool)
             .await?;
 
@@ -169,7 +169,7 @@ impl UserDb {
     /// - If user has no group: grant overrides only (legacy behavior)
     pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
         // Check if user has a group assignment
-        let group_id: Option<(Option<i64>,)> = sqlx::query_as(SQL_SELECT_USER_GROUP_ID)
+        let group_id: Option<(Option<i64>,)> = sqlx::query_as(sql::SQL_SELECT_USER_GROUP_ID)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -180,7 +180,7 @@ impl UserDb {
         };
 
         // Fetch user's individual permissions with override type
-        let perm_rows: Vec<(String, String)> = sqlx::query_as(SQL_SELECT_PERMISSIONS)
+        let perm_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
             .bind(user_id)
             .fetch_all(&self.pool)
             .await?;
@@ -189,7 +189,7 @@ impl UserDb {
 
         if let Some(gid) = group_id {
             // User has a group — resolve: (group_perms ∪ grants) - revokes
-            let group_perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
+            let group_perm_rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
                 .bind(gid)
                 .fetch_all(&self.pool)
                 .await?;
@@ -236,7 +236,7 @@ impl UserDb {
         permission: Permission,
     ) -> Result<bool, sqlx::Error> {
         // Check if user is admin (admins have all permissions)
-        let is_admin: Option<(bool,)> = sqlx::query_as(SQL_CHECK_IS_ADMIN)
+        let is_admin: Option<(bool,)> = sqlx::query_as(sql::SQL_CHECK_IS_ADMIN)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -268,14 +268,14 @@ impl UserDb {
         revokes: Option<&[Permission]>,
     ) -> Result<(), sqlx::Error> {
         // Delete existing permissions (both grants and revokes)
-        sqlx::query(SQL_DELETE_PERMISSIONS)
+        sqlx::query(sql::SQL_DELETE_PERMISSIONS)
             .bind(user_id)
             .execute(&mut **tx)
             .await?;
 
         // Insert new permissions as grants
         for perm in permissions.to_vec() {
-            sqlx::query(SQL_INSERT_PERMISSION)
+            sqlx::query(sql::SQL_INSERT_PERMISSION)
                 .bind(user_id)
                 .bind(perm.as_str())
                 .execute(&mut **tx)
@@ -285,7 +285,7 @@ impl UserDb {
         // Insert revoke overrides if provided
         if let Some(revoke_perms) = revokes {
             for perm in revoke_perms {
-                sqlx::query(SQL_INSERT_PERMISSION_OVERRIDE)
+                sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
                     .bind(user_id)
                     .bind(perm.as_str())
                     .bind("revoke")
@@ -317,7 +317,7 @@ impl UserDb {
         // Use a transaction to ensure user and permissions are created atomically
         let mut tx = self.pool.begin().await?;
 
-        let result = sqlx::query(SQL_INSERT_USER)
+        let result = sqlx::query(sql::SQL_INSERT_USER)
             .bind(params.username)
             .bind(params.hashed_password)
             .bind(params.is_admin)
@@ -381,7 +381,7 @@ impl UserDb {
 
         // Check if any non-guest users exist (within transaction)
         // The guest account is excluded so the first real user becomes admin
-        let count: (i64,) = sqlx::query_as(SQL_COUNT_NON_GUEST_USERS)
+        let count: (i64,) = sqlx::query_as(sql::SQL_COUNT_NON_GUEST_USERS)
             .fetch_one(&mut *tx)
             .await?;
 
@@ -394,7 +394,7 @@ impl UserDb {
         // No users exist - create first user as admin
         let created_at = chrono::Utc::now().timestamp();
 
-        let result = sqlx::query(SQL_INSERT_USER)
+        let result = sqlx::query(sql::SQL_INSERT_USER)
             .bind(username)
             .bind(hashed_password)
             .bind(true) // is_admin = true
@@ -430,7 +430,7 @@ impl UserDb {
     pub async fn delete_user(&self, user_id: i64) -> Result<bool, sqlx::Error> {
         // Atomic deletion: only delete if user is non-admin OR if they're not the last admin
         // This prevents race conditions when multiple admins try to delete each other simultaneously
-        let result = sqlx::query(SQL_DELETE_USER_ATOMIC)
+        let result = sqlx::query(sql::SQL_DELETE_USER_ATOMIC)
             .bind(user_id)
             .execute(&self.pool)
             .await?;
@@ -524,7 +524,7 @@ impl UserDb {
         // The SQL includes conditions to prevent:
         // 1. Disabling the last enabled admin
         // 2. Demoting the last admin
-        let result = sqlx::query(SQL_UPDATE_USER)
+        let result = sqlx::query(sql::SQL_UPDATE_USER)
             .bind(final_username)
             .bind(final_password)
             .bind(final_is_admin)
@@ -555,7 +555,7 @@ impl UserDb {
                 Self::set_permissions_in_tx(&mut tx, user.id, perms, None).await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
-                sqlx::query(SQL_DELETE_PERMISSIONS)
+                sqlx::query(sql::SQL_DELETE_PERMISSIONS)
                     .bind(user.id)
                     .execute(&mut *tx)
                     .await?;
@@ -575,7 +575,7 @@ impl UserDb {
         user_id: i64,
         group_id: Option<i64>,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query(SQL_UPDATE_USER_GROUP)
+        let result = sqlx::query(sql::SQL_UPDATE_USER_GROUP)
             .bind(group_id)
             .bind(user_id)
             .execute(&self.pool)
@@ -588,7 +588,7 @@ impl UserDb {
         &self,
         user_id: i64,
     ) -> Result<Vec<Permission>, sqlx::Error> {
-        let rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_REVOKE_PERMISSIONS)
+        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_REVOKE_PERMISSIONS)
             .bind(user_id)
             .fetch_all(&self.pool)
             .await?;
@@ -608,12 +608,12 @@ impl UserDb {
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
+        sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
         for perm in revokes {
-            sqlx::query(SQL_INSERT_PERMISSION_OVERRIDE)
+            sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
                 .bind(user_id)
                 .bind(perm.as_str())
                 .bind("revoke")
@@ -643,7 +643,7 @@ impl UserDb {
 
         if let Some(gid) = new_group_id {
             // Assigned to a group — remove duplicate grants
-            let group_perm_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GROUP_PERMISSIONS)
+            let group_perm_rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
                 .bind(gid)
                 .fetch_all(&mut *tx)
                 .await?;
@@ -651,7 +651,7 @@ impl UserDb {
                 group_perm_rows.into_iter().map(|(p,)| p).collect();
 
             // Get current grant overrides
-            let grant_rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_GRANT_PERMISSIONS)
+            let grant_rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GRANT_PERMISSIONS)
                 .bind(user_id)
                 .fetch_all(&mut *tx)
                 .await?;
@@ -659,7 +659,7 @@ impl UserDb {
             // Delete grants that the group already provides
             for (perm,) in grant_rows {
                 if group_perms.contains(&perm) {
-                    sqlx::query(SQL_DELETE_GRANT_PERMISSION)
+                    sqlx::query(sql::SQL_DELETE_GRANT_PERMISSION)
                         .bind(user_id)
                         .bind(&perm)
                         .execute(&mut *tx)
@@ -668,7 +668,7 @@ impl UserDb {
             }
         } else {
             // Removed from group — clear revokes, keep grants
-            sqlx::query(SQL_DELETE_REVOKE_PERMISSIONS)
+            sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
                 .bind(user_id)
                 .execute(&mut *tx)
                 .await?;

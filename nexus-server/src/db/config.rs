@@ -9,7 +9,6 @@ use nexus_common::validators::{
 };
 use sqlx::SqlitePool;
 
-use super::sql::{SQL_GET_CONFIG, SQL_SET_CONFIG};
 use crate::constants::{
     CONFIG_KEY_AUTO_JOIN_CHANNELS, CONFIG_KEY_FILE_REINDEX_INTERVAL,
     CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
@@ -22,6 +21,7 @@ use crate::constants::{
     ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
     ERR_SERVER_NAME_TOO_LONG,
 };
+use crate::db::sql;
 
 /// Database interface for server configuration
 #[derive(Clone)]
@@ -39,7 +39,7 @@ impl ConfigDb {
     ///
     /// Returns the configured value, or 5 (the default) if not found or invalid.
     pub async fn get_max_connections_per_ip(&self) -> usize {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
             .fetch_one(&self.pool)
             .await
@@ -56,7 +56,7 @@ impl ConfigDb {
     ///
     /// Returns an error if the database update fails.
     pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
             .execute(&self.pool)
@@ -70,7 +70,7 @@ impl ConfigDb {
     ///
     /// Returns the configured value, or 3 (the default) if not found or invalid.
     pub async fn get_max_transfers_per_ip(&self) -> usize {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
             .fetch_one(&self.pool)
             .await
@@ -87,7 +87,7 @@ impl ConfigDb {
     ///
     /// Returns an error if the database update fails.
     pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
             .execute(&self.pool)
@@ -101,7 +101,7 @@ impl ConfigDb {
     ///
     /// Returns the configured value, or "Nexus BBS" (the default) if not found.
     pub async fn get_server_name(&self) -> String {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_SERVER_NAME)
             .fetch_one(&self.pool)
             .await
@@ -125,7 +125,7 @@ impl ConfigDb {
             return Err(io::Error::other(msg));
         }
 
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(name)
             .bind(CONFIG_KEY_SERVER_NAME)
             .execute(&self.pool)
@@ -139,7 +139,7 @@ impl ConfigDb {
     ///
     /// Returns the configured value, or "" (empty string, the default) if not found.
     pub async fn get_server_description(&self) -> String {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_SERVER_DESCRIPTION)
             .fetch_one(&self.pool)
             .await
@@ -162,7 +162,7 @@ impl ConfigDb {
             return Err(io::Error::other(msg));
         }
 
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(description)
             .bind(CONFIG_KEY_SERVER_DESCRIPTION)
             .execute(&self.pool)
@@ -176,7 +176,7 @@ impl ConfigDb {
     ///
     /// Returns the configured value, or "" (empty string, the default) if not found.
     pub async fn get_server_image(&self) -> String {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_SERVER_IMAGE)
             .fetch_one(&self.pool)
             .await
@@ -202,7 +202,7 @@ impl ConfigDb {
             return Err(io::Error::other(msg));
         }
 
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(image)
             .bind(CONFIG_KEY_SERVER_IMAGE)
             .execute(&self.pool)
@@ -217,7 +217,7 @@ impl ConfigDb {
     /// Returns the configured value, or 5 (the default) if not found or invalid.
     /// A value of 0 means automatic reindexing is disabled.
     pub async fn get_file_reindex_interval(&self) -> u32 {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
             .fetch_one(&self.pool)
             .await
@@ -234,7 +234,7 @@ impl ConfigDb {
     ///
     /// Returns an error if the database update fails.
     pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
             .execute(&self.pool)
@@ -249,7 +249,7 @@ impl ConfigDb {
     /// Returns a space-separated string of channel names that survive restart.
     /// Returns the default channel from `DEFAULT_PERSISTENT_CHANNELS` if not configured.
     pub async fn get_persistent_channels(&self) -> String {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
             .fetch_one(&self.pool)
             .await
@@ -277,7 +277,7 @@ impl ConfigDb {
             return Err(io::Error::other(msg));
         }
 
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
             .execute(&self.pool)
@@ -292,7 +292,7 @@ impl ConfigDb {
     /// Returns a space-separated string of channel names that users auto-join on login.
     /// Returns the default channel from `DEFAULT_AUTO_JOIN_CHANNELS` if not configured.
     pub async fn get_auto_join_channels(&self) -> String {
-        sqlx::query_scalar::<_, String>(SQL_GET_CONFIG)
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
             .fetch_one(&self.pool)
             .await
@@ -320,7 +320,7 @@ impl ConfigDb {
             return Err(io::Error::other(msg));
         }
 
-        sqlx::query(SQL_SET_CONFIG)
+        sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
             .execute(&self.pool)

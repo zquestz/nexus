@@ -2,18 +2,7 @@
 
 use sqlx::SqlitePool;
 
-// ========================================================================
-// Test-only SQL Constants
-// ========================================================================
-
-/// Count admin users in the database
-///
-/// **Parameters:** None
-///
-/// **Returns:** `(count: i64)` - Number of admin users
-///
-/// **Note:** Used in test utilities to verify admin count in race condition tests.
-const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
+use crate::db::sql;
 
 /// Create an in-memory test database with migrations applied
 pub async fn create_test_db() -> SqlitePool {
@@ -51,7 +40,7 @@ pub async fn create_test_db() -> SqlitePool {
 /// - Last admin cannot be demoted
 /// - Race conditions don't leave zero admins
 pub async fn count_admins(pool: &SqlitePool) -> i64 {
-    let (count,): (i64,) = sqlx::query_as(SQL_COUNT_ADMINS)
+    let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_ADMINS)
         .fetch_one(pool)
         .await
         .unwrap();
