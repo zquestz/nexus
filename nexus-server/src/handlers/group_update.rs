@@ -6,10 +6,8 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::is_shared_account_permission;
-use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, GroupNameError, PermissionsError};
-
-use crate::constants::DEFAULT_LOCALE;
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
@@ -22,6 +20,7 @@ use super::{
     err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
 };
 use crate::db::{Permission, Permissions};
+use crate::users::manager::UserManager;
 use crate::voice::send_voice_leave_notifications;
 
 /// Handle a group update request
@@ -277,55 +276,50 @@ where
             if name_changed {
                 ctx.user_manager.update_group_name(id, &final_name).await;
 
-                // Broadcast UserUpdated for each online member
+                // Broadcast UserUpdated for each online member.
+                // update_group_name already updated session caches, so the helper
+                // functions will pick up the new group_name automatically.
                 let member_sessions = ctx.user_manager.get_sessions_by_group_id(id).await;
 
-                // Deduplicate by username (regular accounts may have multiple sessions)
+                // Deduplicate: shared accounts broadcast per-session (unique nicknames),
+                // regular accounts aggregate all sessions into one UserInfo.
                 let mut seen_usernames: HashSet<String> = HashSet::new();
                 for session in &member_sessions {
-                    let username_lower = session.username.to_lowercase();
-                    if !seen_usernames.insert(username_lower) {
-                        continue;
+                    if session.is_shared {
+                        // Shared account: each session is a distinct identity
+                        let user_info = UserManager::build_user_info_from_session(session);
+
+                        let user_updated = ServerMessage::UserUpdated {
+                            previous_username: session.username.clone(),
+                            user: user_info,
+                        };
+                        ctx.user_manager
+                            .broadcast_to_permission(user_updated, Permission::UserList)
+                            .await;
+                    } else {
+                        // Regular account: aggregate all sessions, skip duplicates
+                        let username_lower = session.username.to_lowercase();
+                        if !seen_usernames.insert(username_lower) {
+                            continue;
+                        }
+
+                        let all_sessions = ctx
+                            .user_manager
+                            .get_sessions_by_username(&session.username)
+                            .await;
+
+                        if let Some(user_info) =
+                            UserManager::build_aggregated_user_info(&all_sessions)
+                        {
+                            let user_updated = ServerMessage::UserUpdated {
+                                previous_username: session.username.clone(),
+                                user: user_info,
+                            };
+                            ctx.user_manager
+                                .broadcast_to_permission(user_updated, Permission::UserList)
+                                .await;
+                        }
                     }
-
-                    let all_sessions = ctx
-                        .user_manager
-                        .get_sessions_by_username(&session.username)
-                        .await;
-                    let session_ids: Vec<u32> = all_sessions.iter().map(|s| s.session_id).collect();
-
-                    let login_time = all_sessions.iter().map(|s| s.login_time).min().unwrap_or(0);
-                    let locale = all_sessions
-                        .first()
-                        .map(|s| s.locale.clone())
-                        .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
-                    let latest = all_sessions.iter().max_by_key(|s| s.login_time);
-                    let avatar = latest.and_then(|s| s.avatar.clone());
-                    let is_away = latest.map(|s| s.is_away).unwrap_or(false);
-                    let status = latest.and_then(|s| s.status.clone());
-
-                    let user_info = UserInfo {
-                        username: session.username.clone(),
-                        nickname: session.nickname.clone(),
-                        login_time,
-                        is_admin: session.is_admin,
-                        is_shared: session.is_shared,
-                        session_ids,
-                        locale,
-                        avatar,
-                        is_away,
-                        status,
-                        group_id: Some(id),
-                        group_name: Some(final_name.clone()),
-                    };
-
-                    let user_updated = ServerMessage::UserUpdated {
-                        previous_username: session.username.clone(),
-                        user: user_info,
-                    };
-                    ctx.user_manager
-                        .broadcast_to_permission(user_updated, Permission::UserList)
-                        .await;
                 }
             }
 

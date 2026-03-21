@@ -1,6 +1,10 @@
 -- Create groups table for permission group templates
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Note: The column-level UNIQUE here creates a case-sensitive autoindex. It is technically
+    -- redundant with idx_groups_name_lower (which is strictly tighter, enforcing case-insensitive
+    -- uniqueness). However, SQLite cannot drop column constraints without table recreation, so we
+    -- leave it in place. The case-insensitive index is the effective constraint.
     name TEXT NOT NULL UNIQUE,
     is_shared BOOLEAN NOT NULL DEFAULT 0
 );
