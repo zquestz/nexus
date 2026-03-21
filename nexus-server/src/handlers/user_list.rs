@@ -95,22 +95,38 @@ where
             }
         };
 
+        // Fetch all groups for O(1) name lookup
+        let group_name_map: HashMap<i64, String> = ctx
+            .db
+            .groups
+            .get_all_groups()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|g| (g.id, g.name))
+            .collect();
+
         // Convert to UserInfo and sort by username (nickname == username for accounts)
         let mut user_infos: Vec<UserInfo> = db_users
             .into_iter()
-            .map(|db_user| UserInfo {
-                nickname: db_user.username.clone(), // For accounts, nickname == username
-                username: db_user.username,
-                login_time: db_user.created_at,
-                is_admin: db_user.is_admin,
-                is_shared: db_user.is_shared,
-                session_ids: vec![], // Not tracking online status for /list all
-                locale: String::new(),
-                avatar: None,
-                is_away: false,
-                status: None,
-                group_id: db_user.group_id,
-                group_name: None, // Client resolves name from its cached group list
+            .map(|db_user| {
+                let group_name = db_user
+                    .group_id
+                    .and_then(|gid| group_name_map.get(&gid).cloned());
+                UserInfo {
+                    nickname: db_user.username.clone(), // For accounts, nickname == username
+                    username: db_user.username,
+                    login_time: db_user.created_at,
+                    is_admin: db_user.is_admin,
+                    is_shared: db_user.is_shared,
+                    session_ids: vec![], // Not tracking online status for /list all
+                    locale: String::new(),
+                    avatar: None,
+                    is_away: false,
+                    status: None,
+                    group_id: db_user.group_id,
+                    group_name,
+                }
             })
             .collect();
 
@@ -1419,6 +1435,102 @@ mod tests {
                 assert_eq!(user_one.status, Some("user one away".to_string()));
                 assert!(!user_two.is_away, "user_two should NOT be away");
                 assert_eq!(user_two.status, None);
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_includes_group_fields_for_online_user() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
+            .await
+            .unwrap();
+
+        // Create bob in the group
+        let hashed = get_cached_password_hash("password");
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserList);
+        let account = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Get effective permissions for bob (includes group permissions)
+        let effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(account.id)
+            .await
+            .unwrap();
+
+        // Add bob to UserManager with group info so he's online
+        let session_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 200,
+                db_user_id: account.id,
+                username: "bob".to_string(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                is_admin: false,
+                is_shared: false,
+                permissions: effective.permissions,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+            })
+            .await
+            .expect("Failed to add bob");
+
+        // Request user list (online only, not all)
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                let bob_info = users
+                    .iter()
+                    .find(|u| u.username == "bob")
+                    .expect("Bob should be in user list");
+                assert_eq!(bob_info.group_id, Some(group.id), "Should include group_id");
+                assert_eq!(
+                    bob_info.group_name,
+                    Some("Staff".to_string()),
+                    "Should include group_name"
+                );
             }
             _ => panic!("Expected UserListResponse"),
         }

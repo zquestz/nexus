@@ -1518,4 +1518,91 @@ mod tests {
             _ => panic!("Expected UserInfoResponse"),
         }
     }
+
+    #[tokio::test]
+    async fn test_userinfo_includes_group_fields() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as admin
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a group
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
+            .await
+            .unwrap();
+
+        // Create a user in the group and log them in
+        let _bob_session = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Assign bob to the group in DB and update session cache
+        test_ctx
+            .db
+            .users
+            .update_user(db::UpdateUserParams {
+                username: "bob",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: None,
+                requested_revokes: None,
+                remove_group: false,
+                requested_group_id: Some(group.id),
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .update_group(
+                test_ctx
+                    .db
+                    .users
+                    .get_user_by_username("bob")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .id,
+                Some(group.id),
+                Some("Staff".to_string()),
+            )
+            .await;
+
+        // Admin requests info about bob
+        let result = handle_user_info(
+            "bob".to_string(),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user = user.expect("Should return user info");
+                assert_eq!(user.group_id, Some(group.id), "Should include group_id");
+                assert_eq!(
+                    user.group_name,
+                    Some("Staff".to_string()),
+                    "Should include group_name"
+                );
+            }
+            other => panic!("Expected UserInfoResponse, got: {other:?}"),
+        }
+    }
 }
