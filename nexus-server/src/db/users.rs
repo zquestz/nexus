@@ -18,6 +18,20 @@ pub struct CreateUserParams<'a> {
     pub revokes: &'a [Permission],
 }
 
+/// Parameters for updating a user account
+///
+/// All fields except `username` are optional — only provided fields are changed.
+/// This struct mirrors the `CreateUserParams` pattern to avoid excessive positional arguments.
+pub struct UpdateUserParams<'a> {
+    pub username: &'a str,
+    pub requested_username: Option<&'a str>,
+    pub requested_password_hash: Option<&'a str>,
+    pub requested_is_admin: Option<bool>,
+    pub requested_enabled: Option<bool>,
+    pub requested_permissions: Option<&'a Permissions>,
+    pub requested_revokes: Option<&'a [Permission]>,
+}
+
 /// User account stored in database
 ///
 /// Represents a complete user record retrieved from the database.
@@ -478,24 +492,16 @@ impl UserDb {
     /// - Last admin demotion attempt
     /// - Last enabled admin disable attempt
     /// - Duplicate username conflict
-    pub async fn update_user(
-        &self,
-        username: &str,
-        requested_username: Option<&str>,
-        requested_password_hash: Option<&str>,
-        requested_is_admin: Option<bool>,
-        requested_enabled: Option<bool>,
-        requested_permissions: Option<&Permissions>,
-    ) -> Result<bool, sqlx::Error> {
+    pub async fn update_user(&self, params: UpdateUserParams<'_>) -> Result<bool, sqlx::Error> {
         // First, get the user to update
-        let user = match self.get_user_by_username(username).await? {
+        let user = match self.get_user_by_username(params.username).await? {
             Some(u) => u,
             None => return Ok(false),
         };
 
         // Check if new username already exists (and it's not the same user)
-        if let Some(new_name) = requested_username
-            && new_name != username
+        if let Some(new_name) = params.requested_username
+            && new_name != params.username
             && self.get_user_by_username(new_name).await?.is_some()
         {
             // Username already taken
@@ -503,19 +509,21 @@ impl UserDb {
         }
 
         // Build the final values for each field
-        let final_username = requested_username.unwrap_or(username);
+        let final_username = params.requested_username.unwrap_or(params.username);
 
         // Validate username format if it's being changed (failsafe)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Some(new_username) = requested_username
+        if let Some(new_username) = params.requested_username
             && let Err(e) = validators::validate_username(new_username)
         {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let final_password = requested_password_hash.unwrap_or(&user.hashed_password);
-        let final_is_admin = requested_is_admin.unwrap_or(user.is_admin);
-        let final_enabled = requested_enabled.unwrap_or(user.enabled);
+        let final_password = params
+            .requested_password_hash
+            .unwrap_or(&user.hashed_password);
+        let final_is_admin = params.requested_is_admin.unwrap_or(user.is_admin);
+        let final_enabled = params.requested_enabled.unwrap_or(user.enabled);
 
         // Use a transaction to ensure user update and permissions are atomic
         let mut tx = self.pool.begin().await?;
@@ -540,7 +548,7 @@ impl UserDb {
             // Update was blocked - could be last admin protection or user not found
             // Rollback and check if user still exists to distinguish between the cases
             tx.rollback().await?;
-            if self.get_user_by_username(username).await?.is_some() {
+            if self.get_user_by_username(params.username).await?.is_some() {
                 // User exists but update was blocked - must be last admin protection
                 return Ok(false);
             }
@@ -548,17 +556,34 @@ impl UserDb {
             return Ok(false);
         }
 
-        // Update permissions if provided
-        if let Some(perms) = requested_permissions {
+        // Update permissions and/or revokes if provided
+        if let Some(perms) = params.requested_permissions {
             // Only set permissions for non-admin users
             if !final_is_admin {
-                Self::set_permissions_in_tx(&mut tx, user.id, perms, None).await?;
+                Self::set_permissions_in_tx(&mut tx, user.id, perms, params.requested_revokes)
+                    .await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
                 sqlx::query(sql::SQL_DELETE_PERMISSIONS)
                     .bind(user.id)
                     .execute(&mut *tx)
                     .await?;
+            }
+        } else if let Some(revokes) = params.requested_revokes {
+            // Revokes-only (no grant changes) — replace revoke overrides within this transaction
+            if !final_is_admin {
+                sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
+                    .bind(user.id)
+                    .execute(&mut *tx)
+                    .await?;
+                for perm in revokes {
+                    sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
+                        .bind(user.id)
+                        .bind(perm.as_str())
+                        .bind("revoke")
+                        .execute(&mut *tx)
+                        .await?;
+                }
             }
         }
 
@@ -601,6 +626,7 @@ impl UserDb {
     /// Set revoke override permissions for a user
     ///
     /// Replaces all revoke overrides with the given list.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub async fn set_revoke_permissions(
         &self,
         user_id: i64,
@@ -1032,7 +1058,15 @@ mod tests {
         let new_perms = Permissions::from(&[Permission::ChatReceive]);
 
         let updated = db
-            .update_user("alice", None, None, None, None, Some(&new_perms))
+            .update_user(UpdateUserParams {
+                username: "alice",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: Some(&new_perms),
+                requested_revokes: None,
+            })
             .await
             .unwrap();
         assert!(updated);
@@ -1356,8 +1390,24 @@ mod tests {
         let perms2 = Permissions::from(&[Permission::ChatSend]);
 
         let (result1, result2) = tokio::join!(
-            db1.update_user("bob", None, None, None, None, Some(&perms1)),
-            db2.update_user("bob", None, None, None, None, Some(&perms2))
+            db1.update_user(UpdateUserParams {
+                username: "bob",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: Some(&perms1),
+                requested_revokes: None,
+            }),
+            db2.update_user(UpdateUserParams {
+                username: "bob",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: Some(&perms2),
+                requested_revokes: None,
+            })
         );
 
         // Both operations should succeed
@@ -1740,14 +1790,15 @@ mod tests {
         // Update the user (change password, etc.) - is_shared should remain unchanged
         // Note: update_user doesn't have is_shared parameter because it's immutable
         let updated = db
-            .update_user(
-                "shared_acct",
-                None,             // no username change
-                Some("new_hash"), // change password
-                None,             // no admin change
-                None,             // no enabled change
-                None,             // no permission change
-            )
+            .update_user(UpdateUserParams {
+                username: "shared_acct",
+                requested_username: None,
+                requested_password_hash: Some("new_hash"),
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 

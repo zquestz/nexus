@@ -26,7 +26,7 @@ use super::{
     err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
 };
 use crate::db::sql::GUEST_USERNAME;
-use crate::db::{Permission, Permissions, hash_password, verify_password};
+use crate::db::{Permission, Permissions, UpdateUserParams, hash_password, verify_password};
 use crate::voice::send_voice_leave_notifications;
 
 /// User update request parameters
@@ -542,7 +542,9 @@ where
     };
 
     // Handle revoke override changes
-    if !is_self_edit
+    // Parse and validate revoke permissions here; DB write happens atomically
+    // inside update_user's transaction via the requested_revokes parameter.
+    let parsed_revokes: Option<Vec<Permission>> = if !is_self_edit
         && let Some(ref revoke_strings) = request.requested_revokes
         && let Some(ref account) = target_user_account
     {
@@ -590,16 +592,13 @@ where
                 }
             }
 
-            if let Err(e) = ctx
-                .db
-                .users
-                .set_revoke_permissions(account.id, &parsed_revokes)
-                .await
-            {
-                eprintln!("Error setting revoke permissions: {}", e);
-            }
+            Some(parsed_revokes)
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
     // Process password change request
     let requested_password_hash = if let Some(ref password) = request.requested_password {
@@ -665,14 +664,15 @@ where
     match ctx
         .db
         .users
-        .update_user(
-            &request.username,
-            request.requested_username.as_deref(),
-            requested_password_hash.as_deref(),
-            request.requested_is_admin,
-            request.requested_enabled,
-            parsed_permissions.as_ref(),
-        )
+        .update_user(UpdateUserParams {
+            username: &request.username,
+            requested_username: request.requested_username.as_deref(),
+            requested_password_hash: requested_password_hash.as_deref(),
+            requested_is_admin: request.requested_is_admin,
+            requested_enabled: request.requested_enabled,
+            requested_permissions: parsed_permissions.as_ref(),
+            requested_revokes: parsed_revokes.as_deref(),
+        })
         .await
     {
         Ok(true) => {
@@ -2085,6 +2085,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userupdate_revokes_survive_when_permissions_also_provided() {
+        let mut test_ctx = create_test_context().await;
+
+        // Create a group with chat_send and user_kick
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+            )
+            .await
+            .unwrap();
+
+        let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create bob in the group
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hashed",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Send UserUpdate with BOTH requested_permissions (grant override) and
+        // requested_revokes (revoke override). Before the fix, set_permissions_in_tx
+        // would DELETE all user_permissions rows (including revokes just written),
+        // then re-insert only grants — silently losing the revokes.
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: Some(vec!["ban_create".to_string()]),
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: Some(vec!["user_kick".to_string()]),
+            session_id: Some(admin_session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, .. } => {
+                assert!(success, "UserUpdate should succeed");
+            }
+            _ => panic!("Expected UserUpdateResponse, got {:?}", response),
+        }
+
+        // Verify revokes survived
+        let revokes = test_ctx
+            .db
+            .users
+            .get_revoke_permissions(bob.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            revokes,
+            vec![db::Permission::UserKick],
+            "Revoke override should survive when requested_permissions is also provided"
+        );
+
+        // Verify the grant override is also present
+        let effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+        let effective_vec = effective.to_vec();
+        assert!(
+            effective_vec.contains(&db::Permission::BanCreate),
+            "Grant override (ban_create) should be present"
+        );
+        assert!(
+            effective_vec.contains(&db::Permission::ChatSend),
+            "Group permission (chat_send) should be present"
+        );
+        assert!(
+            !effective_vec.contains(&db::Permission::UserKick),
+            "Revoked permission (user_kick) should NOT be in effective set"
+        );
+    }
+
+    #[tokio::test]
     async fn test_userupdate_unknown_grant_permission_returns_error() {
         let mut test_ctx = create_test_context().await;
 
@@ -2281,7 +2379,15 @@ mod tests {
         let result = test_ctx
             .db
             .users
-            .update_user(&admin1.username, None, None, None, Some(false), None)
+            .update_user(db::UpdateUserParams {
+                username: &admin1.username,
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(false),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
         assert!(!result, "Should not be able to disable the last admin");
@@ -2680,7 +2786,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user("admin2", None, None, None, None, Some(&perms))
+            .update_user(db::UpdateUserParams {
+                username: "admin2",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: None,
+                requested_permissions: Some(&perms),
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2690,14 +2804,15 @@ mod tests {
         let result = test_ctx
             .db
             .users
-            .update_user(
-                "admin1",
-                None,
-                None,
-                Some(false), // Try to demote last admin
-                None,
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "admin1",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: Some(false), // Try to demote last admin
+                requested_enabled: None,
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await;
 
         // Should return Ok(false) - update blocked by atomic SQL protection

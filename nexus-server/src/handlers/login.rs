@@ -2651,14 +2651,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2699,14 +2700,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2736,14 +2738,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2797,14 +2800,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2834,14 +2838,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 
@@ -2871,14 +2876,15 @@ mod tests {
         test_ctx
             .db
             .users
-            .update_user(
-                "guest",
-                None,
-                None,
-                None,
-                Some(true), // enabled
-                None,
-            )
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                requested_username: None,
+                requested_password_hash: None,
+                requested_is_admin: None,
+                requested_enabled: Some(true),
+                requested_permissions: None,
+                requested_revokes: None,
+            })
             .await
             .unwrap();
 

@@ -22,7 +22,7 @@ pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 pub use trusts::TrustDb;
-pub use users::{CreateUserParams, UserDb};
+pub use users::{CreateUserParams, UpdateUserParams, UserDb};
 
 use std::path::{Path, PathBuf};
 
