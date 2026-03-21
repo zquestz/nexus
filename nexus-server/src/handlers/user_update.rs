@@ -575,11 +575,8 @@ where
             if !requesting_user.is_admin
                 && let Ok(existing_revokes) = ctx.db.users.get_revoke_permissions(account.id).await
             {
-                for existing in existing_revokes {
-                    if let Some(perm) = Permission::parse(&existing)
-                        && !requesting_user.has_permission(perm)
-                        && !parsed_revokes.contains(&perm)
-                    {
+                for perm in existing_revokes {
+                    if !requesting_user.has_permission(perm) && !parsed_revokes.contains(&perm) {
                         parsed_revokes.push(perm);
                     }
                 }

@@ -584,12 +584,18 @@ impl UserDb {
     }
 
     /// Get revoke override permissions for a user
-    pub async fn get_revoke_permissions(&self, user_id: i64) -> Result<Vec<String>, sqlx::Error> {
+    pub async fn get_revoke_permissions(
+        &self,
+        user_id: i64,
+    ) -> Result<Vec<Permission>, sqlx::Error> {
         let rows: Vec<(String,)> = sqlx::query_as(SQL_SELECT_REVOKE_PERMISSIONS)
             .bind(user_id)
             .fetch_all(&self.pool)
             .await?;
-        Ok(rows.into_iter().map(|(p,)| p).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|(p,)| Permission::parse(&p))
+            .collect())
     }
 
     /// Set revoke override permissions for a user
@@ -2431,7 +2437,7 @@ mod tests {
 
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 1);
-        assert!(revokes.contains(&"user_kick".to_string()));
+        assert!(revokes.contains(&Permission::UserKick));
     }
 
     // ========================================================================
@@ -2477,7 +2483,7 @@ mod tests {
             .unwrap();
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 1);
-        assert!(revokes.contains(&"user_kick".to_string()));
+        assert!(revokes.contains(&Permission::UserKick));
 
         // Replace with different revokes
         db.set_revoke_permissions(user.id, &[Permission::BanCreate, Permission::ChatSend])
@@ -2485,10 +2491,10 @@ mod tests {
             .unwrap();
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 2);
-        assert!(revokes.contains(&"ban_create".to_string()));
-        assert!(revokes.contains(&"chat_send".to_string()));
+        assert!(revokes.contains(&Permission::BanCreate));
+        assert!(revokes.contains(&Permission::ChatSend));
         // Old revoke should be gone
-        assert!(!revokes.contains(&"user_kick".to_string()));
+        assert!(!revokes.contains(&Permission::UserKick));
     }
 
     #[tokio::test]

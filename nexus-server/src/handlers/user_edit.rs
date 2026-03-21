@@ -206,9 +206,11 @@ where
     };
 
     // Fetch revoke overrides for this user
-    let revoked_permissions = if target_user.group_id.is_some() {
+    let revoked_permissions: Option<Vec<String>> = if target_user.group_id.is_some() {
         match ctx.db.users.get_revoke_permissions(target_user.id).await {
-            Ok(revokes) if !revokes.is_empty() => Some(revokes),
+            Ok(revokes) if !revokes.is_empty() => {
+                Some(revokes.iter().map(|p| p.as_str().to_string()).collect())
+            }
             _ => None,
         }
     } else {
