@@ -552,8 +552,16 @@ where
                     Some(perm) => {
                         // Non-admins can only set revokes for permissions they have
                         if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
-                            // Skip — preserve existing revokes for perms requester can't control
-                            continue;
+                            eprintln!(
+                                "UserUpdate from {} (user: {}) trying to revoke permission they don't have: {}",
+                                ctx.peer_addr, requesting_user.username, perm_str
+                            );
+                            let response = ServerMessage::UserUpdateResponse {
+                                success: false,
+                                error: Some(err_permission_denied(ctx.locale)),
+                                username: None,
+                            };
+                            return ctx.send_message(&response).await;
                         }
                         parsed_revokes.push(perm);
                     }
@@ -564,17 +572,6 @@ where
                             username: None,
                         };
                         return ctx.send_message(&response).await;
-                    }
-                }
-            }
-
-            // Non-admin merge: preserve revokes the requester can't control
-            if !requesting_user.is_admin
-                && let Ok(existing_revokes) = ctx.db.users.get_revoke_permissions(account.id).await
-            {
-                for perm in existing_revokes {
-                    if !requesting_user.has_permission(perm) && !parsed_revokes.contains(&perm) {
-                        parsed_revokes.push(perm);
                     }
                 }
             }
@@ -4633,5 +4630,105 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(bob.group_id, Some(group.id), "Group should be unchanged");
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_revoke_unowned_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin editor with UserEdit + ChatSend (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group with ChatSend + UserKick
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Mods",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+            )
+            .await
+            .unwrap();
+
+        // Create a user assigned to the group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Non-admin editor tries to revoke UserKick (which editor doesn't have)
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: Some(vec!["user_kick".to_string()]),
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Should send error, not disconnect");
+
+        // Should be rejected — editor doesn't have UserKick
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(!success);
+                assert!(error.is_some());
+                let err_msg = error.unwrap();
+                assert!(
+                    err_msg.contains("ermission"),
+                    "Should be a permission error, got: {err_msg}"
+                );
+                assert!(username.is_none());
+            }
+            other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
+        }
+
+        // Verify bob has no revokes
+        let revokes = test_ctx
+            .db
+            .users
+            .get_revoke_permissions(
+                test_ctx
+                    .db
+                    .users
+                    .get_user_by_username("bob")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .id,
+            )
+            .await
+            .unwrap();
+        assert!(revokes.is_empty(), "No revokes should have been set");
     }
 }
