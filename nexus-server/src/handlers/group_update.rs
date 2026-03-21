@@ -21,7 +21,7 @@ use super::{
     err_permissions_empty_permission, err_permissions_invalid_characters,
     err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
 };
-use crate::db::Permission;
+use crate::db::{Permission, Permissions};
 use crate::voice::send_voice_leave_notifications;
 
 /// Handle a group update request
@@ -185,7 +185,7 @@ where
     let final_is_shared = is_shared.unwrap_or(group.is_shared);
 
     // Resolve final permissions
-    let final_permissions: Vec<Permission> = if let Some(ref requested_perms) = permissions {
+    let final_permissions_vec: Vec<Permission> = if let Some(ref requested_perms) = permissions {
         // Parse and validate each permission string
         let mut parsed_requested: Vec<Permission> = Vec::new();
         for perm_str in requested_perms {
@@ -231,7 +231,7 @@ where
 
     // Shared group permission validation: if final group is shared, all permissions must be allowed
     if final_is_shared {
-        for perm in &final_permissions {
+        for perm in &final_permissions_vec {
             if !is_shared_account_permission(perm.as_str()) {
                 let response = ServerMessage::GroupUpdateResponse {
                     success: false,
@@ -247,6 +247,8 @@ where
     // Capture old state for diff detection
     let old_name = group.name.clone();
     let old_permissions: HashSet<Permission> = current_permissions.into_iter().collect();
+
+    let final_permissions: Permissions = Permissions::from(final_permissions_vec.as_slice());
 
     // Update group in database
     match ctx
@@ -597,7 +599,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("OldName", false, &[])
+            .create_group("OldName", false, &Permissions::new())
             .await
             .expect("Failed to create group");
 
@@ -656,14 +658,14 @@ mod tests {
         let _group_a = test_ctx
             .db
             .groups
-            .create_group("GroupA", false, &[])
+            .create_group("GroupA", false, &Permissions::new())
             .await
             .expect("Failed to create GroupA");
 
         let group_b = test_ctx
             .db
             .groups
-            .create_group("GroupB", false, &[])
+            .create_group("GroupB", false, &Permissions::new())
             .await
             .expect("Failed to create GroupB");
 
@@ -710,7 +712,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -767,7 +769,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[])
+            .create_group("Staff", false, &Permissions::new())
             .await
             .expect("Failed to create group");
 
@@ -827,7 +829,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[])
+            .create_group("Staff", false, &Permissions::new())
             .await
             .expect("Failed to create group");
 
@@ -877,7 +879,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::UserKick])
+            .create_group("Staff", false, &Permissions::from(&[Permission::UserKick]))
             .await
             .expect("Failed to create group");
 
@@ -917,7 +919,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[])
+            .create_group("Staff", false, &Permissions::new())
             .await
             .expect("Failed to create group");
 
@@ -985,7 +987,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -1103,7 +1105,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -1219,7 +1221,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -1279,7 +1281,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -1368,7 +1370,7 @@ mod tests {
             .create_group(
                 "Listeners",
                 false,
-                &[Permission::VoiceListen, Permission::ChatSend],
+                &Permissions::from(&[Permission::VoiceListen, Permission::ChatSend]),
             )
             .await
             .expect("Failed to create group");
@@ -1478,7 +1480,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &[Permission::ChatSend, Permission::UserKick],
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
             )
             .await
             .expect("Failed to create group");
@@ -1599,7 +1601,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &[Permission::ChatSend, Permission::UserKick],
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
             )
             .await
             .expect("Failed to create group");
@@ -1701,7 +1703,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 
@@ -1837,7 +1839,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[Permission::ChatSend])
+            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .expect("Failed to create group");
 

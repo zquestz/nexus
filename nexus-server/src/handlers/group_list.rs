@@ -124,7 +124,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
+    use crate::db::{self, Permissions};
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
@@ -209,7 +209,7 @@ mod tests {
             .create_group(
                 "Staff",
                 false,
-                &[Permission::UserKick, Permission::BanCreate],
+                &Permissions::from(&[Permission::UserKick, Permission::BanCreate]),
             )
             .await
             .expect("Failed to create Staff group");
@@ -217,7 +217,7 @@ mod tests {
         test_ctx
             .db
             .groups
-            .create_group("Guests", true, &[])
+            .create_group("Guests", true, &Permissions::new())
             .await
             .expect("Failed to create Guests group");
 

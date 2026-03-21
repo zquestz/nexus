@@ -125,6 +125,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::Permissions;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
@@ -196,7 +197,7 @@ mod tests {
             .create_group(
                 "Editors",
                 false,
-                &[Permission::NewsEdit, Permission::ChatSend],
+                &Permissions::from(&[Permission::NewsEdit, Permission::ChatSend]),
             )
             .await
             .unwrap();
@@ -242,7 +243,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("SharedGroup", true, &[])
+            .create_group("SharedGroup", true, &Permissions::new())
             .await
             .unwrap();
 

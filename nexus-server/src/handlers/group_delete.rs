@@ -135,7 +135,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
+    use crate::db::{self, Permissions};
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
@@ -211,7 +211,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("TestGroup", false, &[])
+            .create_group("TestGroup", false, &Permissions::new())
             .await
             .unwrap();
 
@@ -257,7 +257,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("BusyGroup", false, &[])
+            .create_group("BusyGroup", false, &Permissions::new())
             .await
             .unwrap();
 
@@ -306,7 +306,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("AdminDeleteMe", false, &[])
+            .create_group("AdminDeleteMe", false, &Permissions::new())
             .await
             .unwrap();
 

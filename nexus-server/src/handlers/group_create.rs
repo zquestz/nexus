@@ -18,7 +18,7 @@ use super::{
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_unknown_permission,
 };
-use crate::db::Permission;
+use crate::db::{Permission, Permissions};
 
 /// Handle a group creation request from the client
 pub async fn handle_group_create<W>(
@@ -120,7 +120,7 @@ where
     }
 
     // Parse and validate requested permissions
-    let mut parsed_permissions: Vec<Permission> = Vec::new();
+    let mut parsed_permissions = Permissions::new();
     for perm_str in &permissions {
         let perm = match Permission::parse(perm_str) {
             Some(p) => p,
@@ -146,7 +146,7 @@ where
                 .await;
         }
 
-        parsed_permissions.push(perm);
+        parsed_permissions.add(perm);
     }
 
     // Create group in database

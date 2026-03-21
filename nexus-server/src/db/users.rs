@@ -274,7 +274,7 @@ impl UserDb {
             .await?;
 
         // Insert new permissions as grants
-        for perm in permissions.to_vec() {
+        for perm in permissions.iter() {
             sqlx::query(sql::SQL_INSERT_PERMISSION)
                 .bind(user_id)
                 .bind(perm.as_str())
@@ -819,14 +819,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific permissions
-        use std::collections::HashSet;
-        let mut perms = Permissions::new();
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set.insert(Permission::ChatSend);
-            set
-        };
+        let perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -859,13 +852,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create admin with permissions object (should be ignored)
-        let mut perms = Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set
-        };
+        let perms = Permissions::from(&[Permission::UserList]);
 
         let admin = db
             .create_user(CreateUserParams {
@@ -950,15 +937,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create non-admin with specific permissions
-        let mut perms = Permissions::new();
-        // Access internal field for testing
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set.insert(Permission::ChatReceive);
-            set
-        };
+        let perms = Permissions::from(&[Permission::UserList, Permission::ChatReceive]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -1018,14 +997,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with initial permissions
-        let mut initial_perms = Permissions::new();
-        use std::collections::HashSet;
-        initial_perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set.insert(Permission::ChatSend);
-            set
-        };
+        let initial_perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let _user = db
             .create_user(CreateUserParams {
@@ -1057,12 +1029,7 @@ mod tests {
         );
 
         // Update user with new permissions (should replace, not merge)
-        let mut new_perms = Permissions::new();
-        new_perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::ChatReceive);
-            set
-        };
+        let new_perms = Permissions::from(&[Permission::ChatReceive]);
 
         let updated = db
             .update_user("alice", None, None, None, None, Some(&new_perms))
@@ -1114,14 +1081,7 @@ mod tests {
         .unwrap();
 
         // Create user with permissions
-        let mut perms = Permissions::new();
-        use std::collections::HashSet;
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set.insert(Permission::ChatSend);
-            set
-        };
+        let perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -1391,20 +1351,9 @@ mod tests {
             .unwrap();
 
         // Set different permissions concurrently
-        use std::collections::HashSet;
-        let mut perms1 = Permissions::new();
-        perms1.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set
-        };
+        let perms1 = Permissions::from(&[Permission::UserList]);
 
-        let mut perms2 = Permissions::new();
-        perms2.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::ChatSend);
-            set
-        };
+        let perms2 = Permissions::from(&[Permission::ChatSend]);
 
         let (result1, result2) = tokio::join!(
             db1.update_user("bob", None, None, None, None, Some(&perms1)),
@@ -1505,15 +1454,11 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Create user with specific permissions
-        use std::collections::HashSet;
-        let mut perms = Permissions::new();
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::UserList);
-            set.insert(Permission::ChatSend);
-            set.insert(Permission::UserInfo);
-            set
-        };
+        let perms = Permissions::from(&[
+            Permission::UserList,
+            Permission::ChatSend,
+            Permission::UserInfo,
+        ]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -1832,7 +1777,11 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -1885,14 +1834,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // User with no group — legacy behavior (individual grants only)
-        use std::collections::HashSet;
-        let mut perms = Permissions::new();
-        perms.permissions = {
-            let mut set = HashSet::new();
-            set.insert(Permission::ChatSend);
-            set.insert(Permission::UserList);
-            set
-        };
+        let perms = Permissions::from(&[Permission::ChatSend, Permission::UserList]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -1923,7 +1865,11 @@ mod tests {
 
         // Group with chat_send + user_kick
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -1957,7 +1903,7 @@ mod tests {
 
         // Group with chat_send
         let group = group_db
-            .create_group("Basic", false, &[Permission::ChatSend])
+            .create_group("Basic", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
 
@@ -1999,7 +1945,11 @@ mod tests {
 
         // Group with chat_send + user_kick
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -2044,11 +1994,11 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[
+                &Permissions::from(&[
                     Permission::ChatSend,
                     Permission::UserKick,
                     Permission::BanCreate,
-                ],
+                ]),
             )
             .await
             .unwrap();
@@ -2102,7 +2052,7 @@ mod tests {
 
         // Group with chat_send only
         let group = group_db
-            .create_group("Basic", false, &[Permission::ChatSend])
+            .create_group("Basic", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
 
@@ -2140,8 +2090,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // User with no group, but has both grant and revoke overrides
-        let mut perms = Permissions::new();
-        perms.permissions.insert(Permission::ChatSend);
+        let perms = Permissions::from(&[Permission::ChatSend]);
 
         let user = db
             .create_user(CreateUserParams {
@@ -2189,7 +2138,10 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         // Group with no permissions
-        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Empty", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let user = db
             .create_user(CreateUserParams {
@@ -2216,7 +2168,10 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         // Group with no permissions, but user has a grant override
-        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Empty", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let user = db
             .create_user(CreateUserParams {
@@ -2251,7 +2206,10 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        let group = group_db.create_group("Team", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Team", false, &Permissions::new())
+            .await
+            .unwrap();
 
         db.create_user(CreateUserParams {
             username: "alice",
@@ -2297,11 +2255,11 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group1 = group_db
-            .create_group("Group1", false, &[Permission::ChatSend])
+            .create_group("Group1", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
         let group2 = group_db
-            .create_group("Group2", false, &[Permission::UserKick])
+            .create_group("Group2", false, &Permissions::from(&[Permission::UserKick]))
             .await
             .unwrap();
 
@@ -2340,7 +2298,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &[Permission::ChatSend])
+            .create_group("Team", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
 
@@ -2355,7 +2313,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &[Permission::ChatSend])
+            .create_group("Team", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
 
@@ -2417,7 +2375,11 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -2454,11 +2416,11 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[
+                &Permissions::from(&[
                     Permission::ChatSend,
                     Permission::UserKick,
                     Permission::BanCreate,
-                ],
+                ]),
             )
             .await
             .unwrap();
@@ -2504,7 +2466,11 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -2544,7 +2510,11 @@ mod tests {
 
         // Group with chat_send and user_kick
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
@@ -2607,7 +2577,11 @@ mod tests {
 
         // Group with chat_send and user_kick
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 

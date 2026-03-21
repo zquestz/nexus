@@ -2025,7 +2025,11 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &[db::Permission::ChatSend])
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
             .await
             .unwrap();
 
@@ -4062,7 +4066,7 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[db::Permission::ChatSend, db::Permission::UserKick],
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
             )
             .await
             .unwrap();
@@ -4150,7 +4154,7 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[db::Permission::ChatSend, db::Permission::UserKick],
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
             )
             .await
             .unwrap();

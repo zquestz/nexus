@@ -202,6 +202,13 @@ impl Permissions {
         self.permissions.iter().copied().collect()
     }
 
+    /// Iterate over the permissions in the set
+    ///
+    /// Returns an iterator over the permissions. The order is not guaranteed.
+    pub fn iter(&self) -> impl Iterator<Item = &Permission> {
+        self.permissions.iter()
+    }
+
     /// Add a permission to the set
     ///
     /// If the permission already exists in the set, this is a no-op.
@@ -223,6 +230,20 @@ impl Permissions {
 impl Default for Permissions {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<&[Permission]> for Permissions {
+    fn from(slice: &[Permission]) -> Self {
+        Self {
+            permissions: slice.iter().copied().collect(),
+        }
+    }
+}
+
+impl<const N: usize> From<&[Permission; N]> for Permissions {
+    fn from(array: &[Permission; N]) -> Self {
+        Self::from(array.as_slice())
     }
 }
 

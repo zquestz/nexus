@@ -1449,7 +1449,7 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[db::Permission::ChatSend, db::Permission::UserKick],
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
             )
             .await
             .unwrap();
@@ -1509,7 +1509,11 @@ mod tests {
         let regular_group = test_ctx
             .db
             .groups
-            .create_group("Regular", false, &[db::Permission::ChatSend])
+            .create_group(
+                "Regular",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
             .await
             .unwrap();
 
@@ -1517,7 +1521,11 @@ mod tests {
         let shared_group = test_ctx
             .db
             .groups
-            .create_group("Shared", true, &[db::Permission::ChatSend])
+            .create_group(
+                "Shared",
+                true,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
             .await
             .unwrap();
 

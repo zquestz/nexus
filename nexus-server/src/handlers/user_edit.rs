@@ -722,7 +722,7 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[db::Permission::ChatSend, db::Permission::UserKick],
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
             )
             .await
             .unwrap();

@@ -6,7 +6,7 @@
 use nexus_common::validators;
 use sqlx::sqlite::SqlitePool;
 
-use crate::db::permissions::Permission;
+use crate::db::permissions::{Permission, Permissions};
 use crate::db::sql;
 
 /// A group record from the database
@@ -113,14 +113,14 @@ impl GroupDb {
     async fn set_permissions_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         group_id: i64,
-        permissions: &[Permission],
+        permissions: &Permissions,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_DELETE_GROUP_PERMISSIONS)
             .bind(group_id)
             .execute(&mut **tx)
             .await?;
 
-        for perm in permissions {
+        for perm in permissions.iter() {
             sqlx::query(sql::SQL_INSERT_GROUP_PERMISSION)
                 .bind(group_id)
                 .bind(perm.as_str())
@@ -143,7 +143,7 @@ impl GroupDb {
         &self,
         name: &str,
         is_shared: bool,
-        permissions: &[Permission],
+        permissions: &Permissions,
     ) -> Result<GroupRecord, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
@@ -184,7 +184,7 @@ impl GroupDb {
         id: i64,
         name: &str,
         is_shared: bool,
-        permissions: &[Permission],
+        permissions: &Permissions,
     ) -> Result<Option<GroupRecord>, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
@@ -236,7 +236,7 @@ impl GroupDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::permissions::Permission;
+    use crate::db::permissions::{Permission, Permissions};
     use crate::db::testing::create_test_db;
 
     // ========================================================================
@@ -252,7 +252,7 @@ mod tests {
             .create_group(
                 "Moderators",
                 false,
-                &[Permission::ChatSend, Permission::UserKick],
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
             )
             .await
             .unwrap();
@@ -271,7 +271,7 @@ mod tests {
             .create_group(
                 "SharedUsers",
                 true,
-                &[Permission::ChatSend, Permission::ChatReceive],
+                &Permissions::from(&[Permission::ChatSend, Permission::ChatReceive]),
             )
             .await
             .unwrap();
@@ -285,7 +285,10 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Empty", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let perms = group_db.get_group_permissions(group.id).await.unwrap();
         assert!(perms.is_empty());
@@ -296,10 +299,15 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db.create_group("Admins", false, &[]).await.unwrap();
+        group_db
+            .create_group("Admins", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Same name (exact case) should fail
-        let result = group_db.create_group("Admins", false, &[]).await;
+        let result = group_db
+            .create_group("Admins", false, &Permissions::new())
+            .await;
         assert!(result.is_err());
     }
 
@@ -308,13 +316,20 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db.create_group("Admins", false, &[]).await.unwrap();
+        group_db
+            .create_group("Admins", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Different case should also fail (case-insensitive unique index)
-        let result = group_db.create_group("admins", false, &[]).await;
+        let result = group_db
+            .create_group("admins", false, &Permissions::new())
+            .await;
         assert!(result.is_err());
 
-        let result = group_db.create_group("ADMINS", false, &[]).await;
+        let result = group_db
+            .create_group("ADMINS", false, &Permissions::new())
+            .await;
         assert!(result.is_err());
     }
 
@@ -324,11 +339,13 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         // Empty name
-        let result = group_db.create_group("", false, &[]).await;
+        let result = group_db.create_group("", false, &Permissions::new()).await;
         assert!(result.is_err());
 
         // Name with forbidden characters
-        let result = group_db.create_group("bad/name", false, &[]).await;
+        let result = group_db
+            .create_group("bad/name", false, &Permissions::new())
+            .await;
         assert!(result.is_err());
     }
 
@@ -342,7 +359,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let created = group_db
-            .create_group("TestGroup", false, &[])
+            .create_group("TestGroup", false, &Permissions::new())
             .await
             .unwrap();
 
@@ -377,9 +394,18 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db.create_group("Zebra", false, &[]).await.unwrap();
-        group_db.create_group("alpha", false, &[]).await.unwrap();
-        group_db.create_group("Mods", true, &[]).await.unwrap();
+        group_db
+            .create_group("Zebra", false, &Permissions::new())
+            .await
+            .unwrap();
+        group_db
+            .create_group("alpha", false, &Permissions::new())
+            .await
+            .unwrap();
+        group_db
+            .create_group("Mods", true, &Permissions::new())
+            .await
+            .unwrap();
 
         let groups = group_db.get_all_groups().await.unwrap();
         assert_eq!(groups.len(), 3);
@@ -398,11 +424,11 @@ mod tests {
             .create_group(
                 "Mods",
                 false,
-                &[
+                &Permissions::from(&[
                     Permission::UserKick,
                     Permission::ChatSend,
                     Permission::BanCreate,
-                ],
+                ]),
             )
             .await
             .unwrap();
@@ -433,7 +459,10 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("Empty", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Empty", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let count = group_db.get_member_count(group.id).await.unwrap();
         assert_eq!(count, 0);
@@ -445,7 +474,10 @@ mod tests {
         let group_db = GroupDb::new(pool.clone());
         let user_db = crate::db::UserDb::new(pool.clone());
 
-        let group = group_db.create_group("Team", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Team", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Create users and assign them to the group
         let user1 = user_db
@@ -503,12 +535,21 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("OldName", false, &[Permission::ChatSend])
+            .create_group(
+                "OldName",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+            )
             .await
             .unwrap();
 
         let updated = group_db
-            .update_group(group.id, "NewName", false, &[Permission::ChatSend])
+            .update_group(
+                group.id,
+                "NewName",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+            )
             .await
             .unwrap()
             .unwrap();
@@ -522,11 +563,14 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("Flex", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Flex", false, &Permissions::new())
+            .await
+            .unwrap();
         assert!(!group.is_shared);
 
         let updated = group_db
-            .update_group(group.id, "Flex", true, &[])
+            .update_group(group.id, "Flex", true, &Permissions::new())
             .await
             .unwrap()
             .unwrap();
@@ -540,7 +584,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend])
+            .create_group("Mods", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
 
@@ -553,7 +597,7 @@ mod tests {
                 group.id,
                 "Mods",
                 false,
-                &[Permission::UserKick, Permission::BanCreate],
+                &Permissions::from(&[Permission::UserKick, Permission::BanCreate]),
             )
             .await
             .unwrap();
@@ -571,12 +615,16 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Mods", false, &[Permission::ChatSend, Permission::UserKick])
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
             .await
             .unwrap();
 
         group_db
-            .update_group(group.id, "Mods", false, &[])
+            .update_group(group.id, "Mods", false, &Permissions::new())
             .await
             .unwrap();
 
@@ -590,7 +638,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let result = group_db
-            .update_group(99999, "Ghost", false, &[])
+            .update_group(99999, "Ghost", false, &Permissions::new())
             .await
             .unwrap();
 
@@ -602,12 +650,18 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db.create_group("GroupA", false, &[]).await.unwrap();
-        let group_b = group_db.create_group("GroupB", false, &[]).await.unwrap();
+        group_db
+            .create_group("GroupA", false, &Permissions::new())
+            .await
+            .unwrap();
+        let group_b = group_db
+            .create_group("GroupB", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Try to rename GroupB to GroupA
         let result = group_db
-            .update_group(group_b.id, "GroupA", false, &[])
+            .update_group(group_b.id, "GroupA", false, &Permissions::new())
             .await;
         assert!(result.is_err());
     }
@@ -617,12 +671,18 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        group_db.create_group("GroupA", false, &[]).await.unwrap();
-        let group_b = group_db.create_group("GroupB", false, &[]).await.unwrap();
+        group_db
+            .create_group("GroupA", false, &Permissions::new())
+            .await
+            .unwrap();
+        let group_b = group_db
+            .create_group("GroupB", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Try to rename GroupB to "groupa" (case-insensitive conflict)
         let result = group_db
-            .update_group(group_b.id, "groupa", false, &[])
+            .update_group(group_b.id, "groupa", false, &Permissions::new())
             .await;
         assert!(result.is_err());
     }
@@ -632,11 +692,19 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("MyGroup", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("MyGroup", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Updating with the same name (same case) should succeed
         let updated = group_db
-            .update_group(group.id, "MyGroup", false, &[Permission::ChatSend])
+            .update_group(
+                group.id,
+                "MyGroup",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+            )
             .await
             .unwrap()
             .unwrap();
@@ -649,11 +717,14 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("mygroup", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("mygroup", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Changing case of own name should succeed (same row, no conflict)
         let updated = group_db
-            .update_group(group.id, "MyGroup", false, &[])
+            .update_group(group.id, "MyGroup", false, &Permissions::new())
             .await
             .unwrap()
             .unwrap();
@@ -666,15 +737,20 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("Valid", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Valid", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Empty name
-        let result = group_db.update_group(group.id, "", false, &[]).await;
+        let result = group_db
+            .update_group(group.id, "", false, &Permissions::new())
+            .await;
         assert!(result.is_err());
 
         // Forbidden characters
         let result = group_db
-            .update_group(group.id, "bad/name", false, &[])
+            .update_group(group.id, "bad/name", false, &Permissions::new())
             .await;
         assert!(result.is_err());
     }
@@ -689,7 +765,11 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("ToDelete", false, &[Permission::ChatSend])
+            .create_group(
+                "ToDelete",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+            )
             .await
             .unwrap();
 
@@ -719,7 +799,10 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        let group = group_db.create_group("Once", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Once", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let first = group_db.delete_group(group.id).await.unwrap();
         assert!(first);
@@ -734,7 +817,10 @@ mod tests {
         let group_db = GroupDb::new(pool.clone());
         let user_db = crate::db::UserDb::new(pool.clone());
 
-        let group = group_db.create_group("Busy", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Busy", false, &Permissions::new())
+            .await
+            .unwrap();
 
         // Create a user and assign to group
         let user = user_db
@@ -780,7 +866,10 @@ mod tests {
         let group_db = GroupDb::new(pool.clone());
         let user_db = crate::db::UserDb::new(pool.clone());
 
-        let group = group_db.create_group("Temp", false, &[]).await.unwrap();
+        let group = group_db
+            .create_group("Temp", false, &Permissions::new())
+            .await
+            .unwrap();
 
         let user = user_db
             .create_user(crate::db::CreateUserParams {
@@ -821,14 +910,14 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group_a = group_db
-            .create_group("GroupA", false, &[Permission::ChatSend])
+            .create_group("GroupA", false, &Permissions::from(&[Permission::ChatSend]))
             .await
             .unwrap();
         let group_b = group_db
             .create_group(
                 "GroupB",
                 true,
-                &[Permission::FileDownload, Permission::FileList],
+                &Permissions::from(&[Permission::FileDownload, Permission::FileList]),
             )
             .await
             .unwrap();
