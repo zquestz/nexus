@@ -456,6 +456,29 @@ where
                 if account.group_id == Some(new_group_id) {
                     (false, None)
                 } else {
+                    // Non-admin delegation: requester must have all current group
+                    // permissions (moving away removes them, same check as remove_group)
+                    if !requesting_user.is_admin
+                        && let Some(current_group_id) = account.group_id
+                    {
+                        let old_group_perms = ctx
+                            .db
+                            .groups
+                            .get_group_permissions(current_group_id)
+                            .await
+                            .unwrap_or_default();
+                        for perm in &old_group_perms {
+                            if !requesting_user.has_permission(*perm) {
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_permission_denied(ctx.locale)),
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
+                            }
+                        }
+                    }
+
                     // Fetch the group
                     let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
                         Ok(Some(g)) => g,
@@ -572,6 +595,20 @@ where
                             username: None,
                         };
                         return ctx.send_message(&response).await;
+                    }
+                }
+            }
+
+            // Non-admin merge: preserve existing revokes for permissions the
+            // requester can't control (same pattern as grant permission merge)
+            if !requesting_user.is_admin
+                && let Ok(existing_revokes) = ctx.db.users.get_revoke_permissions(account.id).await
+            {
+                for existing_revoke in existing_revokes {
+                    if !requesting_user.has_permission(existing_revoke)
+                        && !parsed_revokes.contains(&existing_revoke)
+                    {
+                        parsed_revokes.push(existing_revoke);
                     }
                 }
             }
@@ -901,7 +938,7 @@ where
                         .get_session_ids_for_user(&updated_account.username)
                         .await;
 
-                    let (login_time, locale, avatar) = if !session_ids.is_empty() {
+                    let (login_time, locale, avatar, is_away, status) = if !session_ids.is_empty() {
                         let user_sessions = ctx
                             .user_manager
                             .get_sessions_by_username(&updated_account.username)
@@ -918,15 +955,16 @@ where
                             .map(|u| u.locale.clone())
                             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
-                        // Avatar from most recent login
-                        let avatar = user_sessions
-                            .iter()
-                            .max_by_key(|u| u.login_time)
-                            .and_then(|u| u.avatar.clone());
+                        // Avatar, is_away, status from most recent login
+                        let latest = user_sessions.iter().max_by_key(|u| u.login_time);
 
-                        (login_time, locale, avatar)
+                        let avatar = latest.and_then(|u| u.avatar.clone());
+                        let is_away = latest.is_some_and(|u| u.is_away);
+                        let status = latest.and_then(|u| u.status.clone());
+
+                        (login_time, locale, avatar, is_away, status)
                     } else {
-                        (0, DEFAULT_LOCALE.to_string(), None) // User not currently online
+                        (0, DEFAULT_LOCALE.to_string(), None, false, None)
                     };
 
                     let user_info = UserInfo {
@@ -940,8 +978,8 @@ where
                         session_ids,
                         locale,
                         avatar,
-                        is_away: false,
-                        status: None,
+                        is_away,
+                        status,
                         group_id: updated_group_id,
                         group_name: updated_group_name,
                     };
@@ -4730,5 +4768,200 @@ mod tests {
             .await
             .unwrap();
         assert!(revokes.is_empty(), "No revokes should have been set");
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_move_from_high_privilege_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin editor with UserEdit + ChatSend (but NOT BanCreate)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a high-privilege group with BanCreate (editor doesn't have this)
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Admins",
+                false,
+                &db::Permissions::from(&[db::Permission::BanCreate]),
+            )
+            .await
+            .unwrap();
+
+        // Create a low-privilege group with ChatSend (editor has this)
+        let low_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Basic",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+            )
+            .await
+            .unwrap();
+
+        // Create bob in the high-privilege group
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(high_group.id),
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        // Non-admin editor tries to move bob from high-privilege to low-privilege group
+        // This should be rejected — editor doesn't have BanCreate from the old group
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: Some(low_group.id),
+            remove_group: None,
+            requested_revokes: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Should reject — editor can't control old group");
+                assert!(error.is_some());
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+
+        // Verify bob is still in the high-privilege group
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.group_id, Some(high_group.id));
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_revoke_merge_preserves_unowned_revokes() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin editor with UserEdit + ChatSend (but NOT BanCreate)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group with ChatSend + BanCreate
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Mods",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::BanCreate]),
+            )
+            .await
+            .unwrap();
+
+        // Create bob assigned to the group, with an existing revoke for BanCreate
+        // (set by admin — editor doesn't have BanCreate)
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[db::Permission::BanCreate],
+            })
+            .await
+            .unwrap();
+
+        // Verify initial state: bob has BanCreate revoke
+        let revokes = test_ctx
+            .db
+            .users
+            .get_revoke_permissions(bob.id)
+            .await
+            .unwrap();
+        assert_eq!(revokes.len(), 1);
+        assert!(revokes.contains(&db::Permission::BanCreate));
+
+        // Non-admin editor adds a ChatSend revoke (which they control)
+        // The existing BanCreate revoke (which they DON'T control) should be preserved
+        let request = UserUpdateRequest {
+            current_password: None,
+            username: "bob".to_string(),
+            requested_username: None,
+            requested_password: None,
+            requested_is_admin: None,
+            requested_enabled: None,
+            requested_permissions: None,
+            requested_group_id: None,
+            remove_group: None,
+            requested_revokes: Some(vec!["chat_send".to_string()]),
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "Should succeed: {error:?}");
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+
+        // Verify: both revokes exist — ChatSend (requested) + BanCreate (preserved)
+        let revokes = test_ctx
+            .db
+            .users
+            .get_revoke_permissions(bob.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            revokes.len(),
+            2,
+            "Should have 2 revokes (requested + preserved), got: {revokes:?}"
+        );
+        assert!(
+            revokes.contains(&db::Permission::ChatSend),
+            "ChatSend revoke should be set (editor requested it)"
+        );
+        assert!(
+            revokes.contains(&db::Permission::BanCreate),
+            "BanCreate revoke should be preserved (editor can't control it)"
+        );
     }
 }

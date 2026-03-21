@@ -202,8 +202,10 @@ where
             }
         }
 
-        // Non-admins can only set permissions they themselves hold
+        // Non-admins: validate requested permissions, then merge with
+        // current group permissions the requester can't control
         if !requesting_user.is_admin {
+            // Reject if requesting a permission the editor doesn't hold
             for perm in &parsed_requested {
                 if !requesting_user.has_permission(*perm) {
                     eprintln!(
@@ -219,9 +221,24 @@ where
                     return ctx.send_message(&response).await;
                 }
             }
-        }
 
-        parsed_requested
+            // Merge: preserve current group permissions the requester can't
+            // control, then layer in the requested changes
+            let mut merged = Vec::new();
+            for perm in &current_permissions {
+                if !requesting_user.has_permission(*perm) {
+                    merged.push(*perm);
+                }
+            }
+            for perm in parsed_requested {
+                if !merged.contains(&perm) {
+                    merged.push(perm);
+                }
+            }
+            merged
+        } else {
+            parsed_requested
+        }
     } else {
         // No permission changes requested — pass through current permissions unchanged
         current_permissions.clone()
@@ -1076,6 +1093,135 @@ mod tests {
         assert_eq!(perms.len(), 2);
         assert!(perms.contains(&Permission::ChatSend));
         assert!(perms.contains(&Permission::UserList));
+    }
+
+    #[tokio::test]
+    async fn test_group_update_non_admin_merge_preserves_unowned_permissions() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin with GroupEdit + ChatSend (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[Permission::GroupEdit, Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Create a group with ChatSend + UserKick
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+            )
+            .await
+            .expect("Failed to create group");
+
+        // Editor sends only ChatSend (the one they control)
+        // UserKick should be preserved automatically
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            Some(vec!["chat_send".to_string()]),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "Should accept owned permissions with merge");
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+
+        // Verify: ChatSend kept (requested), UserKick preserved (unowned by editor)
+        let perms = test_ctx
+            .db
+            .groups
+            .get_group_permissions(group.id)
+            .await
+            .unwrap();
+        assert_eq!(perms.len(), 2);
+        assert!(perms.contains(&Permission::ChatSend));
+        assert!(perms.contains(&Permission::UserKick));
+    }
+
+    #[tokio::test]
+    async fn test_group_update_non_admin_merge_can_remove_owned_permission() {
+        let mut test_ctx = create_test_context().await;
+
+        // Login as non-admin with GroupEdit + ChatSend + UserList (but NOT UserKick)
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[
+                Permission::GroupEdit,
+                Permission::ChatSend,
+                Permission::UserList,
+            ],
+            false,
+        )
+        .await;
+
+        // Create a group with ChatSend + UserList + UserKick
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[
+                    Permission::ChatSend,
+                    Permission::UserList,
+                    Permission::UserKick,
+                ]),
+            )
+            .await
+            .expect("Failed to create group");
+
+        // Editor sends only ChatSend — removing UserList (which they control)
+        // UserKick should be preserved (editor can't control it)
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            Some(vec!["chat_send".to_string()]),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "Should succeed with merge");
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+
+        // Verify: ChatSend kept, UserList removed (editor's choice), UserKick preserved
+        let perms = test_ctx
+            .db
+            .groups
+            .get_group_permissions(group.id)
+            .await
+            .unwrap();
+        assert_eq!(perms.len(), 2);
+        assert!(perms.contains(&Permission::ChatSend));
+        assert!(perms.contains(&Permission::UserKick));
+        assert!(!perms.contains(&Permission::UserList));
     }
 
     // ========================================================================
