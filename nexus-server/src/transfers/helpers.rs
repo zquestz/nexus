@@ -206,6 +206,7 @@ pub(crate) fn login_error_response(error: String) -> ServerMessage {
         success: false,
         error: Some(error),
         session_id: None,
+        user_id: None,
         is_admin: None,
         permissions: None,
         server_info: None,

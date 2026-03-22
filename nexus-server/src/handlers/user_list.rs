@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io;
 
 /// Aggregated user data for deduplication
-/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status, group_id, group_name)
+/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status, group_id, group_name, user_id)
 /// Note: avatar, is_away, status, group_id, and group_name all use "latest login wins" - tracked via latest_session_login_time
 type UserAggregateData = (
     i64,
@@ -18,6 +18,7 @@ type UserAggregateData = (
     Option<String>,
     Option<i64>,
     Option<String>,
+    i64,
 );
 
 use tokio::io::AsyncWrite;
@@ -114,6 +115,7 @@ where
                     .group_id
                     .and_then(|gid| group_name_map.get(&gid).cloned());
                 UserInfo {
+                    id: db_user.id,
                     nickname: db_user.username.clone(), // For accounts, nickname == username
                     username: db_user.username,
                     login_time: db_user.created_at,
@@ -155,6 +157,7 @@ where
             // Shared accounts are NOT aggregated - each session is a separate entry
             // For shared accounts, nickname is the session's display name
             shared_user_infos.push(UserInfo {
+                id: user.user_id,
                 username: user.username.clone(),
                 nickname: user.nickname.clone(),
                 login_time: user.login_time,
@@ -187,6 +190,7 @@ where
                         status,
                         group_id,
                         group_name,
+                        _,
                     )| {
                         // Keep earliest login time for display
                         *login_time = (*login_time).min(user.login_time);
@@ -214,6 +218,7 @@ where
                     user.status.clone(),
                     user.group_id,
                     user.group_name.clone(),
+                    user.user_id,
                 ));
         }
     }
@@ -236,9 +241,11 @@ where
                     status,
                     group_id,
                     group_name,
+                    user_id,
                 ),
             )| {
                 UserInfo {
+                    id: user_id,
                     // For regular accounts, nickname == username
                     nickname: username.clone(),
                     username,
@@ -447,7 +454,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -523,7 +530,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -551,7 +558,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 2,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -624,7 +631,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1255,7 +1262,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1283,7 +1290,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 2,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1360,7 +1367,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "shared_acct".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1385,7 +1392,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 2,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "shared_acct".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1492,7 +1499,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 200,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "bob".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,

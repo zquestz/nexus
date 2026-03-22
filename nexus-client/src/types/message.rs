@@ -299,10 +299,10 @@ pub enum Message {
     UserManagementPermissionToggled(String, bool),
     /// User management: Create user button pressed
     UserManagementCreatePressed,
-    /// User management: Edit button clicked on user in list
-    UserManagementEditClicked(String),
-    /// User management: Delete button clicked on user in list
-    UserManagementDeleteClicked(String),
+    /// User management: Edit button clicked on user in list (user_id, username)
+    UserManagementEditClicked(i64, String),
+    /// User management: Delete button clicked on user in list (user_id, username)
+    UserManagementDeleteClicked(i64, String),
     /// User management: Confirm delete button pressed in modal
     UserManagementConfirmDelete,
     /// User management: Cancel delete (close modal)

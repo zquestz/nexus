@@ -261,13 +261,11 @@ const HANDSHAKE_SIZE: usize =
 const USER_BROADCAST_SIZE: usize =
     json_type_base("UserBroadcast") + json_string_field("message", MAX_MESSAGE_LENGTH);
 
-/// UserDelete: {"type":"UserDelete","username":"...32..."}
-const USER_DELETE_SIZE: usize =
-    json_type_base("UserDelete") + json_string_field("username", MAX_USERNAME_LENGTH);
+/// UserDelete: {"type":"UserDelete","id":i64}
+const USER_DELETE_SIZE: usize = json_type_base("UserDelete") + json_i64_field("id");
 
-/// UserEdit: {"type":"UserEdit","username":"...32..."}
-const USER_EDIT_SIZE: usize =
-    json_type_base("UserEdit") + json_string_field("username", MAX_USERNAME_LENGTH);
+/// UserEdit: {"type":"UserEdit","id":i64}
+const USER_EDIT_SIZE: usize = json_type_base("UserEdit") + json_i64_field("id");
 
 /// UserInfo: {"type":"UserInfo","nickname":"...64..."}
 const USER_INFO_SIZE: usize =
@@ -578,10 +576,11 @@ const USER_BROADCAST_RESPONSE_SIZE: usize = json_type_base("UserBroadcastRespons
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH);
 
-/// UserCreateResponse: {"type":"UserCreateResponse","success":false,"error":"...2048...","username":"...32..."}
+/// UserCreateResponse: {"type":"UserCreateResponse","success":false,"error":"...2048...","id":i64,"username":"...32..."}
 const USER_CREATE_RESPONSE_SIZE: usize = json_type_base("UserCreateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
     + json_string_field("username", MAX_USERNAME_LENGTH);
 
 /// UserDeleteResponse: {"type":"UserDeleteResponse","success":false,"error":"...2048...","username":"...32..."}
@@ -590,10 +589,11 @@ const USER_DELETE_RESPONSE_SIZE: usize = json_type_base("UserDeleteResponse")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_field("username", MAX_USERNAME_LENGTH);
 
-/// UserUpdateResponse: {"type":"UserUpdateResponse","success":false,"error":"...2048...","username":"...32..."}
+/// UserUpdateResponse: {"type":"UserUpdateResponse","success":false,"error":"...2048...","id":i64,"username":"...32..."}
 const USER_UPDATE_RESPONSE_SIZE: usize = json_type_base("UserUpdateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
     + json_string_field("username", MAX_USERNAME_LENGTH);
 
 /// UserKickResponse: {"type":"UserKickResponse","success":false,"error":"...2048...","nickname":"...32..."}
@@ -739,8 +739,9 @@ const FILE_CREATE_DIR_RESPONSE_SIZE: usize = json_type_base("FileCreateDirRespon
     + json_string_field("path", MAX_CREATED_DIR_PATH);
 
 /// UserInfo struct size (nested object in responses):
-/// {"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...10...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
-const USER_INFO_STRUCT_SIZE: usize = json_first_string_field("username", MAX_USERNAME_LENGTH)
+/// {"id":i64,"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...10...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
+const USER_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
+    + json_string_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("login_time")
     + json_bool_field("is_admin")
@@ -769,7 +770,8 @@ const USER_UPDATED_SIZE: usize = json_type_base("UserUpdated")
 
 /// UserInfoDetailed struct size (nested object in UserInfoResponse):
 /// Has more fields than UserInfo: features, created_at, addresses, channels
-const USER_INFO_DETAILED_SIZE: usize = json_first_string_field("username", MAX_USERNAME_LENGTH)
+const USER_INFO_DETAILED_SIZE: usize = json_first_i64_field("id")
+    + json_string_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("login_time")
     + json_bool_field("is_shared")
@@ -922,31 +924,24 @@ const USER_CREATE_SIZE: usize = json_type_base("UserCreate")
     + json_i64_field("group_id")
     + json_string_array_field("revokes", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
 
-/// UserUpdate: {"type":"UserUpdate","username":"...32...","current_password":"...256...","requested_username":"...32...","requested_password":"...256...","requested_is_admin":false,"requested_enabled":false,"requested_permissions":["...32...",...],"requested_group_id":i64,"remove_group":false,"requested_revokes":["...32...",...]}
+/// UserUpdate: {"type":"UserUpdate","id":i64,"current_password":"...256...","username":"...32...","password":"...256...","is_admin":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"remove_group":false,"revokes":["...32...",...]}
 const USER_UPDATE_SIZE: usize = json_type_base("UserUpdate")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_i64_field("id")
     + json_string_field("current_password", MAX_PASSWORD_LENGTH)
-    + json_string_field("requested_username", MAX_USERNAME_LENGTH)
-    + json_string_field("requested_password", MAX_PASSWORD_LENGTH)
-    + json_bool_field("requested_is_admin")
-    + json_bool_field("requested_enabled")
-    + json_string_array_field(
-        "requested_permissions",
-        PERMISSIONS_COUNT,
-        MAX_PERMISSION_LENGTH,
-    )
-    + json_i64_field("requested_group_id")
+    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_field("password", MAX_PASSWORD_LENGTH)
+    + json_bool_field("is_admin")
+    + json_bool_field("enabled")
+    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_i64_field("group_id")
     + json_bool_field("remove_group")
-    + json_string_array_field(
-        "requested_revokes",
-        PERMISSIONS_COUNT,
-        MAX_PERMISSION_LENGTH,
-    );
+    + json_string_array_field("revokes", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
 
-/// UserEditResponse: {"type":"UserEditResponse","success":false,"error":"...2048...","username":"...32...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"group_name":"...32...","group_permissions":["...32...",...],"revoked_permissions":["...32...",...],"available_groups":[{...},...]}
+/// UserEditResponse: {"type":"UserEditResponse","success":false,"error":"...2048...","id":i64,"username":"...32...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"group_name":"...32...","group_permissions":["...32...",...],"revoked_permissions":["...32...",...],"available_groups":[{...},...]}
 const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
     + json_string_field("username", MAX_USERNAME_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
@@ -970,11 +965,12 @@ const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_field("channel", MAX_CHA
     + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + 2; // {} braces
 
-/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...10...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
+/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...10...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
 const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_u32_field("session_id")
+    + json_i64_field("user_id")
     + json_bool_field("is_admin")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_object_field_start("server_info")
@@ -2083,9 +2079,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_delete() {
-        let msg = ClientMessage::UserDelete {
-            username: str_of_len(MAX_USERNAME_LENGTH),
-        };
+        let msg = ClientMessage::UserDelete { id: i64::MAX };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserDelete") as usize,
             "{} size {} exceeds limit {}",
@@ -2097,9 +2091,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_edit() {
-        let msg = ClientMessage::UserEdit {
-            username: str_of_len(MAX_USERNAME_LENGTH),
-        };
+        let msg = ClientMessage::UserEdit { id: i64::MAX };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserEdit") as usize,
             "{} size {} exceeds limit {}",
@@ -2165,20 +2157,20 @@ mod tests {
     #[test]
     fn test_limit_user_update() {
         let msg = ClientMessage::UserUpdate {
-            username: str_of_len(MAX_USERNAME_LENGTH),
+            id: i64::MAX,
             current_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
-            requested_username: Some(str_of_len(MAX_USERNAME_LENGTH)),
-            requested_password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
-            requested_is_admin: Some(false),
-            requested_enabled: Some(false),
-            requested_permissions: Some(
+            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
+            password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
+            is_admin: Some(false),
+            enabled: Some(false),
+            permissions: Some(
                 (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
-            requested_group_id: Some(i64::MAX),
+            group_id: Some(i64::MAX),
             remove_group: Some(false),
-            requested_revokes: Some(
+            revokes: Some(
                 (0..PERMISSIONS_COUNT)
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
@@ -2590,6 +2582,7 @@ mod tests {
             success: false,
             error: None,
             session_id: Some(u32::MAX),
+            user_id: Some(i64::MAX),
             is_admin: Some(false),
             permissions: Some(
                 (0..PERMISSIONS_COUNT)
@@ -2719,6 +2712,7 @@ mod tests {
     fn test_limit_user_connected() {
         let msg = ServerMessage::UserConnected {
             user: UserInfo {
+                id: i64::MAX,
                 username: str_of_len(MAX_USERNAME_LENGTH),
                 nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
@@ -2747,6 +2741,7 @@ mod tests {
         let msg = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(str_of_len(512)),
+            id: Some(i64::MAX),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert!(
@@ -2794,6 +2789,7 @@ mod tests {
         let msg = ServerMessage::UserEditResponse {
             success: false,
             error: None,
+            id: Some(i64::MAX),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
             is_admin: Some(false),
             is_shared: Some(false),
@@ -2859,6 +2855,7 @@ mod tests {
             success: false,
             error: None,
             user: Some(UserInfoDetailed {
+                id: i64::MAX,
                 username: str_of_len(MAX_USERNAME_LENGTH),
                 nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
@@ -2954,6 +2951,7 @@ mod tests {
         let msg = ServerMessage::UserUpdated {
             previous_username: str_of_len(MAX_USERNAME_LENGTH),
             user: UserInfo {
+                id: i64::MAX,
                 username: str_of_len(MAX_USERNAME_LENGTH),
                 nickname: str_of_len(MAX_NICKNAME_LENGTH),
                 login_time: i64::MAX,
@@ -2982,6 +2980,7 @@ mod tests {
         let msg = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(str_of_len(512)),
+            id: Some(i64::MAX),
             username: Some(str_of_len(MAX_USERNAME_LENGTH)),
         };
         assert!(

@@ -36,14 +36,14 @@ pub async fn create_test_db() -> Database {
 ///
 /// # Arguments
 /// * `user_manager` - The UserManager to add the user to
-/// * `db_user_id` - The database ID of the user
+/// * `user_id` - The database ID of the user
 /// * `username` - The username
 /// * `is_admin` - Whether the user is an admin (admins bypass permission checks)
 /// * `permissions` - Cached permissions for non-admin users
 #[allow(unused)] // Not all test files use this
 pub async fn add_test_user(
     user_manager: &UserManager,
-    db_user_id: i64,
+    user_id: i64,
     username: &str,
     is_admin: bool,
     permissions: HashSet<Permission>,
@@ -59,7 +59,7 @@ pub async fn add_test_user(
     let session_id = user_manager
         .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id,
+            user_id,
             username: username.to_string(),
             is_admin,
             is_shared: false,

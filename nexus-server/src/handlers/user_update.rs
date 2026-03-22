@@ -31,16 +31,16 @@ use crate::voice::send_voice_leave_notifications;
 
 /// User update request parameters
 pub struct UserUpdateRequest {
-    pub username: String,
+    pub id: i64,
     pub current_password: Option<String>,
-    pub requested_username: Option<String>,
-    pub requested_password: Option<String>,
-    pub requested_is_admin: Option<bool>,
-    pub requested_enabled: Option<bool>,
-    pub requested_permissions: Option<Vec<String>>,
-    pub requested_group_id: Option<i64>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub is_admin: Option<bool>,
+    pub enabled: Option<bool>,
+    pub permissions: Option<Vec<String>>,
+    pub group_id: Option<i64>,
     pub remove_group: Option<bool>,
-    pub requested_revokes: Option<Vec<String>>,
+    pub revokes: Option<Vec<String>>,
     pub session_id: Option<u32>,
 }
 
@@ -74,8 +74,29 @@ where
         }
     };
 
+    // Look up target user by ID
+    let target_account = match ctx.db.users.get_user_by_id(request.id).await {
+        Ok(Some(account)) => account,
+        Ok(None) => {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_user_not_found(ctx.locale, &request.id.to_string())),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(e) => {
+            eprintln!("Database error looking up user {}: {}", request.id, e);
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                .await;
+        }
+    };
+    let target_username = target_account.username.clone();
+
     // Validate target username format
-    if let Err(e) = validators::validate_username(&request.username) {
+    if let Err(e) = validators::validate_username(&target_username) {
         let error_msg = match e {
             UsernameError::Empty => err_username_empty(ctx.locale),
             UsernameError::TooLong => {
@@ -86,13 +107,14 @@ where
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(error_msg),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
     }
 
     // Check if this is a self-edit (user changing their own password)
-    let is_self_edit = request.username.to_lowercase() == requesting_user.username.to_lowercase();
+    let is_self_edit = target_username.to_lowercase() == requesting_user.username.to_lowercase();
 
     if is_self_edit {
         // Shared accounts cannot change their own password
@@ -100,6 +122,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_shared_cannot_change_password(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -107,17 +130,18 @@ where
 
         // Self-edit: only password change is allowed
         // Reject if trying to change anything other than password
-        if request.requested_username.is_some()
-            || request.requested_is_admin.is_some()
-            || request.requested_enabled.is_some()
-            || request.requested_permissions.is_some()
-            || request.requested_group_id.is_some()
+        if request.username.is_some()
+            || request.is_admin.is_some()
+            || request.enabled.is_some()
+            || request.permissions.is_some()
+            || request.group_id.is_some()
             || request.remove_group == Some(true)
-            || request.requested_revokes.is_some()
+            || request.revokes.is_some()
         {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_cannot_edit_self(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -128,18 +152,20 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_current_password_required(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
         };
 
         // Verify current password against database
-        let password_hash = match ctx.db.users.get_user_by_username(&request.username).await {
+        let password_hash = match ctx.db.users.get_user_by_username(&target_username).await {
             Ok(Some(user)) => user.hashed_password,
             Ok(None) => {
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_user_not_found(ctx.locale, &request.username)),
+                    error: Some(err_user_not_found(ctx.locale, &target_username)),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -159,6 +185,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_current_password_incorrect(ctx.locale)),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -180,6 +207,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -188,7 +216,7 @@ where
         // Prevent non-admins from editing admin users
         // Look up target user to check their admin status
         if !requesting_user.is_admin {
-            match ctx.db.users.get_user_by_username(&request.username).await {
+            match ctx.db.users.get_user_by_username(&target_username).await {
                 Ok(Some(target_user)) if target_user.is_admin => {
                     eprintln!(
                         "UserUpdate from {} (user: {}) trying to edit admin user",
@@ -197,6 +225,7 @@ where
                     let response = ServerMessage::UserUpdateResponse {
                         success: false,
                         error: Some(err_cannot_edit_admin(ctx.locale)),
+                        id: None,
                         username: None,
                     };
                     return ctx.send_message(&response).await;
@@ -205,7 +234,8 @@ where
                 Ok(None) => {
                     let response = ServerMessage::UserUpdateResponse {
                         success: false,
-                        error: Some(err_user_not_found(ctx.locale, &request.username)),
+                        error: Some(err_user_not_found(ctx.locale, &target_username)),
+                        id: None,
                         username: None,
                     };
                     return ctx.send_message(&response).await;
@@ -221,7 +251,7 @@ where
     }
 
     // Validate new username format if it's being changed
-    if let Some(ref new_username) = request.requested_username
+    if let Some(ref new_username) = request.username
         && let Err(e) = validators::validate_username(new_username)
     {
         let error_msg = match e {
@@ -234,32 +264,35 @@ where
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(error_msg),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
     }
 
     // Prevent renaming the guest account
-    if let Some(ref new_username) = request.requested_username
-        && request.username.to_lowercase() == GUEST_USERNAME
+    if let Some(ref new_username) = request.username
+        && target_username.to_lowercase() == GUEST_USERNAME
         && new_username.to_lowercase() != GUEST_USERNAME
     {
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(err_cannot_rename_guest(ctx.locale)),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
     }
 
     // Prevent changing the guest account password
-    if let Some(ref new_password) = request.requested_password
+    if let Some(ref new_password) = request.password
         && !new_password.trim().is_empty()
-        && request.username.to_lowercase() == GUEST_USERNAME
+        && target_username.to_lowercase() == GUEST_USERNAME
     {
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(err_cannot_change_guest_password(ctx.locale)),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -270,22 +303,24 @@ where
 
     // Verify admin flag modification privilege (use is_admin from UserManager)
     // Skip for self-edit since we already rejected admin changes above
-    if !is_self_edit && request.requested_is_admin.is_some() && !requesting_user.is_admin {
+    if !is_self_edit && request.is_admin.is_some() && !requesting_user.is_admin {
         let response = ServerMessage::UserUpdateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
     }
 
     // Fetch target user to check if they're a shared account (needed for permission validation)
-    let target_user_account = match ctx.db.users.get_user_by_username(&request.username).await {
+    let target_user_account = match ctx.db.users.get_user_by_username(&target_username).await {
         Ok(Some(account)) => Some(account),
         Ok(None) => {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
-                error: Some(err_user_not_found(ctx.locale, &request.username)),
+                error: Some(err_user_not_found(ctx.locale, &target_username)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -299,7 +334,7 @@ where
     };
 
     // Validate and parse requested permissions
-    let parsed_permissions = if let Some(ref perm_strings) = request.requested_permissions {
+    let parsed_permissions = if let Some(ref perm_strings) = request.permissions {
         // For shared accounts, validate that only allowed permissions are requested
         if let Some(ref account) = target_user_account
             && account.is_shared
@@ -317,6 +352,7 @@ where
                         ctx.locale,
                         &forbidden.join(", "),
                     )),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -342,6 +378,7 @@ where
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(error_msg),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -355,6 +392,7 @@ where
                     let response = ServerMessage::UserUpdateResponse {
                         success: false,
                         error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                        id: None,
                         username: None,
                     };
                     return ctx.send_message(&response).await;
@@ -370,6 +408,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_permission_denied(ctx.locale)),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -416,10 +455,10 @@ where
     };
 
     // Validate group assignment/removal. DB writes happen atomically inside
-    // update_user's transaction via remove_group + requested_group_id.
+    // update_user's transaction via remove_group + group_id.
     let (validated_remove_group, validated_group_id): (bool, Option<i64>) = if !is_self_edit {
         if request.remove_group == Some(true) {
-            // Remove from group — takes precedence over requested_group_id
+            // Remove from group — takes precedence over group_id
             if let Some(ref account) = target_user_account {
                 if let Some(current_group_id) = account.group_id {
                     // Non-admin delegation: requester must have all current group
@@ -433,6 +472,7 @@ where
                                     let response = ServerMessage::UserUpdateResponse {
                                         success: false,
                                         error: Some(err_database(ctx.locale)),
+                                        id: None,
                                         username: None,
                                     };
                                     return ctx.send_message(&response).await;
@@ -443,6 +483,7 @@ where
                                 let response = ServerMessage::UserUpdateResponse {
                                     success: false,
                                     error: Some(err_permission_denied(ctx.locale)),
+                                    id: None,
                                     username: None,
                                 };
                                 return ctx.send_message(&response).await;
@@ -456,7 +497,7 @@ where
             } else {
                 (false, None)
             }
-        } else if let Some(new_group_id) = request.requested_group_id {
+        } else if let Some(new_group_id) = request.group_id {
             if let Some(ref account) = target_user_account {
                 // Skip if already in this group
                 if account.group_id == Some(new_group_id) {
@@ -475,6 +516,7 @@ where
                                     let response = ServerMessage::UserUpdateResponse {
                                         success: false,
                                         error: Some(err_database(ctx.locale)),
+                                        id: None,
                                         username: None,
                                     };
                                     return ctx.send_message(&response).await;
@@ -485,6 +527,7 @@ where
                                 let response = ServerMessage::UserUpdateResponse {
                                     success: false,
                                     error: Some(err_permission_denied(ctx.locale)),
+                                    id: None,
                                     username: None,
                                 };
                                 return ctx.send_message(&response).await;
@@ -499,6 +542,7 @@ where
                             let response = ServerMessage::UserUpdateResponse {
                                 success: false,
                                 error: Some(err_group_not_found(ctx.locale)),
+                                id: None,
                                 username: None,
                             };
                             return ctx.send_message(&response).await;
@@ -519,6 +563,7 @@ where
                         let response = ServerMessage::UserUpdateResponse {
                             success: false,
                             error: Some(err_group_shared_mismatch(ctx.locale)),
+                            id: None,
                             username: None,
                         };
                         return ctx.send_message(&response).await;
@@ -527,6 +572,7 @@ where
                         let response = ServerMessage::UserUpdateResponse {
                             success: false,
                             error: Some(err_group_shared_mismatch(ctx.locale)),
+                            id: None,
                             username: None,
                         };
                         return ctx.send_message(&response).await;
@@ -542,6 +588,7 @@ where
                                     let response = ServerMessage::UserUpdateResponse {
                                         success: false,
                                         error: Some(err_database(ctx.locale)),
+                                        id: None,
                                         username: None,
                                     };
                                     return ctx.send_message(&response).await;
@@ -552,6 +599,7 @@ where
                                 let response = ServerMessage::UserUpdateResponse {
                                     success: false,
                                     error: Some(err_permission_denied(ctx.locale)),
+                                    id: None,
                                     username: None,
                                 };
                                 return ctx.send_message(&response).await;
@@ -573,15 +621,15 @@ where
 
     // Handle revoke override changes
     // Parse and validate revoke permissions here; DB write happens atomically
-    // inside update_user's transaction via the requested_revokes parameter.
+    // inside update_user's transaction via the revokes parameter.
     let parsed_revokes: Option<Vec<Permission>> = if !is_self_edit
-        && let Some(ref revoke_strings) = request.requested_revokes
+        && let Some(ref revoke_strings) = request.revokes
         && let Some(ref account) = target_user_account
     {
         // Determine effective group_id after any group change
         let effective_group_id = if request.remove_group == Some(true) {
             None
-        } else if let Some(gid) = request.requested_group_id {
+        } else if let Some(gid) = request.group_id {
             Some(gid)
         } else {
             account.group_id
@@ -602,6 +650,7 @@ where
                             let response = ServerMessage::UserUpdateResponse {
                                 success: false,
                                 error: Some(err_permission_denied(ctx.locale)),
+                                id: None,
                                 username: None,
                             };
                             return ctx.send_message(&response).await;
@@ -612,6 +661,7 @@ where
                         let response = ServerMessage::UserUpdateResponse {
                             success: false,
                             error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            id: None,
                             username: None,
                         };
                         return ctx.send_message(&response).await;
@@ -642,7 +692,7 @@ where
     };
 
     // Process password change request
-    let requested_password_hash = if let Some(ref password) = request.requested_password {
+    let requested_password_hash = if let Some(ref password) = request.password {
         // Empty/whitespace password = no change
         if password.trim().is_empty() {
             None
@@ -658,6 +708,7 @@ where
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(error_msg),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -665,7 +716,7 @@ where
             match hash_password(password, false) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
-                    eprintln!("Database error updating user {}: {}", request.username, e);
+                    eprintln!("Database error updating user {}: {}", target_username, e);
                     return ctx
                         .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                         .await;
@@ -698,7 +749,7 @@ where
             )
         } else {
             // Should not happen - we already checked user exists above
-            (request.username.clone(), false, true, Permissions::new())
+            (target_username.clone(), false, true, Permissions::new())
         }
     };
 
@@ -707,15 +758,15 @@ where
         .db
         .users
         .update_user(UpdateUserParams {
-            username: &request.username,
-            requested_username: request.requested_username.as_deref(),
-            requested_password_hash: requested_password_hash.as_deref(),
-            requested_is_admin: request.requested_is_admin,
-            requested_enabled: request.requested_enabled,
-            requested_permissions: parsed_permissions.as_ref(),
-            requested_revokes: parsed_revokes.as_deref(),
+            username: &target_username,
+            new_username: request.username.as_deref(),
+            new_password_hash: requested_password_hash.as_deref(),
+            is_admin: request.is_admin,
+            enabled: request.enabled,
+            permissions: parsed_permissions.as_ref(),
+            revokes: parsed_revokes.as_deref(),
             remove_group: validated_remove_group,
-            requested_group_id: validated_group_id,
+            group_id: validated_group_id,
         })
         .await
     {
@@ -723,15 +774,18 @@ where
             // Success - send response to requester
             // Use the final username (in case it changed)
             let final_username = request
-                .requested_username
+                .username
                 .as_ref()
-                .unwrap_or(&request.username)
+                .unwrap_or(&target_username)
                 .clone();
+
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
+                id: Some(request.id),
                 username: Some(final_username.clone()),
             };
+
             ctx.send_message(&response).await?;
 
             let group_changed = validated_remove_group || validated_group_id.is_some();
@@ -866,7 +920,7 @@ where
                 //
                 // Note: UserDisconnected is only broadcast once here (connection.rs cleanup
                 // doesn't re-broadcast because the user is already removed from manager)
-                if let Some(false) = request.requested_enabled {
+                if let Some(false) = request.enabled {
                     // Get all session IDs for this user
                     let session_ids = ctx
                         .user_manager
@@ -988,6 +1042,7 @@ where
                     };
 
                     let user_info = UserInfo {
+                        id: updated_account.id,
                         username: updated_account.username.clone(),
                         // For account-level updates, nickname == username
                         // (we're broadcasting about the account, not a specific session)
@@ -1022,16 +1077,16 @@ where
             let error_message = if ctx
                 .db
                 .users
-                .get_user_by_username(&request.username)
+                .get_user_by_username(&target_username)
                 .await
                 .ok()
                 .flatten()
                 .is_none()
             {
-                err_user_not_found(ctx.locale, &request.username)
-            } else if let Some(ref new_username) = request.requested_username {
+                err_user_not_found(ctx.locale, &target_username)
+            } else if let Some(ref new_username) = request.username {
                 // Check if the new username already exists (and it's not the same user)
-                if new_username != &request.username
+                if new_username != &target_username
                     && ctx
                         .db
                         .users
@@ -1046,17 +1101,18 @@ where
                     // Username change was blocked but not due to duplicate - must be admin protection
                     err_cannot_demote_last_admin(ctx.locale)
                 }
-            } else if request.requested_is_admin == Some(false) {
+            } else if request.is_admin == Some(false) {
                 err_cannot_demote_last_admin(ctx.locale)
-            } else if request.requested_enabled == Some(false) {
+            } else if request.enabled == Some(false) {
                 err_cannot_disable_last_admin(ctx.locale)
             } else {
-                err_update_failed(ctx.locale, &request.username)
+                err_update_failed(ctx.locale, &target_username)
             };
 
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(error_message.to_string()),
+                id: None,
                 username: None,
             };
             ctx.send_message(&response).await
@@ -1083,17 +1139,19 @@ mod tests {
     async fn test_userupdate_requires_login() {
         let mut test_ctx = create_test_context().await;
 
+        // Look up a user id to use (doesn't matter which since not logged in)
+        // Use a non-existent id since the test checks login requirement before user lookup
         let request = UserUpdateRequest {
+            id: 99999,
             current_password: None,
-            username: "alice".to_string(),
-            requested_username: Some("alice2".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("alice2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: None, // Not logged in
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1109,7 +1167,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Create another user to edit
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1126,16 +1184,16 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: Some("bob2".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("bob2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1146,11 +1204,13 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
                 assert!(error.is_some());
                 assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1164,17 +1224,24 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: None,
-            username: "admin".to_string(),
-            requested_username: Some("admin2".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("admin2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1198,17 +1265,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to change own admin status (even with current_password, this should be rejected)
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: Some("password".to_string()),
-            username: "admin".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false), // Trying to demote self
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false), // Trying to demote self
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1232,17 +1306,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to change own enabled status
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: Some("password".to_string()),
-            username: "admin".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false), // Trying to disable self
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false), // Trying to disable self
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1266,17 +1347,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Try to change own permissions
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: alice_user.id,
             current_password: Some("password".to_string()),
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["user_edit".to_string()]), // Trying to give self more permissions
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["user_edit".to_string()]), // Trying to give self more permissions
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1300,17 +1388,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "oldpassword", &[], false).await;
 
         // Change own password with correct current password
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: alice_user.id,
             current_password: Some("oldpassword".to_string()),
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1321,10 +1416,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Expected success, got error: {:?}", error);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1339,17 +1436,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "correctpassword", &[], false).await;
 
         // Try to change password with wrong current password
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: alice_user.id,
             current_password: Some("wrongpassword".to_string()),
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1376,17 +1480,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to change own password without providing current password
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: None,
-            username: "admin".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1413,7 +1524,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create another user to edit
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1430,16 +1541,16 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: Some("bobby".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("bobby".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1450,10 +1561,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("bobby".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1479,16 +1592,16 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = UserUpdateRequest {
+            id: 99999, // Non-existent user ID
             current_password: None,
-            username: "nonexistent".to_string(),
-            requested_username: Some("newname".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("newname".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1500,7 +1613,7 @@ mod tests {
                 assert!(!success);
                 assert_eq!(
                     error.unwrap(),
-                    err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent")
+                    err_user_not_found(DEFAULT_TEST_LOCALE, "99999")
                 );
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1516,17 +1629,24 @@ mod tests {
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         // Admin1 demotes Admin2 (should succeed, admin1 still exists)
+        let admin2_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin2_user.id,
             current_password: None,
-            username: "admin2".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false), // Demote to non-admin
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false), // Demote to non-admin
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1537,27 +1657,36 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("admin2".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
 
         // Now admin2 tries to demote admin1 (should fail - no permission)
+        let admin1_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin1")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin1_user.id,
             current_password: None,
-            username: "admin1".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false), // Try to demote last admin
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false), // Try to demote last admin
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin2_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1568,11 +1697,13 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
                 assert!(error.is_some());
                 assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1594,7 +1725,7 @@ mod tests {
         .await;
 
         // Create another user to edit
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1611,16 +1742,16 @@ mod tests {
             .unwrap();
 
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: Some("robert".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("robert".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1631,10 +1762,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("robert".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1656,7 +1789,7 @@ mod tests {
         .await;
 
         // Create another user to edit
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1674,16 +1807,16 @@ mod tests {
 
         // Try to make bob an admin
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(true), // Try to make admin
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(true), // Try to make admin
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1694,11 +1827,13 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
                 assert!(error.is_some());
                 assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1728,7 +1863,7 @@ mod tests {
             })
             .await
             .unwrap();
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1746,16 +1881,16 @@ mod tests {
 
         // Try to rename bob to alice (should fail)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: Some("alice".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("alice".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1779,7 +1914,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a user
-        test_ctx
+        let alice = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1797,16 +1932,16 @@ mod tests {
 
         // Change alice's password
         let request = UserUpdateRequest {
+            id: alice.id,
             current_password: None,
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1817,10 +1952,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1863,16 +2000,16 @@ mod tests {
 
         // Give bob some permissions
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1883,10 +2020,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -1920,7 +2059,7 @@ mod tests {
 
         // Create a user with a specific password hash
         let original_hash = "original_hash_12345";
-        test_ctx
+        let alice = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -1938,16 +2077,16 @@ mod tests {
 
         // Try to edit alice with empty password (should not change password)
         let request = UserUpdateRequest {
+            id: alice.id,
             current_password: None,
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: Some("".to_string()), // Empty password
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("".to_string()), // Empty password
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1958,10 +2097,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success);
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -2022,16 +2163,16 @@ mod tests {
         // Bob tries to update Alice, removing user_info and chat_send (permissions Bob doesn't have)
         // Bob tries to set Alice's permissions to just user_list (which Bob has)
         let request = UserUpdateRequest {
+            id: alice.id,
             current_password: None,
-            username: "alice".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["user_list".to_string()]), // Bob only grants user_list
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["user_list".to_string()]), // Bob only grants user_list
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(bob_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2042,10 +2183,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Update should succeed with merged permissions");
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("alice".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -2121,17 +2264,24 @@ mod tests {
             .unwrap();
 
         // Try to set an unknown revoke permission
+        let bob_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: bob_user.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: Some(vec!["totally_fake_permission".to_string()]),
+            revokes: Some(vec!["totally_fake_permission".to_string()]),
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2187,21 +2337,21 @@ mod tests {
             .await
             .unwrap();
 
-        // Send UserUpdate with BOTH requested_permissions (grant override) and
-        // requested_revokes (revoke override). Before the fix, set_permissions_in_tx
+        // Send UserUpdate with BOTH permissions (grant override) and
+        // revokes (revoke override). Before the fix, set_permissions_in_tx
         // would DELETE all user_permissions rows (including revokes just written),
         // then re-insert only grants — silently losing the revokes.
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["ban_create".to_string()]),
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["ban_create".to_string()]),
+            group_id: None,
             remove_group: None,
-            requested_revokes: Some(vec!["user_kick".to_string()]),
+            revokes: Some(vec!["user_kick".to_string()]),
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2225,7 +2375,7 @@ mod tests {
         assert_eq!(
             revokes,
             vec![db::Permission::UserKick],
-            "Revoke override should survive when requested_permissions is also provided"
+            "Revoke override should survive when permissions is also provided"
         );
 
         // Verify the grant override is also present
@@ -2257,7 +2407,7 @@ mod tests {
         let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create bob
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -2275,19 +2425,19 @@ mod tests {
 
         // Try to set an unknown grant permission
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec![
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![
                 "chat_send".to_string(),
                 "totally_fake_permission".to_string(),
             ]),
-            requested_group_id: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2316,17 +2466,24 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to disable self (will be caught by self-edit check)
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: None,
-            username: "admin".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false), // Try to disable
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false), // Try to disable
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2351,17 +2508,24 @@ mod tests {
         let _admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         // Admin1 disables admin2 (should succeed, admin1 still exists)
+        let admin2_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin2_user.id,
             current_password: None,
-            username: "admin2".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false),
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false),
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2384,50 +2548,71 @@ mod tests {
         // Actually, let's test the database layer directly for last admin protection.
 
         // Re-enable admin2 first
+        let admin2_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin2_user.id,
             current_password: None,
-            username: "admin2".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(true),
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(true),
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
         let _ = read_server_message(&mut test_ctx).await;
 
         // Demote admin2 and admin3 so admin1 is the only admin
+        let admin2_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin2_user.id,
             current_password: None,
-            username: "admin2".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false),
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false),
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
         let _ = read_server_message(&mut test_ctx).await;
 
+        let admin3_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin3")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin3_user.id,
             current_password: None,
-            username: "admin3".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false),
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false),
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2449,14 +2634,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: &admin1.username,
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(false),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(false),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2504,7 +2689,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: editor.id,
+                user_id: editor.id,
                 username: "editor".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -2525,17 +2710,24 @@ mod tests {
             .expect("Failed to add user");
 
         // Non-admin editor tries to edit admin - should fail
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: admin_user.id,
             current_password: None,
-            username: "admin".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2585,16 +2777,16 @@ mod tests {
 
         // Disable bob
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false), // Disable
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false), // Disable
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2605,10 +2797,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully disable user");
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -2627,16 +2821,16 @@ mod tests {
 
         // Re-enable bob
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(true), // Enable
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(true), // Enable
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2647,10 +2841,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully re-enable user");
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -2689,17 +2885,24 @@ mod tests {
         );
 
         // Admin disables bob
+        let bob_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: bob_user.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false), // Disable
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false), // Disable
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2758,7 +2961,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin1.id,
+                user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -2782,7 +2985,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin2.id,
+                user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -2804,16 +3007,16 @@ mod tests {
 
         // Admin1 demotes admin2 to non-admin (should succeed - 2 admins exist)
         let request = UserUpdateRequest {
+            id: admin2.id,
             current_password: None,
-            username: "admin2".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false), // Demote to non-admin
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false), // Demote to non-admin
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2824,6 +3027,7 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(
@@ -2831,6 +3035,7 @@ mod tests {
                     "Should successfully demote admin2 (2 admins exist)"
                 );
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("admin2".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -2858,14 +3063,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "admin2",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: Some(&perms),
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: Some(&perms),
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2878,14 +3083,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "admin1",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: Some(false), // Try to demote last admin
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: Some(false), // Try to demote last admin
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await;
 
@@ -2961,17 +3166,24 @@ mod tests {
         let _login_response = read_login_response(&mut test_ctx).await;
 
         // Try to change own password
+        let shared_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "shared_acct".to_string(),
+            id: shared_user.id,
             current_password: Some("sharedpass".to_string()),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: shared_session_id,
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3020,21 +3232,28 @@ mod tests {
             .expect("shared account creation should succeed");
 
         // Try to update shared account with forbidden permissions
+        let shared_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "shared_acct".to_string(),
+            id: shared_user.id,
             current_password: None,
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec![
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![
                 "chat_send".to_string(),   // allowed
                 "user_kick".to_string(),   // forbidden
                 "news_create".to_string(), // forbidden
             ]),
-            requested_group_id: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3082,22 +3301,29 @@ mod tests {
             .expect("shared account creation should succeed");
 
         // Update shared account with only allowed permissions
+        let shared_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("shared_acct")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "shared_acct".to_string(),
+            id: shared_user.id,
             current_password: None,
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec![
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![
                 "chat_send".to_string(),
                 "chat_receive".to_string(),
                 "user_list".to_string(),
                 "user_message".to_string(),
             ]),
-            requested_group_id: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3147,7 +3373,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -3168,17 +3394,24 @@ mod tests {
             .unwrap();
 
         // Try to rename guest account
+        let guest_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "guest".to_string(),
+            id: guest_user.id,
             current_password: None,
-            requested_username: Some("notguest".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("notguest".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3230,7 +3463,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -3252,17 +3485,24 @@ mod tests {
 
         // Update guest account permissions
         // Enable the guest account (should be allowed)
+        let guest_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "guest".to_string(),
+            id: guest_user.id,
             current_password: None,
-            requested_username: None, // Not renaming
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(true), // Enable guest
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None, // Not renaming
+            password: None,
+            is_admin: None,
+            enabled: Some(true), // Enable guest
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3309,7 +3549,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -3330,21 +3570,28 @@ mod tests {
             .unwrap();
 
         // Update guest account permissions (should succeed with allowed permissions)
+        let guest_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "guest".to_string(),
+            id: guest_user.id,
             current_password: None,
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec![
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![
                 "chat_send".to_string(),
                 "chat_receive".to_string(),
                 "user_list".to_string(),
             ]),
-            requested_group_id: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3391,7 +3638,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -3412,17 +3659,24 @@ mod tests {
             .unwrap();
 
         // Try to change guest account password
+        let guest_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
-            username: "guest".to_string(),
+            id: guest_user.id,
             current_password: None,
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3471,7 +3725,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3493,16 +3747,16 @@ mod tests {
 
         // Update bob with the SAME permissions (no actual change)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3561,7 +3815,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3583,16 +3837,16 @@ mod tests {
 
         // Update bob with DIFFERENT permissions (add chat_send)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3662,7 +3916,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3684,16 +3938,16 @@ mod tests {
 
         // Update bob's password only (no permissions change)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: Some("newpassword".to_string()),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3749,7 +4003,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3771,16 +4025,16 @@ mod tests {
 
         // Promote bob to admin (no permissions change, but admin status changes)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(true),
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(true),
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3848,7 +4102,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3870,16 +4124,16 @@ mod tests {
 
         // Disable bob (no permissions change, but enabled status changes)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: Some(false),
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false),
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3950,7 +4204,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3972,16 +4226,16 @@ mod tests {
 
         // Set bob's admin status to false (same as current - no change)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: Some(false), // Same as current
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: Some(false), // Same as current
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4042,7 +4296,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: 2,
+                user_id: 2,
                 username: "voiceuser".to_string(),
                 nickname: "voiceuser".to_string(),
                 is_admin: false,
@@ -4087,17 +4341,24 @@ mod tests {
         );
 
         // Now revoke voice_listen permission via UserUpdate
+        let voiceuser_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("voiceuser")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: voiceuser_db.id,
             current_password: None,
-            username: "voiceuser".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec![]), // Remove all permissions including voice_listen
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![]), // Remove all permissions including voice_listen
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4161,7 +4422,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: 2,
+                user_id: 2,
                 username: "voiceuser".to_string(),
                 nickname: "voiceuser".to_string(),
                 is_admin: false,
@@ -4205,17 +4466,24 @@ mod tests {
         );
 
         // Now revoke only voice_talk permission (keep voice_listen)
+        let voiceuser_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("voiceuser")
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
+            id: voiceuser_db.id,
             current_password: None,
-            username: "voiceuser".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: Some(vec!["voice_listen".to_string()]), // Keep voice_listen, remove voice_talk
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["voice_listen".to_string()]), // Keep voice_listen, remove voice_talk
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4289,16 +4557,16 @@ mod tests {
 
         // Update user to assign group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: Some(group.id),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(group.id),
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4309,10 +4577,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully assign group");
                 assert!(error.is_none(), "Should have no error");
+                assert!(id.is_some());
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -4377,16 +4647,16 @@ mod tests {
 
         // Update user to remove group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: Some(true),
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4397,10 +4667,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully remove group");
                 assert!(error.is_none(), "Should have no error");
+                assert!(id.is_some());
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -4444,7 +4716,7 @@ mod tests {
             .unwrap();
 
         // Create a user assigned to that group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -4462,16 +4734,16 @@ mod tests {
 
         // Non-admin editor tries to remove bob from the group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: Some(true),
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4484,6 +4756,7 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
@@ -4493,6 +4766,7 @@ mod tests {
                     err_msg.contains("ermission"),
                     "Should be a permission error, got: {err_msg}"
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
@@ -4540,7 +4814,7 @@ mod tests {
             .unwrap();
 
         // Create a user without a group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -4558,16 +4832,16 @@ mod tests {
 
         // Non-admin editor tries to assign bob to the group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: Some(group.id),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(group.id),
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4580,6 +4854,7 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
@@ -4589,6 +4864,7 @@ mod tests {
                     err_msg.contains("ermission"),
                     "Should be a permission error, got: {err_msg}"
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
@@ -4632,7 +4908,7 @@ mod tests {
             .unwrap();
 
         // Create a user assigned to the high-privilege group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -4650,16 +4926,16 @@ mod tests {
 
         // Non-admin editor renames bob — NOT changing group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: Some("robert".to_string()),
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: Some("robert".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4670,10 +4946,12 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should succeed — group not being changed");
                 assert!(error.is_none());
+                assert!(id.is_some());
                 assert_eq!(username, Some("robert".to_string()));
             }
             other => panic!("Expected UserUpdateResponse, got: {other:?}"),
@@ -4717,7 +4995,7 @@ mod tests {
             .unwrap();
 
         // Create a user assigned to the group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -4735,16 +5013,16 @@ mod tests {
 
         // Non-admin editor tries to revoke UserKick (which editor doesn't have)
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: Some(vec!["user_kick".to_string()]),
+            revokes: Some(vec!["user_kick".to_string()]),
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4757,6 +5035,7 @@ mod tests {
             ServerMessage::UserUpdateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
@@ -4766,6 +5045,7 @@ mod tests {
                     err_msg.contains("ermission"),
                     "Should be a permission error, got: {err_msg}"
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
@@ -4829,7 +5109,7 @@ mod tests {
             .unwrap();
 
         // Create bob in the high-privilege group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -4848,16 +5128,16 @@ mod tests {
         // Non-admin editor tries to move bob from high-privilege to low-privilege group
         // This should be rejected — editor doesn't have BanCreate from the old group
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: Some(low_group.id),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(low_group.id),
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4865,9 +5145,12 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::UserUpdateResponse { success, error, .. } => {
+            ServerMessage::UserUpdateResponse {
+                success, error, id, ..
+            } => {
                 assert!(!success, "Should reject — editor can't control old group");
                 assert!(error.is_some());
+                assert!(id.is_none());
             }
             other => panic!("Expected UserUpdateResponse, got: {other:?}"),
         }
@@ -4940,16 +5223,16 @@ mod tests {
         // Non-admin editor adds a ChatSend revoke (which they control)
         // The existing BanCreate revoke (which they DON'T control) should be preserved
         let request = UserUpdateRequest {
+            id: bob.id,
             current_password: None,
-            username: "bob".to_string(),
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: Some(vec!["chat_send".to_string()]),
+            revokes: Some(vec!["chat_send".to_string()]),
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;

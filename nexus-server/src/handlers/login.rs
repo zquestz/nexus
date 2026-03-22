@@ -387,7 +387,7 @@ where
         .user_manager
         .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id: authenticated_account.id,
+            user_id: authenticated_account.id,
             username: authenticated_account.username.clone(),
             is_admin: authenticated_account.is_admin,
             is_shared: authenticated_account.is_shared,
@@ -581,6 +581,7 @@ where
     let response = ServerMessage::LoginResponse {
         success: true,
         session_id: Some(id),
+        user_id: Some(authenticated_account.id),
         is_admin: Some(authenticated_account.is_admin),
         permissions: Some(user_permissions),
         server_info,
@@ -603,6 +604,7 @@ where
     // Notify other users about new connection
     // Use DB-canonical username (not client-provided) to ensure consistent casing
     let user_info = UserInfo {
+        id: authenticated_account.id,
         username: authenticated_account.username.clone(),
         nickname,
         login_time: current_timestamp(),
@@ -687,6 +689,7 @@ mod tests {
             ServerMessage::LoginResponse {
                 success,
                 session_id,
+                user_id,
                 is_admin,
                 permissions,
                 error,
@@ -694,6 +697,7 @@ mod tests {
             } => {
                 assert!(success, "Login should indicate success");
                 assert!(session_id.is_some(), "Should return session ID");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(is_admin, Some(true), "First user should be marked as admin");
                 assert_eq!(
                     permissions,
@@ -776,6 +780,7 @@ mod tests {
             ServerMessage::LoginResponse {
                 success,
                 session_id,
+                user_id,
                 is_admin,
                 permissions,
                 error,
@@ -783,6 +788,7 @@ mod tests {
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(
                     is_admin,
                     Some(false),
@@ -970,6 +976,7 @@ mod tests {
             ServerMessage::LoginResponse {
                 success,
                 session_id,
+                user_id,
                 is_admin,
                 permissions,
                 error,
@@ -977,6 +984,7 @@ mod tests {
             } => {
                 assert!(success, "Login should succeed");
                 assert!(session_id.is_some(), "Should return session ID");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(is_admin, Some(false), "Should not be admin");
                 assert!(permissions.is_some(), "Should return permissions");
 
@@ -1578,12 +1586,14 @@ mod tests {
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
+                user_id,
                 is_admin,
                 server_info,
                 channels,
                 ..
             } => {
                 assert!(success, "Login should succeed");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(is_admin, Some(true), "Should be admin");
                 assert!(server_info.is_some(), "Admin should receive server_info");
                 let info = server_info.unwrap();
@@ -2653,14 +2663,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2684,9 +2694,13 @@ mod tests {
         let response = read_login_response(&mut test_ctx).await;
         match response {
             ServerMessage::LoginResponse {
-                success, is_admin, ..
+                success,
+                user_id,
+                is_admin,
+                ..
             } => {
                 assert!(success, "Login should succeed");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(is_admin, Some(false), "Guest should not be admin");
             }
             _ => panic!("Expected LoginResponse"),
@@ -2704,14 +2718,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2744,14 +2758,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2808,14 +2822,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2848,14 +2862,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2888,14 +2902,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "guest",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: Some(true),
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2949,9 +2963,13 @@ mod tests {
         let response = read_login_response(&mut test_ctx).await;
         match response {
             ServerMessage::LoginResponse {
-                success, is_admin, ..
+                success,
+                user_id,
+                is_admin,
+                ..
             } => {
                 assert!(success, "Login should succeed");
+                assert!(user_id.is_some(), "Should return user ID");
                 assert_eq!(is_admin, Some(true), "First non-guest user should be admin");
             }
             _ => panic!("Expected LoginResponse"),
@@ -2990,7 +3008,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3078,7 +3096,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "shared_acct".to_string(),
                 is_admin: false,
                 is_shared: true,
@@ -3165,7 +3183,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3193,7 +3211,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -3464,6 +3482,7 @@ mod tests {
         match response {
             ServerMessage::LoginResponse {
                 success,
+                user_id,
                 permissions,
                 group_id,
                 group_name,
@@ -3471,6 +3490,7 @@ mod tests {
                 ..
             } => {
                 assert!(success);
+                assert!(user_id.is_some(), "Should return user ID");
                 assert!(error.is_none());
 
                 // Group fields populated

@@ -12,7 +12,7 @@ use crate::db::Permission;
 /// Parameters for creating a new user session
 pub struct NewSessionParams {
     pub session_id: u32,
-    pub db_user_id: i64,
+    pub user_id: i64,
     pub username: String,
     pub is_admin: bool,
     pub is_shared: bool,
@@ -42,7 +42,7 @@ pub struct UserSession {
     /// Session ID (unique identifier for this connection)
     pub session_id: u32,
     /// Database user ID
-    pub db_user_id: i64,
+    pub user_id: i64,
     /// Username
     pub username: String,
     /// Whether the user is an admin
@@ -86,7 +86,7 @@ impl UserSession {
     pub fn new(params: NewSessionParams) -> Self {
         Self {
             session_id: params.session_id,
-            db_user_id: params.db_user_id,
+            user_id: params.user_id,
             username: params.username,
             is_admin: params.is_admin,
             is_shared: params.is_shared,

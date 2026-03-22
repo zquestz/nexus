@@ -132,6 +132,7 @@ async fn perform_login(
         ServerMessage::LoginResponse {
             success: true,
             session_id: Some(_),
+            user_id,
             is_admin,
             permissions,
             server_info,
@@ -141,6 +142,7 @@ async fn perform_login(
             ..
         } => Ok(LoginInfo {
             is_admin: is_admin.unwrap_or(false),
+            user_id,
             nickname: nickname.unwrap_or_default(),
             permissions: permissions.unwrap_or_default(),
             server_name: server_info.as_ref().and_then(|info| info.name.clone()),

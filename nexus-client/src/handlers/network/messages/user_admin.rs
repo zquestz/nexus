@@ -13,6 +13,7 @@ use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting, UserManag
 pub struct UserEditResponseData {
     pub success: bool,
     pub error: Option<String>,
+    pub id: Option<i64>,
     pub username: Option<String>,
     pub is_admin: Option<bool>,
     pub is_shared: Option<bool>,
@@ -150,6 +151,7 @@ impl NexusApp {
             // If from user management panel, load the user details into edit form
             if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
                 conn.user_management.enter_edit_mode(
+                    data.id.unwrap_or(0),
                     data.username.unwrap_or_default(),
                     data.is_admin.unwrap_or(false),
                     data.is_shared.unwrap_or(false),

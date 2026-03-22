@@ -640,7 +640,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: username.to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -678,7 +678,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: 1,
+                user_id: 1,
                 username: account_username.to_string(),
                 is_admin: false,
                 is_shared: true,

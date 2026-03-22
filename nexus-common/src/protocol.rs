@@ -31,16 +31,24 @@ fn default_locale() -> String {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
-    ChatSend {
-        message: String,
-        #[serde(default, skip_serializing_if = "is_normal_action")]
-        action: ChatAction,
-        channel: String,
+    /// Create or update an IP ban
+    BanCreate {
+        /// Target: nickname, IP address, or hostname
+        target: String,
+        /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration: Option<String>,
+        /// Reason for the ban (admin notes)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
     },
-    ChatTopicUpdate {
-        topic: String,
-        channel: String,
+    /// Delete an IP ban
+    BanDelete {
+        /// Target: nickname (removes all IPs with that annotation) or IP address
+        target: String,
     },
+    /// Request list of active bans
+    BanList,
     /// Join or create a channel
     ChatJoin {
         channel: String,
@@ -56,153 +64,32 @@ pub enum ClientMessage {
         channel: String,
         secret: bool,
     },
-    Handshake {
-        version: String,
-    },
-    Login {
-        username: String,
-        password: String,
-        features: Vec<String>,
-        #[serde(default = "default_locale")]
-        locale: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        avatar: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        nickname: Option<String>,
-    },
-    UserBroadcast {
-        message: String,
-    },
-    UserCreate {
-        username: String,
-        password: String,
-        is_admin: bool,
-        #[serde(default)]
-        is_shared: bool,
-        enabled: bool,
-        permissions: Vec<String>,
-        /// Optional group assignment
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        group_id: Option<i64>,
-        /// Permissions to explicitly revoke from group (only meaningful with a group)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        revokes: Option<Vec<String>>,
-    },
-    UserDelete {
-        username: String,
-    },
-    UserEdit {
-        username: String,
-    },
-    UserInfo {
-        nickname: String,
-    },
-    UserKick {
-        nickname: String,
-        /// Optional reason for the kick (shown to kicked user)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
-    },
-    UserList {
-        #[serde(default)]
-        all: bool,
-    },
-    UserMessage {
-        to_nickname: String,
+    ChatSend {
         message: String,
         #[serde(default, skip_serializing_if = "is_normal_action")]
         action: ChatAction,
+        channel: String,
     },
-    UserUpdate {
-        username: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        current_password: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_username: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_password: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_is_admin: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_enabled: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_permissions: Option<Vec<String>>,
-        /// Assign user to a group (by group ID)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_group_id: Option<i64>,
-        /// Remove user from their current group (takes precedence over requested_group_id if both set)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        remove_group: Option<bool>,
-        /// Permissions to explicitly revoke from group (only meaningful with a group)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requested_revokes: Option<Vec<String>>,
+    ChatTopicUpdate {
+        topic: String,
+        channel: String,
     },
-    /// Set away status for all sessions of this user
-    UserAway {
-        /// Optional status message (max 128 bytes)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<String>,
-    },
-    /// Clear away status for all sessions of this user
-    UserBack,
-    /// Set status message without changing away status
-    UserStatus {
-        /// Status message (None to clear)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
-    },
-    ServerInfoUpdate {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        description: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        max_connections_per_ip: Option<u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        max_transfers_per_ip: Option<u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        image: Option<String>,
-        /// File reindex interval in minutes (0 to disable automatic reindexing)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        file_reindex_interval: Option<u32>,
-        /// Persistent channels (space-separated, survive restart)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        persistent_channels: Option<String>,
-        /// Auto-join channels (space-separated, joined on login)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        auto_join_channels: Option<String>,
-    },
-    NewsList,
-    NewsShow {
-        id: i64,
-    },
-    NewsCreate {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        body: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        image: Option<String>,
-    },
-    NewsEdit {
-        id: i64,
-    },
-    NewsUpdate {
-        id: i64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        body: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        image: Option<String>,
-    },
-    NewsDelete {
-        id: i64,
-    },
-    FileList {
-        path: String,
-        /// If true, browse from file root instead of user's area (requires file_root permission)
+    /// Request list of active connections (admin/connection_monitor permission)
+    ConnectionMonitor,
+    FileCopy {
+        /// Source path of the file or directory to copy
+        source_path: String,
+        /// Destination directory to copy into
+        destination_dir: String,
+        /// If true, overwrite existing file at destination
         #[serde(default)]
-        root: bool,
-        /// If true, include hidden files (dotfiles) in the listing
+        overwrite: bool,
+        /// If true, source_path is relative to file root instead of user's area
         #[serde(default)]
-        show_hidden: bool,
+        source_root: bool,
+        /// If true, destination_dir is relative to file root instead of user's area
+        #[serde(default)]
+        destination_root: bool,
     },
     FileCreateDir {
         /// Parent directory path where the new directory should be created
@@ -213,12 +100,28 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
+    /// Raw file data for upload (port 7501 only, mirrors ServerMessage::FileData)
+    FileData,
     FileDelete {
         /// Path to the file or empty directory to delete
         path: String,
         /// If true, path is relative to file root instead of user's area (requires file_root permission)
         #[serde(default)]
         root: bool,
+    },
+    /// Request a file download (port 7501 only)
+    FileDownload {
+        /// Path to download (file or directory)
+        path: String,
+        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
+    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
     },
     FileInfo {
         /// Path to the file or directory to get info for
@@ -227,14 +130,14 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
-    FileRename {
-        /// Current path of the file or directory to rename
+    FileList {
         path: String,
-        /// New name (just the filename, not full path)
-        new_name: String,
-        /// If true, path is relative to file root instead of user's area (requires file_root permission)
+        /// If true, browse from file root instead of user's area (requires file_root permission)
         #[serde(default)]
         root: bool,
+        /// If true, include hidden files (dotfiles) in the listing
+        #[serde(default)]
+        show_hidden: bool,
     },
     FileMove {
         /// Source path of the file or directory to move
@@ -251,28 +154,33 @@ pub enum ClientMessage {
         #[serde(default)]
         destination_root: bool,
     },
-    FileCopy {
-        /// Source path of the file or directory to copy
-        source_path: String,
-        /// Destination directory to copy into
-        destination_dir: String,
-        /// If true, overwrite existing file at destination
-        #[serde(default)]
-        overwrite: bool,
-        /// If true, source_path is relative to file root instead of user's area
-        #[serde(default)]
-        source_root: bool,
-        /// If true, destination_dir is relative to file root instead of user's area
-        #[serde(default)]
-        destination_root: bool,
-    },
-    /// Request a file download (port 7501 only)
-    FileDownload {
-        /// Path to download (file or directory)
+    /// Request a file index rebuild (admin command)
+    FileReindex,
+    FileRename {
+        /// Current path of the file or directory to rename
         path: String,
+        /// New name (just the filename, not full path)
+        new_name: String,
         /// If true, path is relative to file root instead of user's area (requires file_root permission)
         #[serde(default)]
         root: bool,
+    },
+    /// Search files in the file area
+    FileSearch {
+        /// Search query (minimum 3 characters, literal match, case-insensitive)
+        query: String,
+        /// If true, search entire file root instead of user's area (requires file_root permission)
+        #[serde(default)]
+        root: bool,
+    },
+    /// Client announces a file to upload (port 7501 only, mirrors ServerMessage::FileStart)
+    FileStart {
+        /// Relative path (e.g., "subdir/file.txt")
+        path: String,
+        /// File size in bytes
+        size: u64,
+        /// SHA-256 hash of complete file
+        sha256: String,
     },
     /// Client response to FileStart - reports local file state for resume (downloads)
     FileStartResponse {
@@ -294,41 +202,103 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
-    /// Client announces a file to upload (port 7501 only, mirrors ServerMessage::FileStart)
-    FileStart {
-        /// Relative path (e.g., "subdir/file.txt")
-        path: String,
-        /// File size in bytes
-        size: u64,
-        /// SHA-256 hash of complete file
-        sha256: String,
+    /// Create a new account group
+    GroupCreate {
+        /// Group name
+        name: String,
+        /// Whether this group is for shared accounts only
+        is_shared: bool,
+        /// Permissions to assign to this group
+        permissions: Vec<String>,
     },
-    /// Raw file data for upload (port 7501 only, mirrors ServerMessage::FileData)
-    FileData,
-    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
-    /// Receiver should reset idle timer but otherwise ignore this message.
-    FileHashing {
-        /// File being hashed (for logging/debugging)
-        file: String,
+    /// Delete an account group
+    GroupDelete {
+        /// Group ID to delete
+        id: i64,
     },
-    /// Create or update an IP ban
-    BanCreate {
-        /// Target: nickname, IP address, or hostname
-        target: String,
-        /// Duration: "10m", "4h", "7d", "0" (permanent), or None (permanent)
+    /// Request group details for editing
+    GroupEdit {
+        /// Group ID to edit
+        id: i64,
+    },
+    /// Request list of all account groups
+    ///
+    /// Requires one of: `user_create`, `user_edit`, `group_create`, `group_edit`, or `group_delete`
+    GroupList,
+    /// Update an existing account group
+    GroupUpdate {
+        /// Group ID to update
+        id: i64,
+        /// New group name (if changing)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        duration: Option<String>,
-        /// Reason for the ban (admin notes)
+        name: Option<String>,
+        /// New shared status (if changing)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
+        is_shared: Option<bool>,
+        /// New permissions (if changing)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
     },
-    /// Delete an IP ban
-    BanDelete {
-        /// Target: nickname (removes all IPs with that annotation) or IP address
-        target: String,
+    Handshake {
+        version: String,
     },
-    /// Request list of active bans
-    BanList,
+    Login {
+        username: String,
+        password: String,
+        features: Vec<String>,
+        #[serde(default = "default_locale")]
+        locale: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        avatar: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    NewsCreate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
+    },
+    NewsDelete {
+        id: i64,
+    },
+    NewsEdit {
+        id: i64,
+    },
+    NewsList,
+    NewsShow {
+        id: i64,
+    },
+    NewsUpdate {
+        id: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
+    },
+    /// Keepalive ping (client sends periodically to prevent NAT timeout)
+    Ping,
+    ServerInfoUpdate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_connections_per_ip: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_transfers_per_ip: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image: Option<String>,
+        /// File reindex interval in minutes (0 to disable automatic reindexing)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_reindex_interval: Option<u32>,
+        /// Persistent channels (space-separated, survive restart)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        persistent_channels: Option<String>,
+        /// Auto-join channels (space-separated, joined on login)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auto_join_channels: Option<String>,
+    },
     /// Add an IP to the trusted list (bypasses ban checks)
     TrustCreate {
         /// Target: nickname, IP address, or CIDR range
@@ -347,55 +317,87 @@ pub enum ClientMessage {
     },
     /// Request list of trusted IPs
     TrustList,
-    /// Request list of active connections (admin/connection_monitor permission)
-    ConnectionMonitor,
-    /// Request list of all account groups
-    ///
-    /// Requires one of: `user_create`, `user_edit`, `group_create`, `group_edit`, or `group_delete`
-    GroupList,
-    /// Create a new account group
-    GroupCreate {
-        /// Group name
-        name: String,
-        /// Whether this group is for shared accounts only
+    /// Set away status for all sessions of this user
+    UserAway {
+        /// Optional status message (max 128 bytes)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+    /// Clear away status for all sessions of this user
+    UserBack,
+    UserBroadcast {
+        message: String,
+    },
+    UserCreate {
+        username: String,
+        password: String,
+        is_admin: bool,
+        #[serde(default)]
         is_shared: bool,
-        /// Permissions to assign to this group
+        enabled: bool,
         permissions: Vec<String>,
+        /// Optional group assignment
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Permissions to explicitly revoke from group (only meaningful with a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revokes: Option<Vec<String>>,
     },
-    /// Request group details for editing
-    GroupEdit {
-        /// Group ID to edit
+    UserDelete {
         id: i64,
     },
-    /// Update an existing account group
-    GroupUpdate {
-        /// Group ID to update
+    UserEdit {
         id: i64,
-        /// New group name (if changing)
+    },
+    UserInfo {
+        nickname: String,
+    },
+    UserKick {
+        nickname: String,
+        /// Optional reason for the kick (shown to kicked user)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        /// New shared status (if changing)
+        reason: Option<String>,
+    },
+    UserList {
+        #[serde(default)]
+        all: bool,
+    },
+    UserMessage {
+        to_nickname: String,
+        message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
+    },
+    /// Set status message without changing away status
+    UserStatus {
+        /// Status message (None to clear)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        is_shared: Option<bool>,
-        /// New permissions (if changing)
+        status: Option<String>,
+    },
+    UserUpdate {
+        id: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        current_password: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        username: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        is_admin: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
+        /// Assign user to a group (by group ID)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Remove user from their current group (takes precedence over group_id if both set)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remove_group: Option<bool>,
+        /// Permissions to explicitly revoke from group (only meaningful with a group)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revokes: Option<Vec<String>>,
     },
-    /// Delete an account group
-    GroupDelete {
-        /// Group ID to delete
-        id: i64,
-    },
-    /// Search files in the file area
-    FileSearch {
-        /// Search query (minimum 3 characters, literal match, case-insensitive)
-        query: String,
-        /// If true, search entire file root instead of user's area (requires file_root permission)
-        #[serde(default)]
-        root: bool,
-    },
-    /// Request a file index rebuild (admin command)
-    FileReindex,
     /// Join voice chat for a channel or user message
     VoiceJoin {
         /// Target channel (e.g., "#general") or nickname for user message voice
@@ -403,8 +405,6 @@ pub enum ClientMessage {
     },
     /// Leave current voice session
     VoiceLeave,
-    /// Keepalive ping (client sends periodically to prevent NAT timeout)
-    Ping,
 }
 
 /// Helper for skip_serializing_if on ChatAction
@@ -462,42 +462,37 @@ pub struct TransferInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
-    ChatMessage {
-        session_id: u32,
-        nickname: String,
-        #[serde(default)]
-        is_admin: bool,
-        #[serde(default)]
-        is_shared: bool,
-        message: String,
-        #[serde(default, skip_serializing_if = "is_normal_action")]
-        action: ChatAction,
-        channel: String,
-        /// Unix timestamp (seconds since epoch)
-        #[serde(default)]
-        timestamp: u64,
-    },
-    /// Broadcast when channel properties change (topic, secret mode)
-    /// Only changed fields are included
-    ChatUpdated {
-        channel: String,
-        /// New topic (None = not changed, Some("") = cleared)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        topic: Option<String>,
-        /// Who set the topic
-        #[serde(skip_serializing_if = "Option::is_none")]
-        topic_set_by: Option<String>,
-        /// New secret mode (None = not changed)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        secret: Option<bool>,
-        /// Who changed secret mode
-        #[serde(skip_serializing_if = "Option::is_none")]
-        secret_set_by: Option<String>,
-    },
-    ChatTopicUpdateResponse {
+    /// Response to BanCreate request
+    BanCreateResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        /// IPs that were banned (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if banned by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to BanDelete request
+    BanDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were unbanned (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if unbanned by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to BanList request
+    BanListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bans: Option<Vec<BanInfo>>,
     },
     /// Response to ChatJoin request
     /// On success, includes full channel data. On error (including already-member), only error is set.
@@ -540,11 +535,48 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         channels: Option<Vec<ChannelInfo>>,
     },
+    ChatMessage {
+        session_id: u32,
+        nickname: String,
+        #[serde(default)]
+        is_admin: bool,
+        #[serde(default)]
+        is_shared: bool,
+        message: String,
+        #[serde(default, skip_serializing_if = "is_normal_action")]
+        action: ChatAction,
+        channel: String,
+        /// Unix timestamp (seconds since epoch)
+        #[serde(default)]
+        timestamp: u64,
+    },
     /// Response to ChatSecret request
     ChatSecretResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    },
+    ChatTopicUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Broadcast when channel properties change (topic, secret mode)
+    /// Only changed fields are included
+    ChatUpdated {
+        channel: String,
+        /// New topic (None = not changed, Some("") = cleared)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic: Option<String>,
+        /// Who set the topic
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topic_set_by: Option<String>,
+        /// New secret mode (None = not changed)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        secret: Option<bool>,
+        /// Who changed secret mode
+        #[serde(skip_serializing_if = "Option::is_none")]
+        secret_set_by: Option<String>,
     },
     /// Broadcast when a user joins a channel
     ChatUserJoined {
@@ -558,11 +590,197 @@ pub enum ServerMessage {
         channel: String,
         nickname: String,
     },
-
+    /// Response to ConnectionMonitor request
+    ConnectionMonitorResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        connections: Option<Vec<ConnectionInfo>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        transfers: Option<Vec<TransferInfo>>,
+    },
     Error {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         command: Option<String>,
+    },
+    FileCopyResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind for client decision making
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+    },
+    FileCreateDirResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Full path of the created directory (for client to navigate to)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Raw file data for download (transfer port only)
+    FileData,
+    FileDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Response to a FileDownload request (port 7501 only)
+    FileDownloadResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind: "not_found", "permission", "invalid"
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+        /// Total size of all files in bytes
+        #[serde(skip_serializing_if = "Option::is_none")]
+        size: Option<u64>,
+        /// Number of files to transfer
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file_count: Option<u64>,
+        /// Transfer ID for logging (8 hex chars)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        transfer_id: Option<String>,
+    },
+    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
+    },
+    FileInfoResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        info: Option<FileInfoDetails>,
+    },
+    FileListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entries: Option<Vec<FileEntry>>,
+        /// Whether the current directory allows uploads (for UI to enable "New Directory" button)
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        can_upload: bool,
+    },
+    FileMoveResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind for client decision making
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+    },
+    /// Response to FileReindex request
+    FileReindexResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    FileRenameResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Response to FileSearch request
+    FileSearchResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Search results (max 100)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        results: Option<Vec<FileSearchResult>>,
+    },
+    /// Server announces a file to transfer (download, transfer port only)
+    FileStart {
+        /// Relative path (e.g., "Games/app.zip")
+        path: String,
+        /// File size in bytes
+        size: u64,
+        /// SHA-256 hash of complete file
+        sha256: String,
+    },
+    /// Server response to client FileStart - reports server file state for resume (uploads)
+    FileStartResponse {
+        /// Size of file on server (0 if no file exists)
+        size: u64,
+        /// SHA-256 hash of server's partial file (None if size is 0)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
+    },
+    /// Response to a FileUpload request (port 7501 only)
+    FileUploadResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Machine-readable error kind: "not_found", "permission", "invalid", "exists"
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+        /// Transfer ID for logging (8 hex chars)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        transfer_id: Option<String>,
+    },
+    /// Response to GroupCreate request
+    GroupCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to GroupDelete request
+    GroupDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to GroupEdit request (fetch group for editing)
+    GroupEditResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_shared: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        member_count: Option<u32>,
+    },
+    /// Response to GroupList request
+    GroupListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        groups: Option<Vec<GroupInfo>>,
+    },
+    /// Response to GroupUpdate request
+    GroupUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     HandshakeResponse {
         success: bool,
@@ -577,6 +795,8 @@ pub enum ServerMessage {
         error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         session_id: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user_id: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_admin: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -598,10 +818,135 @@ pub enum ServerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         group_name: Option<String>,
     },
+    NewsCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    NewsDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+    },
+    NewsEditResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    NewsListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        items: Option<Vec<NewsItem>>,
+    },
+    NewsShowResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    NewsUpdated {
+        action: NewsAction,
+        id: i64,
+    },
+    NewsUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        news: Option<NewsItem>,
+    },
+    PermissionsUpdated {
+        is_admin: bool,
+        permissions: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_info: Option<ServerInfo>,
+        /// Group ID (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<i64>,
+        /// Group name (display only; permissions already resolved)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_name: Option<String>,
+    },
+    /// Keepalive pong (server response to client Ping)
+    Pong,
     ServerBroadcast {
         session_id: u32,
         username: String,
         message: String,
+    },
+    ServerInfoUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    ServerInfoUpdated {
+        server_info: ServerInfo,
+    },
+    /// Server signals transfer completion (transfer port only)
+    TransferComplete {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_kind: Option<String>,
+    },
+    /// Response to TrustCreate request
+    TrustCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were trusted (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if trusted by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to TrustDelete request
+    TrustDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// IPs that were untrusted (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ips: Option<Vec<String>>,
+        /// Nickname if untrusted by nickname (for success message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nickname: Option<String>,
+    },
+    /// Response to TrustList request
+    TrustListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entries: Option<Vec<TrustInfo>>,
+    },
+    /// Response to UserAway request
+    UserAwayResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Response to UserBack request
+    UserBackResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    UserBroadcastResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     UserConnected {
         user: UserInfo,
@@ -610,6 +955,8 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         username: Option<String>,
     },
@@ -620,10 +967,16 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         username: Option<String>,
     },
+    UserDisconnected {
+        session_id: u32,
+        nickname: String,
+    },
     UserEditResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         username: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -649,35 +1002,6 @@ pub enum ServerMessage {
         /// Available groups for the group dropdown
         #[serde(default, skip_serializing_if = "Option::is_none")]
         available_groups: Option<Vec<GroupInfo>>,
-    },
-    UserDisconnected {
-        session_id: u32,
-        nickname: String,
-    },
-    PermissionsUpdated {
-        is_admin: bool,
-        permissions: Vec<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        server_info: Option<ServerInfo>,
-        /// Group ID (display only; permissions already resolved)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        group_id: Option<i64>,
-        /// Group name (display only; permissions already resolved)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        group_name: Option<String>,
-    },
-    ServerInfoUpdated {
-        server_info: ServerInfo,
-    },
-    ServerInfoUpdateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-    UserBroadcastResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
     },
     UserInfoResponse {
         success: bool,
@@ -724,339 +1048,24 @@ pub enum ServerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
     },
-    UserUpdated {
-        previous_username: String,
-        user: UserInfo,
-    },
-    /// Response to UserAway request
-    UserAwayResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-    /// Response to UserBack request
-    UserBackResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
     /// Response to UserStatus request
     UserStatusResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+    UserUpdated {
+        previous_username: String,
+        user: UserInfo,
+    },
     UserUpdateResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         username: Option<String>,
-    },
-    NewsListResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        items: Option<Vec<NewsItem>>,
-    },
-    NewsShowResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        news: Option<NewsItem>,
-    },
-    NewsCreateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        news: Option<NewsItem>,
-    },
-    NewsEditResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        news: Option<NewsItem>,
-    },
-    NewsUpdateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        news: Option<NewsItem>,
-    },
-    NewsDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<i64>,
-    },
-    NewsUpdated {
-        action: NewsAction,
-        id: i64,
-    },
-    FileListResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        entries: Option<Vec<FileEntry>>,
-        /// Whether the current directory allows uploads (for UI to enable "New Directory" button)
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        can_upload: bool,
-    },
-    FileCreateDirResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Full path of the created directory (for client to navigate to)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-    },
-    FileDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-    FileInfoResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        info: Option<FileInfoDetails>,
-    },
-    FileRenameResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-    FileMoveResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Machine-readable error kind for client decision making
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error_kind: Option<String>,
-    },
-    FileCopyResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Machine-readable error kind for client decision making
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error_kind: Option<String>,
-    },
-    /// Response to a FileDownload request (port 7501 only)
-    FileDownloadResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Machine-readable error kind: "not_found", "permission", "invalid"
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error_kind: Option<String>,
-        /// Total size of all files in bytes
-        #[serde(skip_serializing_if = "Option::is_none")]
-        size: Option<u64>,
-        /// Number of files to transfer
-        #[serde(skip_serializing_if = "Option::is_none")]
-        file_count: Option<u64>,
-        /// Transfer ID for logging (8 hex chars)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        transfer_id: Option<String>,
-    },
-    /// Server announces a file to transfer (download, transfer port only)
-    FileStart {
-        /// Relative path (e.g., "Games/app.zip")
-        path: String,
-        /// File size in bytes
-        size: u64,
-        /// SHA-256 hash of complete file
-        sha256: String,
-    },
-    /// Raw file data for download (transfer port only)
-    FileData,
-    /// Response to a FileUpload request (port 7501 only)
-    FileUploadResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Machine-readable error kind: "not_found", "permission", "invalid", "exists"
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error_kind: Option<String>,
-        /// Transfer ID for logging (8 hex chars)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        transfer_id: Option<String>,
-    },
-    /// Server response to client FileStart - reports server file state for resume (uploads)
-    FileStartResponse {
-        /// Size of file on server (0 if no file exists)
-        size: u64,
-        /// SHA-256 hash of server's partial file (None if size is 0)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        sha256: Option<String>,
-    },
-    /// Server signals transfer completion (transfer port only)
-    TransferComplete {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error_kind: Option<String>,
-    },
-    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
-    /// Receiver should reset idle timer but otherwise ignore this message.
-    FileHashing {
-        /// File being hashed (for logging/debugging)
-        file: String,
-    },
-    /// Response to BanCreate request
-    BanCreateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// IPs that were banned (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ips: Option<Vec<String>>,
-        /// Nickname if banned by nickname (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        nickname: Option<String>,
-    },
-    /// Response to BanDelete request
-    BanDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// IPs that were unbanned (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ips: Option<Vec<String>>,
-        /// Nickname if unbanned by nickname (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        nickname: Option<String>,
-    },
-    /// Response to BanList request
-    BanListResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        bans: Option<Vec<BanInfo>>,
-    },
-    /// Response to TrustCreate request
-    TrustCreateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// IPs that were trusted (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ips: Option<Vec<String>>,
-        /// Nickname if trusted by nickname (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        nickname: Option<String>,
-    },
-    /// Response to TrustDelete request
-    TrustDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// IPs that were untrusted (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ips: Option<Vec<String>>,
-        /// Nickname if untrusted by nickname (for success message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        nickname: Option<String>,
-    },
-    /// Response to TrustList request
-    TrustListResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        entries: Option<Vec<TrustInfo>>,
-    },
-    /// Response to ConnectionMonitor request
-    ConnectionMonitorResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        connections: Option<Vec<ConnectionInfo>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        transfers: Option<Vec<TransferInfo>>,
-    },
-    /// Response to GroupList request
-    GroupListResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        groups: Option<Vec<GroupInfo>>,
-    },
-    /// Response to GroupCreate request
-    GroupCreateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    /// Response to GroupEdit request (fetch group for editing)
-    GroupEditResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        is_shared: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        permissions: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        member_count: Option<u32>,
-    },
-    /// Response to GroupUpdate request
-    GroupUpdateResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    /// Response to GroupDelete request
-    GroupDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    /// Response to FileSearch request
-    FileSearchResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Search results (max 100)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        results: Option<Vec<FileSearchResult>>,
-    },
-    /// Response to FileReindex request
-    FileReindexResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
     },
     /// Response to VoiceJoin request
     VoiceJoinResponse {
@@ -1093,8 +1102,6 @@ pub enum ServerMessage {
         /// Target channel or the other user's nickname for user message voice
         target: String,
     },
-    /// Keepalive pong (server response to client Ping)
-    Pong,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1155,6 +1162,7 @@ pub struct ChannelInfo {
 /// User info for lists. `nickname` is the display name (== username for regular accounts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
+    pub id: i64,
     pub username: String,
     pub nickname: String,
     pub login_time: i64,
@@ -1299,6 +1307,7 @@ pub struct FileInfoDetails {
 /// Detailed user info. `nickname` is the display name (== username for regular accounts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfoDetailed {
+    pub id: i64,
     pub username: String,
     pub nickname: String,
     pub login_time: i64,
@@ -1349,6 +1358,34 @@ pub struct GroupInfo {
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ClientMessage::BanCreate {
+                target,
+                duration,
+                reason,
+            } => f
+                .debug_struct("BanCreate")
+                .field("target", target)
+                .field("duration", duration)
+                .field("reason", reason)
+                .finish(),
+            ClientMessage::BanDelete { target } => {
+                f.debug_struct("BanDelete").field("target", target).finish()
+            }
+            ClientMessage::BanList => f.debug_struct("BanList").finish(),
+            ClientMessage::ChatJoin { channel } => f
+                .debug_struct("ChatJoin")
+                .field("channel", channel)
+                .finish(),
+            ClientMessage::ChatLeave { channel } => f
+                .debug_struct("ChatLeave")
+                .field("channel", channel)
+                .finish(),
+            ClientMessage::ChatList {} => f.debug_struct("ChatList").finish(),
+            ClientMessage::ChatSecret { channel, secret } => f
+                .debug_struct("ChatSecret")
+                .field("channel", channel)
+                .field("secret", secret)
+                .finish(),
             ClientMessage::ChatSend {
                 message,
                 action,
@@ -1364,19 +1401,135 @@ impl std::fmt::Debug for ClientMessage {
                 .field("topic", topic)
                 .field("channel", channel)
                 .finish(),
-            ClientMessage::ChatJoin { channel } => f
-                .debug_struct("ChatJoin")
-                .field("channel", channel)
+            ClientMessage::ConnectionMonitor => f.debug_struct("ConnectionMonitor").finish(),
+            ClientMessage::FileCopy {
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+            } => f
+                .debug_struct("FileCopy")
+                .field("source_path", source_path)
+                .field("destination_dir", destination_dir)
+                .field("overwrite", overwrite)
+                .field("source_root", source_root)
+                .field("destination_root", destination_root)
                 .finish(),
-            ClientMessage::ChatLeave { channel } => f
-                .debug_struct("ChatLeave")
-                .field("channel", channel)
+            ClientMessage::FileCreateDir { path, name, root } => f
+                .debug_struct("FileCreateDir")
+                .field("path", path)
+                .field("name", name)
+                .field("root", root)
                 .finish(),
-            ClientMessage::ChatList {} => f.debug_struct("ChatList").finish(),
-            ClientMessage::ChatSecret { channel, secret } => f
-                .debug_struct("ChatSecret")
-                .field("channel", channel)
-                .field("secret", secret)
+            ClientMessage::FileData => f.debug_struct("FileData").finish(),
+            ClientMessage::FileDelete { path, root } => f
+                .debug_struct("FileDelete")
+                .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileDownload { path, root } => f
+                .debug_struct("FileDownload")
+                .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileHashing { file } => {
+                f.debug_struct("FileHashing").field("file", file).finish()
+            }
+            ClientMessage::FileInfo { path, root } => f
+                .debug_struct("FileInfo")
+                .field("path", path)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileList {
+                path,
+                root,
+                show_hidden,
+            } => f
+                .debug_struct("FileList")
+                .field("path", path)
+                .field("root", root)
+                .field("show_hidden", show_hidden)
+                .finish(),
+            ClientMessage::FileMove {
+                source_path,
+                destination_dir,
+                overwrite,
+                source_root,
+                destination_root,
+            } => f
+                .debug_struct("FileMove")
+                .field("source_path", source_path)
+                .field("destination_dir", destination_dir)
+                .field("overwrite", overwrite)
+                .field("source_root", source_root)
+                .field("destination_root", destination_root)
+                .finish(),
+            ClientMessage::FileReindex => f.debug_struct("FileReindex").finish(),
+            ClientMessage::FileRename {
+                path,
+                new_name,
+                root,
+            } => f
+                .debug_struct("FileRename")
+                .field("path", path)
+                .field("new_name", new_name)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileSearch { query, root } => f
+                .debug_struct("FileSearch")
+                .field("query", query)
+                .field("root", root)
+                .finish(),
+            ClientMessage::FileStart { path, size, sha256 } => f
+                .debug_struct("FileStart")
+                .field("path", path)
+                .field("size", size)
+                .field("sha256", sha256)
+                .finish(),
+            ClientMessage::FileStartResponse { size, sha256 } => f
+                .debug_struct("FileStartResponse")
+                .field("size", size)
+                .field("sha256", sha256)
+                .finish(),
+            ClientMessage::FileUpload {
+                destination,
+                file_count,
+                total_size,
+                root,
+            } => f
+                .debug_struct("FileUpload")
+                .field("destination", destination)
+                .field("file_count", file_count)
+                .field("total_size", total_size)
+                .field("root", root)
+                .finish(),
+            ClientMessage::GroupCreate {
+                name,
+                is_shared,
+                permissions,
+            } => f
+                .debug_struct("GroupCreate")
+                .field("name", name)
+                .field("is_shared", is_shared)
+                .field("permissions", permissions)
+                .finish(),
+            ClientMessage::GroupDelete { id } => {
+                f.debug_struct("GroupDelete").field("id", id).finish()
+            }
+            ClientMessage::GroupEdit { id } => f.debug_struct("GroupEdit").field("id", id).finish(),
+            ClientMessage::GroupList => f.debug_struct("GroupList").finish(),
+            ClientMessage::GroupUpdate {
+                id,
+                name,
+                is_shared,
+                permissions,
+            } => f
+                .debug_struct("GroupUpdate")
+                .field("id", id)
+                .field("name", name)
+                .field("is_shared", is_shared)
+                .field("permissions", permissions)
                 .finish(),
             ClientMessage::Handshake { version } => f
                 .debug_struct("Handshake")
@@ -1407,92 +1560,47 @@ impl std::fmt::Debug for ClientMessage {
                 )
                 .field("nickname", nickname)
                 .finish(),
-            ClientMessage::UserBroadcast { message } => f
-                .debug_struct("UserBroadcast")
-                .field("message", message)
-                .finish(),
-            ClientMessage::UserCreate {
-                username,
-                is_admin,
-                is_shared,
-                enabled,
-                permissions,
-                group_id,
-                revokes,
-                ..
-            } => f
-                .debug_struct("UserCreate")
-                .field("username", username)
-                .field("is_admin", is_admin)
-                .field("is_shared", is_shared)
-                .field("enabled", enabled)
-                .field("permissions", permissions)
-                .field("group_id", group_id)
-                .field("revokes", revokes)
-                .field("password", &"<REDACTED>")
-                .finish(),
-            ClientMessage::UserDelete { username } => f
-                .debug_struct("UserDelete")
-                .field("username", username)
-                .finish(),
-            ClientMessage::UserEdit { username } => f
-                .debug_struct("UserEdit")
-                .field("username", username)
-                .finish(),
-            ClientMessage::UserInfo { nickname } => f
-                .debug_struct("UserInfo")
-                .field("nickname", nickname)
-                .finish(),
-            ClientMessage::UserKick { nickname, reason } => f
-                .debug_struct("UserKick")
-                .field("nickname", nickname)
-                .field("reason", reason)
-                .finish(),
-            ClientMessage::UserList { all } => {
-                f.debug_struct("UserList").field("all", all).finish()
+            ClientMessage::NewsCreate { body, image } => {
+                let mut s = f.debug_struct("NewsCreate");
+                s.field("body", body);
+                if let Some(img) = image {
+                    if img.len() > 100 {
+                        s.field(
+                            "image",
+                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                        );
+                    } else {
+                        s.field("image", &Some(img));
+                    }
+                } else {
+                    s.field("image", &None::<String>);
+                }
+                s.finish()
             }
-            ClientMessage::UserMessage {
-                to_nickname,
-                message,
-                action,
-            } => f
-                .debug_struct("UserMessage")
-                .field("to_nickname", to_nickname)
-                .field("message", message)
-                .field("action", action)
-                .finish(),
-            ClientMessage::UserUpdate {
-                username,
-                current_password: _,
-                requested_username,
-                requested_password: _,
-                requested_is_admin,
-                requested_enabled,
-                requested_permissions,
-                requested_group_id,
-                remove_group,
-                requested_revokes,
-            } => f
-                .debug_struct("UserUpdate")
-                .field("username", username)
-                .field("requested_username", requested_username)
-                .field("requested_password", &"<REDACTED>")
-                .field("requested_is_admin", requested_is_admin)
-                .field("requested_enabled", requested_enabled)
-                .field("requested_permissions", requested_permissions)
-                .field("requested_group_id", requested_group_id)
-                .field("remove_group", remove_group)
-                .field("requested_revokes", requested_revokes)
-                .finish(),
-            ClientMessage::UserAway { message } => f
-                .debug_struct("UserAway")
-                .field("message", message)
-                .finish(),
-            ClientMessage::UserBack => f.debug_struct("UserBack").finish(),
-            ClientMessage::UserStatus { status } => f
-                .debug_struct("UserStatus")
-                .field("status", status)
-                .finish(),
+            ClientMessage::NewsDelete { id } => {
+                f.debug_struct("NewsDelete").field("id", id).finish()
+            }
+            ClientMessage::NewsEdit { id } => f.debug_struct("NewsEdit").field("id", id).finish(),
+            ClientMessage::NewsList => f.debug_struct("NewsList").finish(),
+            ClientMessage::NewsShow { id } => f.debug_struct("NewsShow").field("id", id).finish(),
+            ClientMessage::NewsUpdate { id, body, image } => {
+                let mut s = f.debug_struct("NewsUpdate");
+                s.field("id", id).field("body", body);
+                if let Some(img) = image {
+                    if img.len() > 100 {
+                        s.field(
+                            "image",
+                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                        );
+                    } else {
+                        s.field("image", &Some(img));
+                    }
+                } else {
+                    s.field("image", &None::<String>);
+                }
+                s.finish()
+            }
+            ClientMessage::Ping => f.debug_struct("Ping").finish(),
             ClientMessage::ServerInfoUpdate {
                 name,
                 description,
@@ -1525,156 +1633,6 @@ impl std::fmt::Debug for ClientMessage {
                 }
                 s.finish()
             }
-            ClientMessage::NewsList => f.debug_struct("NewsList").finish(),
-            ClientMessage::NewsShow { id } => f.debug_struct("NewsShow").field("id", id).finish(),
-            ClientMessage::NewsCreate { body, image } => {
-                let mut s = f.debug_struct("NewsCreate");
-                s.field("body", body);
-                if let Some(img) = image {
-                    if img.len() > 100 {
-                        s.field(
-                            "image",
-                            &format!("{}... ({} bytes)", &img[..100], img.len()),
-                        );
-                    } else {
-                        s.field("image", &Some(img));
-                    }
-                } else {
-                    s.field("image", &None::<String>);
-                }
-                s.finish()
-            }
-            ClientMessage::NewsEdit { id } => f.debug_struct("NewsEdit").field("id", id).finish(),
-            ClientMessage::NewsUpdate { id, body, image } => {
-                let mut s = f.debug_struct("NewsUpdate");
-                s.field("id", id).field("body", body);
-                if let Some(img) = image {
-                    if img.len() > 100 {
-                        s.field(
-                            "image",
-                            &format!("{}... ({} bytes)", &img[..100], img.len()),
-                        );
-                    } else {
-                        s.field("image", &Some(img));
-                    }
-                } else {
-                    s.field("image", &None::<String>);
-                }
-                s.finish()
-            }
-            ClientMessage::NewsDelete { id } => {
-                f.debug_struct("NewsDelete").field("id", id).finish()
-            }
-            ClientMessage::FileList {
-                path,
-                root,
-                show_hidden,
-            } => f
-                .debug_struct("FileList")
-                .field("path", path)
-                .field("root", root)
-                .field("show_hidden", show_hidden)
-                .finish(),
-            ClientMessage::FileCreateDir { path, name, root } => f
-                .debug_struct("FileCreateDir")
-                .field("path", path)
-                .field("name", name)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileDelete { path, root } => f
-                .debug_struct("FileDelete")
-                .field("path", path)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileInfo { path, root } => f
-                .debug_struct("FileInfo")
-                .field("path", path)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileRename {
-                path,
-                new_name,
-                root,
-            } => f
-                .debug_struct("FileRename")
-                .field("path", path)
-                .field("new_name", new_name)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileMove {
-                source_path,
-                destination_dir,
-                overwrite,
-                source_root,
-                destination_root,
-            } => f
-                .debug_struct("FileMove")
-                .field("source_path", source_path)
-                .field("destination_dir", destination_dir)
-                .field("overwrite", overwrite)
-                .field("source_root", source_root)
-                .field("destination_root", destination_root)
-                .finish(),
-            ClientMessage::FileCopy {
-                source_path,
-                destination_dir,
-                overwrite,
-                source_root,
-                destination_root,
-            } => f
-                .debug_struct("FileCopy")
-                .field("source_path", source_path)
-                .field("destination_dir", destination_dir)
-                .field("overwrite", overwrite)
-                .field("source_root", source_root)
-                .field("destination_root", destination_root)
-                .finish(),
-            ClientMessage::FileDownload { path, root } => f
-                .debug_struct("FileDownload")
-                .field("path", path)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileStartResponse { size, sha256 } => f
-                .debug_struct("FileStartResponse")
-                .field("size", size)
-                .field("sha256", sha256)
-                .finish(),
-            ClientMessage::FileUpload {
-                destination,
-                file_count,
-                total_size,
-                root,
-            } => f
-                .debug_struct("FileUpload")
-                .field("destination", destination)
-                .field("file_count", file_count)
-                .field("total_size", total_size)
-                .field("root", root)
-                .finish(),
-            ClientMessage::FileStart { path, size, sha256 } => f
-                .debug_struct("FileStart")
-                .field("path", path)
-                .field("size", size)
-                .field("sha256", sha256)
-                .finish(),
-            ClientMessage::FileData => f.debug_struct("FileData").finish(),
-            ClientMessage::FileHashing { file } => {
-                f.debug_struct("FileHashing").field("file", file).finish()
-            }
-            ClientMessage::BanCreate {
-                target,
-                duration,
-                reason,
-            } => f
-                .debug_struct("BanCreate")
-                .field("target", target)
-                .field("duration", duration)
-                .field("reason", reason)
-                .finish(),
-            ClientMessage::BanDelete { target } => {
-                f.debug_struct("BanDelete").field("target", target).finish()
-            }
-            ClientMessage::BanList => f.debug_struct("BanList").finish(),
             ClientMessage::TrustCreate {
                 target,
                 duration,
@@ -1690,45 +1648,92 @@ impl std::fmt::Debug for ClientMessage {
                 .field("target", target)
                 .finish(),
             ClientMessage::TrustList => f.debug_struct("TrustList").finish(),
-            ClientMessage::ConnectionMonitor => f.debug_struct("ConnectionMonitor").finish(),
-            ClientMessage::GroupList => f.debug_struct("GroupList").finish(),
-            ClientMessage::GroupCreate {
-                name,
-                is_shared,
-                permissions,
-            } => f
-                .debug_struct("GroupCreate")
-                .field("name", name)
-                .field("is_shared", is_shared)
-                .field("permissions", permissions)
+            ClientMessage::UserAway { message } => f
+                .debug_struct("UserAway")
+                .field("message", message)
                 .finish(),
-            ClientMessage::GroupEdit { id } => f.debug_struct("GroupEdit").field("id", id).finish(),
-            ClientMessage::GroupUpdate {
-                id,
-                name,
-                is_shared,
-                permissions,
-            } => f
-                .debug_struct("GroupUpdate")
-                .field("id", id)
-                .field("name", name)
-                .field("is_shared", is_shared)
-                .field("permissions", permissions)
+            ClientMessage::UserBack => f.debug_struct("UserBack").finish(),
+            ClientMessage::UserBroadcast { message } => f
+                .debug_struct("UserBroadcast")
+                .field("message", message)
                 .finish(),
-            ClientMessage::GroupDelete { id } => {
-                f.debug_struct("GroupDelete").field("id", id).finish()
+            ClientMessage::UserCreate {
+                username,
+                is_admin,
+                is_shared,
+                enabled,
+                permissions,
+                group_id,
+                revokes,
+                ..
+            } => f
+                .debug_struct("UserCreate")
+                .field("username", username)
+                .field("is_admin", is_admin)
+                .field("is_shared", is_shared)
+                .field("enabled", enabled)
+                .field("permissions", permissions)
+                .field("group_id", group_id)
+                .field("revokes", revokes)
+                .field("password", &"<REDACTED>")
+                .finish(),
+            ClientMessage::UserDelete { id } => {
+                f.debug_struct("UserDelete").field("id", id).finish()
             }
-            ClientMessage::FileSearch { query, root } => f
-                .debug_struct("FileSearch")
-                .field("query", query)
-                .field("root", root)
+            ClientMessage::UserEdit { id } => f.debug_struct("UserEdit").field("id", id).finish(),
+            ClientMessage::UserInfo { nickname } => f
+                .debug_struct("UserInfo")
+                .field("nickname", nickname)
                 .finish(),
-            ClientMessage::FileReindex => f.debug_struct("FileReindex").finish(),
+            ClientMessage::UserKick { nickname, reason } => f
+                .debug_struct("UserKick")
+                .field("nickname", nickname)
+                .field("reason", reason)
+                .finish(),
+            ClientMessage::UserList { all } => {
+                f.debug_struct("UserList").field("all", all).finish()
+            }
+            ClientMessage::UserMessage {
+                to_nickname,
+                message,
+                action,
+            } => f
+                .debug_struct("UserMessage")
+                .field("to_nickname", to_nickname)
+                .field("message", message)
+                .field("action", action)
+                .finish(),
+            ClientMessage::UserStatus { status } => f
+                .debug_struct("UserStatus")
+                .field("status", status)
+                .finish(),
+            ClientMessage::UserUpdate {
+                id,
+                current_password: _,
+                username,
+                password: _,
+                is_admin,
+                enabled,
+                permissions,
+                group_id,
+                remove_group,
+                revokes,
+            } => f
+                .debug_struct("UserUpdate")
+                .field("id", id)
+                .field("username", username)
+                .field("password", &"<REDACTED>")
+                .field("is_admin", is_admin)
+                .field("enabled", enabled)
+                .field("permissions", permissions)
+                .field("group_id", group_id)
+                .field("remove_group", remove_group)
+                .field("revokes", revokes)
+                .finish(),
             ClientMessage::VoiceJoin { target } => {
                 f.debug_struct("VoiceJoin").field("target", target).finish()
             }
             ClientMessage::VoiceLeave => f.debug_struct("VoiceLeave").finish(),
-            ClientMessage::Ping => f.debug_struct("Ping").finish(),
         }
     }
 }
@@ -1801,6 +1806,7 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: true,
             session_id: Some(12345),
+            user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
             server_info: None,
@@ -1822,6 +1828,7 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: false,
             session_id: None,
+            user_id: None,
             is_admin: None,
             permissions: None,
             server_info: None,
@@ -1842,6 +1849,7 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: true,
             session_id: Some(99999),
+            user_id: None,
             is_admin: Some(true),
             permissions: Some(vec![]),
             server_info: None,
@@ -1864,6 +1872,7 @@ mod tests {
         let msg = ServerMessage::LoginResponse {
             success: true,
             session_id: Some(67890),
+            user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
             server_info: None,
@@ -1914,6 +1923,7 @@ mod tests {
     fn test_serialize_user_info_with_avatar() {
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
         let user_info = UserInfo {
+            id: 1,
             username: "alice".to_string(),
             nickname: "alice".to_string(),
             login_time: 1234567890,
@@ -1935,6 +1945,7 @@ mod tests {
     #[test]
     fn test_serialize_user_info_without_avatar() {
         let user_info = UserInfo {
+            id: 1,
             username: "alice".to_string(),
             nickname: "alice".to_string(),
             login_time: 1234567890,
@@ -1956,6 +1967,7 @@ mod tests {
     fn test_serialize_user_info_detailed_with_avatar() {
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
         let user_info = UserInfoDetailed {
+            id: 1,
             username: "alice".to_string(),
             nickname: "alice".to_string(),
             login_time: 1234567890,
@@ -2099,6 +2111,7 @@ mod tests {
     #[test]
     fn test_serialize_user_info_with_nickname_and_is_shared() {
         let user_info = UserInfo {
+            id: 1,
             is_away: false,
             status: None,
             username: "shared_acct".to_string(),
@@ -2121,6 +2134,7 @@ mod tests {
     #[test]
     fn test_serialize_user_info_regular_user() {
         let user_info = UserInfo {
+            id: 1,
             is_away: false,
             status: None,
             username: "alice".to_string(),
@@ -2143,6 +2157,7 @@ mod tests {
     #[test]
     fn test_serialize_user_info_detailed_with_shared_fields() {
         let user_info = UserInfoDetailed {
+            id: 1,
             is_away: false,
             status: None,
             username: "shared_acct".to_string(),
@@ -2171,6 +2186,7 @@ mod tests {
         let msg = ServerMessage::UserEditResponse {
             success: true,
             error: None,
+            id: None,
             username: Some("shared_acct".to_string()),
             is_admin: Some(false),
             is_shared: Some(true),
@@ -2192,6 +2208,7 @@ mod tests {
         let msg = ServerMessage::UserEditResponse {
             success: true,
             error: None,
+            id: None,
             username: Some("alice".to_string()),
             is_admin: Some(false),
             is_shared: Some(false),
@@ -3368,57 +3385,57 @@ mod tests {
     #[test]
     fn test_serialize_user_update_with_group() {
         let msg = ClientMessage::UserUpdate {
-            username: "alice".to_string(),
+            id: 1,
             current_password: None,
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: Some(3),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(3),
             remove_group: None,
-            requested_revokes: Some(vec!["news_edit".to_string()]),
+            revokes: Some(vec!["news_edit".to_string()]),
         };
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("\"requested_group_id\":3"));
-        assert!(json.contains("\"requested_revokes\":[\"news_edit\"]"));
+        assert!(json.contains("\"group_id\":3"));
+        assert!(json.contains("\"revokes\":[\"news_edit\"]"));
         assert!(!json.contains("\"remove_group\""));
     }
 
     #[test]
     fn test_serialize_user_update_remove_group() {
         let msg = ClientMessage::UserUpdate {
-            username: "alice".to_string(),
+            id: 1,
             current_password: None,
-            requested_username: None,
-            requested_password: None,
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: Some(true),
-            requested_revokes: None,
+            revokes: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"remove_group\":true"));
-        assert!(!json.contains("\"requested_group_id\""));
+        assert!(!json.contains("\"group_id\""));
     }
 
     #[test]
     fn test_deserialize_user_update_without_group_defaults() {
         // Old clients won't send group fields
-        let json = r#"{"type":"UserUpdate","username":"alice"}"#;
+        let json = r#"{"type":"UserUpdate","id":1}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
             ClientMessage::UserUpdate {
-                requested_group_id,
+                group_id,
                 remove_group,
-                requested_revokes,
+                revokes,
                 ..
             } => {
-                assert!(requested_group_id.is_none());
+                assert!(group_id.is_none());
                 assert!(remove_group.is_none());
-                assert!(requested_revokes.is_none());
+                assert!(revokes.is_none());
             }
             _ => panic!("Expected UserUpdate"),
         }
@@ -3430,6 +3447,7 @@ mod tests {
             success: true,
             error: None,
             session_id: Some(1),
+            user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["chat_send".to_string()]),
             server_info: None,
@@ -3453,10 +3471,12 @@ mod tests {
             ServerMessage::LoginResponse {
                 group_id,
                 group_name,
+                user_id,
                 ..
             } => {
                 assert!(group_id.is_none());
                 assert!(group_name.is_none());
+                assert!(user_id.is_none());
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -3467,6 +3487,7 @@ mod tests {
         let msg = ServerMessage::UserEditResponse {
             success: true,
             error: None,
+            id: Some(1),
             username: Some("alice".to_string()),
             is_admin: Some(false),
             is_shared: Some(false),
@@ -3499,6 +3520,7 @@ mod tests {
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         match msg {
             ServerMessage::UserEditResponse {
+                id,
                 group_id,
                 group_name,
                 group_permissions,
@@ -3506,6 +3528,7 @@ mod tests {
                 available_groups,
                 ..
             } => {
+                assert!(id.is_none());
                 assert!(group_id.is_none());
                 assert!(group_name.is_none());
                 assert!(group_permissions.is_none());
@@ -3551,6 +3574,7 @@ mod tests {
     #[test]
     fn test_serialize_user_info_with_group() {
         let user = UserInfo {
+            id: 1,
             username: "alice".to_string(),
             nickname: "alice".to_string(),
             login_time: 1718234567,
@@ -3572,7 +3596,7 @@ mod tests {
     #[test]
     fn test_deserialize_user_info_without_group_defaults() {
         // Old servers won't send group fields
-        let json = r#"{"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
+        let json = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
         let user: UserInfo = serde_json::from_str(json).unwrap();
         assert!(user.group_id.is_none());
         assert!(user.group_name.is_none());
@@ -3604,5 +3628,174 @@ mod tests {
         assert!(info.is_shared);
         assert_eq!(info.member_count, 0);
         assert!(info.permissions.is_empty());
+    }
+
+    #[test]
+    fn test_serialize_user_delete_with_id() {
+        let msg = ClientMessage::UserDelete { id: 42 };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"UserDelete\""));
+        assert!(json.contains("\"id\":42"));
+        assert!(!json.contains("\"username\""));
+    }
+
+    #[test]
+    fn test_serialize_user_edit_with_id() {
+        let msg = ClientMessage::UserEdit { id: 99 };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"UserEdit\""));
+        assert!(json.contains("\"id\":99"));
+        assert!(!json.contains("\"username\""));
+    }
+
+    #[test]
+    fn test_serialize_user_update_with_id() {
+        let msg = ClientMessage::UserUpdate {
+            id: 7,
+            current_password: None,
+            username: Some("newname".to_string()),
+            password: None,
+            is_admin: Some(true),
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"id\":7"));
+        assert!(json.contains("\"username\":\"newname\""));
+        assert!(json.contains("\"is_admin\":true"));
+        assert!(!json.contains("\"requested_"));
+    }
+
+    #[test]
+    fn test_serialize_user_create_response_with_id() {
+        let msg = ServerMessage::UserCreateResponse {
+            success: true,
+            error: None,
+            id: Some(10),
+            username: Some("alice".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"id\":10"));
+        assert!(json.contains("\"username\":\"alice\""));
+    }
+
+    #[test]
+    fn test_serialize_user_update_response_with_id() {
+        let msg = ServerMessage::UserUpdateResponse {
+            success: true,
+            error: None,
+            id: Some(7),
+            username: Some("newname".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"id\":7"));
+        assert!(json.contains("\"username\":\"newname\""));
+    }
+
+    #[test]
+    fn test_serialize_login_response_with_user_id() {
+        let msg = ServerMessage::LoginResponse {
+            success: true,
+            error: None,
+            session_id: Some(1),
+            user_id: Some(42),
+            is_admin: Some(false),
+            permissions: Some(vec![]),
+            server_info: None,
+            locale: Some("en".to_string()),
+            channels: None,
+            nickname: Some("alice".to_string()),
+            group_id: None,
+            group_name: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"user_id\":42"));
+    }
+
+    #[test]
+    fn test_user_info_has_id_field() {
+        let user = UserInfo {
+            id: 55,
+            username: "test".to_string(),
+            nickname: "test".to_string(),
+            login_time: 0,
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(json.contains("\"id\":55"));
+    }
+
+    #[test]
+    fn test_user_info_detailed_has_id_field() {
+        let user = UserInfoDetailed {
+            id: 77,
+            username: "test".to_string(),
+            nickname: "test".to_string(),
+            login_time: 0,
+            is_shared: false,
+            session_ids: vec![],
+            features: vec![],
+            created_at: 0,
+            locale: "en".to_string(),
+            avatar: None,
+            is_admin: None,
+            addresses: None,
+            is_away: false,
+            status: None,
+            channels: None,
+            group_id: None,
+            group_name: None,
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(json.contains("\"id\":77"));
+    }
+
+    #[test]
+    fn test_debug_user_update_redacts_passwords() {
+        let msg = ClientMessage::UserUpdate {
+            id: 1,
+            current_password: Some("old_secret".to_string()),
+            username: Some("newname".to_string()),
+            password: Some("new_secret".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+        };
+        let debug_output = format!("{:?}", msg);
+        assert!(!debug_output.contains("old_secret"));
+        assert!(!debug_output.contains("new_secret"));
+        assert!(debug_output.contains("REDACTED"));
+        assert!(debug_output.contains("newname"));
+        assert!(debug_output.contains("id"));
+    }
+
+    #[test]
+    fn test_debug_user_delete_uses_id() {
+        let msg = ClientMessage::UserDelete { id: 42 };
+        let debug_output = format!("{:?}", msg);
+        assert!(debug_output.contains("UserDelete"));
+        assert!(debug_output.contains("42"));
+    }
+
+    #[test]
+    fn test_debug_user_edit_uses_id() {
+        let msg = ClientMessage::UserEdit { id: 99 };
+        let debug_output = format!("{:?}", msg);
+        assert!(debug_output.contains("UserEdit"));
+        assert!(debug_output.contains("99"));
     }
 }

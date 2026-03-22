@@ -702,8 +702,7 @@ pub const SQL_DELETE_CHANNEL_SETTINGS: &str =
 ///
 /// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
-/// **Note:** Only used in tests. Production code looks up users by username.
-#[cfg(test)]
+/// Select a user by ID
 pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE id = ?";
 
 /// Check if user is admin

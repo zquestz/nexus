@@ -155,6 +155,8 @@ pub type Writer = FrameWriter<tokio::io::WriteHalf<TlsStream>>;
 /// Login information returned from the server
 pub struct LoginInfo {
     pub is_admin: bool,
+    /// Database user ID (for ID-based protocol messages)
+    pub user_id: Option<i64>,
     /// Server-confirmed nickname (equals username for regular accounts)
     pub nickname: String,
     pub permissions: Vec<String>,

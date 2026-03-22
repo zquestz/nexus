@@ -42,6 +42,8 @@ pub enum UserManagementMode {
     Create,
     /// Editing an existing user
     Edit {
+        /// Database user ID (for the UserUpdate request)
+        id: i64,
         /// Original username (for the UserUpdate request)
         original_username: String,
         /// New username (editable field, pre-filled with original)
@@ -59,7 +61,9 @@ pub enum UserManagementMode {
     },
     /// Confirming deletion of a user
     ConfirmDelete {
-        /// Username to delete
+        /// Database user ID to delete
+        id: i64,
+        /// Username to delete (for display in confirmation dialog)
         username: String,
     },
 }
@@ -170,6 +174,7 @@ impl UserManagementState {
     /// Enter edit mode for a user (with pre-populated values from server)
     pub fn enter_edit_mode(
         &mut self,
+        id: i64,
         username: String,
         is_admin: bool,
         is_shared: bool,
@@ -188,6 +193,7 @@ impl UserManagementState {
         }
 
         self.mode = UserManagementMode::Edit {
+            id,
             original_username: username.clone(),
             new_username: username,
             new_password: String::new(),
@@ -200,8 +206,8 @@ impl UserManagementState {
     }
 
     /// Enter confirm delete mode for a user
-    pub fn enter_confirm_delete_mode(&mut self, username: String) {
-        self.mode = UserManagementMode::ConfirmDelete { username };
+    pub fn enter_confirm_delete_mode(&mut self, id: i64, username: String) {
+        self.mode = UserManagementMode::ConfirmDelete { id, username };
         self.delete_error = None;
     }
 }

@@ -98,6 +98,8 @@ impl TabCompletionState {
 pub struct ServerConnectionParams {
     /// Bookmark ID or None for ad-hoc connections
     pub bookmark_id: Option<Uuid>,
+    /// Database user ID (for ID-based protocol messages like UserEdit, UserDelete, UserUpdate)
+    pub user_id: Option<i64>,
     /// Server-confirmed nickname (equals username for regular accounts)
     pub nickname: String,
     /// Connection info (address, port, auth info)
@@ -156,6 +158,8 @@ pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
 pub struct ServerConnection {
     /// Bookmark ID or None for ad-hoc connections
     pub bookmark_id: Option<Uuid>,
+    /// Database user ID (for ID-based protocol messages like UserEdit, UserDelete, UserUpdate)
+    pub user_id: Option<i64>,
     /// Server-confirmed nickname (equals username for regular accounts)
     pub nickname: String,
     /// Connection info (address, port, auth info)
@@ -332,6 +336,7 @@ impl ServerConnection {
     pub fn new(params: ServerConnectionParams) -> Self {
         Self {
             bookmark_id: params.bookmark_id,
+            user_id: params.user_id,
             nickname: params.nickname,
             connection_info: params.connection_info,
             display_name: params.display_name,
@@ -407,6 +412,8 @@ pub struct NetworkConnection {
     pub shutdown: Option<WrappedShutdownHandle>,
     /// Whether user is admin
     pub is_admin: bool,
+    /// Database user ID (for ID-based protocol messages)
+    pub user_id: Option<i64>,
     /// Server-confirmed nickname (equals username for regular accounts)
     pub nickname: String,
     /// User's permissions

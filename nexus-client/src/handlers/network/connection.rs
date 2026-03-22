@@ -429,6 +429,7 @@ impl NexusApp {
 
         let server_conn = ServerConnection::new(ServerConnectionParams {
             bookmark_id,
+            user_id: conn.user_id,
             nickname: nickname.clone(),
             connection_info: conn.connection_info,
             display_name,

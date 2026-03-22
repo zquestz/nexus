@@ -238,7 +238,7 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id: 1,
+            user_id: 1,
             username: username.to_string(),
             is_admin: false,
             is_shared,

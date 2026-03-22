@@ -671,11 +671,11 @@ impl NexusApp {
                 self.handle_user_management_permission_toggled(permission, enabled)
             }
             Message::UserManagementCreatePressed => self.handle_user_management_create_pressed(),
-            Message::UserManagementEditClicked(username) => {
-                self.handle_user_management_edit_clicked(username)
+            Message::UserManagementEditClicked(id, username) => {
+                self.handle_user_management_edit_clicked(id, username)
             }
-            Message::UserManagementDeleteClicked(username) => {
-                self.handle_user_management_delete_clicked(username)
+            Message::UserManagementDeleteClicked(id, username) => {
+                self.handle_user_management_delete_clicked(id, username)
             }
             Message::UserManagementConfirmDelete => self.handle_user_management_confirm_delete(),
             Message::UserManagementCancelDelete => self.handle_user_management_cancel_delete(),

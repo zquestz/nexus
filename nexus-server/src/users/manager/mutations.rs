@@ -121,6 +121,7 @@ impl UserManager {
                             ServerMessage::UserUpdated {
                                 previous_username: user.username.clone(),
                                 user: UserInfo {
+                                    id: newest.user_id,
                                     username: newest.username.clone(),
                                     nickname: newest.nickname.clone(),
                                     is_admin: newest.is_admin,
@@ -153,12 +154,12 @@ impl UserManager {
     ///
     /// For regular accounts, also updates nickname (since nickname == username).
     /// For shared accounts, nickname is independent and unchanged.
-    pub async fn update_username(&self, db_user_id: i64, new_username: String) -> usize {
+    pub async fn update_username(&self, user_id: i64, new_username: String) -> usize {
         let mut users = self.users.write().await;
         let mut count = 0;
 
         for user in users.values_mut() {
-            if user.db_user_id == db_user_id {
+            if user.user_id == user_id {
                 // For regular accounts, nickname == username, so update both
                 if !user.is_shared {
                     user.nickname = new_username.clone();
@@ -173,12 +174,12 @@ impl UserManager {
 
     /// Update admin status for a user by database user ID
     /// Returns the number of sessions updated
-    pub async fn update_admin_status(&self, db_user_id: i64, is_admin: bool) -> usize {
+    pub async fn update_admin_status(&self, user_id: i64, is_admin: bool) -> usize {
         let mut users = self.users.write().await;
         let mut count = 0;
 
         for user in users.values_mut() {
-            if user.db_user_id == db_user_id {
+            if user.user_id == user_id {
                 user.is_admin = is_admin;
                 count += 1;
             }
@@ -191,14 +192,14 @@ impl UserManager {
     /// Returns the number of sessions updated
     pub async fn update_permissions(
         &self,
-        db_user_id: i64,
+        user_id: i64,
         permissions: HashSet<Permission>,
     ) -> usize {
         let mut users = self.users.write().await;
         let mut count = 0;
 
         for user in users.values_mut() {
-            if user.db_user_id == db_user_id {
+            if user.user_id == user_id {
                 user.permissions = permissions.clone();
                 count += 1;
             }
@@ -211,7 +212,7 @@ impl UserManager {
     /// Returns the number of sessions updated
     pub async fn update_group(
         &self,
-        db_user_id: i64,
+        user_id: i64,
         group_id: Option<i64>,
         group_name: Option<String>,
     ) -> usize {
@@ -219,7 +220,7 @@ impl UserManager {
         let mut count = 0;
 
         for user in users.values_mut() {
-            if user.db_user_id == db_user_id {
+            if user.user_id == user_id {
                 user.group_id = group_id;
                 user.group_name = group_name.clone();
                 count += 1;

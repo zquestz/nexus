@@ -225,6 +225,7 @@ async fn test_broadcast_respects_user_list_permission() {
         .broadcast_user_event(
             ServerMessage::UserConnected {
                 user: UserInfo {
+                    id: 0,
                     username: "newuser".to_string(),
                     nickname: "newuser".to_string(),
                     is_admin: false,
@@ -330,6 +331,7 @@ async fn test_broadcast_excludes_specified_session() {
         .broadcast_user_event(
             ServerMessage::UserConnected {
                 user: UserInfo {
+                    id: 0,
                     username: "newcomer".to_string(),
                     nickname: "newcomer".to_string(),
                     is_admin: false,

@@ -258,6 +258,7 @@ where
         success: true,
         error: None,
         session_id: None,
+        user_id: None,
         is_admin: None,
         permissions: None,
         server_info: None,

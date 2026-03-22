@@ -5,20 +5,18 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, UsernameError};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_cannot_edit_admin, err_cannot_edit_self, err_database,
-    err_not_logged_in, err_permission_denied, err_user_not_found, err_username_empty,
-    err_username_invalid, err_username_too_long,
+    err_not_logged_in, err_permission_denied, err_user_not_found,
 };
 use crate::db::Permission;
 
 /// Handle a user edit request (returns user details for editing)
 pub async fn handle_user_edit<W>(
-    username: String,
+    id: i64,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -48,10 +46,11 @@ where
     };
 
     // Prevent self-editing (cheap check before DB query)
-    if requesting_user.username.to_lowercase() == username.to_lowercase() {
+    if requesting_user.user_id == id {
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_self(ctx.locale)),
+            id: None,
             username: None,
             is_admin: None,
             is_shared: None,
@@ -75,6 +74,7 @@ where
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            id: None,
             username: None,
             is_admin: None,
             is_shared: None,
@@ -89,39 +89,14 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate username format
-    if let Err(e) = validators::validate_username(&username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserEditResponse {
-            success: false,
-            error: Some(error_msg),
-            username: None,
-            is_admin: None,
-            is_shared: None,
-            enabled: None,
-            permissions: None,
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Look up target user in database
-    let target_user = match ctx.db.users.get_user_by_username(&username).await {
+    // Look up target user by ID
+    let target_user = match ctx.db.users.get_user_by_id(id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             let response = ServerMessage::UserEditResponse {
                 success: false,
-                error: Some(err_user_not_found(ctx.locale, &username)),
+                error: Some(err_user_not_found(ctx.locale, &id.to_string())),
+                id: None,
                 username: None,
                 is_admin: None,
                 is_shared: None,
@@ -152,6 +127,7 @@ where
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_admin(ctx.locale)),
+            id: None,
             username: None,
             is_admin: None,
             is_shared: None,
@@ -230,6 +206,7 @@ where
     let response = ServerMessage::UserEditResponse {
         success: true,
         error: None,
+        id: Some(id),
         username: Some(target_user.username),
         is_admin: Some(target_user.is_admin),
         is_shared: Some(target_user.is_shared),
@@ -256,8 +233,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         let result = handle_user_edit(
-            "alice".to_string(),
-            None, // Not logged in
+            99999, // Non-existent ID, doesn't matter - auth check fails first
+            None,  // Not logged in
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -273,7 +250,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         // Create another user to edit
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -289,12 +266,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "bob".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(bob.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -314,12 +287,8 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        let result = handle_user_edit(
-            "nonexistent".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(99999, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -328,7 +297,7 @@ mod tests {
                 assert!(!success);
                 assert_eq!(
                     error,
-                    Some(err_user_not_found(DEFAULT_TEST_LOCALE, "nonexistent"))
+                    Some(err_user_not_found(DEFAULT_TEST_LOCALE, "99999"))
                 );
             }
             _ => panic!("Expected UserEditResponse with error"),
@@ -347,7 +316,7 @@ mod tests {
         perms.permissions.insert(db::Permission::UserList);
         perms.permissions.insert(db::Permission::ChatSend);
 
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -363,12 +332,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "bob".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(bob.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -412,7 +377,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create another admin
-        test_ctx
+        let admin2 = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -428,12 +393,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "admin2".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(admin2.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -474,7 +435,7 @@ mod tests {
         .await;
 
         // Create another user
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -490,12 +451,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "bob".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(bob.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -517,9 +474,18 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
+        // Look up admin's database ID
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
         // Try to edit self
         let result = handle_user_edit(
-            "admin".to_string(),
+            admin_user.id,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -553,9 +519,18 @@ mod tests {
         )
         .await;
 
+        // Look up admin's database ID
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
         // Non-admin tries to fetch admin details for editing - should fail
         let result = handle_user_edit(
-            "admin".to_string(),
+            admin_user.id,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -588,7 +563,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account
-        test_ctx
+        let shared_acct = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -605,7 +580,7 @@ mod tests {
             .unwrap();
 
         let result = handle_user_edit(
-            "shared_acct".to_string(),
+            shared_acct.id,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -646,7 +621,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a regular (non-shared) account
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -662,12 +637,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "bob".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(bob.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
@@ -706,7 +677,7 @@ mod tests {
             .unwrap();
 
         // Create a user assigned to the group
-        test_ctx
+        let bob = test_ctx
             .db
             .users
             .create_user(db::CreateUserParams {
@@ -722,12 +693,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = handle_user_edit(
-            "bob".to_string(),
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_edit(bob.id, Some(session_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;

@@ -345,10 +345,10 @@ where
             if permissions_changed {
                 let member_sessions = ctx.user_manager.get_sessions_by_group_id(id).await;
 
-                // Deduplicate by db_user_id (regular accounts may have multiple sessions)
-                let mut seen_db_user_ids: HashSet<i64> = HashSet::new();
+                // Deduplicate by user_id (regular accounts may have multiple sessions)
+                let mut seen_user_ids: HashSet<i64> = HashSet::new();
                 for session in &member_sessions {
-                    if !seen_db_user_ids.insert(session.db_user_id) {
+                    if !seen_user_ids.insert(session.user_id) {
                         continue;
                     }
 
@@ -362,7 +362,7 @@ where
 
                     // Re-resolve effective permissions from DB
                     let new_effective =
-                        match ctx.db.users.get_user_permissions(session.db_user_id).await {
+                        match ctx.db.users.get_user_permissions(session.user_id).await {
                             Ok(p) => p,
                             Err(e) => {
                                 eprintln!(
@@ -375,7 +375,7 @@ where
 
                     // Update session cache
                     ctx.user_manager
-                        .update_permissions(session.db_user_id, new_effective.permissions.clone())
+                        .update_permissions(session.user_id, new_effective.permissions.clone())
                         .await;
 
                     // Check if permissions actually changed for this member
@@ -1281,7 +1281,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1399,7 +1399,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1569,7 +1569,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: admin_member.id,
+                user_id: admin_member.id,
                 username: "adminbob".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -1665,7 +1665,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "voicebob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1775,7 +1775,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1893,7 +1893,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1997,7 +1997,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -2133,7 +2133,7 @@ mod tests {
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
-                db_user_id: bob.id,
+                user_id: bob.id,
                 username: "bob".to_string(),
                 is_admin: false,
                 is_shared: false,

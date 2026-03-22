@@ -120,7 +120,11 @@ impl NexusApp {
     /// Requests user details from server, then transitions to edit mode.
     /// If called from outside the User Management panel, opens the panel first
     /// and stores the original panel to return to on cancel/save.
-    pub fn handle_user_management_edit_clicked(&mut self, username: String) -> Task<Message> {
+    pub fn handle_user_management_edit_clicked(
+        &mut self,
+        id: i64,
+        _username: String,
+    ) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -135,9 +139,7 @@ impl NexusApp {
         }
 
         // Request user details from server
-        match conn.send(ClientMessage::UserEdit {
-            username: username.clone(),
-        }) {
+        match conn.send(ClientMessage::UserEdit { id }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::PopulateUserManagementEdit);
@@ -153,7 +155,11 @@ impl NexusApp {
     /// Handle delete button click on a user in the list
     ///
     /// Shows the delete confirmation modal.
-    pub fn handle_user_management_delete_clicked(&mut self, username: String) -> Task<Message> {
+    pub fn handle_user_management_delete_clicked(
+        &mut self,
+        id: i64,
+        username: String,
+    ) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
@@ -161,7 +167,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.user_management.enter_confirm_delete_mode(username);
+        conn.user_management.enter_confirm_delete_mode(id, username);
         Task::none()
     }
 
@@ -176,8 +182,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        let username = match &conn.user_management.mode {
-            UserManagementMode::ConfirmDelete { username } => username.clone(),
+        let (id, _username) = match &conn.user_management.mode {
+            UserManagementMode::ConfirmDelete { id, username } => (*id, username.clone()),
             _ => return Task::none(),
         };
 
@@ -185,9 +191,7 @@ impl NexusApp {
         conn.user_management.delete_error = None;
 
         // Send delete request (keep dialog open until response)
-        match conn.send(ClientMessage::UserDelete {
-            username: username.clone(),
-        }) {
+        match conn.send(ClientMessage::UserDelete { id }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::UserManagementDeleteResult);
@@ -522,9 +526,10 @@ impl NexusApp {
             return Task::none();
         };
 
-        let (original_username, new_username, new_password, is_admin, enabled, permissions) =
+        let (id, original_username, new_username, new_password, is_admin, enabled, permissions) =
             match &conn.user_management.mode {
                 UserManagementMode::Edit {
+                    id,
                     original_username,
                     new_username,
                     new_password,
@@ -533,6 +538,7 @@ impl NexusApp {
                     enabled,
                     permissions,
                 } => (
+                    *id,
                     original_username.clone(),
                     new_username.clone(),
                     new_password.clone(),
@@ -596,16 +602,16 @@ impl NexusApp {
             .collect();
 
         let msg = ClientMessage::UserUpdate {
-            username: original_username,
+            id,
+            username: requested_username,
             current_password: None,
-            requested_username,
-            requested_password,
-            requested_is_admin,
-            requested_enabled,
-            requested_permissions: Some(requested_permissions),
-            requested_group_id: None,
+            password: requested_password,
+            is_admin: requested_is_admin,
+            enabled: requested_enabled,
+            permissions: Some(requested_permissions),
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
         };
 
         // Clear any previous error on new submission
@@ -1032,21 +1038,21 @@ impl NexusApp {
             return operation::focus(Id::from(InputId::ChangePasswordNew));
         }
 
-        // Get username for the request
-        let username = conn.connection_info.username.clone();
+        // Get user ID for the request
+        let user_id = conn.user_id.unwrap_or(0);
 
         // Send UserUpdate with current_password for self-edit
         let msg = ClientMessage::UserUpdate {
-            username,
+            id: user_id,
+            username: None,
             current_password: Some(current_password),
-            requested_username: None,
-            requested_password: Some(new_password),
-            requested_is_admin: None,
-            requested_enabled: None,
-            requested_permissions: None,
-            requested_group_id: None,
+            password: Some(new_password),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
             remove_group: None,
-            requested_revokes: None,
+            revokes: None,
         };
 
         // Clear any previous error

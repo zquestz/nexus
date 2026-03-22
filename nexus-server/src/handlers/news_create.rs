@@ -120,11 +120,7 @@ where
     let news_record = match ctx
         .db
         .news
-        .create_news(
-            body.as_deref(),
-            image.as_deref(),
-            requesting_user.db_user_id,
-        )
+        .create_news(body.as_deref(), image.as_deref(), requesting_user.user_id)
         .await
     {
         Ok(record) => record,

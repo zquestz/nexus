@@ -222,7 +222,7 @@ fn list_view<'a>(
                         let edit_btn = tooltip(
                             transparent_edit_button(
                                 icon::edit(),
-                                Message::UserManagementEditClicked(user.username.clone()),
+                                Message::UserManagementEditClicked(user.id, user.username.clone()),
                             ),
                             container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
                                 .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -245,7 +245,10 @@ fn list_view<'a>(
                         let delete_btn = tooltip(
                             danger_delete_button(
                                 icon::trash(),
-                                Message::UserManagementDeleteClicked(user.username.clone()),
+                                Message::UserManagementDeleteClicked(
+                                    user.id,
+                                    user.username.clone(),
+                                ),
                             ),
                             container(shaped_text(t("tooltip-delete")).size(TOOLTIP_TEXT_SIZE))
                                 .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -758,6 +761,7 @@ pub fn users_view<'a>(
         }
         UserManagementMode::Create => create_view(conn, user_management),
         UserManagementMode::Edit {
+            id: _,
             original_username,
             new_username,
             new_password,
@@ -777,7 +781,7 @@ pub fn users_view<'a>(
             enabled: *enabled,
             permissions,
         }),
-        UserManagementMode::ConfirmDelete { username } => {
+        UserManagementMode::ConfirmDelete { id: _, username } => {
             confirm_delete_modal(username, user_management.delete_error.as_ref())
         }
     }

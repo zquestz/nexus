@@ -193,6 +193,7 @@ impl NexusApp {
                 success,
                 error,
                 username,
+                ..
             } => self.handle_user_create_response(
                 connection_id,
                 message_id,
@@ -221,6 +222,7 @@ impl NexusApp {
             ServerMessage::UserEditResponse {
                 success,
                 error,
+                id,
                 username,
                 is_admin,
                 is_shared,
@@ -233,6 +235,7 @@ impl NexusApp {
                 UserEditResponseData {
                     success,
                     error,
+                    id,
                     username,
                     is_admin,
                     is_shared,
@@ -301,6 +304,7 @@ impl NexusApp {
                 success,
                 error,
                 username,
+                ..
             } => self.handle_user_update_response(
                 connection_id,
                 message_id,

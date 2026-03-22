@@ -273,7 +273,7 @@ pub async fn login_user_from_ip(
         .user_manager
         .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id: user.id,
+            user_id: user.id,
             username: username.to_string(),
             is_admin,
             is_shared: false,
@@ -336,7 +336,7 @@ pub async fn login_user_with_features(
         .user_manager
         .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id: user.id,
+            user_id: user.id,
             username: username.to_string(),
             is_admin,
             is_shared: false,
@@ -398,7 +398,7 @@ pub async fn login_shared_user(
         .user_manager
         .add_user(NewSessionParams {
             session_id: 0, // Will be assigned by add_user
-            db_user_id: user.id,
+            user_id: user.id,
             username: account_username.to_string(),
             is_admin: false,
             is_shared: true,

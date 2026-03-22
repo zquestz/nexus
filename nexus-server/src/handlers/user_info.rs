@@ -203,6 +203,7 @@ where
     let user_info = if requesting_user.is_admin {
         // Admin gets all fields including addresses
         UserInfoDetailed {
+            id: target_account.id,
             username: actual_username,
             nickname: display_nickname,
             login_time: earliest_login,
@@ -223,6 +224,7 @@ where
     } else {
         // Non-admin gets all fields except addresses
         UserInfoDetailed {
+            id: target_account.id,
             username: actual_username,
             nickname: display_nickname,
             login_time: earliest_login,
@@ -300,7 +302,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: user.id,
+                user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -370,7 +372,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: user.id,
+                user_id: user.id,
                 username: "alice".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -482,7 +484,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: requester.id,
+                user_id: requester.id,
                 username: "requester".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -507,7 +509,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: target.id,
+                user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -625,7 +627,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin.id,
+                user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -650,7 +652,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: target.id,
+                user_id: target.id,
                 username: "target".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -772,7 +774,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin1.id,
+                user_id: admin1.id,
                 username: "admin1".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -797,7 +799,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin2.id,
+                user_id: admin2.id,
                 username: "admin2".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -941,7 +943,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 100,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1019,7 +1021,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 100,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1047,7 +1049,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 101,
-                db_user_id: account.id,
+                user_id: account.id,
                 username: "alice".to_string(),
                 address: test_ctx.peer_addr,
                 created_at: account.created_at,
@@ -1554,14 +1556,14 @@ mod tests {
             .users
             .update_user(db::UpdateUserParams {
                 username: "bob",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: Some(group.id),
+                group_id: Some(group.id),
             })
             .await
             .unwrap();

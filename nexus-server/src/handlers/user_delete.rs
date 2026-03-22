@@ -5,22 +5,20 @@ use std::io;
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, UsernameError};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_admin,
     err_cannot_delete_guest, err_cannot_delete_last_admin, err_cannot_delete_self, err_database,
-    err_not_logged_in, err_permission_denied, err_user_not_found, err_username_empty,
-    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
+    err_not_logged_in, err_permission_denied, err_user_not_found, remove_user_with_voice_cleanup,
 };
 use crate::db::Permission;
 use crate::db::sql::GUEST_USERNAME;
 
 /// Handle UserDelete command
 pub async fn handle_user_delete<W>(
-    target_username: String,
+    id: i64,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -45,26 +43,6 @@ where
         }
     };
 
-    // Prevent self-deletion (cheap check before DB queries)
-    if target_username.to_lowercase() == requesting_user_session.username.to_lowercase() {
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_cannot_delete_self(ctx.locale)),
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Prevent deleting the guest account (cheap check before DB queries)
-    if target_username.to_lowercase() == GUEST_USERNAME {
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_cannot_delete_guest(ctx.locale)),
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
     // Check UserDelete permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserDelete) {
         eprintln!(
@@ -79,30 +57,13 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate username format
-    if let Err(e) = validators::validate_username(&target_username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(error_msg),
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Look up target user in database
-    let target_user = match ctx.db.users.get_user_by_username(&target_username).await {
+    // Look up target user by ID
+    let target_user = match ctx.db.users.get_user_by_id(id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             let response = ServerMessage::UserDeleteResponse {
                 success: false,
-                error: Some(err_user_not_found(ctx.locale, &target_username)),
+                error: Some(err_user_not_found(ctx.locale, &id.to_string())),
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -114,6 +75,26 @@ where
                 .await;
         }
     };
+
+    // Prevent self-deletion
+    if target_user.username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(err_cannot_delete_self(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Prevent deleting the guest account
+    if target_user.username.to_lowercase() == GUEST_USERNAME {
+        let response = ServerMessage::UserDeleteResponse {
+            success: false,
+            error: Some(err_cannot_delete_guest(ctx.locale)),
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Prevent non-admins from deleting admin users
     if target_user.is_admin && !requesting_user_session.is_admin {
@@ -199,8 +180,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Try to delete user without being logged in
-        let result =
-            handle_user_delete("alice".to_string(), None, &mut test_ctx.handler_context()).await;
+        let result = handle_user_delete(999, None, &mut test_ctx.handler_context()).await;
 
         // Should fail with disconnect
         assert!(result.is_err(), "UserDelete should require login");
@@ -231,12 +211,8 @@ mod tests {
             .unwrap();
 
         // Try to delete user without permission
-        let result = handle_user_delete(
-            "bob".to_string(),
-            Some(user_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_delete(target.id, Some(user_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed (no disconnect), but user should still exist
         assert!(result.is_ok(), "Should send error response, not disconnect");
@@ -274,12 +250,7 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete non-existent user
-        let result = handle_user_delete(
-            "nonexistent".to_string(),
-            Some(admin_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result = handle_user_delete(999, Some(admin_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed (sends error response, doesn't disconnect)
         assert!(
@@ -313,8 +284,15 @@ mod tests {
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to delete self
+        let admin_db_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let result = handle_user_delete(
-            "admin".to_string(),
+            admin_db_user.id,
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -366,8 +344,15 @@ mod tests {
         let _admin2_id = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         // Admin1 deletes admin2 (should succeed, admin1 still exists)
+        let admin2_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin2")
+            .await
+            .unwrap()
+            .unwrap();
         let result = handle_user_delete(
-            "admin2".to_string(),
+            admin2_db.id,
             Some(admin1_id),
             &mut test_ctx.handler_context(),
         )
@@ -478,8 +463,15 @@ mod tests {
         .await;
 
         // Non-admin tries to delete admin (should fail)
+        let admin_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
         let result = handle_user_delete(
-            "admin".to_string(),
+            admin_db.id,
             Some(deleter_id),
             &mut test_ctx.handler_context(),
         )
@@ -558,7 +550,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: online_user.id,
+                user_id: online_user.id,
                 username: "online_user".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -590,7 +582,7 @@ mod tests {
 
         // Delete offline user
         let result1 = handle_user_delete(
-            "offline_user".to_string(),
+            offline_user.id,
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -609,7 +601,7 @@ mod tests {
 
         // Delete online user
         let result2 = handle_user_delete(
-            "online_user".to_string(),
+            online_user.id,
             Some(admin_id),
             &mut test_ctx.handler_context(),
         )
@@ -669,12 +661,8 @@ mod tests {
             .unwrap();
 
         // Delete target user
-        let result = handle_user_delete(
-            "target".to_string(),
-            Some(deleter_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_delete(target.id, Some(deleter_id), &mut test_ctx.handler_context()).await;
 
         // Should succeed
         assert!(
@@ -711,13 +699,18 @@ mod tests {
         // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
+        // Look up the guest account (created by migration)
+        let guest = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .expect("Guest account should exist from migration");
+
         // Try to delete the guest account
-        let result = handle_user_delete(
-            "guest".to_string(),
-            Some(admin_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        let result =
+            handle_user_delete(guest.id, Some(admin_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
@@ -748,13 +741,19 @@ mod tests {
         // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to delete the guest account with different casing
-        let result = handle_user_delete(
-            "GUEST".to_string(),
-            Some(admin_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
+        // Look up the guest account (created by migration as "guest" lowercase)
+        // The handler uses to_lowercase() comparison, so this tests that path
+        let guest = test_ctx
+            .db
+            .users
+            .get_user_by_username("guest")
+            .await
+            .unwrap()
+            .expect("Guest account should exist from migration");
+
+        // Try to delete the guest account (handler checks case-insensitively)
+        let result =
+            handle_user_delete(guest.id, Some(admin_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 

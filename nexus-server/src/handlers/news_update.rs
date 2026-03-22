@@ -75,7 +75,7 @@ where
     };
 
     // Check permission: user must be author OR have NewsEdit permission
-    let is_author = existing_news.author_id == requesting_user.db_user_id;
+    let is_author = existing_news.author_id == requesting_user.user_id;
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
     if !is_author && !has_edit_permission {

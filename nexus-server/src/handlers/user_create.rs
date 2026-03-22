@@ -84,6 +84,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -101,6 +102,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -117,6 +119,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -138,6 +141,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -155,6 +159,7 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(err_shared_cannot_be_admin(ctx.locale)),
+            id: None,
             username: None,
         };
         return ctx.send_message(&response).await;
@@ -175,6 +180,7 @@ where
                     ctx.locale,
                     &forbidden.join(", "),
                 )),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -190,6 +196,7 @@ where
                 let response = ServerMessage::UserCreateResponse {
                     success: false,
                     error: Some(err_group_not_found(ctx.locale)),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -207,6 +214,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_group_shared_mismatch(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -215,6 +223,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_group_shared_mismatch(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -229,6 +238,7 @@ where
                     let response = ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_database(ctx.locale)),
+                        id: None,
                         username: None,
                     };
                     return ctx.send_message(&response).await;
@@ -243,6 +253,7 @@ where
                     let response = ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_permission_denied(ctx.locale)),
+                        id: None,
                         username: None,
                     };
                     return ctx.send_message(&response).await;
@@ -274,6 +285,7 @@ where
                             let response = ServerMessage::UserCreateResponse {
                                 success: false,
                                 error: Some(err_permission_denied(ctx.locale)),
+                                id: None,
                                 username: None,
                             };
                             return ctx.send_message(&response).await;
@@ -284,6 +296,7 @@ where
                         let response = ServerMessage::UserCreateResponse {
                             success: false,
                             error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            id: None,
                             username: None,
                         };
                         return ctx.send_message(&response).await;
@@ -306,6 +319,7 @@ where
                 let response = ServerMessage::UserCreateResponse {
                     success: false,
                     error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                    id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
@@ -322,6 +336,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -337,6 +352,7 @@ where
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_username_exists(ctx.locale, &username)),
+                id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
@@ -379,11 +395,12 @@ where
         })
         .await
     {
-        Ok(_user) => {
+        Ok(user) => {
             // Success (group override cleanup is handled atomically inside create_user)
             let response = ServerMessage::UserCreateResponse {
                 success: true,
                 error: None,
+                id: Some(user.id),
                 username: Some(username),
             };
             ctx.send_message(&response).await
@@ -498,10 +515,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -565,7 +584,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: admin.id,
+                user_id: admin.id,
                 username: "admin".to_string(),
                 is_admin: true,
                 is_shared: false,
@@ -662,10 +681,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("newadmin".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -729,10 +750,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -800,10 +823,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -919,7 +944,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: creator.id,
+                user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1016,7 +1041,7 @@ mod tests {
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 0,
-                db_user_id: creator.id,
+                user_id: creator.id,
                 username: "creator".to_string(),
                 is_admin: false,
                 is_shared: false,
@@ -1167,10 +1192,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Response should indicate success");
                 assert!(error.is_none(), "Should have no error message");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("newuser".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1281,6 +1308,7 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success, "Should fail to create shared admin");
@@ -1289,6 +1317,7 @@ mod tests {
                     error.unwrap().contains("cannot be admin"),
                     "Error should mention shared accounts cannot be admins"
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1330,6 +1359,7 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success, "Should fail with forbidden permissions");
@@ -1340,6 +1370,7 @@ mod tests {
                     "Error should mention forbidden permissions: {}",
                     err_msg
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1382,10 +1413,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully create shared account");
                 assert!(error.is_none(), "Should have no error");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("shared_acct".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1485,10 +1518,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(success, "Should successfully create user with group");
                 assert!(error.is_none(), "Should have no error");
+                assert!(id.is_some(), "Should return created user ID");
                 assert_eq!(username, Some("bob".to_string()));
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1559,10 +1594,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success, "Shared user + non-shared group should fail");
                 assert!(error.is_some(), "Should have error message");
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1591,10 +1628,12 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success, "Non-shared user + shared group should fail");
                 assert!(error.is_some(), "Should have error message");
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             _ => panic!("Expected UserCreateResponse"),
@@ -1652,6 +1691,7 @@ mod tests {
             ServerMessage::UserCreateResponse {
                 success,
                 error,
+                id,
                 username,
             } => {
                 assert!(!success);
@@ -1661,6 +1701,7 @@ mod tests {
                     err_msg.contains("ermission"),
                     "Should be a permission error, got: {err_msg}"
                 );
+                assert!(id.is_none());
                 assert!(username.is_none());
             }
             other => panic!("Expected UserCreateResponse (permission denied), got: {other:?}"),

@@ -70,7 +70,7 @@ where
     };
 
     // Check permission: user must be author OR have NewsDelete permission
-    let is_author = existing_news.author_id == requesting_user.db_user_id;
+    let is_author = existing_news.author_id == requesting_user.user_id;
     let has_delete_permission = requesting_user.has_permission(Permission::NewsDelete);
 
     if !is_author && !has_delete_permission {

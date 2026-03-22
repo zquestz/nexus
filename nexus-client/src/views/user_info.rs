@@ -88,7 +88,10 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
     {
         buttons = buttons.push(
             button(shaped_text(t("button-edit")).size(TEXT_SIZE))
-                .on_press(Message::UserManagementEditClicked(user.username.clone()))
+                .on_press(Message::UserManagementEditClicked(
+                    user.id,
+                    user.username.clone(),
+                ))
                 .padding(BUTTON_PADDING)
                 .style(btn::secondary),
         );

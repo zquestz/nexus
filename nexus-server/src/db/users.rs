@@ -23,20 +23,20 @@ pub struct CreateUserParams<'a> {
 /// All fields except `username` are optional — only provided fields are changed.
 /// This struct mirrors the `CreateUserParams` pattern to avoid excessive positional arguments.
 ///
-/// Group change: `remove_group` takes precedence over `requested_group_id`.
+/// Group change: `remove_group` takes precedence over `group_id`.
 /// - `remove_group: true` — remove from group
-/// - `requested_group_id: Some(id)` — assign to group
+/// - `group_id: Some(id)` — assign to group
 /// - Both false/None — no group change
 pub struct UpdateUserParams<'a> {
     pub username: &'a str,
-    pub requested_username: Option<&'a str>,
-    pub requested_password_hash: Option<&'a str>,
-    pub requested_is_admin: Option<bool>,
-    pub requested_enabled: Option<bool>,
-    pub requested_permissions: Option<&'a Permissions>,
-    pub requested_revokes: Option<&'a [Permission]>,
+    pub new_username: Option<&'a str>,
+    pub new_password_hash: Option<&'a str>,
+    pub is_admin: Option<bool>,
+    pub enabled: Option<bool>,
+    pub permissions: Option<&'a Permissions>,
+    pub revokes: Option<&'a [Permission]>,
     pub remove_group: bool,
-    pub requested_group_id: Option<i64>,
+    pub group_id: Option<i64>,
 }
 
 /// User account stored in database
@@ -120,9 +120,6 @@ impl UserDb {
     // ========================================================================
 
     /// Get a user by ID
-    ///
-    /// Note: Only used in tests. Production code looks up users by username.
-    #[cfg(test)]
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
         let row: Option<UserRow> = sqlx::query_as(sql::SQL_SELECT_USER_BY_ID)
             .bind(user_id)
@@ -532,7 +529,7 @@ impl UserDb {
         };
 
         // Check if new username already exists (and it's not the same user)
-        if let Some(new_name) = params.requested_username
+        if let Some(new_name) = params.new_username
             && new_name != params.username
             && self.get_user_by_username(new_name).await?.is_some()
         {
@@ -541,21 +538,19 @@ impl UserDb {
         }
 
         // Build the final values for each field
-        let final_username = params.requested_username.unwrap_or(params.username);
+        let final_username = params.new_username.unwrap_or(params.username);
 
         // Validate username format if it's being changed (failsafe)
         // If this fails, it indicates a bug or attack bypassing handler validation
-        if let Some(new_username) = params.requested_username
+        if let Some(new_username) = params.new_username
             && let Err(e) = validators::validate_username(new_username)
         {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let final_password = params
-            .requested_password_hash
-            .unwrap_or(&user.hashed_password);
-        let final_is_admin = params.requested_is_admin.unwrap_or(user.is_admin);
-        let final_enabled = params.requested_enabled.unwrap_or(user.enabled);
+        let final_password = params.new_password_hash.unwrap_or(&user.hashed_password);
+        let final_is_admin = params.is_admin.unwrap_or(user.is_admin);
+        let final_enabled = params.enabled.unwrap_or(user.enabled);
 
         // Use a transaction to ensure user update and permissions are atomic
         let mut tx = self.pool.begin().await?;
@@ -589,11 +584,10 @@ impl UserDb {
         }
 
         // Update permissions and/or revokes if provided
-        if let Some(perms) = params.requested_permissions {
+        if let Some(perms) = params.permissions {
             // Only set permissions for non-admin users
             if !final_is_admin {
-                Self::set_permissions_in_tx(&mut tx, user.id, perms, params.requested_revokes)
-                    .await?;
+                Self::set_permissions_in_tx(&mut tx, user.id, perms, params.revokes).await?;
             } else {
                 // Clear permissions for admin users (they get all automatically)
                 sqlx::query(sql::SQL_DELETE_PERMISSIONS)
@@ -601,7 +595,7 @@ impl UserDb {
                     .execute(&mut *tx)
                     .await?;
             }
-        } else if let Some(revokes) = params.requested_revokes {
+        } else if let Some(revokes) = params.revokes {
             // Revokes-only (no grant changes) — replace revoke overrides within this transaction
             if !final_is_admin {
                 sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
@@ -620,7 +614,7 @@ impl UserDb {
         }
 
         // Update group assignment if requested (atomic with permissions above)
-        // remove_group takes precedence over requested_group_id
+        // remove_group takes precedence over group_id
         if params.remove_group {
             // Remove from group
             sqlx::query(sql::SQL_UPDATE_USER_GROUP)
@@ -634,7 +628,7 @@ impl UserDb {
                 .bind(user.id)
                 .execute(&mut *tx)
                 .await?;
-        } else if let Some(new_group_id) = params.requested_group_id {
+        } else if let Some(new_group_id) = params.group_id {
             // Assign to group
             sqlx::query(sql::SQL_UPDATE_USER_GROUP)
                 .bind(Some(new_group_id))
@@ -1067,14 +1061,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: Some(&new_perms),
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: Some(&new_perms),
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -1399,25 +1393,25 @@ mod tests {
         let (result1, result2) = tokio::join!(
             db1.update_user(UpdateUserParams {
                 username: "bob",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: Some(&perms1),
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: Some(&perms1),
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             }),
             db2.update_user(UpdateUserParams {
                 username: "bob",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: Some(&perms2),
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: Some(&perms2),
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
         );
 
@@ -1803,14 +1797,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "shared_acct",
-                requested_username: None,
-                requested_password_hash: Some("new_hash"),
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: Some("new_hash"),
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2354,14 +2348,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: Some(group2.id),
+                group_id: Some(group2.id),
             })
             .await
             .unwrap();
@@ -2400,14 +2394,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: true,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2445,18 +2439,18 @@ mod tests {
         .await
         .unwrap();
 
-        // Both remove_group and requested_group_id set — remove wins
+        // Both remove_group and group_id set — remove wins
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: true,
-                requested_group_id: Some(group2.id),
+                group_id: Some(group2.id),
             })
             .await
             .unwrap();
@@ -2678,14 +2672,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: false,
-                requested_group_id: Some(group.id),
+                group_id: Some(group.id),
             })
             .await
             .unwrap();
@@ -2757,14 +2751,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: None,
-                requested_revokes: None,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
                 remove_group: true,
-                requested_group_id: None,
+                group_id: None,
             })
             .await
             .unwrap();
@@ -2844,14 +2838,14 @@ mod tests {
         let updated = db
             .update_user(UpdateUserParams {
                 username: "alice",
-                requested_username: None,
-                requested_password_hash: None,
-                requested_is_admin: None,
-                requested_enabled: None,
-                requested_permissions: Some(&Permissions::from(&[Permission::VoiceListen])),
-                requested_revokes: Some(&[Permission::UserKick]),
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: Some(&Permissions::from(&[Permission::VoiceListen])),
+                revokes: Some(&[Permission::UserKick]),
                 remove_group: false,
-                requested_group_id: Some(group2.id),
+                group_id: Some(group2.id),
             })
             .await
             .unwrap();

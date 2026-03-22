@@ -347,11 +347,11 @@ where
             };
             handlers::handle_user_create(request, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserDelete { username } => {
-            handlers::handle_user_delete(username, conn_state.session_id, ctx).await?;
+        ClientMessage::UserDelete { id } => {
+            handlers::handle_user_delete(id, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::UserEdit { username } => {
-            handlers::handle_user_edit(username, conn_state.session_id, ctx).await?;
+        ClientMessage::UserEdit { id } => {
+            handlers::handle_user_edit(id, conn_state.session_id, ctx).await?;
         }
         ClientMessage::UserInfo { nickname } => {
             handlers::handle_user_info(nickname, conn_state.session_id, ctx).await?;
@@ -371,28 +371,28 @@ where
                 .await?;
         }
         ClientMessage::UserUpdate {
-            username,
+            id,
             current_password,
-            requested_username,
-            requested_password,
-            requested_is_admin,
-            requested_enabled,
-            requested_permissions,
-            requested_group_id,
+            username,
+            password,
+            is_admin,
+            enabled,
+            permissions,
+            group_id,
             remove_group,
-            requested_revokes,
+            revokes,
         } => {
             let request = handlers::UserUpdateRequest {
-                username,
+                id,
                 current_password,
-                requested_username,
-                requested_password,
-                requested_is_admin,
-                requested_enabled,
-                requested_permissions,
-                requested_group_id,
+                username,
+                password,
+                is_admin,
+                enabled,
+                permissions,
+                group_id,
                 remove_group,
-                requested_revokes,
+                revokes,
                 session_id: conn_state.session_id,
             };
             handlers::handle_user_update(request, ctx).await?;

@@ -75,6 +75,7 @@ impl UserManager {
     /// broadcast separately without aggregation.
     pub fn build_user_info_from_session(session: &UserSession) -> UserInfo {
         UserInfo {
+            id: session.user_id,
             username: session.username.clone(),
             nickname: session.nickname.clone(),
             login_time: session.login_time,
@@ -124,6 +125,7 @@ impl UserManager {
         let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
 
         Some(UserInfo {
+            id: latest_session.user_id,
             username: latest_session.username.clone(),
             nickname: latest_session.nickname.clone(), // For regular accounts, nickname == username
             login_time: earliest_login_time,
