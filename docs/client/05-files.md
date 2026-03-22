@@ -400,4 +400,4 @@ The folder may be a drop box. You can upload to it but can't view its contents u
 ## Next Steps
 
 - [News](06-news.md) — Reading and posting news articles
-- [Settings](07-settings.md) — Configure download location and transfer limits
+- [Settings](10-settings.md) — Configure download location and transfer limits

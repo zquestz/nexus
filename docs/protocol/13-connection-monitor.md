@@ -114,7 +114,7 @@ Response containing all active connections.
 | `nickname`          | `string` | Display name (equals username for regular accounts) |
 | `username`          | `string` | Account username (database key)                     |
 | `ip`                | `string` | Remote IP address (IPv4 or IPv6)                    |
-| `port`              | `u16`    | Remote port (7501 for TCP, 7503 for WebSocket)      |
+| `port`              | `u16`    | Remote port number                                  |
 | `is_admin`          | `bool`   | Whether the user has admin privileges               |
 | `is_shared`         | `bool`   | Whether this is a shared account session            |
 | `direction`         | `string` | Transfer direction: `"download"` or `"upload"`      |
@@ -182,4 +182,4 @@ Example with a shared account "guests" having two sessions:
 
 ## Next Step
 
-See [Errors](10-errors.md) for general error handling.
+See [Errors](16-errors.md) for general error handling.

@@ -12,10 +12,11 @@ For users connecting to Nexus BBS servers.
 - [Commands](client/04-commands.md) — IRC-style slash commands
 - [Files](client/05-files.md) — Browsing, downloading, and uploading files
 - [News](client/06-news.md) — Reading and posting news articles
-- [Settings](client/07-settings.md) — Themes, sounds, notifications, and preferences
-- [Troubleshooting](client/08-troubleshooting.md) — Common issues and solutions
+- [Voice Chat](client/07-voice-chat.md) — Push-to-talk voice for channels and user messages
+- [User Management](client/08-user-management.md) — Managing users, groups, and permissions (admin)
 - [Connection Monitor](client/09-connection-monitor.md) — View active connections and transfers (admin)
-- [Voice Chat](client/10-voice-chat.md) — Push-to-talk voice for channels and user messages
+- [Settings](client/10-settings.md) — Themes, sounds, notifications, and preferences
+- [Troubleshooting](client/11-troubleshooting.md) — Common issues and solutions
 
 ## Server Admin Guide
 

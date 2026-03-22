@@ -95,6 +95,7 @@ Response containing the user list.
   "success": true,
   "users": [
     {
+      "id": 1,
       "username": "alice",
       "nickname": "alice",
       "login_time": 1703001234,
@@ -104,9 +105,12 @@ Response containing the user list.
       "locale": "en",
       "avatar": "data:image/png;base64,...",
       "is_away": true,
-      "status": "in a meeting"
+      "status": "in a meeting",
+      "group_id": null,
+      "group_name": null
     },
     {
+      "id": 2,
       "username": "bob",
       "nickname": "bob",
       "login_time": 1703002000,
@@ -116,9 +120,12 @@ Response containing the user list.
       "locale": "de",
       "avatar": null,
       "is_away": false,
-      "status": null
+      "status": null,
+      "group_id": 1,
+      "group_name": "Basic Users"
     },
     {
+      "id": 3,
       "username": "shared_acct",
       "nickname": "Visitor",
       "login_time": 1703002500,
@@ -128,7 +135,9 @@ Response containing the user list.
       "locale": "en",
       "avatar": null,
       "is_away": false,
-      "status": "just browsing"
+      "status": "just browsing",
+      "group_id": null,
+      "group_name": null
     }
   ]
 }
@@ -141,6 +150,7 @@ Response containing the user list.
   "success": true,
   "users": [
     {
+      "id": 1,
       "username": "alice",
       "nickname": "alice",
       "login_time": 1702900000,
@@ -148,9 +158,12 @@ Response containing the user list.
       "is_shared": false,
       "session_ids": [],
       "locale": "",
-      "avatar": null
+      "avatar": null,
+      "group_id": null,
+      "group_name": null
     },
     {
+      "id": 2,
       "username": "bob",
       "nickname": "bob",
       "login_time": 1702950000,
@@ -158,7 +171,9 @@ Response containing the user list.
       "is_shared": false,
       "session_ids": [],
       "locale": "",
-      "avatar": null
+      "avatar": null,
+      "group_id": 1,
+      "group_name": "Basic Users"
     }
   ]
 }
@@ -209,6 +224,7 @@ Response containing detailed user information.
 {
   "success": true,
   "user": {
+    "id": 1,
     "username": "alice",
     "nickname": "alice",
     "login_time": 1703001234,
@@ -219,7 +235,9 @@ Response containing detailed user information.
     "locale": "en",
     "avatar": "data:image/png;base64,...",
     "is_away": true,
-    "status": "in a meeting"
+    "status": "in a meeting",
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -230,6 +248,7 @@ Response containing detailed user information.
 {
   "success": true,
   "user": {
+    "id": 2,
     "username": "bob",
     "nickname": "bob",
     "login_time": 1703002000,
@@ -243,7 +262,9 @@ Response containing detailed user information.
     "status": null,
     "is_admin": false,
     "addresses": ["192.168.1.100", "10.0.0.5"],
-    "channels": ["#general", "#support"]
+    "channels": ["#general", "#support"],
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -272,6 +293,7 @@ Broadcast when a user connects.
 ```json
 {
   "user": {
+    "id": 4,
     "username": "charlie",
     "nickname": "charlie",
     "login_time": 1703003000,
@@ -281,7 +303,9 @@ Broadcast when a user connects.
     "locale": "fr",
     "avatar": null,
     "is_away": false,
-    "status": null
+    "status": null,
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -291,6 +315,7 @@ Broadcast when a user connects.
 ```json
 {
   "user": {
+    "id": 3,
     "username": "shared_acct",
     "nickname": "NewVisitor",
     "login_time": 1703003500,
@@ -300,7 +325,9 @@ Broadcast when a user connects.
     "locale": "en",
     "avatar": "data:image/png;base64,...",
     "is_away": false,
-    "status": null
+    "status": null,
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -338,6 +365,7 @@ Broadcast when a user's account is modified (e.g., username change, admin status
 {
   "previous_username": "bob",
   "user": {
+    "id": 2,
     "username": "robert",
     "nickname": "robert",
     "login_time": 1703002000,
@@ -347,7 +375,9 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "locale": "de",
     "avatar": null,
     "is_away": false,
-    "status": null
+    "status": null,
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -358,6 +388,7 @@ Broadcast when a user's account is modified (e.g., username change, admin status
 {
   "previous_username": "alice",
   "user": {
+    "id": 1,
     "username": "alice",
     "nickname": "alice",
     "login_time": 1703001234,
@@ -367,7 +398,9 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "locale": "en",
     "avatar": "data:image/png;base64,...",
     "is_away": true,
-    "status": "in a meeting"
+    "status": "in a meeting",
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
@@ -380,6 +413,7 @@ Basic user information returned in lists and broadcasts.
 
 | Field         | Type    | Description                                           |
 | ------------- | ------- | ----------------------------------------------------- |
+| `id`          | integer | Unique user account ID                                |
 | `username`    | string  | Account username (database key)                       |
 | `nickname`    | string  | Display name (equals username for regular accounts)   |
 | `login_time`  | integer | Unix timestamp of login (or creation for `all: true`) |
@@ -390,27 +424,32 @@ Basic user information returned in lists and broadcasts.
 | `avatar`      | string  | Avatar as data URI (null if none)                     |
 | `is_away`     | boolean | Whether user is away                                  |
 | `status`      | string  | User's status message (null if none)                  |
+| `group_id`    | integer | User's group ID (null if no group)                    |
+| `group_name`  | string  | User's group name (null if no group)                  |
 
 ### UserInfoDetailed
 
 Extended user information for individual queries.
 
-| Field         | Type    | Description                           |
-| ------------- | ------- | ------------------------------------- |
-| `username`    | string  | Account username                      |
-| `nickname`    | string  | Display name                          |
-| `login_time`  | integer | Unix timestamp of login               |
-| `is_shared`   | boolean | Whether this is a shared account      |
-| `session_ids` | array   | List of active session IDs            |
-| `features`    | array   | Enabled client features               |
-| `created_at`  | integer | Account creation timestamp            |
-| `locale`      | string  | User's preferred locale               |
-| `avatar`      | string  | Avatar as data URI (null if none)     |
-| `is_away`     | boolean | Whether user is away                                          |
-| `status`      | string  | User's status message (null if none)                          |
-| `is_admin`    | boolean | Admin status (only visible to admins)                         |
-| `addresses`   | array   | IP addresses (only visible to admins)                         |
+| Field         | Type    | Description                                                      |
+| ------------- | ------- | ---------------------------------------------------------------- |
+| `id`          | integer | Unique user account ID                                           |
+| `username`    | string  | Account username                                                 |
+| `nickname`    | string  | Display name                                                     |
+| `login_time`  | integer | Unix timestamp of login                                          |
+| `is_shared`   | boolean | Whether this is a shared account                                 |
+| `session_ids` | array   | List of active session IDs                                       |
+| `features`    | array   | Enabled client features                                          |
+| `created_at`  | integer | Account creation timestamp                                       |
+| `locale`      | string  | User's preferred locale                                          |
+| `avatar`      | string  | Avatar as data URI (null if none)                                |
+| `is_away`     | boolean | Whether user is away                                             |
+| `status`      | string  | User's status message (null if none)                             |
+| `is_admin`    | boolean | Admin status (only visible to admins)                            |
+| `addresses`   | array   | IP addresses (only visible to admins)                            |
 | `channels`    | array   | Channels the user is in (secret channels only visible to admins) |
+| `group_id`    | integer | User's group ID (null if no group)                               |
+| `group_name`  | string  | User's group name (null if no group)                             |
 
 ## Permissions
 
@@ -468,7 +507,7 @@ Set the user as away, optionally with a status message.
 
 | Field     | Type   | Required | Description                                  |
 | --------- | ------ | -------- | -------------------------------------------- |
-| `message` | string | No       | Optional status message (max 128 characters) |
+| `message` | string | No       | Optional status message (max 128 bytes) |
 
 **Example (away with message):**
 
@@ -520,7 +559,7 @@ Set or clear a status message without changing away state.
 
 | Field    | Type   | Required | Description                                        |
 | -------- | ------ | -------- | -------------------------------------------------- |
-| `status` | string | No       | Status message (null to clear, max 128 characters) |
+| `status` | string | No       | Status message (null to clear, max 128 bytes) |
 
 **Example (set status):**
 
@@ -559,7 +598,7 @@ Response to `UserStatus` request.
 
 Status messages must:
 
-- Be 128 characters or fewer
+- Be 128 bytes or fewer
 - Not contain newlines
 - Not contain control characters
 

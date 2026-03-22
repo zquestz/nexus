@@ -12,7 +12,7 @@ Client                                        Server
    │  UserCreate { username, password, ... }     │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         UserCreateResponse { username }     │
+   │     UserCreateResponse { id, username }     │
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -22,17 +22,17 @@ Client                                        Server
 ```
 Client                                        Server
    │                                             │
-   │  UserEdit { username }                      │
+   │  UserEdit { id }                            │
    │ ───────────────────────────────────────►    │
    │                                             │
    │         UserEditResponse { user data }      │
    │ ◄───────────────────────────────────────    │
    │                                             │
    │                                             │
-   │  UserUpdate { username, changes... }        │
+   │  UserUpdate { id, changes... }              │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         UserUpdateResponse { username }     │
+   │     UserUpdateResponse { id, username }     │
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         UserUpdated { ... }                 │
@@ -45,10 +45,10 @@ Client                                        Server
 ```
 Client                                        Server
    │                                             │
-   │  UserDelete { username }                    │
+   │  UserDelete { id }                          │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         UserDeleteResponse { username }     │
+   │       UserDeleteResponse { username }       │
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -99,6 +99,8 @@ Create a new user account.
 | `is_shared`   | boolean | No       | Whether this is a shared account (default: false) |
 | `enabled`     | boolean | Yes      | Whether account is enabled                        |
 | `permissions` | array   | Yes      | List of permission strings                        |
+| `group_id`    | integer | No       | Group to assign the user to (null for no group)   |
+| `revokes`     | array   | No       | Permissions to revoke from group (only with group) |
 
 **Regular user:**
 
@@ -134,6 +136,20 @@ Create a new user account.
 }
 ```
 
+**User with group and overrides:**
+
+```json
+{
+  "username": "editor",
+  "password": "editorpass",
+  "is_admin": false,
+  "enabled": true,
+  "permissions": ["news_create"],
+  "group_id": 1,
+  "revokes": ["file_upload"]
+}
+```
+
 **Full frame:**
 
 ```
@@ -144,17 +160,19 @@ NX|10|UserCreate|a1b2c3d4e5f6|150|{"username":"alice","password":"secret",...}
 
 Response after creating a user.
 
-| Field      | Type    | Required   | Description                |
-| ---------- | ------- | ---------- | -------------------------- |
-| `success`  | boolean | Yes        | Whether creation succeeded |
-| `error`    | string  | If failure | Error message              |
-| `username` | string  | If success | Created username           |
+| Field      | Type    | Required   | Description                  |
+| ---------- | ------- | ---------- | ---------------------------- |
+| `success`  | boolean | Yes        | Whether creation succeeded   |
+| `error`    | string  | If failure | Error message                |
+| `id`       | integer | If success | Created user's account ID    |
+| `username` | string  | If success | Created username             |
 
 **Success example:**
 
 ```json
 {
   "success": true,
+  "id": 42,
   "username": "alice"
 }
 ```
@@ -172,15 +190,15 @@ Response after creating a user.
 
 Request user data for editing.
 
-| Field      | Type   | Required | Description     |
-| ---------- | ------ | -------- | --------------- |
-| `username` | string | Yes      | Account to edit |
+| Field | Type    | Required | Description        |
+| ----- | ------- | -------- | ------------------ |
+| `id`  | integer | Yes      | Account ID to edit |
 
 **Example:**
 
 ```json
 {
-  "username": "alice"
+  "id": 42
 }
 ```
 
@@ -188,26 +206,46 @@ Request user data for editing.
 
 Response containing user data for editing.
 
-| Field         | Type    | Required   | Description               |
-| ------------- | ------- | ---------- | ------------------------- |
-| `success`     | boolean | Yes        | Whether request succeeded |
-| `error`       | string  | If failure | Error message             |
-| `username`    | string  | If success | Account username          |
-| `is_admin`    | boolean | If success | Admin status              |
-| `is_shared`   | boolean | If success | Shared account status     |
-| `enabled`     | boolean | If success | Account enabled status    |
-| `permissions` | array   | If success | List of permissions       |
+| Field                  | Type    | Required   | Description                                    |
+| ---------------------- | ------- | ---------- | ---------------------------------------------- |
+| `success`              | boolean | Yes        | Whether request succeeded                      |
+| `error`                | string  | If failure | Error message                                  |
+| `id`                   | integer | If success | Account ID                                     |
+| `username`             | string  | If success | Account username                               |
+| `is_admin`             | boolean | If success | Admin status                                   |
+| `is_shared`            | boolean | If success | Shared account status                          |
+| `enabled`              | boolean | If success | Account enabled status                         |
+| `permissions`          | array   | If success | List of permissions                            |
+| `group_id`             | integer | If success | User's group ID (null if no group)             |
+| `group_name`           | string  | If success | User's group name (null if no group)           |
+| `group_permissions`    | array   | If success | Group's base permissions (null if no group)    |
+| `revoked_permissions`  | array   | If success | Permissions revoked from group for this user   |
+| `available_groups`     | array   | If success | Available groups for dropdown (GroupInfo list)  |
 
 **Success example:**
 
 ```json
 {
   "success": true,
+  "id": 42,
   "username": "alice",
   "is_admin": false,
   "is_shared": false,
   "enabled": true,
-  "permissions": ["chat_send", "chat_receive", "user_list"]
+  "permissions": ["chat_send", "chat_receive", "user_list"],
+  "group_id": 1,
+  "group_name": "Basic Users",
+  "group_permissions": ["chat_send", "chat_receive", "user_list", "file_download"],
+  "revoked_permissions": ["file_download"],
+  "available_groups": [
+    {
+      "id": 1,
+      "name": "Basic Users",
+      "is_shared": false,
+      "member_count": 5,
+      "permissions": ["chat_send", "chat_receive", "user_list", "file_download"]
+    }
+  ]
 }
 ```
 
@@ -224,15 +262,18 @@ Response containing user data for editing.
 
 Update an existing user account.
 
-| Field                   | Type    | Required | Description                        |
-| ----------------------- | ------- | -------- | ---------------------------------- |
-| `username`              | string  | Yes      | Account to update                  |
-| `current_password`      | string  | No       | Current password (for self-update) |
-| `requested_username`    | string  | No       | New username                       |
-| `requested_password`    | string  | No       | New password                       |
-| `requested_is_admin`    | boolean | No       | New admin status                   |
-| `requested_enabled`     | boolean | No       | New enabled status                 |
-| `requested_permissions` | array   | No       | New permissions list               |
+| Field              | Type    | Required | Description                                |
+| ------------------ | ------- | -------- | ------------------------------------------ |
+| `id`               | integer | Yes      | Account ID to update                       |
+| `current_password` | string  | No       | Current password (required for self-update) |
+| `username`         | string  | No       | New username                               |
+| `password`         | string  | No       | New password                               |
+| `is_admin`         | boolean | No       | New admin status                           |
+| `enabled`          | boolean | No       | New enabled status                         |
+| `permissions`      | array   | No       | New permissions list                       |
+| `group_id`         | integer | No       | Group to assign (null to keep current)     |
+| `remove_group`     | boolean | No       | Remove user from current group             |
+| `revokes`          | array   | No       | Permissions to revoke from group           |
 
 Only include fields you want to change.
 
@@ -240,9 +281,9 @@ Only include fields you want to change.
 
 ```json
 {
-  "username": "alice",
+  "id": 42,
   "current_password": "oldpassword",
-  "requested_password": "newpassword"
+  "password": "newpassword"
 }
 ```
 
@@ -250,8 +291,8 @@ Only include fields you want to change.
 
 ```json
 {
-  "username": "bob",
-  "requested_permissions": ["chat_send", "chat_receive", "news_list"]
+  "id": 43,
+  "permissions": ["chat_send", "chat_receive", "news_list"]
 }
 ```
 
@@ -259,8 +300,8 @@ Only include fields you want to change.
 
 ```json
 {
-  "username": "oldname",
-  "requested_username": "newname"
+  "id": 43,
+  "username": "newname"
 }
 ```
 
@@ -268,8 +309,8 @@ Only include fields you want to change.
 
 ```json
 {
-  "username": "troublemaker",
-  "requested_enabled": false
+  "id": 43,
+  "enabled": false
 }
 ```
 
@@ -281,6 +322,7 @@ Response after updating a user.
 | ---------- | ------- | ---------- | --------------------------------- |
 | `success`  | boolean | Yes        | Whether update succeeded          |
 | `error`    | string  | If failure | Error message                     |
+| `id`       | integer | If success | Account ID                        |
 | `username` | string  | If success | Final username (after any rename) |
 
 **Success example:**
@@ -288,6 +330,7 @@ Response after updating a user.
 ```json
 {
   "success": true,
+  "id": 42,
   "username": "alice"
 }
 ```
@@ -305,15 +348,15 @@ Response after updating a user.
 
 Delete a user account.
 
-| Field      | Type   | Required | Description       |
-| ---------- | ------ | -------- | ----------------- |
-| `username` | string | Yes      | Account to delete |
+| Field | Type    | Required | Description          |
+| ----- | ------- | -------- | -------------------- |
+| `id`  | integer | Yes      | Account ID to delete |
 
 **Example:**
 
 ```json
 {
-  "username": "bob"
+  "id": 43
 }
 ```
 
@@ -485,8 +528,9 @@ Broadcast to all users when server info changes.
   "server_info": {
     "name": "My Awesome BBS",
     "description": "Welcome to my server!",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "transfer_port": 7501,
+    "transfer_websocket_port": null,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
     "image": null,
@@ -501,18 +545,22 @@ Broadcast to all users when server info changes.
 
 Sent to a user when their permissions change.
 
-| Field         | Type    | Required | Description                        |
-| ------------- | ------- | -------- | ---------------------------------- |
-| `is_admin`    | boolean | Yes      | New admin status                   |
-| `permissions` | array   | Yes      | New permissions list               |
-| `server_info` | object  | No       | Server info (if promoted to admin) |
+| Field         | Type    | Required | Description                         |
+| ------------- | ------- | -------- | ----------------------------------- |
+| `is_admin`    | boolean | Yes      | New admin status                    |
+| `permissions` | array   | Yes      | New permissions list                |
+| `server_info` | object  | No       | Server info (if promoted to admin)  |
+| `group_id`    | integer | No       | User's group ID (null if no group)  |
+| `group_name`  | string  | No       | User's group name (null if no group) |
 
 **Permissions changed:**
 
 ```json
 {
   "is_admin": false,
-  "permissions": ["chat_send", "chat_receive", "news_list", "news_create"]
+  "permissions": ["chat_send", "chat_receive", "news_list", "news_create"],
+  "group_id": 1,
+  "group_name": "Basic Users"
 }
 ```
 
@@ -525,15 +573,18 @@ Sent to a user when their permissions change.
   "server_info": {
     "name": "My BBS",
     "description": "...",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "transfer_port": 7501,
+    "transfer_websocket_port": null,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
     "image": "data:image/png;base64,...",
     "file_reindex_interval": 60,
     "persistent_channels": "#general",
     "auto_join_channels": "#general"
-  }
+  },
+  "group_id": null,
+  "group_name": null
 }
 ```
 
@@ -554,6 +605,7 @@ Broadcast when a user account is modified.
 {
   "previous_username": "bob",
   "user": {
+    "id": 2,
     "username": "robert",
     "nickname": "robert",
     "login_time": 1703002000,
@@ -563,19 +615,24 @@ Broadcast when a user account is modified.
     "locale": "en",
     "avatar": null,
     "is_away": false,
-    "status": null
+    "status": null,
+    "group_id": null,
+    "group_name": null
   }
 }
 ```
 
 ## Permissions
 
-| Permission    | Required For           |
-| ------------- | ---------------------- |
-| `user_create` | Creating user accounts |
-| `user_edit`   | Editing user accounts  |
-| `user_delete` | Deleting user accounts |
-| `user_kick`   | Kicking users          |
+| Permission     | Required For            |
+| -------------- | ----------------------- |
+| `user_create`  | Creating user accounts  |
+| `user_edit`    | Editing user accounts   |
+| `user_delete`  | Deleting user accounts  |
+| `user_kick`    | Kicking users           |
+| `group_create` | Creating account groups |
+| `group_edit`   | Editing account groups  |
+| `group_delete` | Deleting account groups |
 
 **Admin-only operations:**
 
@@ -607,6 +664,29 @@ Example: If user with `[chat_send, chat_receive, news_list]` tries to grant `[ch
 
 Admins bypass this restriction and can grant any permissions.
 
+**Group-aware merging:** When a non-admin edits a group's permissions (`GroupUpdate`), they can only add or remove permissions they themselves have. Permissions they don't have are preserved unchanged. The same rule applies to per-user grant and revoke overrides in `UserUpdate`.
+
+**Group assignment:** Non-admins can only assign a user to a group if they have all of the group's permissions. This prevents privilege escalation.
+
+## Account Groups
+
+Groups serve as permission templates. See [10-groups.md](10-groups.md) for the group management protocol.
+
+When a user belongs to a group, their effective permissions are:
+
+```
+effective = (group_permissions ∪ grant_overrides) − revoke_overrides
+```
+
+The `permissions` field in `LoginResponse` and `PermissionsUpdated` contains the already-resolved effective set. Clients don't need to perform resolution.
+
+Group-related fields in admin messages:
+
+- `UserCreate` / `UserUpdate`: `group_id`, `revokes` for assignment and overrides
+- `UserEditResponse`: `group_permissions`, `revoked_permissions`, `available_groups` for UI
+- `PermissionsUpdated`: `group_id`, `group_name` for context
+- `UserInfo` / `UserInfoDetailed`: `group_id`, `group_name` for display
+
 ## Shared Account Restrictions
 
 Shared accounts can only have the following permissions (any others are automatically removed):
@@ -629,6 +709,8 @@ Shared accounts can only have the following permissions (any others are automati
 - `user_info`
 - `user_list`
 - `user_message`
+- `voice_listen`
+- `voice_talk`
 
 Shared accounts can never be admins.
 
@@ -655,9 +737,9 @@ Users can change their own password using `UserUpdate`:
 
 ```json
 {
-  "username": "alice",
+  "id": 42,
   "current_password": "oldpassword",
-  "requested_password": "newpassword"
+  "password": "newpassword"
 }
 ```
 
@@ -771,4 +853,4 @@ The kicked user's sessions are all disconnected (for regular accounts with multi
 
 ## Next Step
 
-- Handle [errors](10-errors.md)
+- Handle [errors](16-errors.md)

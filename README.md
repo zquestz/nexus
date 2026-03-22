@@ -94,7 +94,7 @@ _Coming soon_
 
 ### All Platforms
 
-- Rust 2024 edition (1.85+)
+- Rust 2024 edition (1.91+)
 
 ### Linux
 

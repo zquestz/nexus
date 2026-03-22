@@ -47,7 +47,7 @@ Send a message to another user.
 | Field         | Type   | Required | Description                                 |
 | ------------- | ------ | -------- | ------------------------------------------- |
 | `to_nickname` | string | Yes      | Display name of the recipient               |
-| `message`     | string | Yes      | Message content (1-1024 characters)         |
+| `message`     | string | Yes      | Message content (1-1024 bytes)              |
 | `action`      | string | No       | Action type: `"Normal"` (default) or `"Me"` |
 
 **Example:**
@@ -72,7 +72,7 @@ Send a message to another user.
 **Full frame:**
 
 ```
-NX|11|UserMessage|a1b2c3d4e5f6|49|{"to_nickname":"bob","message":"Hey, are you there?"}
+NX|11|UserMessage|a1b2c3d4e5f6|52|{"to_nickname":"bob","message":"Hey, are you there?"}
 ```
 
 Note: Use `to_nickname` (the display name), not username. For regular accounts these are the same, but for shared accounts they differ.
@@ -177,7 +177,7 @@ Send a broadcast message to all connected users.
 
 | Field     | Type   | Required | Description                           |
 | --------- | ------ | -------- | ------------------------------------- |
-| `message` | string | Yes      | Broadcast content (1-1024 characters) |
+| `message` | string | Yes      | Broadcast content (1-1024 bytes)      |
 
 **Example:**
 
@@ -190,7 +190,7 @@ Send a broadcast message to all connected users.
 **Full frame:**
 
 ```
-NX|13|UserBroadcast|a1b2c3d4e5f6|46|{"message":"Server maintenance in 10 minutes!"}
+NX|13|UserBroadcast|a1b2c3d4e5f6|48|{"message":"Server maintenance in 10 minutes!"}
 ```
 
 ### UserBroadcastResponse (Server → Client)
@@ -257,7 +257,7 @@ Both user messages and broadcasts use the same validation rules:
 | Rule             | Value                            | Error                           |
 | ---------------- | -------------------------------- | ------------------------------- |
 | Not empty        | Must have non-whitespace content | Message cannot be empty         |
-| Max length       | 1024 characters                  | Message too long                |
+| Max length       | 1024 bytes                       | Message too long                |
 | No newlines      | `\n`, `\r` not allowed           | Message cannot contain newlines |
 | No control chars | No ASCII control characters      | Invalid characters              |
 
@@ -309,7 +309,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Nickname too long                 | Exceeds 32 characters             | Stays connected |
 | Invalid nickname                  | Contains invalid characters       | Stays connected |
 | Message cannot be empty           | Empty or whitespace-only message  | Stays connected |
-| Message too long                  | Exceeds 1024 characters           | Stays connected |
+| Message too long                  | Exceeds 1024 bytes                | Stays connected |
 | Message cannot contain newlines   | Contains `\n` or `\r`             | Stays connected |
 | Invalid characters                | Contains control characters       | Stays connected |
 | Cannot send a message to yourself | `to_nickname` matches sender      | Stays connected |
@@ -323,7 +323,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Not logged in                   | Sent before authentication          | Disconnected    |
 | Authentication error            | Invalid session                     | Disconnected    |
 | Message cannot be empty         | Empty or whitespace-only message    | Disconnected    |
-| Message too long                | Exceeds 1024 characters             | Disconnected    |
+| Message too long                | Exceeds 1024 bytes                  | Disconnected    |
 | Message cannot contain newlines | Contains `\n` or `\r`               | Disconnected    |
 | Invalid characters              | Contains control characters         | Disconnected    |
 | Permission denied               | Missing `user_broadcast` permission | Stays connected |

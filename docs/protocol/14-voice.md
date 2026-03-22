@@ -345,6 +345,6 @@ Client                                          Server
 
 ## See Also
 
-- [Voice Chat User Guide](../client/10-voice-chat.md) — End-user documentation
+- [Voice Chat User Guide](../client/07-voice-chat.md) — End-user documentation
 - [Login](02-login.md) — Session establishment before voice
 - [Chat](03-chat.md) — Channel membership required for channel voice

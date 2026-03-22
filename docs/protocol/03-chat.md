@@ -297,7 +297,7 @@ Send a chat message to a channel.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `message` | string | Yes      | Message content (1-1024 characters)         |
+| `message` | string | Yes      | Message content (1-1024 bytes)              |
 | `action`  | string | No       | Action type: `"Normal"` (default) or `"Me"` |
 | `channel` | string | Yes      | Target channel                              |
 
@@ -397,7 +397,7 @@ Update a channel's topic.
 
 | Field     | Type   | Required | Description                                  |
 | --------- | ------ | -------- | -------------------------------------------- |
-| `topic`   | string | Yes      | New topic (0-256 characters, empty to clear) |
+| `topic`   | string | Yes      | New topic (0-256 bytes, empty to clear)      |
 | `channel` | string | Yes      | Target channel                               |
 
 **Set topic example:**
@@ -537,7 +537,7 @@ Channel names are more permissive than usernames. After the `#` prefix, most pri
 | Rule             | Value                            | Error                           |
 | ---------------- | -------------------------------- | ------------------------------- |
 | Not empty        | Must have non-whitespace content | Message cannot be empty         |
-| Max length       | 1024 characters                  | Message too long                |
+| Max length       | 1024 bytes                       | Message too long                |
 | No newlines      | `\n`, `\r` not allowed           | Message cannot contain newlines |
 | No control chars | No ASCII control characters      | Invalid characters              |
 
@@ -551,7 +551,7 @@ Unicode is fully supported, including:
 
 | Rule             | Value                       | Error                         |
 | ---------------- | --------------------------- | ----------------------------- |
-| Max length       | 256 characters              | Topic too long                |
+| Max length       | 256 bytes                   | Topic too long                |
 | No newlines      | `\n`, `\r` not allowed      | Topic cannot contain newlines |
 | No control chars | No ASCII control characters | Invalid characters            |
 | Empty allowed    | Empty string clears topic   | —                             |
@@ -620,7 +620,7 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 | ------------------------------- | ------------------------------------- | --------------- |
 | Not logged in                   | Sent before authentication            | Disconnected    |
 | Message cannot be empty         | Empty or whitespace-only              | Disconnected    |
-| Message too long                | Exceeds 1024 characters               | Disconnected    |
+| Message too long                | Exceeds 1024 bytes                    | Disconnected    |
 | Message cannot contain newlines | Contains `\n` or `\r`                 | Disconnected    |
 | Invalid characters              | Contains control characters           | Disconnected    |
 | Chat feature not enabled        | Missing `chat` feature                | Disconnected    |
@@ -631,8 +631,8 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 
 | Error                         | Cause                                 | Connection      |
 | ----------------------------- | ------------------------------------- | --------------- |
-| Not logged in                 | Sent before authentication            | Stays connected |
-| Topic too long                | Exceeds 256 characters                | Stays connected |
+| Not logged in                 | Sent before authentication            | Disconnected    |
+| Topic too long                | Exceeds 256 bytes                     | Stays connected |
 | Topic cannot contain newlines | Contains `\n` or `\r`                 | Stays connected |
 | Invalid characters            | Contains control characters           | Stays connected |
 | Permission denied             | Missing `chat_topic_edit` permission  | Stays connected |

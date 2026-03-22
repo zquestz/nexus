@@ -170,7 +170,6 @@ Use the `/window` command to manage tabs:
 /window next       # Switch to next tab (or /w next)
 /window prev       # Switch to previous tab (or /w prev)
 /window close      # Close current tab (or /w close)
-/window 2          # Switch to tab number 2
 ```
 
 ### Focus Command
@@ -342,4 +341,4 @@ If you're logged in from multiple devices:
 ## Next Steps
 
 - [Commands](04-commands.md) — Full list of slash commands
-- [Settings](07-settings.md) — Configure notifications and sounds
+- [Settings](10-settings.md) — Configure notifications and sounds

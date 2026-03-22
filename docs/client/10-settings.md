@@ -66,6 +66,15 @@ Set a default nickname for shared account connections. This is used when:
 
 Leave blank to be prompted for a nickname when connecting to shared accounts.
 
+### Hardware Rendering
+
+Enable GPU-accelerated rendering instead of software rendering.
+
+- Default: disabled
+- **Requires an application restart** to take effect
+
+Enable this if you experience sluggish UI performance. Disable it if you encounter graphical glitches or crashes.
+
 ### System Tray (Windows/Linux Only)
 
 These settings are only available on Windows and Linux. macOS uses dock badges instead (planned for a future release).
@@ -139,6 +148,10 @@ Adjust the chat message font size (9–16 points). Default is 13.
 
 When enabled, shows system messages when users connect or disconnect from the server.
 
+### Show Join/Leave Events
+
+When enabled, shows system messages when users join or leave channels you're in. Default: enabled.
+
 ### Timestamps
 
 Configure how timestamps appear on chat messages:
@@ -196,7 +209,7 @@ Route connections through a SOCKS5 proxy (e.g., Tor).
 
 ## Audio Tab
 
-Configure voice chat settings. See [Voice Chat](10-voice-chat.md) for usage details.
+Configure voice chat settings. See [Voice Chat](07-voice-chat.md) for usage details.
 
 ### Output Device
 
@@ -350,10 +363,10 @@ For each event type:
 | Setting               | Description                                         |
 | --------------------- | --------------------------------------------------- |
 | **Show notification** | Display a desktop notification                      |
-| **Content level**     | How much detail to show (Title Only, Summary, Full) |
+| **Content level**     | How much detail to show (Simple, Compact, Detailed) |
 | **Test**              | Send a test notification                            |
 | **Show toast**        | Display a toast notification in the app             |
-| **Content level**     | How much detail to show (Title Only, Summary, Full) |
+| **Content level**     | How much detail to show (Simple, Compact, Detailed) |
 | **Test**              | Show a test toast                                   |
 | **Play sound**        | Play a sound when the event occurs                  |
 | **Always play**       | Play sound even when normally suppressed            |
@@ -443,6 +456,6 @@ Check that you have write permission to the config directory:
 
 ## Next Steps
 
-- [Troubleshooting](08-troubleshooting.md) — Common issues and solutions
+- [Troubleshooting](11-troubleshooting.md) — Common issues and solutions
 - [Connections](02-connections.md) — Connection and bookmark settings
-- [Voice Chat](10-voice-chat.md) — Push-to-talk voice communication
+- [Voice Chat](07-voice-chat.md) — Push-to-talk voice communication

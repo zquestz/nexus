@@ -216,7 +216,7 @@ Some settings are configured at runtime by admins through the client:
 | Server description     | Description shown to users                                             |
 | Server image           | Logo/icon (max 700KB)                                                  |
 | Max connections per IP | Limit concurrent connections (default: 5)                              |
-| Max transfers per IP   | Limit concurrent file transfers (default: 5)                           |
+| Max transfers per IP   | Limit concurrent file transfers (default: 3)                           |
 | File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)       |
 | Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`) |
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)       |

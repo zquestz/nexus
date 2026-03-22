@@ -79,6 +79,9 @@ Server's response to the login attempt.
 | `success`     | boolean | Yes        | Whether login succeeded                      |
 | `error`       | string  | If failure | Error message                                |
 | `session_id`  | integer | If success | Unique session identifier                    |
+| `user_id`     | integer | If success | Unique user account ID                       |
+| `group_id`    | integer | If success | User's group ID (null if no group)           |
+| `group_name`  | string  | If success | User's group name (null if no group)         |
 | `is_admin`    | boolean | If success | Whether user has admin privileges             |
 | `permissions` | array   | If success | List of permission strings                   |
 | `server_info` | object  | If success | Server information (see below)               |
@@ -91,12 +94,15 @@ The `nickname` field contains the user's actual display name as confirmed by the
 - For regular accounts: equals the username
 - For shared accounts: the validated nickname from the login request
 
+The `group_id` and `group_name` fields identify the user's account group (if any). Groups are permission templates — see [10-groups.md](10-groups.md) for details. The effective permissions in the `permissions` array already include group resolution; clients don't need to resolve group permissions themselves.
+
 **Success example:**
 
 ```json
 {
   "success": true,
   "session_id": 42,
+  "user_id": 7,
   "is_admin": false,
   "permissions": [
     "chat_receive",
@@ -111,7 +117,7 @@ The `nickname` field contains the user's actual display name as confirmed by the
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
@@ -127,7 +133,9 @@ The `nickname` field contains the user's actual display name as confirmed by the
       "members": ["alice", "bob"]
     }
   ],
-  "nickname": "alice"
+  "nickname": "alice",
+  "group_id": 1,
+  "group_name": "Basic Users"
 }
 ```
 

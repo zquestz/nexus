@@ -46,7 +46,7 @@ Requires `news_create` permission.
 
 - Posts must have either text, an image, or both
 - Text is limited to 4096 characters
-- Images are limited to 700KB
+- Images are limited to 512KB
 
 ### Supported Image Formats
 
@@ -136,7 +136,7 @@ You need `news_edit` or `news_delete` permission. Additionally, non-admins canno
 
 Check that your image:
 
-- Is under 700KB in size
+- Is under 512KB in size
 - Is a supported format (PNG, JPEG, WebP, SVG)
 - Is a valid image file
 
@@ -146,5 +146,5 @@ Posts must have either text content, an image, or both. You cannot create an emp
 
 ## Next Steps
 
-- [Settings](07-settings.md) — Configure notifications and preferences
-- [Troubleshooting](08-troubleshooting.md) — Common issues and solutions
+- [Settings](10-settings.md) — Configure notifications and preferences
+- [Troubleshooting](11-troubleshooting.md) — Common issues and solutions

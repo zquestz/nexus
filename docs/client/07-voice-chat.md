@@ -83,7 +83,7 @@ When transmitting, a segmented VU meter appears next to the mic icon showing you
 - **Yellow segments** (60-80%) — Getting loud
 - **Red segments** (80-100%) — Too hot / clipping
 
-The meter updates at 60fps for smooth visual feedback. If you see red frequently, move back from your microphone or lower your system input volume.
+The meter updates in real time for smooth visual feedback. If you see red frequently, move back from your microphone or lower your system input volume.
 
 The voice bar only appears on the connection with an active voice session.
 
@@ -435,5 +435,5 @@ Typical voice latency: 40-100ms depending on:
 
 ## Next Steps
 
-- [Settings](07-settings.md) — Configure audio and other preferences
+- [Settings](10-settings.md) — Configure audio and other preferences
 - [Chat](03-chat.md) — Text chat in channels and user messages

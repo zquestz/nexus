@@ -318,14 +318,14 @@ This allows updating the duration or reason of an existing ban.
 | `err-ban-invalid-duration`  | Invalid duration format                       |
 | `err-reason-too-long`       | Reason exceeds 2048 characters                |
 | `err-reason-invalid`        | Reason contains invalid characters            |
-| `err-nickname-not-online`   | Nickname not found online                     |
+| `err-target-too-long`       | Target string too long                        |
 
 ### BanDelete Errors
 
 | Error                    | Cause                             |
 | ------------------------ | --------------------------------- |
 | `err-ban-not-found`      | No ban found for target           |
-| `err-ban-invalid-target` | Invalid IP address or CIDR format |
+| `err-target-too-long`    | Target string too long            |
 
 ## Notes
 
@@ -336,4 +336,4 @@ This allows updating the duration or reason of an existing ban.
 
 ## Next Step
 
-See [10-errors.md](10-errors.md) for general error handling.
+See [16-errors.md](16-errors.md) for general error handling.

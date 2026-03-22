@@ -328,13 +328,14 @@ This allows updating the duration or reason of an existing trust entry.
 | `err-trust-invalid-duration` | Invalid duration format            |
 | `err-reason-too-long`        | Reason exceeds 2048 characters     |
 | `err-reason-invalid`         | Reason contains invalid characters |
+| `err-target-too-long`        | Target string too long             |
 
 ### TrustDelete Errors
 
-| Error                      | Cause                             |
-| -------------------------- | --------------------------------- |
-| `err-trust-not-found`      | No trust entry found for target   |
-| `err-trust-invalid-target` | Invalid IP address or CIDR format |
+| Error                 | Cause                           |
+| --------------------- | ------------------------------- |
+| `err-trust-not-found` | No trust entry found for target |
+| `err-target-too-long` | Target string too long          |
 
 ## Notes
 
@@ -346,4 +347,4 @@ This allows updating the duration or reason of an existing trust entry.
 
 ## Next Step
 
-See [10-errors.md](10-errors.md) for general error handling.
+See [16-errors.md](16-errors.md) for general error handling.

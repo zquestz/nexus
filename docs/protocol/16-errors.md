@@ -97,6 +97,11 @@ Most messages have dedicated response types with `success`, `error`, and sometim
 | `FileDownload`       | `FileDownloadResponse`       | ✅ Yes           |
 | `FileUpload`         | `FileUploadResponse`         | ✅ Yes           |
 | —                    | `TransferComplete`           | ✅ Yes           |
+| `GroupList`          | `GroupListResponse`          | No               |
+| `GroupCreate`        | `GroupCreateResponse`        | No               |
+| `GroupEdit`          | `GroupEditResponse`          | No               |
+| `GroupUpdate`        | `GroupUpdateResponse`        | No               |
+| `GroupDelete`        | `GroupDeleteResponse`        | No               |
 | `BanCreate`          | `BanCreateResponse`          | No               |
 | `BanDelete`          | `BanDeleteResponse`          | No               |
 | `BanList`            | `BanListResponse`            | No               |

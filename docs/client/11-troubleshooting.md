@@ -345,17 +345,8 @@ You'll lose your settings and bookmarks, but the client will create a fresh conf
 **Solutions:**
 
 1. Verify your desktop environment has a system tray/notification area
-2. On Linux, ensure `libayatana-appindicator3` or `libappindicator3` is installed:
-
-   ```bash
-   # Debian/Ubuntu
-   sudo apt-get install libayatana-appindicator3-1
-
-   # Fedora
-   sudo dnf install libappindicator-gtk3
-   ```
-
-3. Some minimal desktop environments (like tiling window managers) may not have a system tray by default — install a standalone tray application
+2. On Linux, no additional libraries are needed — the tray uses the D-Bus StatusNotifierItem protocol directly. Most modern desktop environments support this (KDE, GNOME with extensions like AppIndicator/KStatusNotifierItem, Cinnamon, etc.)
+3. Some minimal desktop environments (like tiling window managers) may not have a StatusNotifierItem-compatible system tray by default — install a standalone tray application that supports the protocol
 4. Try toggling the setting off and on again
 
 ### "Failed to create system tray icon" error
@@ -439,6 +430,6 @@ If your issue isn't covered here:
 ## Next Steps
 
 - [Getting Started](01-getting-started.md) — Installation and first connection
-- [Settings](07-settings.md) — Configuration options
+- [Settings](10-settings.md) — Configuration options
 - [Commands](04-commands.md) — Chat commands reference
 - [Connection Monitor](09-connection-monitor.md) — Monitor active connections

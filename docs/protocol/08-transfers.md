@@ -486,4 +486,4 @@ If a file already exists with different content:
 ## Next Step
 
 - Manage server and users with [admin commands](09-admin.md)
-- Handle [errors](10-errors.md)
+- Handle [errors](16-errors.md)

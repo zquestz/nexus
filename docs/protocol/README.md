@@ -168,13 +168,14 @@ Current version: `0.6.0`
 | [07-files.md](07-files.md)                           | File browsing and management                   |
 | [08-transfers.md](08-transfers.md)                   | File upload and download (port 7501)           |
 | [09-admin.md](09-admin.md)                           | User and server administration                 |
-| [10-errors.md](10-errors.md)                         | Error handling                                 |
+| [10-groups.md](10-groups.md)                         | Account groups (permission templates)          |
 | [11-bans.md](11-bans.md)                             | IP bans and CIDR ranges                        |
 | [12-trusts.md](12-trusts.md)                         | IP trust list (ban bypass)                     |
 | [13-connection-monitor.md](13-connection-monitor.md) | Connection monitor (active sessions)           |
 | [14-voice.md](14-voice.md)                           | Voice chat (signaling and UDP audio)           |
 | [15-keepalive.md](15-keepalive.md)                   | Ping/pong keepalive for NAT timeout prevention |
-| [16-uri-scheme.md](16-uri-scheme.md)                 | `nexus://` URI scheme for deep linking         |
+| [16-errors.md](16-errors.md)                         | Error handling                                 |
+| [17-uri-scheme.md](17-uri-scheme.md)                 | `nexus://` URI scheme for deep linking         |
 
 ## ServerInfo Fields
 

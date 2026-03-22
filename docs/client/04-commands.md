@@ -154,7 +154,7 @@ Clear the chat history for the current tab. This only affects your local view �
 
 ### /focus
 
-Switch focus to a channel or user message tab.
+Switch focus to the server console, a channel, or a user message tab.
 
 **Aliases:** `/f`
 
@@ -163,13 +163,14 @@ Switch focus to a channel or user message tab.
 **Usage:**
 
 ```
+/focus              # Switch to server console
 /focus #general     # Switch to #general channel
 /focus alice        # Switch to (or open) Alice's message tab
 /f #support         # Switch to #support channel
 /f bob              # Switch to Bob's message tab
 ```
 
-If the target is a user who is online but you don't have a message tab open with them, this command opens one.
+With no arguments, switches to the server console tab. If the target is a user who is online but you don't have a message tab open with them, this command opens one.
 
 ### /info
 
@@ -192,7 +193,7 @@ Join or create a channel.
 
 **Aliases:** `/j`
 
-**Permission:** `chat_join` (join existing), `chat_create` (create new)
+**Permission:** `chat_join` (required); creating new channels additionally requires `chat_create` (enforced server-side)
 
 **Usage:**
 
@@ -514,10 +515,10 @@ Manage chat tabs (channels and user message conversations).
 | `/broadcast` | `/bc`                       | `user_broadcast`                 | Send a broadcast to all users         |
 | `/channels`  | `/ch`                       | `chat_list`                      | List available channels               |
 | `/clear`     | —                           | None                             | Clear chat history for current tab    |
-| `/focus`     | `/f`                        | None                             | Focus a channel or user message tab   |
+| `/focus`     | `/f`                        | None                             | Focus console, channel, or user tab   |
 | `/help`      | `/h`, `/?`                  | None                             | Show available commands               |
 | `/info`      | `/i`, `/userinfo`, `/whois` | `user_info`                      | Show information about a user         |
-| `/join`      | `/j`                        | `chat_join` / `chat_create`      | Join or create a channel              |
+| `/join`      | `/j`                        | `chat_join`                      | Join or create a channel              |
 | `/kick`      | `/k`, `/userkick`           | `user_kick`                      | Kick a user from the server           |
 | `/leave`     | `/part`                     | None                             | Leave a channel                       |
 | `/list`      | `/l`, `/userlist`           | `user_list`                      | Show connected/all users              |
@@ -549,4 +550,4 @@ These shortcuts work without typing a command:
 ## Next Steps
 
 - [Chat](03-chat.md) — Chat features and user messaging
-- [Settings](07-settings.md) — Configure notifications and preferences
+- [Settings](10-settings.md) — Configure notifications and preferences
