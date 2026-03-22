@@ -542,7 +542,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             .padding(BUTTON_PADDING)
             .style(btn::secondary),
         button(shaped_text(t("button-save")).size(TEXT_SIZE))
-            .on_press(Message::UpdateServerInfoPressed)
+            .on_press_maybe((!edit_state.is_submitting).then_some(Message::UpdateServerInfoPressed))
             .padding(BUTTON_PADDING),
     ]
     .spacing(ELEMENT_SPACING);

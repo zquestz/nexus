@@ -32,8 +32,9 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
 
     // Validate required fields (username/password are optional)
     // Port is always valid since it's a u16
-    let can_save =
-        !state.bookmark.name.trim().is_empty() && !state.bookmark.address.trim().is_empty();
+    let can_save = !state.bookmark.name.trim().is_empty()
+        && !state.bookmark.address.trim().is_empty()
+        && !state.is_submitting;
 
     let mut column_items: Vec<Element<'_, Message>> = vec![panel_title(dialog_title).into()];
 

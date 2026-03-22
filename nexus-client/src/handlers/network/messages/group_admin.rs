@@ -102,6 +102,7 @@ impl NexusApp {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.group_management.create_error =
                     Some(error.unwrap_or_default());
+                conn.user_management.group_management.is_submitting = false;
             }
         } else {
             return self.add_active_tab_message(
@@ -196,6 +197,7 @@ impl NexusApp {
         if matches!(routing, Some(ResponseRouting::GroupManagementUpdateResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.group_management.edit_error = Some(error.unwrap_or_default());
+                conn.user_management.group_management.is_submitting = false;
             }
         } else {
             return self.add_active_tab_message(
@@ -237,6 +239,7 @@ impl NexusApp {
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
                     conn.user_management.group_management.mode = GroupManagementMode::List;
                     conn.user_management.group_management.delete_error = None;
+                    conn.user_management.group_management.is_delete_submitting = false;
                 }
                 return Task::batch([task, self.refresh_group_management_list_for(connection_id)]);
             }
@@ -249,6 +252,7 @@ impl NexusApp {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.group_management.delete_error =
                     Some(error.unwrap_or_default());
+                conn.user_management.group_management.is_delete_submitting = false;
             }
         } else {
             return self.add_active_tab_message(

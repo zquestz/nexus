@@ -195,6 +195,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn.user_management.is_delete_submitting {
+            return Task::none();
+        }
+
         let (id, _username) = match &conn.user_management.mode {
             UserManagementMode::ConfirmDelete { id, username } => (*id, username.clone()),
             _ => return Task::none(),
@@ -202,6 +207,7 @@ impl NexusApp {
 
         // Clear any previous error before sending
         conn.user_management.delete_error = None;
+        conn.user_management.is_delete_submitting = true;
 
         // Send delete request (keep dialog open until response)
         match conn.send(ClientMessage::UserDelete { id }) {
@@ -210,6 +216,7 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::UserManagementDeleteResult);
             }
             Err(e) => {
+                conn.user_management.is_delete_submitting = false;
                 // Show send error in the delete dialog
                 conn.user_management.delete_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
@@ -340,6 +347,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn.user_management.is_submitting {
+            return Task::none();
+        }
+
         // Validate username
         let username = &conn.user_management.username;
         if let Err(e) = validators::validate_username(username) {
@@ -427,6 +439,7 @@ impl NexusApp {
 
         // Clear any previous error on new submission
         conn.user_management.create_error = None;
+        conn.user_management.is_submitting = true;
 
         // Send message and track for response routing
         match conn.send(msg) {
@@ -435,6 +448,7 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::UserManagementCreateResult);
             }
             Err(e) => {
+                conn.user_management.is_submitting = false;
                 conn.user_management.create_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
@@ -568,6 +582,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn.user_management.is_submitting {
+            return Task::none();
+        }
+
         let (
             id,
             original_username,
@@ -576,6 +595,7 @@ impl NexusApp {
             is_admin,
             enabled,
             permissions,
+            original_group_id,
             edit_group_id,
             edit_group_permissions,
         ) = match &conn.user_management.mode {
@@ -588,6 +608,7 @@ impl NexusApp {
                 is_shared: _, // is_shared is immutable, not sent in update
                 enabled,
                 permissions,
+                original_group_id,
                 group_id,
                 group_permissions,
                 ..
@@ -599,6 +620,7 @@ impl NexusApp {
                 *is_admin,
                 *enabled,
                 permissions.clone(),
+                *original_group_id,
                 *group_id,
                 group_permissions.clone(),
             ),
@@ -677,8 +699,13 @@ impl NexusApp {
                 };
                 (Some(gid), None, revokes)
             } else {
-                // No group selected — remove_group to clear any previous assignment
-                (None, Some(true), None)
+                // No group selected — only send remove_group if user originally had one
+                let remove = if original_group_id.is_some() {
+                    Some(true)
+                } else {
+                    None
+                };
+                (None, remove, None)
             };
 
         let msg = ClientMessage::UserUpdate {
@@ -696,6 +723,7 @@ impl NexusApp {
 
         // Clear any previous error on new submission
         conn.user_management.edit_error = None;
+        conn.user_management.is_submitting = true;
 
         // Send message and track for response routing
         match conn.send(msg) {
@@ -704,6 +732,7 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::UserManagementUpdateResult);
             }
             Err(e) => {
+                conn.user_management.is_submitting = false;
                 conn.user_management.edit_error = Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
@@ -1055,6 +1084,15 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn
+            .password_change_state
+            .as_ref()
+            .is_some_and(|s| s.is_submitting)
+        {
+            return Task::none();
+        }
+
         // Get form values
         let (current_password, new_password, confirm_password) =
             if let Some(state) = &conn.password_change_state {
@@ -1135,9 +1173,10 @@ impl NexusApp {
             revokes: None,
         };
 
-        // Clear any previous error
+        // Clear any previous error and mark as submitting
         if let Some(state) = &mut conn.password_change_state {
             state.error = None;
+            state.is_submitting = true;
         }
 
         // Send message and track for response routing
@@ -1148,6 +1187,7 @@ impl NexusApp {
             }
             Err(e) => {
                 if let Some(state) = &mut conn.password_change_state {
+                    state.is_submitting = false;
                     state.error = Some(format!("{}: {}", t("err-send-failed"), e));
                 }
             }

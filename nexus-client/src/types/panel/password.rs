@@ -21,6 +21,8 @@ pub struct PasswordChangeState {
     pub error: Option<String>,
     /// Panel to return to after cancel/success (e.g., UserInfo)
     pub return_to_panel: Option<ActivePanel>,
+    /// Whether a password change request is in flight
+    pub is_submitting: bool,
 }
 
 impl PasswordChangeState {
@@ -32,6 +34,7 @@ impl PasswordChangeState {
             confirm_password: String::new(),
             error: None,
             return_to_panel,
+            is_submitting: false,
         }
     }
 }

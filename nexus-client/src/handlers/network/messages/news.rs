@@ -234,6 +234,7 @@ impl NexusApp {
         if matches!(routing, Some(ResponseRouting::NewsCreateResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.news_management.form_error = Some(error.unwrap_or_default());
+                conn.news_management.is_submitting = false;
             }
         } else {
             return self.add_active_tab_message(
@@ -366,6 +367,7 @@ impl NexusApp {
         if matches!(routing, Some(ResponseRouting::NewsUpdateResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.news_management.form_error = Some(error.unwrap_or_default());
+                conn.news_management.is_submitting = false;
             }
         } else {
             return self.add_active_tab_message(
@@ -408,6 +410,7 @@ impl NexusApp {
                 // Close the delete dialog
                 conn.news_management.mode = NewsManagementMode::List;
                 conn.news_management.delete_error = None;
+                conn.news_management.is_delete_submitting = false;
 
                 // Remove from list
                 if let Some(Ok(items)) = &mut conn.news_management.news_items {
@@ -428,6 +431,7 @@ impl NexusApp {
         if matches!(routing, Some(ResponseRouting::NewsDeleteResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.news_management.delete_error = Some(error.unwrap_or_default());
+                conn.news_management.is_delete_submitting = false;
             }
         } else {
             return self.add_active_tab_message(

@@ -177,7 +177,8 @@ pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, 
     // Check if all fields are filled for enabling Save button
     let can_save = !state.current_password.is_empty()
         && !state.new_password.is_empty()
-        && !state.confirm_password.is_empty();
+        && !state.confirm_password.is_empty()
+        && !state.is_submitting;
 
     // Buttons row
     let save_button = button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING);

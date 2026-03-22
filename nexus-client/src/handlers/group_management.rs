@@ -234,6 +234,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn.user_management.group_management.is_delete_submitting {
+            return Task::none();
+        }
+
         let id = match &conn.user_management.group_management.mode {
             GroupManagementMode::ConfirmDelete { id, .. } => *id,
             _ => return Task::none(),
@@ -243,6 +248,7 @@ impl NexusApp {
         conn.user_management.group_management.delete_error = None;
 
         // Send delete request (keep dialog open until response)
+        conn.user_management.group_management.is_delete_submitting = true;
         match conn.send(ClientMessage::GroupDelete { id }) {
             Ok(message_id) => {
                 conn.pending_requests
@@ -250,6 +256,7 @@ impl NexusApp {
             }
             Err(e) => {
                 // Show send error in the delete dialog
+                conn.user_management.group_management.is_delete_submitting = false;
                 conn.user_management.group_management.delete_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
@@ -326,6 +333,46 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Validate create group form (called on Enter when form incomplete)
+    pub fn handle_validate_group_management_create(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            let name = &conn.user_management.group_management.name;
+            if let Err(e) = validators::validate_group_name(name) {
+                conn.user_management.group_management.create_error = Some(match e {
+                    GroupNameError::Empty => t("err-group-name-empty"),
+                    GroupNameError::TooLong => t_args(
+                        "err-group-name-too-long",
+                        &[("max", &validators::MAX_GROUP_NAME_LENGTH.to_string())],
+                    ),
+                    GroupNameError::InvalidCharacters => t("err-group-name-invalid"),
+                });
+            }
+        }
+        Task::none()
+    }
+
+    /// Validate edit group form (called on Enter when form incomplete)
+    pub fn handle_validate_group_management_edit(&mut self) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let GroupManagementMode::Edit { new_name, .. } =
+                &conn.user_management.group_management.mode
+            && let Err(e) = validators::validate_group_name(new_name)
+        {
+            conn.user_management.group_management.edit_error = Some(match e {
+                GroupNameError::Empty => t("err-group-name-empty"),
+                GroupNameError::TooLong => t_args(
+                    "err-group-name-too-long",
+                    &[("max", &validators::MAX_GROUP_NAME_LENGTH.to_string())],
+                ),
+                GroupNameError::InvalidCharacters => t("err-group-name-invalid"),
+            });
+        }
+        Task::none()
+    }
+
     /// Handle create group button press
     ///
     /// Validates the group name, filters permissions by delegation,
@@ -337,6 +384,11 @@ impl NexusApp {
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
+
+        // Prevent double-submit
+        if conn.user_management.group_management.is_submitting {
+            return Task::none();
+        }
 
         // Validate group name
         let name = &conn.user_management.group_management.name;
@@ -372,12 +424,14 @@ impl NexusApp {
         conn.user_management.group_management.create_error = None;
 
         // Send message and track for response routing
+        conn.user_management.group_management.is_submitting = true;
         match conn.send(msg) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::GroupManagementCreateResult);
             }
             Err(e) => {
+                conn.user_management.group_management.is_submitting = false;
                 conn.user_management.group_management.create_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }
@@ -467,6 +521,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if conn.user_management.group_management.is_submitting {
+            return Task::none();
+        }
+
         let (id, original_name, new_name, is_shared, permissions) =
             match &conn.user_management.group_management.mode {
                 GroupManagementMode::Edit {
@@ -537,12 +596,14 @@ impl NexusApp {
         conn.user_management.group_management.edit_error = None;
 
         // Send message and track for response routing
+        conn.user_management.group_management.is_submitting = true;
         match conn.send(msg) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::GroupManagementUpdateResult);
             }
             Err(e) => {
+                conn.user_management.group_management.is_submitting = false;
                 conn.user_management.group_management.edit_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
             }

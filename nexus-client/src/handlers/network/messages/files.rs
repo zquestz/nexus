@@ -187,6 +187,7 @@ impl NexusApp {
         } else {
             // Show error in dialog (re-lookup tab)
             if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.is_create_dir_submitting = false;
                 tab.new_directory_error = error;
                 // Focus the input field so user can retry
                 operation::focus(Id::from(InputId::NewDirectoryName))
@@ -229,6 +230,7 @@ impl NexusApp {
             // Close the delete dialog
             tab.pending_delete = None;
             tab.delete_error = None;
+            tab.is_delete_submitting = false;
 
             // Refresh the current directory listing
             let current_path = tab.current_path.clone();
@@ -252,6 +254,7 @@ impl NexusApp {
         } else {
             // Show error in the delete dialog (re-lookup tab)
             if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.is_delete_submitting = false;
                 tab.delete_error = error;
             }
             Task::none()
@@ -333,6 +336,7 @@ impl NexusApp {
             tab.pending_rename = None;
             tab.rename_name = String::new();
             tab.rename_error = None;
+            tab.is_rename_submitting = false;
 
             // Refresh the current directory listing
             let current_path = tab.current_path.clone();
@@ -356,6 +360,7 @@ impl NexusApp {
         } else {
             // Show error in the rename dialog (re-lookup tab)
             if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                tab.is_rename_submitting = false;
                 tab.rename_error = error;
                 // Focus the input field so user can retry
                 operation::focus(Id::from(InputId::RenameName))
@@ -403,6 +408,7 @@ impl NexusApp {
                 return Task::none();
             };
             tab.pending_overwrite = None;
+            tab.is_paste_submitting = false;
 
             // Refresh the current directory listing
             let current_path = tab.current_path.clone();
@@ -450,6 +456,7 @@ impl NexusApp {
                         (pending, conn.files_management.tab_by_id_mut(tab_id))
                     {
                         tab.pending_overwrite = Some(pending);
+                        tab.is_paste_submitting = false;
                     }
                     Task::none()
                 }
@@ -457,6 +464,7 @@ impl NexusApp {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.is_paste_submitting = false;
                         tab.error = error;
                     }
                     Task::none()
@@ -464,6 +472,7 @@ impl NexusApp {
                 _ => {
                     // Show error in panel (permission, invalid_path, or unknown)
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.is_paste_submitting = false;
                         tab.error = error;
                     }
                     Task::none()
@@ -507,6 +516,7 @@ impl NexusApp {
                 return Task::none();
             };
             tab.pending_overwrite = None;
+            tab.is_paste_submitting = false;
 
             // Refresh the current directory listing
             let current_path = tab.current_path.clone();
@@ -554,6 +564,7 @@ impl NexusApp {
                         (pending, conn.files_management.tab_by_id_mut(tab_id))
                     {
                         tab.pending_overwrite = Some(pending);
+                        tab.is_paste_submitting = false;
                     }
                     Task::none()
                 }
@@ -561,6 +572,7 @@ impl NexusApp {
                     // Source no longer exists - clear clipboard
                     conn.files_management.clipboard = None;
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.is_paste_submitting = false;
                         tab.error = error;
                     }
                     Task::none()
@@ -568,6 +580,7 @@ impl NexusApp {
                 _ => {
                     // Show error in panel (permission, invalid_path, or unknown)
                     if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+                        tab.is_paste_submitting = false;
                         tab.error = error;
                     }
                     Task::none()

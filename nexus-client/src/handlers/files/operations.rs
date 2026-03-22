@@ -25,6 +25,7 @@ impl NexusApp {
         let tab = conn.files_management.active_tab_mut();
         tab.pending_delete = Some(path);
         tab.delete_error = None;
+        tab.is_delete_submitting = false;
 
         Task::none()
     }
@@ -42,6 +43,9 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
+        if tab.is_delete_submitting {
+            return Task::none();
+        }
         let Some(path) = tab.pending_delete.clone() else {
             return Task::none();
         };
@@ -50,6 +54,7 @@ impl NexusApp {
 
         // Clear any previous error while the request is in flight
         tab.delete_error = None;
+        tab.is_delete_submitting = true;
 
         let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileDelete { path, root }) {
@@ -58,8 +63,9 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::FileDeleteResult { tab_id });
             }
             Err(e) => {
-                conn.files_management.active_tab_mut().delete_error =
-                    Some(format!("{}: {}", t("err-send-failed"), e));
+                let tab = conn.files_management.active_tab_mut();
+                tab.is_delete_submitting = false;
+                tab.delete_error = Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
@@ -78,6 +84,7 @@ impl NexusApp {
         let tab = conn.files_management.active_tab_mut();
         tab.pending_delete = None;
         tab.delete_error = None;
+        tab.is_delete_submitting = false;
 
         Task::none()
     }
@@ -152,6 +159,7 @@ impl NexusApp {
         tab.pending_rename = Some(path);
         tab.rename_name = name;
         tab.rename_error = None;
+        tab.is_rename_submitting = false;
 
         // Focus the name input field
         operation::focus(Id::from(InputId::RenameName))
@@ -192,6 +200,9 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
+        if tab.is_rename_submitting {
+            return Task::none();
+        }
         let new_name = &tab.rename_name;
 
         // Validate before sending
@@ -214,7 +225,9 @@ impl NexusApp {
         let root = tab.viewing_root;
 
         // Clear any previous error before sending
-        conn.files_management.active_tab_mut().rename_error = None;
+        let tab = conn.files_management.active_tab_mut();
+        tab.rename_error = None;
+        tab.is_rename_submitting = true;
 
         let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileRename {
@@ -227,8 +240,9 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::FileRenameResult { tab_id });
             }
             Err(e) => {
-                conn.files_management.active_tab_mut().rename_error =
-                    Some(format!("{}: {}", t("err-send-failed"), e));
+                let tab = conn.files_management.active_tab_mut();
+                tab.is_rename_submitting = false;
+                tab.rename_error = Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
@@ -248,6 +262,7 @@ impl NexusApp {
         tab.pending_rename = None;
         tab.rename_name = String::new();
         tab.rename_error = None;
+        tab.is_rename_submitting = false;
 
         Task::none()
     }
@@ -332,6 +347,10 @@ impl NexusApp {
             return Task::none();
         };
 
+        if conn.files_management.active_tab().is_paste_submitting {
+            return Task::none();
+        }
+
         let Some(clipboard) = conn.files_management.clipboard.clone() else {
             return Task::none();
         };
@@ -359,7 +378,10 @@ impl NexusApp {
             }
         };
 
+        conn.files_management.active_tab_mut().is_paste_submitting = true;
+
         let Ok(message_id) = conn.send(message) else {
+            conn.files_management.active_tab_mut().is_paste_submitting = false;
             return Task::none();
         };
 
@@ -404,6 +426,10 @@ impl NexusApp {
             return Task::none();
         };
 
+        if conn.files_management.active_tab().is_paste_submitting {
+            return Task::none();
+        }
+
         let Some(pending) = conn
             .files_management
             .active_tab_mut()
@@ -434,7 +460,10 @@ impl NexusApp {
             }
         };
 
+        conn.files_management.active_tab_mut().is_paste_submitting = true;
+
         let Ok(message_id) = conn.send(message) else {
+            conn.files_management.active_tab_mut().is_paste_submitting = false;
             return Task::none();
         };
 
@@ -464,7 +493,9 @@ impl NexusApp {
             return Task::none();
         };
 
-        conn.files_management.active_tab_mut().pending_overwrite = None;
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_overwrite = None;
+        tab.is_paste_submitting = false;
 
         Task::none()
     }

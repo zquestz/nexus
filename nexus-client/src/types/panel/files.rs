@@ -122,6 +122,14 @@ pub struct FileTab {
     pub rename_error: Option<String>,
     /// Pending overwrite confirmation (when destination exists)
     pub pending_overwrite: Option<PendingOverwrite>,
+    /// Whether a delete request is in flight (prevents double-submit)
+    pub is_delete_submitting: bool,
+    /// Whether a rename request is in flight (prevents double-submit)
+    pub is_rename_submitting: bool,
+    /// Whether a create directory request is in flight (prevents double-submit)
+    pub is_create_dir_submitting: bool,
+    /// Whether a paste (move/copy) request is in flight (prevents double-submit)
+    pub is_paste_submitting: bool,
     /// Current text in search input field
     pub search_input: String,
     /// Active search query (None = normal browsing, Some = showing search results)
@@ -164,6 +172,10 @@ impl Default for FileTab {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            is_delete_submitting: false,
+            is_rename_submitting: false,
+            is_create_dir_submitting: false,
+            is_paste_submitting: false,
             search_input: String::new(),
             search_query: None,
             search_results: None,
@@ -203,6 +215,10 @@ impl FileTab {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            is_delete_submitting: false,
+            is_rename_submitting: false,
+            is_create_dir_submitting: false,
+            is_paste_submitting: false,
             search_input: String::new(),
             search_query: None,
             search_results: None,
@@ -239,6 +255,10 @@ impl FileTab {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            is_delete_submitting: false,
+            is_rename_submitting: false,
+            is_create_dir_submitting: false,
+            is_paste_submitting: false,
             search_input: String::new(),
             search_query: None,
             search_results: None,
@@ -344,6 +364,7 @@ impl FileTab {
         self.creating_directory = true;
         self.new_directory_name = String::new();
         self.new_directory_error = None;
+        self.is_create_dir_submitting = false;
     }
 
     /// Close the new directory dialog
@@ -351,6 +372,7 @@ impl FileTab {
         self.creating_directory = false;
         self.new_directory_name = String::new();
         self.new_directory_error = None;
+        self.is_create_dir_submitting = false;
     }
 
     /// Navigate up one directory level (preserves viewing_root state)
@@ -846,6 +868,10 @@ mod tests {
             rename_name: String::new(),
             rename_error: None,
             pending_overwrite: None,
+            is_delete_submitting: false,
+            is_rename_submitting: false,
+            is_create_dir_submitting: false,
+            is_paste_submitting: false,
             search_input: String::new(),
             search_query: None,
             search_results: None,

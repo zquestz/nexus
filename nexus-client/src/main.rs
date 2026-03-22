@@ -695,6 +695,10 @@ impl NexusApp {
                 self.handle_user_management_edit_permission_toggled(permission, enabled)
             }
             Message::UserManagementUpdatePressed => self.handle_user_management_update_pressed(),
+            Message::ValidateGroupManagementCreate => {
+                self.handle_validate_group_management_create()
+            }
+            Message::ValidateGroupManagementEdit => self.handle_validate_group_management_edit(),
             Message::ValidateUserManagementCreate => self.handle_validate_user_management_create(),
             Message::ValidateUserManagementEdit => self.handle_validate_user_management_edit(),
             Message::UserManagementCreateTabPressed => {

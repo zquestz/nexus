@@ -69,6 +69,7 @@ impl NexusApp {
             // Show error in create form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.create_error = Some(error.unwrap_or_default());
+                conn.user_management.is_submitting = false;
             }
         } else {
             // Show error in chat
@@ -125,6 +126,7 @@ impl NexusApp {
         if matches!(routing, Some(ResponseRouting::UserManagementDeleteResult)) {
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.delete_error = Some(error.unwrap_or_default());
+                conn.user_management.is_delete_submitting = false;
             }
         } else {
             // Show error in chat
@@ -255,6 +257,7 @@ impl NexusApp {
             if let Some(conn) = self.connections.get_mut(&connection_id)
                 && let Some(state) = &mut conn.password_change_state
             {
+                state.is_submitting = false;
                 state.error = Some(error.unwrap_or_default());
                 // Clear password fields on error for security
                 state.current_password.clear();
@@ -267,6 +270,7 @@ impl NexusApp {
             // Show error in edit form
             if let Some(conn) = self.connections.get_mut(&connection_id) {
                 conn.user_management.edit_error = Some(error.unwrap_or_default());
+                conn.user_management.is_submitting = false;
             }
         } else {
             // Show error in chat

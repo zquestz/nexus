@@ -243,6 +243,7 @@ impl Hash for UserTableDeps {
         self.can_delete.hash(state);
         self.is_admin.hash(state);
         self.current_username.hash(state);
+        // Colors don't need hashing - they're derived from theme which doesn't change per-render
     }
 }
 
@@ -546,8 +547,9 @@ fn create_view<'a>(
 ) -> Element<'a, Message> {
     let title = panel_title(t("title-user-create"));
 
-    let can_create =
-        !user_management.username.trim().is_empty() && !user_management.password.trim().is_empty();
+    let can_create = !user_management.username.trim().is_empty()
+        && !user_management.password.trim().is_empty()
+        && !user_management.is_submitting;
 
     // Helper for on_submit
     let submit_action = if can_create {
@@ -718,7 +720,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
         .align_x(Center)
         .style(muted_text_style);
 
-    let can_update = !ctx.new_username.trim().is_empty();
+    let can_update = !ctx.new_username.trim().is_empty() && !ctx.user_management.is_submitting;
 
     // Helper for on_submit
     let submit_action = if can_update {
@@ -883,7 +885,11 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
 // ============================================================================
 
 /// Build the delete confirmation modal
-fn confirm_delete_modal<'a>(username: &'a str, error: Option<&'a String>) -> Element<'a, Message> {
+fn confirm_delete_modal<'a>(
+    username: &'a str,
+    error: Option<&'a String>,
+    is_delete_submitting: bool,
+) -> Element<'a, Message> {
     let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t_args("confirm-delete-user", &[("username", username)]))
@@ -891,10 +897,16 @@ fn confirm_delete_modal<'a>(username: &'a str, error: Option<&'a String>) -> Ele
         .width(Fill)
         .align_x(Center);
 
-    let confirm_button = button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-        .on_press(Message::UserManagementConfirmDelete)
-        .padding(BUTTON_PADDING)
-        .style(btn::danger);
+    let confirm_button = if is_delete_submitting {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    } else {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .on_press(Message::UserManagementConfirmDelete)
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::UserManagementCancelDelete)
@@ -979,9 +991,11 @@ pub fn users_view<'a>(
                 group_id: *group_id,
                 group_permissions,
             }),
-            UserManagementMode::ConfirmDelete { id: _, username } => {
-                confirm_delete_modal(username, user_management.delete_error.as_ref())
-            }
+            UserManagementMode::ConfirmDelete { id: _, username } => confirm_delete_modal(
+                username,
+                user_management.delete_error.as_ref(),
+                user_management.is_delete_submitting,
+            ),
             UserManagementMode::List => unreachable!(),
         };
     }

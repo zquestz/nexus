@@ -62,6 +62,11 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
+
+        if tab.is_create_dir_submitting {
+            return Task::none();
+        }
+
         let name = &tab.new_directory_name;
 
         // Validate first
@@ -79,6 +84,10 @@ impl NexusApp {
         let path = tab.current_path.clone();
         let root = tab.viewing_root;
 
+        conn.files_management
+            .active_tab_mut()
+            .is_create_dir_submitting = true;
+
         let tab_id = conn.files_management.active_tab_id();
         match conn.send(ClientMessage::FileCreateDir { path, name, root }) {
             Ok(message_id) => {
@@ -86,8 +95,9 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::FileCreateDirResult { tab_id });
             }
             Err(e) => {
-                conn.files_management.active_tab_mut().new_directory_error =
-                    Some(format!("{}: {}", t("err-send-failed"), e));
+                let tab = conn.files_management.active_tab_mut();
+                tab.is_create_dir_submitting = false;
+                tab.new_directory_error = Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 

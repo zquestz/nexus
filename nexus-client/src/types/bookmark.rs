@@ -116,6 +116,8 @@ pub struct BookmarkEditState {
     pub bookmark: ServerBookmark,
     /// Error message for bookmark operations
     pub error: Option<String>,
+    /// Whether a save operation is in progress (double-submit prevention)
+    pub is_submitting: bool,
 }
 
 impl Default for BookmarkEditState {
@@ -124,6 +126,7 @@ impl Default for BookmarkEditState {
             mode: BookmarkEditMode::None,
             bookmark: ServerBookmark::default(),
             error: None,
+            is_submitting: false,
         }
     }
 }

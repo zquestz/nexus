@@ -53,6 +53,8 @@ struct EditGroupContext<'a> {
     member_count: u32,
     /// Permissions list with enabled state
     permissions: &'a [(String, bool)],
+    /// Whether a submit request is in flight
+    is_submitting: bool,
 }
 
 // ============================================================================
@@ -82,6 +84,7 @@ impl Hash for GroupTableDeps {
         self.sort_ascending.hash(state);
         self.can_edit.hash(state);
         self.can_delete.hash(state);
+        // group.permissions not hashed — not displayed in table (only name, shared, member_count)
     }
 }
 
@@ -413,11 +416,18 @@ fn create_view<'a>(
 
     let title = panel_title(t("title-group-create"));
 
-    let can_create = !gm.name.trim().is_empty();
+    let can_create = !gm.name.trim().is_empty() && !gm.is_submitting;
+
+    // Helper for on_submit
+    let submit_action = if can_create {
+        Message::GroupManagementCreatePressed
+    } else {
+        Message::ValidateGroupManagementCreate
+    };
 
     let name_input = text_input(&t("group-form-name"), &gm.name)
         .on_input(Message::GroupManagementNameChanged)
-        .on_submit(Message::GroupManagementCreatePressed)
+        .on_submit(submit_action)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
@@ -500,11 +510,18 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
         .align_x(Center)
         .style(muted_text_style);
 
-    let can_update = !ctx.new_name.trim().is_empty();
+    let can_update = !ctx.new_name.trim().is_empty() && !ctx.is_submitting;
+
+    // Helper for on_submit
+    let submit_action = if can_update {
+        Message::GroupManagementUpdatePressed
+    } else {
+        Message::ValidateGroupManagementEdit
+    };
 
     let name_input = text_input(&t("group-form-name"), ctx.new_name)
         .on_input(Message::GroupManagementEditNameChanged)
-        .on_submit(Message::GroupManagementUpdatePressed)
+        .on_submit(submit_action)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
@@ -586,7 +603,11 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
 // ============================================================================
 
 /// Build the delete group confirmation modal (full-panel view)
-fn confirm_delete_modal<'a>(name: &'a str, error: Option<&'a String>) -> Element<'a, Message> {
+fn confirm_delete_modal<'a>(
+    name: &'a str,
+    error: Option<&'a String>,
+    is_delete_submitting: bool,
+) -> Element<'a, Message> {
     let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t_args("confirm-delete-group", &[("name", name)]))
@@ -594,10 +615,16 @@ fn confirm_delete_modal<'a>(name: &'a str, error: Option<&'a String>) -> Element
         .width(Fill)
         .align_x(Center);
 
-    let confirm_button = button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-        .on_press(Message::GroupManagementConfirmDelete)
-        .padding(BUTTON_PADDING)
-        .style(btn::danger);
+    let confirm_button = if !is_delete_submitting {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .on_press(Message::GroupManagementConfirmDelete)
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    } else {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::GroupManagementCancelDelete)
@@ -669,10 +696,13 @@ pub fn group_form_view<'a>(
             is_shared: *is_shared,
             member_count: *member_count,
             permissions,
+            is_submitting: user_management.group_management.is_submitting,
         }),
-        GroupManagementMode::ConfirmDelete { id: _, name } => {
-            confirm_delete_modal(name, user_management.group_management.delete_error.as_ref())
-        }
+        GroupManagementMode::ConfirmDelete { id: _, name } => confirm_delete_modal(
+            name,
+            user_management.group_management.delete_error.as_ref(),
+            user_management.group_management.is_delete_submitting,
+        ),
         GroupManagementMode::List => {
             // Should not be called in List mode — return empty space as safety net
             Space::new().into()

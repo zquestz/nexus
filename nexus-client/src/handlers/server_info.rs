@@ -96,6 +96,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Prevent double-submit
+        if edit_state.is_submitting {
+            return Task::none();
+        }
+
         // Validate server name
         if let Err(e) = validators::validate_server_name(&edit_state.name) {
             let error_msg = match e {
@@ -230,8 +235,14 @@ impl NexusApp {
             auto_join_channels,
         };
 
+        // Mark as submitting to prevent double-submit
+        if let Some(edit) = &mut conn.server_info_edit {
+            edit.is_submitting = true;
+        }
+
         if let Err(e) = conn.send(msg) {
             if let Some(edit) = &mut conn.server_info_edit {
+                edit.is_submitting = false;
                 edit.error = Some(t_args(
                     "err-failed-send-update",
                     &[("error", &e.to_string())],

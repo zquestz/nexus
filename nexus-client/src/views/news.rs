@@ -485,27 +485,19 @@ fn form_view<'a>(
     };
 
     // Submit button (Create or Save)
-    let submit_button = if has_content {
-        button(
-            shaped_text(if is_edit {
-                t("button-save")
-            } else {
-                t("button-create")
-            })
-            .size(TEXT_SIZE),
-        )
-        .on_press(Message::NewsSubmitPressed)
-        .padding(BUTTON_PADDING)
+    let submit_label = shaped_text(if is_edit {
+        t("button-save")
     } else {
-        button(
-            shaped_text(if is_edit {
-                t("button-save")
-            } else {
-                t("button-create")
-            })
-            .size(TEXT_SIZE),
-        )
-        .padding(BUTTON_PADDING)
+        t("button-create")
+    })
+    .size(TEXT_SIZE);
+
+    let submit_button = if has_content && !news_management.is_submitting {
+        button(submit_label)
+            .on_press(Message::NewsSubmitPressed)
+            .padding(BUTTON_PADDING)
+    } else {
+        button(submit_label).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -553,7 +545,10 @@ fn form_view<'a>(
 // ============================================================================
 
 /// Build the delete confirmation modal
-fn confirm_delete_modal<'a>(error: Option<&'a String>) -> Element<'a, Message> {
+fn confirm_delete_modal<'a>(
+    error: Option<&'a String>,
+    is_submitting: bool,
+) -> Element<'a, Message> {
     let title = panel_title(t("title-confirm-delete"));
 
     let message = shaped_text_wrapped(t("confirm-delete-news"))
@@ -561,10 +556,16 @@ fn confirm_delete_modal<'a>(error: Option<&'a String>) -> Element<'a, Message> {
         .width(Fill)
         .align_x(Center);
 
-    let confirm_button = button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-        .on_press(Message::NewsConfirmDelete)
-        .padding(BUTTON_PADDING)
-        .style(btn::danger);
+    let confirm_button = if is_submitting {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    } else {
+        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+            .on_press(Message::NewsConfirmDelete)
+            .padding(BUTTON_PADDING)
+            .style(btn::danger)
+    };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
         .on_press(Message::NewsCancelDelete)
@@ -625,8 +626,9 @@ pub fn news_view<'a>(
         NewsManagementMode::List => list_view(conn, news_management, theme, &conn.news_image_cache),
         NewsManagementMode::Create => form_view(news_management, body_content, false),
         NewsManagementMode::Edit { .. } => form_view(news_management, body_content, true),
-        NewsManagementMode::ConfirmDelete { .. } => {
-            confirm_delete_modal(news_management.delete_error.as_ref())
-        }
+        NewsManagementMode::ConfirmDelete { .. } => confirm_delete_modal(
+            news_management.delete_error.as_ref(),
+            news_management.is_delete_submitting,
+        ),
     }
 }

@@ -390,6 +390,10 @@ pub enum Message {
     UsernameChanged(String),
     /// Broadcast: Validate broadcast form (on Enter when empty)
     ValidateBroadcast,
+    /// Group management: Validate create group form (on Enter when form incomplete)
+    ValidateGroupManagementCreate,
+    /// Group management: Validate edit group form (on Enter when form incomplete)
+    ValidateGroupManagementEdit,
     /// User management: Validate create user form (on Enter when form incomplete)
     ValidateUserManagementCreate,
     /// User management: Validate edit user form (on Enter when form incomplete)

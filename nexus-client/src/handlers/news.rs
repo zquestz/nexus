@@ -168,16 +168,23 @@ impl NexusApp {
             _ => return Task::none(),
         };
 
+        // Double-submit prevention
+        if conn.news_management.is_delete_submitting {
+            return Task::none();
+        }
+
         // Clear any previous error before sending
         conn.news_management.delete_error = None;
 
         // Send delete request (keep dialog open until response)
+        conn.news_management.is_delete_submitting = true;
         match conn.send(ClientMessage::NewsDelete { id }) {
             Ok(message_id) => {
                 conn.pending_requests
                     .track(message_id, ResponseRouting::NewsDeleteResult);
             }
             Err(e) => {
+                conn.news_management.is_delete_submitting = false;
                 // Show send error in the delete dialog
                 conn.news_management.delete_error =
                     Some(format!("{}: {}", t("err-send-failed"), e));
@@ -355,6 +362,11 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Double-submit prevention
+        if conn.news_management.is_submitting {
+            return Task::none();
+        }
+
         let image = conn.news_management.form_image.clone();
 
         // Must have either body or image
@@ -389,12 +401,14 @@ impl NexusApp {
                     image: if image.is_empty() { None } else { Some(image) },
                 };
 
+                conn.news_management.is_submitting = true;
                 match conn.send(msg) {
                     Ok(message_id) => {
                         conn.pending_requests
                             .track(message_id, ResponseRouting::NewsCreateResult);
                     }
                     Err(e) => {
+                        conn.news_management.is_submitting = false;
                         conn.news_management.form_error =
                             Some(format!("{}: {}", t("err-send-failed"), e));
                     }
@@ -408,12 +422,14 @@ impl NexusApp {
                     image: if image.is_empty() { None } else { Some(image) },
                 };
 
+                conn.news_management.is_submitting = true;
                 match conn.send(msg) {
                     Ok(message_id) => {
                         conn.pending_requests
                             .track(message_id, ResponseRouting::NewsUpdateResult);
                     }
                     Err(e) => {
+                        conn.news_management.is_submitting = false;
                         conn.news_management.form_error =
                             Some(format!("{}: {}", t("err-send-failed"), e));
                     }

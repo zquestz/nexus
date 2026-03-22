@@ -86,6 +86,7 @@ impl NexusApp {
             // Show error in the edit form if still open, otherwise show in chat
             let error_msg = error.unwrap_or_default();
             if let Some(edit_state) = &mut conn.server_info_edit {
+                edit_state.is_submitting = false;
                 edit_state.error = Some(t_args(
                     "err-failed-update-server-info",
                     &[("error", &error_msg)],

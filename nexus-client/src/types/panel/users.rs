@@ -84,6 +84,8 @@ pub enum UserManagementMode {
         enabled: bool,
         /// Permissions (editable) — effective permissions (checked = on for user)
         permissions: Vec<(String, bool)>,
+        /// Original group ID at time of edit (for detecting whether remove_group is needed)
+        original_group_id: Option<i64>,
         /// Assigned group ID (None = no group)
         group_id: Option<i64>,
         /// Group's base permissions (for computing inherited vs override styling).
@@ -140,6 +142,10 @@ pub struct UserManagementState {
     pub list_error: Option<String>,
     /// Error message for delete confirmation dialog
     pub delete_error: Option<String>,
+    /// Whether a create or update request is in flight (prevents double-submit)
+    pub is_submitting: bool,
+    /// Whether a delete request is in flight (prevents double-submit)
+    pub is_delete_submitting: bool,
     /// Current sort column for the Users table
     pub sort_column: UserManagementSortColumn,
     /// Whether the sort is ascending
@@ -169,6 +175,8 @@ impl Default for UserManagementState {
             edit_error: None,
             list_error: None,
             delete_error: None,
+            is_submitting: false,
+            is_delete_submitting: false,
             sort_column: UserManagementSortColumn::default(),
             sort_ascending: true,
         }
@@ -198,6 +206,8 @@ impl std::fmt::Debug for UserManagementState {
             .field("edit_error", &self.edit_error)
             .field("list_error", &self.list_error)
             .field("delete_error", &self.delete_error)
+            .field("is_submitting", &self.is_submitting)
+            .field("is_delete_submitting", &self.is_delete_submitting)
             .field("sort_column", &self.sort_column)
             .field("sort_ascending", &self.sort_ascending)
             .finish()
@@ -212,6 +222,8 @@ impl UserManagementState {
         self.edit_error = None;
         self.list_error = None;
         self.return_to_panel = None;
+        self.is_submitting = false;
+        self.is_delete_submitting = false;
     }
 
     /// Clear the create user form fields
@@ -226,6 +238,7 @@ impl UserManagementState {
         }
         self.create_group_id = None;
         self.create_error = None;
+        self.is_submitting = false;
     }
 
     /// Enter create mode
@@ -273,6 +286,7 @@ impl UserManagementState {
             is_shared,
             enabled,
             permissions: perm_map,
+            original_group_id: group_id,
             group_id,
             group_permissions,
             revoked_permissions,
@@ -284,5 +298,6 @@ impl UserManagementState {
     pub fn enter_confirm_delete_mode(&mut self, id: i64, username: String) {
         self.mode = UserManagementMode::ConfirmDelete { id, username };
         self.delete_error = None;
+        self.is_delete_submitting = false;
     }
 }

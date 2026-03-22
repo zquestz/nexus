@@ -162,12 +162,17 @@ pub fn files_view<'a>(
 
     // If overwrite confirmation is pending, show that dialog
     if let Some(pending) = &tab.pending_overwrite {
-        return overwrite_confirm_dialog(&pending.name, perms.file_delete);
+        return overwrite_confirm_dialog(&pending.name, perms.file_delete, tab.is_paste_submitting);
     }
 
     // If rename dialog is pending, show that
     if let Some(path) = &tab.pending_rename {
-        return rename_dialog(path, &tab.rename_name, tab.rename_error.as_ref());
+        return rename_dialog(
+            path,
+            &tab.rename_name,
+            tab.rename_error.as_ref(),
+            tab.is_rename_submitting,
+        );
     }
 
     // If file info is pending, show that dialog
@@ -177,12 +182,16 @@ pub fn files_view<'a>(
 
     // If delete confirmation is pending, show that dialog
     if let Some(path) = &tab.pending_delete {
-        return delete_confirm_dialog(path, tab.delete_error.as_ref());
+        return delete_confirm_dialog(path, tab.delete_error.as_ref(), tab.is_delete_submitting);
     }
 
     // If creating directory, show the dialog instead
     if tab.creating_directory {
-        return new_directory_dialog(&tab.new_directory_name, tab.new_directory_error.as_ref());
+        return new_directory_dialog(
+            &tab.new_directory_name,
+            tab.new_directory_error.as_ref(),
+            tab.is_create_dir_submitting,
+        );
     }
     let is_at_home = tab.current_path.is_empty() || tab.current_path == "/";
     let viewing_root = tab.viewing_root;

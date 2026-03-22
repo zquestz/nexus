@@ -49,6 +49,10 @@ pub struct NewsManagementState {
     pub list_error: Option<String>,
     /// Error message for delete confirmation dialog
     pub delete_error: Option<String>,
+    /// Whether a create/edit submission is in progress (double-submit prevention)
+    pub is_submitting: bool,
+    /// Whether a delete submission is in progress (double-submit prevention)
+    pub is_delete_submitting: bool,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -78,6 +82,8 @@ impl Default for NewsManagementState {
             form_error: None,
             list_error: None,
             delete_error: None,
+            is_submitting: false,
+            is_delete_submitting: false,
         }
     }
 }
@@ -88,6 +94,7 @@ impl NewsManagementState {
         self.mode = NewsManagementMode::List;
         self.clear_form();
         self.list_error = None;
+        self.is_delete_submitting = false;
     }
 
     /// Clear the form fields (used for both create and edit)
@@ -95,6 +102,7 @@ impl NewsManagementState {
         self.form_image.clear();
         self.cached_form_image = None;
         self.form_error = None;
+        self.is_submitting = false;
     }
 
     /// Enter create mode
@@ -120,5 +128,6 @@ impl NewsManagementState {
     pub fn enter_confirm_delete_mode(&mut self, id: i64) {
         self.mode = NewsManagementMode::ConfirmDelete { id };
         self.delete_error = None;
+        self.is_delete_submitting = false;
     }
 }

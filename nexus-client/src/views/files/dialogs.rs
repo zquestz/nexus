@@ -20,6 +20,7 @@ use crate::types::{FilesManagementState, InputId, Message};
 pub(super) fn delete_confirm_dialog<'a>(
     path: &str,
     error: Option<&'a String>,
+    is_submitting: bool,
 ) -> Element<'a, Message> {
     let title = panel_title(t("files-delete-confirm-title"));
 
@@ -35,10 +36,16 @@ pub(super) fn delete_confirm_dialog<'a>(
             .on_press(Message::FileCancelDelete)
             .padding(BUTTON_PADDING)
             .style(btn::secondary),
-        button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-            .on_press(Message::FileConfirmDelete)
-            .padding(BUTTON_PADDING)
-            .style(btn::danger),
+        if is_submitting {
+            button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+                .padding(BUTTON_PADDING)
+                .style(btn::danger)
+        } else {
+            button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+                .on_press(Message::FileConfirmDelete)
+                .padding(BUTTON_PADDING)
+                .style(btn::danger)
+        },
     ]
     .spacing(ELEMENT_SPACING);
 
@@ -81,6 +88,7 @@ pub(super) fn delete_confirm_dialog<'a>(
 pub(super) fn overwrite_confirm_dialog<'a>(
     name: &str,
     has_file_delete: bool,
+    is_submitting: bool,
 ) -> Element<'a, Message> {
     let title = panel_title(t("files-overwrite-title"));
 
@@ -99,12 +107,20 @@ pub(super) fn overwrite_confirm_dialog<'a>(
 
     // Only show overwrite button if user has file_delete permission
     if has_file_delete {
-        buttons_row = buttons_row.push(
-            button(shaped_text(t("button-overwrite")).size(TEXT_SIZE))
-                .on_press(Message::FileOverwriteConfirm)
-                .padding(BUTTON_PADDING)
-                .style(btn::danger),
-        );
+        if is_submitting {
+            buttons_row = buttons_row.push(
+                button(shaped_text(t("button-overwrite")).size(TEXT_SIZE))
+                    .padding(BUTTON_PADDING)
+                    .style(btn::danger),
+            );
+        } else {
+            buttons_row = buttons_row.push(
+                button(shaped_text(t("button-overwrite")).size(TEXT_SIZE))
+                    .on_press(Message::FileOverwriteConfirm)
+                    .padding(BUTTON_PADDING)
+                    .style(btn::danger),
+            );
+        }
     }
 
     let form = column![
@@ -245,7 +261,11 @@ fn info_row<'a>(label: String, value: String) -> iced::widget::Row<'a, Message> 
 }
 
 /// Build the new directory dialog (matches broadcast view layout)
-pub(super) fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> Element<'a, Message> {
+pub(super) fn new_directory_dialog<'a>(
+    name: &str,
+    error: Option<&String>,
+    is_submitting: bool,
+) -> Element<'a, Message> {
     let title = panel_title(t("files-create-directory-title"));
 
     let name_valid = !name.is_empty() && error.is_none();
@@ -263,7 +283,7 @@ pub(super) fn new_directory_dialog<'a>(name: &str, error: Option<&String>) -> El
             .on_press(Message::FileNewDirectoryCancel)
             .padding(BUTTON_PADDING)
             .style(btn::secondary),
-        if name_valid {
+        if name_valid && !is_submitting {
             button(shaped_text(t("button-create")).size(TEXT_SIZE))
                 .on_press(Message::FileNewDirectorySubmit)
                 .padding(BUTTON_PADDING)
@@ -309,6 +329,7 @@ pub(super) fn rename_dialog<'a>(
     path: &str,
     name: &str,
     error: Option<&String>,
+    is_submitting: bool,
 ) -> Element<'a, Message> {
     // Extract filename from path for display
     let filename = path.rsplit('/').next().unwrap_or(path);
@@ -331,7 +352,7 @@ pub(super) fn rename_dialog<'a>(
             .on_press(Message::FileRenameCancel)
             .padding(BUTTON_PADDING)
             .style(btn::secondary),
-        if name_valid {
+        if name_valid && !is_submitting {
             button(shaped_text(t("files-rename")).size(TEXT_SIZE))
                 .on_press(Message::FileRenameSubmit)
                 .padding(BUTTON_PADDING)

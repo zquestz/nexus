@@ -77,10 +77,16 @@ impl NexusApp {
 
     /// Save the current bookmark (add or update)
     pub fn handle_save_bookmark(&mut self) -> Task<Message> {
+        if self.bookmark_edit.is_submitting {
+            return Task::none();
+        }
+
         if let Some(error) = self.validate_bookmark() {
             self.bookmark_edit.error = Some(error);
             return Task::none();
         }
+
+        self.bookmark_edit.is_submitting = true;
 
         let bookmark = self.bookmark_edit.bookmark.clone();
 
@@ -95,6 +101,7 @@ impl NexusApp {
         }
 
         if let Err(e) = self.config.save() {
+            self.bookmark_edit.is_submitting = false;
             self.bookmark_edit.error = Some(t_args(
                 "err-failed-save-config",
                 &[("error", &e.to_string())],

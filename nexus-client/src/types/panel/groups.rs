@@ -73,6 +73,10 @@ pub struct GroupManagementState {
     pub sort_column: GroupManagementSortColumn,
     /// Whether sorting is ascending (true) or descending (false)
     pub sort_ascending: bool,
+    /// Whether a create or update request is in flight (shared; only one mode active at a time)
+    pub is_submitting: bool,
+    /// Whether a delete request is in flight (separate; delete modal can overlap with list mode)
+    pub is_delete_submitting: bool,
 }
 
 impl Default for GroupManagementState {
@@ -91,6 +95,8 @@ impl Default for GroupManagementState {
             delete_error: None,
             sort_column: GroupManagementSortColumn::default(),
             sort_ascending: true,
+            is_submitting: false,
+            is_delete_submitting: false,
         }
     }
 }
@@ -102,6 +108,8 @@ impl GroupManagementState {
         self.clear_create_form();
         self.edit_error = None;
         self.list_error = None;
+        self.is_submitting = false;
+        self.is_delete_submitting = false;
     }
 
     /// Clear the create form fields
@@ -112,6 +120,7 @@ impl GroupManagementState {
             *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
         self.create_error = None;
+        self.is_submitting = false;
     }
 
     /// Enter create mode
@@ -153,5 +162,6 @@ impl GroupManagementState {
     pub fn enter_confirm_delete_mode(&mut self, id: i64, name: String) {
         self.mode = GroupManagementMode::ConfirmDelete { id, name };
         self.delete_error = None;
+        self.is_delete_submitting = false;
     }
 }

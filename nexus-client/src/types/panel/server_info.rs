@@ -68,6 +68,8 @@ pub struct ServerInfoEditState {
     pub cached_image: Option<CachedImage>,
     /// Error message to display
     pub error: Option<String>,
+    /// Whether a submit is in progress (prevents double-submit)
+    pub is_submitting: bool,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -87,6 +89,7 @@ impl std::fmt::Debug for ServerInfoEditState {
                 &self.cached_image.as_ref().map(|_| "<cached>"),
             )
             .field("error", &self.error)
+            .field("is_submitting", &self.is_submitting)
             .finish()
     }
 }
@@ -112,6 +115,7 @@ impl ServerInfoEditState {
             auto_join_channels: params.auto_join_channels.unwrap_or("").to_string(),
             cached_image,
             error: None,
+            is_submitting: false,
         }
     }
 
