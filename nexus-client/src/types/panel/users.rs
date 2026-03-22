@@ -1,9 +1,24 @@
 //! User management panel state
 
 use nexus_common::ALL_PERMISSIONS;
-use nexus_common::protocol::UserInfo;
+use nexus_common::protocol::{GroupInfo, UserInfo};
 
 use super::super::ActivePanel;
+use super::groups::GroupManagementState;
+
+// =============================================================================
+// User Management Tab
+// =============================================================================
+
+/// Tab selection for User Management panel
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum UserManagementTab {
+    /// Users tab (default)
+    #[default]
+    Users,
+    /// Groups tab
+    Groups,
+}
 
 // =============================================================================
 // User Management State
@@ -56,8 +71,16 @@ pub enum UserManagementMode {
         is_shared: bool,
         /// Enabled flag (editable)
         enabled: bool,
-        /// Permissions (editable)
+        /// Permissions (editable) — effective permissions (checked = on for user)
         permissions: Vec<(String, bool)>,
+        /// Assigned group ID (None = no group)
+        group_id: Option<i64>,
+        /// Group's base permissions (for computing inherited vs override styling).
+        /// Empty when user has no group.
+        group_permissions: Vec<String>,
+        /// Permissions explicitly revoked from the group for this user.
+        /// Empty when user has no group.
+        revoked_permissions: Vec<String>,
     },
     /// Confirming deletion of a user
     ConfirmDelete {
@@ -71,10 +94,17 @@ pub enum UserManagementMode {
 /// User management panel state (per-connection)
 #[derive(Clone)]
 pub struct UserManagementState {
-    /// Current mode (list, create, edit, confirm delete)
+    /// Currently active tab (Users or Groups)
+    pub active_tab: UserManagementTab,
+    /// Current user management mode (list, create, edit, confirm delete)
     pub mode: UserManagementMode,
     /// All users from database (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
     pub all_users: Option<Result<Vec<UserInfo>, String>>,
+    /// Available groups for dropdown and group list view
+    /// (None = not loaded, Some = loaded from GroupListResponse or UserEditResponse)
+    pub available_groups: Option<Vec<GroupInfo>>,
+    /// Group management state (for Groups tab)
+    pub group_management: GroupManagementState,
     /// Panel to return to after edit (e.g., UserInfo if edit was triggered from there)
     pub return_to_panel: Option<ActivePanel>,
     /// Username for create user form
@@ -89,6 +119,8 @@ pub struct UserManagementState {
     pub enabled: bool,
     /// Permissions for create user form
     pub permissions: Vec<(String, bool)>,
+    /// Group ID for create user form (None = no group)
+    pub create_group_id: Option<i64>,
     /// Error message for create user form
     pub create_error: Option<String>,
     /// Error message for edit user form
@@ -102,8 +134,11 @@ pub struct UserManagementState {
 impl Default for UserManagementState {
     fn default() -> Self {
         Self {
+            active_tab: UserManagementTab::Users,
             mode: UserManagementMode::List,
             all_users: None,
+            available_groups: None,
+            group_management: GroupManagementState::default(),
             return_to_panel: None,
             username: String::new(),
             password: String::new(),
@@ -114,6 +149,7 @@ impl Default for UserManagementState {
                 .iter()
                 .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
+            create_group_id: None,
             create_error: None,
             edit_error: None,
             list_error: None,
@@ -125,8 +161,14 @@ impl Default for UserManagementState {
 impl std::fmt::Debug for UserManagementState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UserManagementState")
+            .field("active_tab", &self.active_tab)
             .field("mode", &self.mode)
             .field("all_users", &self.all_users)
+            .field(
+                "available_groups",
+                &self.available_groups.as_ref().map(|g| g.len()),
+            )
+            .field("group_management", &self.group_management)
             .field("return_to_panel", &self.return_to_panel)
             .field("username", &self.username)
             .field("password", &"[REDACTED]")
@@ -134,6 +176,7 @@ impl std::fmt::Debug for UserManagementState {
             .field("is_shared", &self.is_shared)
             .field("enabled", &self.enabled)
             .field("permissions", &self.permissions)
+            .field("create_group_id", &self.create_group_id)
             .field("create_error", &self.create_error)
             .field("edit_error", &self.edit_error)
             .field("list_error", &self.list_error)
@@ -162,6 +205,7 @@ impl UserManagementState {
         for (perm_name, enabled) in &mut self.permissions {
             *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
+        self.create_group_id = None;
         self.create_error = None;
     }
 
@@ -172,6 +216,12 @@ impl UserManagementState {
     }
 
     /// Enter edit mode for a user (with pre-populated values from server)
+    ///
+    /// `permissions` is the effective (resolved) permission set for this user.
+    /// `group_id` is the assigned group (if any).
+    /// `group_permissions` is the base permissions of the assigned group (empty if no group).
+    /// `revoked_permissions` are permissions explicitly revoked from the group for this user.
+    #[allow(clippy::too_many_arguments)]
     pub fn enter_edit_mode(
         &mut self,
         id: i64,
@@ -180,6 +230,9 @@ impl UserManagementState {
         is_shared: bool,
         enabled: bool,
         permissions: Vec<String>,
+        group_id: Option<i64>,
+        group_permissions: Vec<String>,
+        revoked_permissions: Vec<String>,
     ) {
         // Convert permissions Vec<String> to Vec<(String, bool)>
         let mut perm_map: Vec<(String, bool)> = ALL_PERMISSIONS
@@ -187,7 +240,7 @@ impl UserManagementState {
             .map(|s| (s.to_string(), false))
             .collect();
 
-        // Mark permissions that the user has
+        // Mark permissions that the user has (effective set)
         for (perm_name, perm_enabled) in &mut perm_map {
             *perm_enabled = permissions.contains(perm_name);
         }
@@ -201,6 +254,9 @@ impl UserManagementState {
             is_shared,
             enabled,
             permissions: perm_map,
+            group_id,
+            group_permissions,
+            revoked_permissions,
         };
         self.edit_error = None;
     }

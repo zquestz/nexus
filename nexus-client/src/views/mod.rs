@@ -10,6 +10,7 @@ pub(crate) mod constants;
 mod disconnect_dialog;
 pub(crate) mod files;
 mod fingerprint;
+pub(crate) mod groups;
 mod layout;
 mod news;
 mod server_info;

@@ -6,6 +6,7 @@ mod connection;
 mod connection_monitor;
 mod files;
 mod fingerprint;
+mod group_management;
 mod keyboard;
 pub(crate) mod network;
 mod news;

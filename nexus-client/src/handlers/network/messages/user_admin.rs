@@ -19,6 +19,12 @@ pub struct UserEditResponseData {
     pub is_shared: Option<bool>,
     pub enabled: Option<bool>,
     pub permissions: Option<Vec<String>>,
+    pub group_id: Option<i64>,
+    #[allow(dead_code)] // Informational — client looks up name from available_groups
+    pub group_name: Option<String>,
+    pub group_permissions: Option<Vec<String>>,
+    pub revoked_permissions: Option<Vec<String>>,
+    pub available_groups: Option<Vec<nexus_common::protocol::GroupInfo>>,
 }
 
 impl NexusApp {
@@ -150,6 +156,11 @@ impl NexusApp {
         if data.success {
             // If from user management panel, load the user details into edit form
             if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
+                // Update available_groups cache if provided
+                if let Some(groups) = data.available_groups {
+                    conn.user_management.available_groups = Some(groups);
+                }
+
                 conn.user_management.enter_edit_mode(
                     data.id.unwrap_or(0),
                     data.username.unwrap_or_default(),
@@ -157,6 +168,9 @@ impl NexusApp {
                     data.is_shared.unwrap_or(false),
                     data.enabled.unwrap_or(true),
                     data.permissions.unwrap_or_default(),
+                    data.group_id,
+                    data.group_permissions.unwrap_or_default(),
+                    data.revoked_permissions.unwrap_or_default(),
                 );
             }
         } else {

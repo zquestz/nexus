@@ -1,14 +1,18 @@
 //! User management panel view (list, create, edit, delete users)
 
+use iced::font;
 use iced::widget::button as btn;
 use iced::widget::{
-    Column, Id, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
-    tooltip,
+    Column, Id, Row, Space, button, checkbox, column, container, pick_list, row, scrollable, text,
+    text_input, tooltip,
 };
 use iced::{Center, Element, Fill, Theme, alignment};
+use iced_aw::{TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
+use nexus_common::protocol::GroupInfo;
 
 use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
+use super::groups::{group_form_view, group_list_content};
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
@@ -16,14 +20,17 @@ use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
     INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_TEXT_SIZE,
-    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    alternating_row_style, chat, content_background_style, danger_icon_button_style,
-    error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
-    tooltip_container_style, transparent_icon_button_style,
+    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
+    TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alternating_row_style, chat, content_background_style,
+    danger_icon_button_style, error_text_style, muted_text_style, panel_title, shaped_text,
+    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::InputId;
-use crate::types::{Message, ServerConnection, UserManagementMode, UserManagementState};
+use crate::types::{
+    GroupManagementMode, Message, ServerConnection, UserManagementMode, UserManagementState,
+    UserManagementTab,
+};
 
 // ============================================================================
 // Edit User Context
@@ -32,11 +39,66 @@ use crate::types::{Message, ServerConnection, UserManagementMode, UserManagement
 /// Guest account username (case-insensitive comparison)
 const GUEST_USERNAME: &str = "guest";
 
+// ============================================================================
+// Group Option (for pick_list dropdown)
+// ============================================================================
+
+/// Represents a group option in the group dropdown (pick_list).
+/// "None" option has id=None, groups have id=Some(i64).
+#[derive(Debug, Clone, PartialEq)]
+struct GroupOption {
+    id: Option<i64>,
+    label: String,
+}
+
+impl std::fmt::Display for GroupOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label)
+    }
+}
+
+/// Build filtered group options for the pick_list dropdown.
+///
+/// Filters by:
+/// - Shared compatibility: shared accounts → shared groups only, regular → non-shared only
+/// - Non-admin delegation: non-admin users only see groups where they have all permissions
+fn build_group_options(
+    available_groups: Option<&[GroupInfo]>,
+    conn: &ServerConnection,
+    is_shared: bool,
+) -> Vec<GroupOption> {
+    let mut options = vec![GroupOption {
+        id: None,
+        label: t("user-management-group-none"),
+    }];
+
+    if let Some(groups) = available_groups {
+        for group in groups {
+            // Filter by shared compatibility
+            if group.is_shared != is_shared {
+                continue;
+            }
+
+            // Non-admin delegation: only show groups where user has all permissions
+            if !conn.is_admin && !group.permissions.iter().all(|p| conn.has_permission(p)) {
+                continue;
+            }
+
+            options.push(GroupOption {
+                id: Some(group.id),
+                label: group.name.clone(),
+            });
+        }
+    }
+
+    options
+}
+
 /// Context for rendering the edit user form
 struct EditUserContext<'a> {
     /// Connection state (for permission checking)
     conn: &'a ServerConnection,
-    /// User management state (for error display)
+    /// User management state (for error display and available_groups)
     user_management: &'a UserManagementState,
     /// Original username (for display and update request)
     original_username: &'a str,
@@ -52,8 +114,12 @@ struct EditUserContext<'a> {
     is_guest: bool,
     /// Enabled flag
     enabled: bool,
-    /// Permissions list with enabled state
+    /// Permissions list with enabled state (effective permissions)
     permissions: &'a [(String, bool)],
+    /// Assigned group ID (None = no group)
+    group_id: Option<i64>,
+    /// Group's base permissions (for computing inherited vs override styling)
+    group_permissions: &'a [String],
 }
 
 // ============================================================================
@@ -87,15 +153,25 @@ fn danger_delete_button(
 /// Build permission checkboxes split into two columns
 ///
 /// When `is_shared` is true, permissions not in `SHARED_ACCOUNT_PERMISSIONS` are disabled.
+/// Build permission checkboxes split into two columns.
+///
+/// When `is_shared` is true, permissions not in `SHARED_ACCOUNT_PERMISSIONS` are disabled.
+/// When `group_permissions` is Some, bold text indicates overrides (permission differs from group).
 fn build_permission_columns<'a, F>(
     permissions: &'a [(String, bool)],
     conn: &'a ServerConnection,
     is_shared: bool,
     on_toggle: F,
+    group_permissions: Option<&'a [String]>,
 ) -> Element<'a, Message>
 where
     F: Fn(String, bool) -> Message + 'a + Clone,
 {
+    let bold_font = iced::Font {
+        weight: font::Weight::Bold,
+        ..iced::Font::default()
+    };
+
     let mut left_column = Column::new().spacing(SPACER_SIZE_SMALL);
     let mut right_column = Column::new().spacing(SPACER_SIZE_SMALL);
 
@@ -110,19 +186,29 @@ where
         // Check if this permission is forbidden for shared accounts
         let forbidden_for_shared = is_shared && !is_shared_account_permission(permission);
 
-        let checkbox_widget = if user_can_toggle && !forbidden_for_shared {
-            // Can toggle: user has permission and it's not forbidden for shared accounts
-            checkbox(*enabled)
-                .label(display_name)
-                .on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
-                .size(TEXT_SIZE)
-                .text_shaping(text::Shaping::Advanced)
+        // Determine if this permission is an override (differs from group).
+        // Bold = user's effective state differs from what the group provides.
+        // ☑ inherited (normal) | ☑ grant override (bold) | ☐ revoke override (bold) | ☐ normal
+        let is_override = group_permissions
+            .map(|gp| *enabled != gp.iter().any(|p| p == permission))
+            .unwrap_or(false);
+
+        // Build checkbox: base with label, size, shaping, then conditionally bold + on_toggle
+        let base = checkbox(*enabled)
+            .label(display_name)
+            .size(TEXT_SIZE)
+            .text_shaping(text::Shaping::Advanced);
+
+        let base = if is_override {
+            base.font(bold_font)
         } else {
-            // Cannot toggle: either user doesn't have permission or it's forbidden for shared
-            checkbox(*enabled)
-                .label(display_name)
-                .size(TEXT_SIZE)
-                .text_shaping(text::Shaping::Advanced)
+            base
+        };
+
+        let checkbox_widget = if user_can_toggle && !forbidden_for_shared {
+            base.on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
+        } else {
+            base
         };
 
         // Alternate between left and right columns
@@ -303,52 +389,28 @@ fn list_view<'a>(
         None
     };
 
-    // Title row with create button on the right
-    // Use matching spacer on left to keep title centered when button is present
-    let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
-        container(
-            row![
-                Space::new().width(
-                    SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right
-                ),
-                shaped_text(t("title-user-management"))
-                    .size(TITLE_SIZE)
-                    .width(Fill)
-                    .align_x(Center),
-                create_btn,
-            ]
-            .align_y(Center),
-        )
-        .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
-        .into()
+    // Create button row (right-aligned, for tab content)
+    let button_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
+        row![Space::new().width(Fill), create_btn]
+            .align_y(Center)
+            .into()
     } else {
-        container(
-            shaped_text(t("title-user-management"))
-                .size(TITLE_SIZE)
-                .width(Fill)
-                .align_x(Center),
-        )
-        .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
-        .into()
+        Space::new().height(SPACER_SIZE_SMALL).into()
     };
 
-    // Error message (shown below title if present, constrained to content width, centered)
+    // Error message (shown below button row if present)
     let error_element: Option<Element<'a, Message>> =
         user_management.list_error.as_ref().map(|error| {
-            container(
-                shaped_text_wrapped(error)
-                    .size(TEXT_SIZE)
-                    .width(Fill)
-                    .align_x(Center)
-                    .style(error_text_style),
-            )
-            .width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0)
-            .into()
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into()
         });
 
     // Scrollable content with symmetric padding for scrollbar space
-    // Inner content matches footer width, spacers provide scrollbar room
-    let scroll_inner = container(scroll_content).width(CONTENT_MAX_WIDTH - CONTENT_PADDING * 2.0);
+    let scroll_inner = container(scroll_content).width(Fill);
 
     let padded_scroll_content = row![
         Space::new().width(SCROLLBAR_PADDING),
@@ -356,9 +418,14 @@ fn list_view<'a>(
         Space::new().width(SCROLLBAR_PADDING),
     ];
 
-    // Build the form with max_width constraint on the whole thing
-    let form = column![
-        title_row,
+    // Return tab-suitable content (no title, no background — caller handles those)
+    column![
+        container(button_row).padding(iced::Padding {
+            top: 0.0,
+            right: SCROLLBAR_PADDING,
+            bottom: 0.0,
+            left: SCROLLBAR_PADDING,
+        }),
         if let Some(err) = error_element {
             Element::from(err)
         } else {
@@ -367,25 +434,8 @@ fn list_view<'a>(
         container(scrollable(padded_scroll_content)).height(Fill),
     ]
     .spacing(ELEMENT_SPACING)
-    .align_x(Center)
-    .padding(iced::Padding {
-        top: CONTENT_PADDING,
-        right: CONTENT_PADDING - SCROLLBAR_PADDING,
-        bottom: CONTENT_PADDING,
-        left: CONTENT_PADDING - SCROLLBAR_PADDING,
-    })
-    .max_width(CONTENT_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
-    .height(Fill);
-
-    // Center the form horizontally
-    let centered_form = container(form).width(Fill).center_x(Fill);
-
-    // Use container with background style
-    container(centered_form)
-        .width(Fill)
-        .height(Fill)
-        .style(content_background_style)
-        .into()
+    .height(Fill)
+    .into()
 }
 
 // ============================================================================
@@ -465,12 +515,42 @@ fn create_view<'a>(
             .text_shaping(text::Shaping::Advanced)
     };
 
+    // Group dropdown
+    let group_label = shaped_text(t("user-management-group")).size(TEXT_SIZE);
+    let group_options = build_group_options(
+        user_management.available_groups.as_deref(),
+        conn,
+        user_management.is_shared,
+    );
+    let selected_group = group_options
+        .iter()
+        .find(|o| o.id == user_management.create_group_id)
+        .cloned();
+    let group_picker = pick_list(group_options, selected_group, |option| {
+        Message::UserManagementGroupSelected(option.id)
+    })
+    .text_size(TEXT_SIZE);
+    let group_row = row![group_label, group_picker]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+
+    // Compute group permissions for override UI (if a group is selected).
+    // Reference directly from available_groups to avoid lifetime issues.
+    let create_group_perms: Option<&[String]> = user_management.create_group_id.and_then(|gid| {
+        user_management
+            .available_groups
+            .as_ref()
+            .and_then(|groups| groups.iter().find(|g| g.id == gid))
+            .map(|g| g.permissions.as_slice())
+    });
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_permission_columns(
         &user_management.permissions,
         conn,
         user_management.is_shared,
         Message::UserManagementPermissionToggled,
+        create_group_perms,
     );
 
     let create_button = if can_create {
@@ -509,6 +589,7 @@ fn create_view<'a>(
         admin_checkbox.into(),
         shared_checkbox.into(),
         enabled_checkbox.into(),
+        group_row.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -614,12 +695,36 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
             .text_shaping(text::Shaping::Advanced)
     };
 
+    // Group dropdown
+    let group_label = shaped_text(t("user-management-group")).size(TEXT_SIZE);
+    let group_options = build_group_options(
+        ctx.user_management.available_groups.as_deref(),
+        ctx.conn,
+        ctx.is_shared,
+    );
+    let selected_group = group_options.iter().find(|o| o.id == ctx.group_id).cloned();
+    let group_picker = pick_list(group_options, selected_group, |option| {
+        Message::UserManagementEditGroupSelected(option.id)
+    })
+    .text_size(TEXT_SIZE);
+    let group_row = row![group_label, group_picker]
+        .spacing(ELEMENT_SPACING)
+        .align_y(Center);
+
+    // Override UI: pass group_permissions when user has a group assigned
+    let group_perms = if ctx.group_id.is_some() {
+        Some(ctx.group_permissions)
+    } else {
+        None
+    };
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_permission_columns(
         ctx.permissions,
         ctx.conn,
         ctx.is_shared,
         Message::UserManagementEditPermissionToggled,
+        group_perms,
     );
 
     let update_button = if can_update {
@@ -658,6 +763,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
         admin_checkbox.into(),
         shared_checkbox.into(),
         enabled_checkbox.into(),
+        group_row.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -743,46 +849,125 @@ fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 // Main View Function
 // ============================================================================
 
-/// Displays the user management panel
+/// Displays the user management panel.
 ///
-/// Shows one of four views based on mode:
-/// - List: Shows all users with edit/delete buttons
-/// - Create: Form to create a new user
-/// - Edit: Form to edit an existing user
-/// - ConfirmDelete: Modal to confirm user deletion
+/// Dispatches to one of:
+/// - Tabbed list view (Users + Groups tabs) when both tabs are in List mode
+/// - Full-panel user form (Create, Edit, ConfirmDelete) when user form is active
+/// - Full-panel group form (Create, Edit, ConfirmDelete) when group form is active
 pub fn users_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
     theme: &Theme,
 ) -> Element<'a, Message> {
-    match &user_management.mode {
-        UserManagementMode::List => {
-            list_view(conn, user_management, theme, &conn.connection_info.username)
-        }
-        UserManagementMode::Create => create_view(conn, user_management),
-        UserManagementMode::Edit {
-            id: _,
-            original_username,
-            new_username,
-            new_password,
-            is_admin,
-            is_shared,
-            enabled,
-            permissions,
-        } => edit_view(EditUserContext {
-            conn,
-            user_management,
-            original_username,
-            new_username,
-            new_password,
-            is_admin: *is_admin,
-            is_shared: *is_shared,
-            is_guest: original_username.to_lowercase() == GUEST_USERNAME,
-            enabled: *enabled,
-            permissions,
-        }),
-        UserManagementMode::ConfirmDelete { id: _, username } => {
-            confirm_delete_modal(username, user_management.delete_error.as_ref())
-        }
+    // If user management is in a form mode, show the form full-panel (no tabs)
+    if user_management.mode != UserManagementMode::List {
+        return match &user_management.mode {
+            UserManagementMode::Create => create_view(conn, user_management),
+            UserManagementMode::Edit {
+                id: _,
+                original_username,
+                new_username,
+                new_password,
+                is_admin,
+                is_shared,
+                enabled,
+                permissions,
+                group_id,
+                group_permissions,
+                ..
+            } => edit_view(EditUserContext {
+                conn,
+                user_management,
+                original_username,
+                new_username,
+                new_password,
+                is_admin: *is_admin,
+                is_shared: *is_shared,
+                is_guest: original_username.to_lowercase() == GUEST_USERNAME,
+                enabled: *enabled,
+                permissions,
+                group_id: *group_id,
+                group_permissions,
+            }),
+            UserManagementMode::ConfirmDelete { id: _, username } => {
+                confirm_delete_modal(username, user_management.delete_error.as_ref())
+            }
+            UserManagementMode::List => unreachable!(),
+        };
     }
+
+    // If group management is in a form mode, show the group form full-panel (no tabs)
+    if user_management.group_management.mode != GroupManagementMode::List {
+        return group_form_view(conn, user_management);
+    }
+
+    // Both tabs are in List mode — show the tabbed list view
+    tabbed_list_view(conn, user_management, theme)
+}
+
+// ============================================================================
+// Tabbed List View
+// ============================================================================
+
+/// Build the tabbed list view with Users and Groups tabs.
+///
+/// Only shown when both user management and group management are in List mode.
+fn tabbed_list_view<'a>(
+    conn: &'a ServerConnection,
+    user_management: &'a UserManagementState,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    // Build tab content
+    let users_content = list_view(conn, user_management, theme, &conn.connection_info.username);
+    let groups_content = group_list_content(conn, user_management, theme);
+
+    // Tab labels
+    let users_label = t("tab-users");
+    let groups_label = t("tab-groups");
+
+    // Create tabs widget
+    let tabs = Tabs::new(Message::UserManagementTabSelected)
+        .push(
+            UserManagementTab::Users,
+            TabLabel::Text(users_label),
+            column![Space::new().height(SPACER_SIZE_MEDIUM), users_content,].height(Fill),
+        )
+        .push(
+            UserManagementTab::Groups,
+            TabLabel::Text(groups_label),
+            column![Space::new().height(SPACER_SIZE_MEDIUM), groups_content,].height(Fill),
+        )
+        .set_active_tab(&user_management.active_tab)
+        .tab_bar_position(iced_aw::TabBarPosition::Top)
+        .text_size(TEXT_SIZE)
+        .tab_label_padding(TAB_LABEL_PADDING);
+
+    // Title row
+    let title_row = shaped_text(t("title-user-management"))
+        .size(TITLE_SIZE)
+        .width(Fill)
+        .align_x(Center);
+
+    // Build the form with max_width constraint
+    let form = column![
+        title_row,
+        Space::new().height(SPACER_SIZE_LARGE - SPACER_SIZE_MEDIUM),
+        container(tabs).height(Fill),
+    ]
+    .spacing(SPACER_SIZE_MEDIUM)
+    .align_x(Center)
+    .padding(CONTENT_PADDING)
+    .max_width(CONTENT_MAX_WIDTH)
+    .height(Fill);
+
+    // Center the form horizontally
+    let centered_form = container(form).width(Fill).center_x(Fill);
+
+    // Wrap in content background
+    container(centered_form)
+        .width(Fill)
+        .height(Fill)
+        .style(content_background_style)
+        .into()
 }

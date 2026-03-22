@@ -9,7 +9,7 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::FileSearchResult;
 use nexus_common::voice::VoiceQuality;
 
-use super::panel::{FileSortColumn, SettingsTab, TabId};
+use super::panel::{FileSortColumn, SettingsTab, TabId, UserManagementTab};
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
 use crate::config::events::{EventType, NotificationContent, SoundChoice};
@@ -50,6 +50,8 @@ pub enum Message {
     BookmarkNicknameChanged(String),
     /// Broadcast: Message input changed
     BroadcastMessageChanged(String),
+    /// Group management: Cancel button pressed (return to list)
+    CancelGroupManagement,
     /// User management: Cancel button pressed (return to list or close panel)
     CancelUserManagement,
     /// Bookmark editor: Cancel button pressed
@@ -321,6 +323,41 @@ pub enum Message {
     UserManagementEditPermissionToggled(String, bool),
     /// User management: Update user button pressed (in edit form)
     UserManagementUpdatePressed,
+    /// User management: Tab selected (Users or Groups)
+    UserManagementTabSelected(UserManagementTab),
+    /// User management: Create form - group dropdown changed
+    UserManagementGroupSelected(Option<i64>),
+    /// User management: Edit form - group dropdown changed
+    UserManagementEditGroupSelected(Option<i64>),
+
+    // Group management (Groups tab within User Management panel)
+    /// Group management: Show create form
+    GroupManagementShowCreate,
+    /// Group management: Create form - name field changed
+    GroupManagementNameChanged(String),
+    /// Group management: Create form - is shared checkbox toggled
+    GroupManagementIsSharedToggled(bool),
+    /// Group management: Create form - permission checkbox toggled
+    GroupManagementPermissionToggled(String, bool),
+    /// Group management: Create button pressed
+    GroupManagementCreatePressed,
+    /// Group management: Edit button clicked on group in list (group_id, name)
+    GroupManagementEditClicked(i64, String),
+    /// Group management: Delete button clicked on group in list (group_id, name)
+    GroupManagementDeleteClicked(i64, String),
+    /// Group management: Confirm delete button pressed in modal
+    GroupManagementConfirmDelete,
+    /// Group management: Cancel delete (close modal)
+    GroupManagementCancelDelete,
+    /// Group management: Edit form - name field changed
+    GroupManagementEditNameChanged(String),
+    /// Group management: Edit form - is shared checkbox toggled
+    GroupManagementEditIsSharedToggled(bool),
+    /// Group management: Edit form - permission checkbox toggled
+    GroupManagementEditPermissionToggled(String, bool),
+    /// Group management: Update button pressed (in edit form)
+    GroupManagementUpdatePressed,
+
     /// Server info edit: Update button pressed (save changes)
     UpdateServerInfoPressed,
     /// User list: Info icon clicked on expanded user (nickname)

@@ -16,6 +16,7 @@ mod chat;
 mod chat_channel;
 mod error;
 mod files;
+mod group_admin;
 mod news;
 mod permissions;
 mod server_info;
@@ -168,6 +169,76 @@ impl NexusApp {
                 self.handle_error(connection_id, message, command)
             }
 
+            ServerMessage::GroupCreateResponse {
+                success,
+                error,
+                id,
+                name,
+            } => self.handle_group_create_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                id,
+                name,
+            ),
+
+            ServerMessage::GroupDeleteResponse {
+                success,
+                error,
+                id,
+                name,
+            } => self.handle_group_delete_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                id,
+                name,
+            ),
+
+            ServerMessage::GroupEditResponse {
+                success,
+                error,
+                id,
+                name,
+                is_shared,
+                permissions,
+                member_count,
+            } => self.handle_group_edit_response(
+                connection_id,
+                message_id,
+                group_admin::GroupEditResponseData {
+                    success,
+                    error,
+                    id,
+                    name,
+                    is_shared,
+                    permissions,
+                    member_count,
+                },
+            ),
+
+            ServerMessage::GroupListResponse {
+                success,
+                error,
+                groups,
+            } => self.handle_group_list_response(connection_id, message_id, success, error, groups),
+
+            ServerMessage::GroupUpdateResponse {
+                success,
+                error,
+                id,
+                name,
+            } => self.handle_group_update_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                id,
+                name,
+            ),
+
             ServerMessage::PermissionsUpdated {
                 is_admin,
                 permissions,
@@ -228,7 +299,11 @@ impl NexusApp {
                 is_shared,
                 enabled,
                 permissions,
-                ..
+                group_id,
+                group_name,
+                group_permissions,
+                revoked_permissions,
+                available_groups,
             } => self.handle_user_edit_response(
                 connection_id,
                 message_id,
@@ -241,6 +316,11 @@ impl NexusApp {
                     is_shared,
                     enabled,
                     permissions,
+                    group_id,
+                    group_name,
+                    group_permissions,
+                    revoked_permissions,
+                    available_groups,
                 },
             ),
 

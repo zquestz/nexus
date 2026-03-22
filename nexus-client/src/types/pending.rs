@@ -38,6 +38,16 @@ pub enum ResponseRouting {
     UserManagementDeleteResult,
     /// Password change result (close panel on success, show error on failure)
     PasswordChangeResult,
+    /// Populate group management list (from panel open or refresh)
+    PopulateGroupManagementList,
+    /// Populate group management edit form (from edit button click)
+    PopulateGroupManagementEdit,
+    /// Group management create result (return to list on success)
+    GroupManagementCreateResult,
+    /// Group management update result (return to list on success)
+    GroupManagementUpdateResult,
+    /// Group management delete result (return to list on success)
+    GroupManagementDeleteResult,
     /// Populate news list (from panel open)
     PopulateNewsList,
     /// Populate news edit form (from edit button click)

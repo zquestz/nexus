@@ -702,6 +702,49 @@ impl NexusApp {
             }
             Message::UserManagementEditTabPressed => self.handle_user_management_edit_tab_pressed(),
 
+            // User management: Tab and group selection
+            Message::UserManagementTabSelected(tab) => {
+                self.handle_user_management_tab_selected(tab)
+            }
+            Message::UserManagementGroupSelected(group_id) => {
+                self.handle_user_management_group_selected(group_id)
+            }
+            Message::UserManagementEditGroupSelected(group_id) => {
+                self.handle_user_management_edit_group_selected(group_id)
+            }
+
+            // Group management (Groups tab within User Management panel)
+            Message::CancelGroupManagement => self.handle_cancel_group_management(),
+            Message::GroupManagementShowCreate => self.handle_group_management_show_create(),
+            Message::GroupManagementNameChanged(name) => {
+                self.handle_group_management_name_changed(name)
+            }
+            Message::GroupManagementIsSharedToggled(is_shared) => {
+                self.handle_group_management_is_shared_toggled(is_shared)
+            }
+            Message::GroupManagementPermissionToggled(permission, enabled) => {
+                self.handle_group_management_permission_toggled(permission, enabled)
+            }
+            Message::GroupManagementCreatePressed => self.handle_group_management_create_pressed(),
+            Message::GroupManagementEditClicked(id, name) => {
+                self.handle_group_management_edit_clicked(id, name)
+            }
+            Message::GroupManagementDeleteClicked(id, name) => {
+                self.handle_group_management_delete_clicked(id, name)
+            }
+            Message::GroupManagementConfirmDelete => self.handle_group_management_confirm_delete(),
+            Message::GroupManagementCancelDelete => self.handle_group_management_cancel_delete(),
+            Message::GroupManagementEditNameChanged(name) => {
+                self.handle_group_management_edit_name_changed(name)
+            }
+            Message::GroupManagementEditIsSharedToggled(is_shared) => {
+                self.handle_group_management_edit_is_shared_toggled(is_shared)
+            }
+            Message::GroupManagementEditPermissionToggled(permission, enabled) => {
+                self.handle_group_management_edit_permission_toggled(permission, enabled)
+            }
+            Message::GroupManagementUpdatePressed => self.handle_group_management_update_pressed(),
+
             // Broadcast
             Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),
             Message::CancelBroadcast => self.handle_cancel_broadcast(),

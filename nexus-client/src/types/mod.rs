@@ -23,10 +23,10 @@ pub use nexus_common::protocol::ServerMessage;
 pub use panel::{
     BanDuration, ClipboardItem, ClipboardOperation, ConnectionFormState,
     ConnectionMonitorSortColumn, ConnectionMonitorState, ConnectionMonitorTab, DisconnectAction,
-    DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, NewsManagementMode,
-    NewsManagementState, PasswordChangeState, PendingOverwrite, ServerInfoEditState,
-    ServerInfoParams, ServerInfoTab, SettingsFormState, SettingsTab, TabId, TransferSortColumn,
-    UserManagementMode, UserManagementState,
+    DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, GroupManagementMode,
+    NewsManagementMode, NewsManagementState, PasswordChangeState, PendingOverwrite,
+    ServerInfoEditState, ServerInfoParams, ServerInfoTab, SettingsFormState, SettingsTab, TabId,
+    TransferSortColumn, UserManagementMode, UserManagementState, UserManagementTab,
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use ui::{

@@ -34,7 +34,9 @@ title-broadcast-message = Broadcast
 title-user-create = User Create
 title-user-edit = User Edit
 title-update-user = Update User
-title-user-management = Manage Users
+title-user-management = User Management
+title-group-create = Create Group
+title-group-edit = Edit Group
 title-confirm-delete = Confirm Delete
 title-connected = Connected
 title-settings = Settings
@@ -180,6 +182,9 @@ permission-user_delete = User Delete
 permission-user_edit = User Edit
 permission-user_kick = User Kick
 permission-user_message = User Message
+permission-group_create = Group Create
+permission-group_edit = Group Edit
+permission-group_delete = Group Delete
 
 # =============================================================================
 # Permission Display Names (continued)
@@ -263,6 +268,7 @@ tooltip-new-tab = New Tab
 tooltip-close-tab = Close Tab
 tooltip-add-bookmark = Add Bookmark
 tooltip-create-user = Create User
+tooltip-create-group = Create Group
 tooltip-create-news = Create News Post
 tooltip-delete = Delete
 context-menu-download = Download
@@ -277,6 +283,8 @@ panel-connection-monitor = Connection Monitor
 panel-active-connections = Active Connections: { $count }
 tab-connections = Connections
 tab-transfers = Transfers
+tab-users = Users
+tab-groups = Groups
 col-nickname = Nickname
 col-username = Username
 col-ip-address = IP Address
@@ -303,6 +311,16 @@ empty-no-users = No users online
 empty-no-channel-members = No members in channel
 user-management-loading = Loading users…
 user-management-no-users = No users found
+
+# Group Management
+group-management-name = Name
+group-management-no-groups = No groups configured
+group-management-loading = Loading groups…
+group-management-shared = Shared
+
+# Group dropdown
+user-management-group = Group
+user-management-group-none = None
 news-loading = Loading news…
 news-no-posts = No news posts yet
 transfers-empty = No transfers
@@ -418,6 +436,11 @@ msg-user-updated-name = User '{ $username }' updated successfully
 msg-permissions-updated = Your permissions have been updated
 msg-topic-updated = Topic updated successfully
 msg-password-changed = Password changed successfully
+
+# Success messages
+msg-group-created = Group "{ $name }" created
+msg-group-updated = Group "{ $name }" updated
+msg-group-deleted = Group "{ $name }" deleted
 msg-news-created = News post created successfully
 msg-news-updated = News post updated successfully
 msg-news-deleted = News post deleted successfully
@@ -442,6 +465,7 @@ msg-secret-cleared = Secret mode disabled by { $username }
 msg-server-info-updated = Server configuration updated
 msg-topic-display = Topic: { $topic }
 confirm-delete-user = Are you sure you want to delete user '{ $username }'?
+confirm-delete-group = Delete group "{ $name }"?
 confirm-delete-news = Are you sure you want to delete this news post?
 msg-user-connected = { $nickname } connected
 msg-user-disconnected = { $nickname } disconnected
@@ -523,6 +547,17 @@ err-news-empty = News post must have either body text or an image
 err-news-body-too-long = Body is too long ({ $length } characters, max { $max })
 err-news-body-invalid-characters = Body contains invalid control characters
 err-news-image-decode-failed = Failed to decode image. The file may be corrupted.
+
+# Group error messages
+err-group-name-empty = Group name cannot be empty
+err-group-name-too-long = Group name exceeds maximum length ({ $max } characters)
+err-group-name-invalid = Group name contains invalid characters
+err-group-not-found = Group not found
+err-group-already-exists = A group with this name already exists
+err-group-shared-mismatch = Shared accounts can only be assigned to shared groups
+err-group-shared-permission = Shared groups cannot have this permission
+err-group-not-empty-delete = Cannot delete group while users are assigned to it
+err-group-not-empty-modify = Cannot modify shared status while users are assigned to it
 
 # Proxy errors
 err-proxy-connection-failed = Failed to connect to proxy: { $error }

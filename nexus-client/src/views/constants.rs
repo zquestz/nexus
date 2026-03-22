@@ -129,6 +129,17 @@ pub(crate) const PERMISSION_TRUST_DELETE: &str = "trust_delete";
 /// Permission to view trusted IP list
 pub(crate) const PERMISSION_TRUST_LIST: &str = "trust_list";
 
+// === Group Permissions ===
+
+/// Permission to create new groups
+pub(crate) const PERMISSION_GROUP_CREATE: &str = "group_create";
+
+/// Permission to edit group name/permissions
+pub(crate) const PERMISSION_GROUP_EDIT: &str = "group_edit";
+
+/// Permission to delete groups
+pub(crate) const PERMISSION_GROUP_DELETE: &str = "group_delete";
+
 // === Connection Monitor Permissions ===
 
 /// Permission to view active connections

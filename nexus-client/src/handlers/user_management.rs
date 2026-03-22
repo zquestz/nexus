@@ -37,6 +37,8 @@ impl NexusApp {
         // Reset to list mode and clear any previous state
         conn.user_management.reset_to_list();
         conn.user_management.all_users = None; // Trigger loading state
+        conn.user_management.available_groups = None; // Reset group cache
+        conn.user_management.group_management.reset_to_list();
 
         // Request user list from server
         match conn.send(ClientMessage::UserList { all: true }) {
@@ -47,6 +49,17 @@ impl NexusApp {
             Err(e) => {
                 conn.user_management.all_users =
                     Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+            }
+        }
+
+        // Request group list from server (in parallel with user list)
+        match conn.send(ClientMessage::GroupList) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::PopulateGroupManagementList);
+            }
+            Err(_) => {
+                // Non-fatal: group list will be fetched on tab switch if needed
             }
         }
 
@@ -269,6 +282,11 @@ impl NexusApp {
         {
             conn.user_management.is_shared = is_shared;
 
+            // Reset group selection — the currently selected group may be
+            // incompatible with the new shared status (shared account needs
+            // shared group, regular account needs non-shared group).
+            conn.user_management.create_group_id = None;
+
             if is_shared {
                 // Shared accounts cannot be admins
                 conn.user_management.is_admin = false;
@@ -372,6 +390,30 @@ impl NexusApp {
             false
         };
 
+        // Compute group assignment and revokes for create
+        let create_group_id = conn.user_management.create_group_id;
+        let create_revokes = create_group_id.and_then(|gid| {
+            conn.user_management
+                .available_groups
+                .as_ref()
+                .and_then(|groups| groups.iter().find(|g| g.id == gid))
+                .map(|group| {
+                    // Revokes: group permissions that are unchecked in the form
+                    group
+                        .permissions
+                        .iter()
+                        .filter(|gp| {
+                            conn.user_management
+                                .permissions
+                                .iter()
+                                .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
+                        })
+                        .cloned()
+                        .collect::<Vec<String>>()
+                })
+                .filter(|v| !v.is_empty())
+        });
+
         let msg = ClientMessage::UserCreate {
             username: conn.user_management.username.clone(),
             password: conn.user_management.password.clone(),
@@ -379,8 +421,8 @@ impl NexusApp {
             is_shared,
             enabled: conn.user_management.enabled,
             permissions,
-            group_id: None,
-            revokes: None,
+            group_id: create_group_id,
+            revokes: create_revokes,
         };
 
         // Clear any previous error on new submission
@@ -526,28 +568,42 @@ impl NexusApp {
             return Task::none();
         };
 
-        let (id, original_username, new_username, new_password, is_admin, enabled, permissions) =
-            match &conn.user_management.mode {
-                UserManagementMode::Edit {
-                    id,
-                    original_username,
-                    new_username,
-                    new_password,
-                    is_admin,
-                    is_shared: _, // is_shared is immutable, not sent in update
-                    enabled,
-                    permissions,
-                } => (
-                    *id,
-                    original_username.clone(),
-                    new_username.clone(),
-                    new_password.clone(),
-                    *is_admin,
-                    *enabled,
-                    permissions.clone(),
-                ),
-                _ => return Task::none(),
-            };
+        let (
+            id,
+            original_username,
+            new_username,
+            new_password,
+            is_admin,
+            enabled,
+            permissions,
+            edit_group_id,
+            edit_group_permissions,
+        ) = match &conn.user_management.mode {
+            UserManagementMode::Edit {
+                id,
+                original_username,
+                new_username,
+                new_password,
+                is_admin,
+                is_shared: _, // is_shared is immutable, not sent in update
+                enabled,
+                permissions,
+                group_id,
+                group_permissions,
+                ..
+            } => (
+                *id,
+                original_username.clone(),
+                new_username.clone(),
+                new_password.clone(),
+                *is_admin,
+                *enabled,
+                permissions.clone(),
+                *group_id,
+                group_permissions.clone(),
+            ),
+            _ => return Task::none(),
+        };
 
         // Validate new username
         if let Err(e) = validators::validate_username(&new_username) {
@@ -601,6 +657,30 @@ impl NexusApp {
             .map(|(name, _)| name.clone())
             .collect();
 
+        // Compute group assignment and revokes
+        let (requested_group_id, requested_remove_group, requested_revokes) =
+            if let Some(gid) = edit_group_id {
+                // User has a group selected — compute revokes (group perms that are unchecked)
+                let revoke_list: Vec<String> = edit_group_permissions
+                    .iter()
+                    .filter(|gp| {
+                        permissions
+                            .iter()
+                            .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
+                    })
+                    .cloned()
+                    .collect();
+                let revokes = if revoke_list.is_empty() {
+                    None
+                } else {
+                    Some(revoke_list)
+                };
+                (Some(gid), None, revokes)
+            } else {
+                // No group selected — remove_group to clear any previous assignment
+                (None, Some(true), None)
+            };
+
         let msg = ClientMessage::UserUpdate {
             id,
             username: requested_username,
@@ -609,9 +689,9 @@ impl NexusApp {
             is_admin: requested_is_admin,
             enabled: requested_enabled,
             permissions: Some(requested_permissions),
-            group_id: None,
-            remove_group: None,
-            revokes: None,
+            group_id: requested_group_id,
+            remove_group: requested_remove_group,
+            revokes: requested_revokes,
         };
 
         // Clear any previous error on new submission
