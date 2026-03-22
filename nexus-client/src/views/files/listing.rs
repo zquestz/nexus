@@ -23,30 +23,32 @@ use crate::widgets::{LazyContextMenu, MenuButton};
 pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> {
     lazy(deps, |deps| {
         // Name column header
-        let name_header_content: Element<'static, Message> =
-            if deps.sort_column == FileSortColumn::Name {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                row![
-                    shaped_text(t("files-column-name"))
-                        .size(TEXT_SIZE)
-                        .style(muted_text_style),
-                    Space::new().width(Fill),
-                    Space::new().width(SORT_ICON_LEFT_MARGIN),
-                    sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
-                    Space::new().width(SORT_ICON_RIGHT_MARGIN),
-                ]
-                .align_y(Center)
-                .into()
+        let name_sort_icon: Element<'static, Message> = if deps.sort_column == FileSortColumn::Name
+        {
+            let sort_icon = if deps.sort_ascending {
+                icon::down_dir()
             } else {
-                shaped_text(t("files-column-name"))
-                    .size(TEXT_SIZE)
-                    .style(muted_text_style)
-                    .into()
+                icon::up_dir()
             };
+            sort_icon
+                .size(SORT_ICON_SIZE)
+                .style(muted_text_style)
+                .into()
+        } else {
+            Space::new().width(SORT_ICON_SIZE).into()
+        };
+        let name_header_content: Element<'static, Message> = row![
+            shaped_text(t("files-column-name"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            name_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
         let name_header: Element<'static, Message> = button(name_header_content)
             .padding(NO_SPACING)
             .width(Fill)
@@ -92,7 +94,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 Space::new().width(FILE_LIST_ICON_SPACING),
                 name_text,
             ]
-            .align_y(Center)
+            .align_y(iced::Alignment::Start)
             .into();
 
             // Make rows clickable
@@ -140,30 +142,32 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
         .width(Fill);
 
         // Size column header
-        let size_header_content: Element<'static, Message> =
-            if deps.sort_column == FileSortColumn::Size {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                row![
-                    shaped_text(t("files-column-size"))
-                        .size(TEXT_SIZE)
-                        .style(muted_text_style),
-                    Space::new().width(Fill),
-                    Space::new().width(SORT_ICON_LEFT_MARGIN),
-                    sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
-                    Space::new().width(SORT_ICON_RIGHT_MARGIN),
-                ]
-                .align_y(Center)
-                .into()
+        let size_sort_icon: Element<'static, Message> = if deps.sort_column == FileSortColumn::Size
+        {
+            let sort_icon = if deps.sort_ascending {
+                icon::down_dir()
             } else {
-                shaped_text(t("files-column-size"))
-                    .size(TEXT_SIZE)
-                    .style(muted_text_style)
-                    .into()
+                icon::up_dir()
             };
+            sort_icon
+                .size(SORT_ICON_SIZE)
+                .style(muted_text_style)
+                .into()
+        } else {
+            Space::new().width(SORT_ICON_SIZE).into()
+        };
+        let size_header_content: Element<'static, Message> = row![
+            shaped_text(t("files-column-size"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            size_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
         let size_header: Element<'static, Message> = button(size_header_content)
             .padding(NO_SPACING)
             .width(Fill)
@@ -180,36 +184,39 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
             };
             shaped_text(size_text)
                 .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
                 .style(muted_text_style)
         })
         .width(FILE_SIZE_COLUMN_WIDTH)
         .align_x(Right);
 
         // Modified column header
-        let modified_header_content: Element<'static, Message> =
+        let modified_sort_icon: Element<'static, Message> =
             if deps.sort_column == FileSortColumn::Modified {
                 let sort_icon = if deps.sort_ascending {
                     icon::down_dir()
                 } else {
                     icon::up_dir()
                 };
-                row![
-                    shaped_text(t("files-column-modified"))
-                        .size(TEXT_SIZE)
-                        .style(muted_text_style),
-                    Space::new().width(Fill),
-                    Space::new().width(SORT_ICON_LEFT_MARGIN),
-                    sort_icon.size(SORT_ICON_SIZE).style(muted_text_style),
-                    Space::new().width(SORT_ICON_RIGHT_MARGIN),
-                ]
-                .align_y(Center)
-                .into()
-            } else {
-                shaped_text(t("files-column-modified"))
-                    .size(TEXT_SIZE)
+                sort_icon
+                    .size(SORT_ICON_SIZE)
                     .style(muted_text_style)
                     .into()
+            } else {
+                Space::new().width(SORT_ICON_SIZE).into()
             };
+        let modified_header_content: Element<'static, Message> = row![
+            shaped_text(t("files-column-modified"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            modified_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
         let modified_header: Element<'static, Message> = button(modified_header_content)
             .padding(NO_SPACING)
             .width(Fill)
@@ -222,6 +229,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
             let date_text = format_timestamp(row.entry.modified);
             shaped_text(date_text)
                 .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
                 .style(muted_text_style)
         })
         .width(FILE_DATE_COLUMN_WIDTH)

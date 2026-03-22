@@ -24,9 +24,10 @@ pub use panel::{
     BanDuration, ClipboardItem, ClipboardOperation, ConnectionFormState,
     ConnectionMonitorSortColumn, ConnectionMonitorState, ConnectionMonitorTab, DisconnectAction,
     DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, GroupManagementMode,
-    NewsManagementMode, NewsManagementState, PasswordChangeState, PendingOverwrite,
-    ServerInfoEditState, ServerInfoParams, ServerInfoTab, SettingsFormState, SettingsTab, TabId,
-    TransferSortColumn, UserManagementMode, UserManagementState, UserManagementTab,
+    GroupManagementSortColumn, NewsManagementMode, NewsManagementState, PasswordChangeState,
+    PendingOverwrite, ServerInfoEditState, ServerInfoParams, ServerInfoTab, SettingsFormState,
+    SettingsTab, TabId, TransferSortColumn, UserManagementMode, UserManagementSortColumn,
+    UserManagementState, UserManagementTab,
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use ui::{

@@ -701,6 +701,7 @@ impl NexusApp {
                 self.handle_user_management_create_tab_pressed()
             }
             Message::UserManagementEditTabPressed => self.handle_user_management_edit_tab_pressed(),
+            Message::UserManagementSortBy(column) => self.handle_user_management_sort_by(column),
 
             // User management: Tab and group selection
             Message::UserManagementTabSelected(tab) => {
@@ -744,6 +745,7 @@ impl NexusApp {
                 self.handle_group_management_edit_permission_toggled(permission, enabled)
             }
             Message::GroupManagementUpdatePressed => self.handle_group_management_update_pressed(),
+            Message::GroupManagementSortBy(column) => self.handle_group_management_sort_by(column),
 
             // Broadcast
             Message::BroadcastMessageChanged(input) => self.handle_broadcast_message_changed(input),

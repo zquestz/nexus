@@ -10,7 +10,7 @@ use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, InputId, Message, PasswordChangeState, PendingRequests,
-    ResponseRouting, UserManagementMode,
+    ResponseRouting, UserManagementMode, UserManagementSortColumn,
 };
 use crate::views::constants::PERMISSION_USER_INFO;
 
@@ -1190,5 +1190,26 @@ impl NexusApp {
 
         self.focused_field = next_field;
         operation::focus(Id::from(next_field))
+    }
+
+    /// Handle sort column click in the Users table
+    ///
+    /// If clicking the same column, toggles direction. If clicking a different column,
+    /// sets it as the active column with ascending direction.
+    pub fn handle_user_management_sort_by(
+        &mut self,
+        column: UserManagementSortColumn,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            if conn.user_management.sort_column == column {
+                conn.user_management.sort_ascending = !conn.user_management.sort_ascending;
+            } else {
+                conn.user_management.sort_column = column;
+                conn.user_management.sort_ascending = true;
+            }
+        }
+        Task::none()
     }
 }

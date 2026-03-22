@@ -3,29 +3,35 @@
 //! Part of the User Management panel's Groups tab.
 //! Shows group list, create/edit forms, and delete confirmation.
 
-use iced::widget::button as btn;
-use iced::widget::{
-    Column, Row, Space, button, checkbox, column, container, row, scrollable, text, text_input,
-    tooltip,
-};
-use iced::{Center, Element, Fill, Theme, alignment};
-use nexus_common::is_shared_account_permission;
+use std::hash::{Hash, Hasher};
 
-use super::constants::{PERMISSION_GROUP_CREATE, PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
+use iced::widget::button as btn;
+use iced::widget::text::Wrapping;
+use iced::widget::{
+    Column, Space, button, checkbox, container, lazy, row, scrollable, table, text, text_input,
+};
+use iced::{Center, Element, Fill};
+use nexus_common::is_shared_account_permission;
+use nexus_common::protocol::GroupInfo;
+
+use super::constants::{PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
+use super::helpers::t_args;
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
-    INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING, SERVER_LIST_BUTTON_HEIGHT,
-    SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_TEXT_SIZE,
-    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    alternating_row_style, danger_icon_button_style, error_text_style, muted_text_style,
-    panel_title, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
+    CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
+    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TEXT_SIZE, context_menu_container_style, error_text_style,
+    menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
+    shaped_text, shaped_text_wrapped, transparent_icon_button_style,
 };
-use crate::types::{GroupManagementMode, Message, ServerConnection, UserManagementState};
+use crate::types::{
+    GroupManagementMode, GroupManagementSortColumn, Message, ServerConnection, UserManagementState,
+};
+use crate::widgets::{LazyContextMenu, MenuButton};
 
 // ============================================================================
 // Edit Group Context
@@ -50,31 +56,43 @@ struct EditGroupContext<'a> {
 }
 
 // ============================================================================
-// Helper Functions
+// Table Dependencies & Sorting
 // ============================================================================
 
-/// Helper function to create transparent edit icon buttons
-fn transparent_edit_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(transparent_icon_button_style)
+/// Dependencies for lazy group table rendering
+#[derive(Clone)]
+struct GroupTableDeps {
+    groups: Vec<GroupInfo>,
+    sort_column: GroupManagementSortColumn,
+    sort_ascending: bool,
+    can_edit: bool,
+    can_delete: bool,
 }
 
-/// Helper function to create danger icon buttons (for delete)
-fn danger_delete_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(danger_icon_button_style)
+impl Hash for GroupTableDeps {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.groups.len().hash(state);
+        for group in &self.groups {
+            group.id.hash(state);
+            group.name.hash(state);
+            group.is_shared.hash(state);
+            group.member_count.hash(state);
+        }
+        self.sort_column.hash(state);
+        self.sort_ascending.hash(state);
+        self.can_edit.hash(state);
+        self.can_delete.hash(state);
+    }
+}
+
+fn sort_groups(groups: &mut [GroupInfo], column: GroupManagementSortColumn, ascending: bool) {
+    groups.sort_by(|a, b| {
+        let cmp = match column {
+            GroupManagementSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            GroupManagementSortColumn::Members => a.member_count.cmp(&b.member_count),
+        };
+        if ascending { cmp } else { cmp.reverse() }
+    });
 }
 
 /// Build permission checkboxes split into two columns (for group forms)
@@ -133,8 +151,181 @@ where
         .into()
 }
 
-fn t_args(key: &str, args: &[(&str, &str)]) -> String {
-    crate::i18n::t_args(key, args)
+// ============================================================================
+// Lazy Group Table
+// ============================================================================
+
+/// Build the lazy group table with sortable columns
+fn build_group_context_menu(
+    group_id: i64,
+    group_name: String,
+    can_edit: bool,
+    can_delete: bool,
+) -> Element<'static, Message> {
+    let mut menu_items: Vec<Element<'_, Message>> = vec![];
+
+    if can_edit {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-edit")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_style)
+                .on_press(Message::GroupManagementEditClicked(
+                    group_id,
+                    group_name.clone(),
+                ))
+                .into(),
+        );
+    }
+
+    if can_edit && can_delete {
+        menu_items.push(
+            container(Space::new())
+                .width(Fill)
+                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                .style(separator_style)
+                .into(),
+        );
+    }
+
+    if can_delete {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-delete")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_danger_style)
+                .on_press(Message::GroupManagementDeleteClicked(
+                    group_id,
+                    group_name.clone(),
+                ))
+                .into(),
+        );
+    }
+
+    container(Column::with_children(menu_items).spacing(CONTEXT_MENU_SEPARATOR_MARGIN))
+        .width(CONTEXT_MENU_MIN_WIDTH)
+        .padding(CONTEXT_MENU_PADDING)
+        .style(context_menu_container_style)
+        .into()
+}
+
+fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
+    let can_edit = deps.can_edit;
+    let can_delete = deps.can_delete;
+
+    lazy(deps, move |deps| {
+        // Name column header (sortable, stable layout)
+        let name_sort_icon: Element<'static, Message> =
+            if deps.sort_column == GroupManagementSortColumn::Name {
+                let icon = if deps.sort_ascending {
+                    icon::down_dir()
+                } else {
+                    icon::up_dir()
+                };
+                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
+            } else {
+                Space::new().width(SORT_ICON_SIZE).into()
+            };
+        let name_header_content: Element<'static, Message> = row![
+            shaped_text(t("col-name"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            name_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
+        let name_header: Element<'static, Message> = button(name_header_content)
+            .padding(NO_SPACING)
+            .width(Fill)
+            .style(transparent_icon_button_style)
+            .on_press(Message::GroupManagementSortBy(
+                GroupManagementSortColumn::Name,
+            ))
+            .into();
+
+        // Name column cell (with right-click context menu for actions)
+        let name_column = table::column(name_header, move |group: GroupInfo| {
+            let group_id = group.id;
+            let group_name_for_menu = group.name.clone();
+
+            let content: Element<'static, Message> = shaped_text(group.name)
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::WordOrGlyph)
+                .into();
+
+            if can_edit || can_delete {
+                LazyContextMenu::new(content, move || {
+                    build_group_context_menu(
+                        group_id,
+                        group_name_for_menu.clone(),
+                        can_edit,
+                        can_delete,
+                    )
+                })
+                .into()
+            } else {
+                content
+            }
+        })
+        .width(Fill);
+
+        // Members column header (sortable, stable layout)
+        let members_sort_icon: Element<'static, Message> =
+            if deps.sort_column == GroupManagementSortColumn::Members {
+                let icon = if deps.sort_ascending {
+                    icon::down_dir()
+                } else {
+                    icon::up_dir()
+                };
+                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
+            } else {
+                Space::new().width(SORT_ICON_SIZE).into()
+            };
+        let members_header_content: Element<'static, Message> = row![
+            shaped_text(t("col-members"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            members_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
+        let members_header: Element<'static, Message> = button(members_header_content)
+            .padding(NO_SPACING)
+            .width(Fill)
+            .style(transparent_icon_button_style)
+            .on_press(Message::GroupManagementSortBy(
+                GroupManagementSortColumn::Members,
+            ))
+            .into();
+
+        // Members column cell
+        let members_column = table::column(members_header, |group: GroupInfo| {
+            shaped_text(group.member_count.to_string())
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style)
+        })
+        .width(Fill);
+
+        // Build the table
+        let columns = [name_column, members_column];
+
+        table(columns, deps.groups.clone())
+            .width(Fill)
+            .padding_x(SPACER_SIZE_SMALL)
+            .padding_y(SPACER_SIZE_SMALL)
+            .separator_x(NO_SPACING)
+            .separator_y(SEPARATOR_HEIGHT)
+    })
+    .into()
 }
 
 // ============================================================================
@@ -143,181 +334,70 @@ fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 
 /// Build the group list content for inside the Groups tab
 ///
-/// Returns a self-contained element with create button and scrollable group list.
+/// Returns a self-contained element with a sortable table of groups.
 pub fn group_list_content<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
-    _theme: &Theme,
 ) -> Element<'a, Message> {
-    let can_create = conn.has_permission(PERMISSION_GROUP_CREATE);
     let can_edit = conn.has_permission(PERMISSION_GROUP_EDIT);
     let can_delete = conn.has_permission(PERMISSION_GROUP_DELETE);
 
-    // Build scrollable content (group list or status message)
-    let scroll_content_inner: Element<'a, Message> = {
-        if let Some(error) = &user_management.group_management.list_error {
-            // Error state
+    if let Some(error) = &user_management.group_management.list_error {
+        // Error state
+        return container(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into()
-        } else if let Some(groups) = &user_management.available_groups {
+                .style(error_text_style),
+        )
+        .width(Fill)
+        .center_x(Fill)
+        .padding(SPACER_SIZE_SMALL)
+        .into();
+    }
+
+    match &user_management.available_groups {
+        None => {
+            // Loading state
+            container(
+                shaped_text(t("group-management-loading"))
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
+        }
+        Some(groups) => {
             if groups.is_empty() {
                 // Empty state
-                shaped_text(t("group-management-no-groups"))
-                    .size(TEXT_SIZE)
-                    .width(Fill)
-                    .align_x(Center)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                // Group rows
-                let mut group_rows = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
-
-                for (index, group) in groups.iter().enumerate() {
-                    // Group name text
-                    let name_text = shaped_text(&group.name).size(SERVER_LIST_TEXT_SIZE);
-
-                    let name_container = container(name_text)
-                        .width(Fill)
-                        .height(SERVER_LIST_BUTTON_HEIGHT)
-                        .padding(INPUT_PADDING)
-                        .align_y(alignment::Vertical::Center);
-
-                    let mut group_row = Row::new()
-                        .spacing(NO_SPACING)
-                        .align_y(alignment::Vertical::Center)
-                        .push(name_container);
-
-                    // Shared badge (if applicable)
-                    if group.is_shared {
-                        let shared_text = shaped_text(t("group-management-shared"))
-                            .size(SERVER_LIST_TEXT_SIZE)
-                            .style(muted_text_style);
-                        let shared_container = container(shared_text)
-                            .height(SERVER_LIST_BUTTON_HEIGHT)
-                            .padding(INPUT_PADDING)
-                            .align_y(alignment::Vertical::Center);
-                        group_row = group_row.push(shared_container);
-                    }
-
-                    // Member count
-                    let count_text = shaped_text(group.member_count.to_string())
-                        .size(SERVER_LIST_TEXT_SIZE)
-                        .style(muted_text_style);
-                    let count_container = container(count_text)
-                        .height(SERVER_LIST_BUTTON_HEIGHT)
-                        .padding(INPUT_PADDING)
-                        .align_y(alignment::Vertical::Center);
-                    group_row = group_row.push(count_container);
-
-                    // Edit button (gated by group_edit permission)
-                    if can_edit {
-                        let edit_btn = tooltip(
-                            transparent_edit_button(
-                                icon::edit(),
-                                Message::GroupManagementEditClicked(group.id, group.name.clone()),
-                            ),
-                            container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
-                                .padding(TOOLTIP_BACKGROUND_PADDING)
-                                .style(tooltip_container_style),
-                            tooltip::Position::Top,
-                        )
-                        .gap(TOOLTIP_GAP)
-                        .padding(TOOLTIP_PADDING);
-                        group_row = group_row.push(edit_btn);
-                    }
-
-                    // Delete button (gated by group_delete permission)
-                    if can_delete {
-                        let delete_btn = tooltip(
-                            danger_delete_button(
-                                icon::trash(),
-                                Message::GroupManagementDeleteClicked(group.id, group.name.clone()),
-                            ),
-                            container(shaped_text(t("tooltip-delete")).size(TOOLTIP_TEXT_SIZE))
-                                .padding(TOOLTIP_BACKGROUND_PADDING)
-                                .style(tooltip_container_style),
-                            tooltip::Position::Top,
-                        )
-                        .gap(TOOLTIP_GAP)
-                        .padding(TOOLTIP_PADDING);
-                        group_row = group_row.push(delete_btn);
-                    }
-
-                    // Alternating row backgrounds
-                    let is_even = index % 2 == 0;
-                    let row_container = container(group_row)
-                        .width(Fill)
-                        .style(alternating_row_style(is_even));
-
-                    group_rows = group_rows.push(row_container);
-                }
-
-                group_rows.width(Fill).into()
-            }
-        } else {
-            // Loading state
-            shaped_text(t("group-management-loading"))
-                .size(TEXT_SIZE)
+                container(
+                    shaped_text(t("group-management-no-groups"))
+                        .size(TEXT_SIZE)
+                        .style(muted_text_style),
+                )
                 .width(Fill)
-                .align_x(Center)
-                .style(muted_text_style)
+                .center_x(Fill)
+                .padding(SPACER_SIZE_SMALL)
                 .into()
+            } else {
+                // Sort groups based on current settings
+                let gm = &user_management.group_management;
+                let mut sorted_groups = groups.clone();
+                sort_groups(&mut sorted_groups, gm.sort_column, gm.sort_ascending);
+
+                let deps = GroupTableDeps {
+                    groups: sorted_groups,
+                    sort_column: gm.sort_column,
+                    sort_ascending: gm.sort_ascending,
+                    can_edit,
+                    can_delete,
+                };
+
+                scrollable(lazy_group_table(deps)).height(Fill).into()
+            }
         }
-    };
-
-    // Create group button (optional, right-aligned)
-    let button_row: Element<'a, Message> = if can_create {
-        let add_icon = container(icon::user_plus().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
-            .align_x(alignment::Horizontal::Center)
-            .align_y(alignment::Vertical::Center);
-
-        let create_btn = tooltip(
-            button(add_icon)
-                .on_press(Message::GroupManagementShowCreate)
-                .padding(ICON_BUTTON_PADDING)
-                .style(transparent_icon_button_style),
-            container(shaped_text(t("tooltip-create-group")).size(TOOLTIP_TEXT_SIZE))
-                .padding(TOOLTIP_BACKGROUND_PADDING)
-                .style(tooltip_container_style),
-            tooltip::Position::Top,
-        )
-        .gap(TOOLTIP_GAP)
-        .padding(TOOLTIP_PADDING);
-
-        row![Space::new().width(Fill), create_btn]
-            .align_y(Center)
-            .into()
-    } else {
-        Space::new().height(SPACER_SIZE_SMALL).into()
-    };
-
-    // Scrollable content with symmetric padding for scrollbar space
-    let scroll_inner = container(scroll_content_inner).width(Fill);
-    let padded_scroll_content = row![
-        Space::new().width(SCROLLBAR_PADDING),
-        scroll_inner,
-        Space::new().width(SCROLLBAR_PADDING),
-    ];
-
-    // Build the complete tab content
-    column![
-        container(button_row).padding(iced::Padding {
-            top: 0.0,
-            right: SCROLLBAR_PADDING,
-            bottom: 0.0,
-            left: SCROLLBAR_PADDING,
-        }),
-        scrollable(padded_scroll_content).height(Fill),
-    ]
-    .spacing(ELEMENT_SPACING)
-    .height(Fill)
-    .into()
+    }
 }
 
 // ============================================================================
@@ -335,7 +415,7 @@ fn create_view<'a>(
 
     let can_create = !gm.name.trim().is_empty();
 
-    let name_input = text_input(&t("group-management-name"), &gm.name)
+    let name_input = text_input(&t("group-form-name"), &gm.name)
         .on_input(Message::GroupManagementNameChanged)
         .on_submit(Message::GroupManagementCreatePressed)
         .padding(INPUT_PADDING)
@@ -422,7 +502,7 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
 
     let can_update = !ctx.new_name.trim().is_empty();
 
-    let name_input = text_input(&t("group-management-name"), ctx.new_name)
+    let name_input = text_input(&t("group-form-name"), ctx.new_name)
         .on_input(Message::GroupManagementEditNameChanged)
         .on_submit(Message::GroupManagementUpdatePressed)
         .padding(INPUT_PADDING)

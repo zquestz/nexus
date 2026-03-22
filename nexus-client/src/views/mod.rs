@@ -11,6 +11,7 @@ mod disconnect_dialog;
 pub(crate) mod files;
 mod fingerprint;
 pub(crate) mod groups;
+pub(crate) mod helpers;
 mod layout;
 mod news;
 mod server_info;

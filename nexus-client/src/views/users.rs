@@ -1,36 +1,45 @@
 //! User management panel view (list, create, edit, delete users)
 
+use std::hash::{Hash, Hasher};
+
 use iced::font;
 use iced::widget::button as btn;
+use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, Id, Row, Space, button, checkbox, column, container, pick_list, row, scrollable, text,
-    text_input, tooltip,
+    Column, Id, Row, Space, button, checkbox, column, container, lazy, pick_list, row, scrollable,
+    table, text, text_input, tooltip,
 };
 use iced::{Center, Element, Fill, Theme, alignment};
 use iced_aw::{TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
-use nexus_common::protocol::GroupInfo;
+use nexus_common::protocol::{GroupInfo, UserInfo};
 
-use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
+use super::constants::{
+    PERMISSION_GROUP_CREATE, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT,
+};
 use super::groups::{group_form_view, group_list_content};
+use super::helpers::t_args;
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
-    INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING, SERVER_LIST_BUTTON_HEIGHT,
-    SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_TEXT_SIZE,
-    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
-    TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, alternating_row_style, chat, content_background_style,
-    danger_icon_button_style, error_text_style, muted_text_style, panel_title, shaped_text,
-    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
+    CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING,
+    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SORT_ICON_LEFT_MARGIN,
+    SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, content_background_style,
+    context_menu_container_style, error_text_style, menu_button_danger_style, menu_button_style,
+    muted_text_style, panel_title, separator_style, shaped_text, shaped_text_wrapped,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::InputId;
 use crate::types::{
-    GroupManagementMode, Message, ServerConnection, UserManagementMode, UserManagementState,
-    UserManagementTab,
+    GroupManagementMode, Message, ServerConnection, UserManagementMode, UserManagementSortColumn,
+    UserManagementState, UserManagementTab,
 };
+use crate::widgets::{LazyContextMenu, MenuButton};
 
 // ============================================================================
 // Edit User Context
@@ -45,10 +54,16 @@ const GUEST_USERNAME: &str = "guest";
 
 /// Represents a group option in the group dropdown (pick_list).
 /// "None" option has id=None, groups have id=Some(i64).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct GroupOption {
     id: Option<i64>,
     label: String,
+}
+
+impl PartialEq for GroupOption {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 impl std::fmt::Display for GroupOption {
@@ -122,37 +137,6 @@ struct EditUserContext<'a> {
     group_permissions: &'a [String],
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Helper function to create transparent edit icon buttons
-fn transparent_edit_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(transparent_icon_button_style)
-}
-
-/// Helper function to create danger icon buttons (for delete)
-fn danger_delete_button(
-    icon: iced::widget::Text<'_>,
-    message: Message,
-) -> button::Button<'_, Message> {
-    button(icon.size(SERVER_LIST_DISCONNECT_ICON_SIZE))
-        .on_press(message)
-        .width(SERVER_LIST_BUTTON_HEIGHT)
-        .height(SERVER_LIST_BUTTON_HEIGHT)
-        .style(danger_icon_button_style)
-}
-
-/// Build permission checkboxes split into two columns
-///
-/// When `is_shared` is true, permissions not in `SHARED_ACCOUNT_PERMISSIONS` are disabled.
 /// Build permission checkboxes split into two columns.
 ///
 /// When `is_shared` is true, permissions not in `SHARED_ACCOUNT_PERMISSIONS` are disabled.
@@ -226,216 +210,329 @@ where
 }
 
 // ============================================================================
+// User Table (lazy)
+// ============================================================================
+
+/// Dependencies for lazy user table rendering
+#[derive(Clone)]
+struct UserTableDeps {
+    users: Vec<UserInfo>,
+    sort_column: UserManagementSortColumn,
+    sort_ascending: bool,
+    admin_color: iced::Color,
+    shared_color: iced::Color,
+    can_edit: bool,
+    can_delete: bool,
+    is_admin: bool,
+    current_username: String,
+}
+
+impl Hash for UserTableDeps {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.users.len().hash(state);
+        for user in &self.users {
+            user.id.hash(state);
+            user.username.hash(state);
+            user.is_admin.hash(state);
+            user.is_shared.hash(state);
+            user.group_name.hash(state);
+        }
+        self.sort_column.hash(state);
+        self.sort_ascending.hash(state);
+        self.can_edit.hash(state);
+        self.can_delete.hash(state);
+        self.is_admin.hash(state);
+        self.current_username.hash(state);
+    }
+}
+
+/// Sort users by column and direction
+fn sort_users(users: &mut [UserInfo], column: UserManagementSortColumn, ascending: bool) {
+    users.sort_by(|a, b| {
+        let cmp = match column {
+            UserManagementSortColumn::Username => {
+                a.username.to_lowercase().cmp(&b.username.to_lowercase())
+            }
+            UserManagementSortColumn::Group => {
+                let a_group = a.group_name.as_deref().unwrap_or("");
+                let b_group = b.group_name.as_deref().unwrap_or("");
+                a_group.to_lowercase().cmp(&b_group.to_lowercase())
+            }
+        };
+        if ascending { cmp } else { cmp.reverse() }
+    });
+}
+
+/// Build a lazy user table widget
+fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
+    let can_edit = deps.can_edit;
+    let can_delete = deps.can_delete;
+    let is_admin = deps.is_admin;
+    let current_username = deps.current_username.clone();
+
+    lazy(deps, move |deps| {
+        let admin_color = deps.admin_color;
+        let shared_color = deps.shared_color;
+
+        // Username column header (sortable, stable layout)
+        let username_sort_icon: Element<'static, Message> =
+            if deps.sort_column == UserManagementSortColumn::Username {
+                let icon = if deps.sort_ascending {
+                    icon::down_dir()
+                } else {
+                    icon::up_dir()
+                };
+                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
+            } else {
+                Space::new().width(SORT_ICON_SIZE).into()
+            };
+        let username_header_content: Element<'static, Message> = row![
+            shaped_text(t("col-username"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            username_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
+        let username_header: Element<'static, Message> = button(username_header_content)
+            .padding(NO_SPACING)
+            .width(Fill)
+            .style(transparent_icon_button_style)
+            .on_press(Message::UserManagementSortBy(
+                UserManagementSortColumn::Username,
+            ))
+            .into();
+
+        // Username column - with admin/shared coloring and context menu
+        let current_username_for_col = current_username.clone();
+        let username_column = table::column(username_header, move |user: UserInfo| {
+            let user_id = user.id;
+            let username_for_menu = user.username.clone();
+            let is_self = user.username.to_lowercase() == current_username_for_col.to_lowercase();
+            let is_guest = user.username.to_lowercase() == GUEST_USERNAME;
+            let can_edit_this = can_edit && !is_self && (is_admin || !user.is_admin);
+            let can_delete_this =
+                can_delete && !is_self && !is_guest && (is_admin || !user.is_admin);
+
+            let text_widget = if user.is_admin {
+                shaped_text(user.username)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::Glyph)
+                    .color(admin_color)
+            } else if user.is_shared {
+                shaped_text(user.username)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::Glyph)
+                    .color(shared_color)
+            } else {
+                shaped_text(user.username)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::Glyph)
+            };
+
+            let content: Element<'static, Message> = text_widget.into();
+
+            if can_edit_this || can_delete_this {
+                LazyContextMenu::new(content, move || {
+                    build_user_context_menu(
+                        user_id,
+                        username_for_menu.clone(),
+                        can_edit_this,
+                        can_delete_this,
+                    )
+                })
+                .into()
+            } else {
+                content
+            }
+        })
+        .width(Fill);
+
+        // Group column header (sortable, stable layout)
+        let group_sort_icon: Element<'static, Message> =
+            if deps.sort_column == UserManagementSortColumn::Group {
+                let icon = if deps.sort_ascending {
+                    icon::down_dir()
+                } else {
+                    icon::up_dir()
+                };
+                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
+            } else {
+                Space::new().width(SORT_ICON_SIZE).into()
+            };
+        let group_header_content: Element<'static, Message> = row![
+            shaped_text(t("col-group"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(Fill),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            group_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+        ]
+        .align_y(Center)
+        .into();
+        let group_header: Element<'static, Message> = button(group_header_content)
+            .padding(NO_SPACING)
+            .width(Fill)
+            .style(transparent_icon_button_style)
+            .on_press(Message::UserManagementSortBy(
+                UserManagementSortColumn::Group,
+            ))
+            .into();
+
+        // Group column
+        let group_column = table::column(group_header, |user: UserInfo| {
+            let label = user.group_name.unwrap_or_else(|| "—".to_string());
+            shaped_text(label)
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::WordOrGlyph)
+                .style(muted_text_style)
+        })
+        .width(Fill);
+
+        // Build the table
+        let columns = [username_column, group_column];
+
+        table(columns, deps.users.clone())
+            .width(Fill)
+            .padding_x(SPACER_SIZE_SMALL)
+            .padding_y(SPACER_SIZE_SMALL)
+            .separator_x(NO_SPACING)
+            .separator_y(SEPARATOR_HEIGHT)
+    })
+    .into()
+}
+
+/// Build a context menu for a user row (edit / delete actions).
+fn build_user_context_menu(
+    user_id: i64,
+    username: String,
+    can_edit_this: bool,
+    can_delete_this: bool,
+) -> Element<'static, Message> {
+    let mut menu_items: Vec<Element<'_, Message>> = vec![];
+
+    if can_edit_this {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-edit")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_style)
+                .on_press(Message::UserManagementEditClicked(
+                    user_id,
+                    username.clone(),
+                ))
+                .into(),
+        );
+    }
+
+    // Separator only when both actions are present
+    if can_edit_this && can_delete_this {
+        menu_items.push(
+            container(Space::new())
+                .width(Fill)
+                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                .style(separator_style)
+                .into(),
+        );
+    }
+
+    if can_delete_this {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-delete")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_danger_style)
+                .on_press(Message::UserManagementDeleteClicked(
+                    user_id,
+                    username.clone(),
+                ))
+                .into(),
+        );
+    }
+
+    container(Column::with_children(menu_items).spacing(CONTEXT_MENU_SEPARATOR_MARGIN))
+        .width(CONTEXT_MENU_MIN_WIDTH)
+        .padding(CONTEXT_MENU_PADDING)
+        .style(context_menu_container_style)
+        .into()
+}
+
+// ============================================================================
 // List View
 // ============================================================================
 
-/// Build the user list view (styled like server_list/bookmarks)
+/// Build the user list view as a sortable table
 fn list_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
     theme: &Theme,
-    current_username: &str,
 ) -> Element<'a, Message> {
-    // Check permissions
-    let can_create = conn.has_permission(PERMISSION_USER_CREATE);
-    let can_edit = conn.has_permission(PERMISSION_USER_EDIT);
-    let can_delete = conn.has_permission(PERMISSION_USER_DELETE);
-
-    // Build scrollable content (user list or status message)
-    let scroll_content_inner: Element<'a, Message> = match &user_management.all_users {
+    match &user_management.all_users {
         None => {
             // Loading state
-            shaped_text(t("user-management-loading"))
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(muted_text_style)
-                .into()
+            container(
+                shaped_text(t("user-management-loading"))
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
         }
         Some(Err(error)) => {
             // Error state
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into()
+            container(
+                shaped_text_wrapped(error)
+                    .size(TEXT_SIZE)
+                    .style(error_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
         }
         Some(Ok(users)) => {
             if users.is_empty() {
-                shaped_text(t("user-management-no-users"))
-                    .size(TEXT_SIZE)
-                    .width(Fill)
-                    .align_x(Center)
-                    .style(muted_text_style)
-                    .into()
+                container(
+                    shaped_text(t("user-management-no-users"))
+                        .size(TEXT_SIZE)
+                        .style(muted_text_style),
+                )
+                .width(Fill)
+                .center_x(Fill)
+                .padding(SPACER_SIZE_SMALL)
+                .into()
             } else {
-                // Build user rows (styled like server_list bookmarks)
-                let mut user_rows = Column::new().spacing(SERVER_LIST_ITEM_SPACING);
+                let mut sorted_users = users.clone();
+                sort_users(
+                    &mut sorted_users,
+                    user_management.sort_column,
+                    user_management.sort_ascending,
+                );
 
-                for (index, user) in users.iter().enumerate() {
-                    let admin_color = chat::admin(theme);
-                    let is_self = user.username.to_lowercase() == current_username.to_lowercase();
+                let deps = UserTableDeps {
+                    users: sorted_users,
+                    sort_column: user_management.sort_column,
+                    sort_ascending: user_management.sort_ascending,
+                    admin_color: chat::admin(theme),
+                    shared_color: chat::shared(theme),
+                    can_edit: conn.has_permission(PERMISSION_USER_EDIT),
+                    can_delete: conn.has_permission(PERMISSION_USER_DELETE),
+                    is_admin: conn.is_admin,
+                    current_username: conn.connection_info.username.clone(),
+                };
 
-                    // Username text with admin coloring
-                    let username_text = if user.is_admin {
-                        shaped_text(&user.username)
-                            .size(SERVER_LIST_TEXT_SIZE)
-                            .color(admin_color)
-                    } else {
-                        shaped_text(&user.username).size(SERVER_LIST_TEXT_SIZE)
-                    };
-
-                    // Username as a container that fills available space
-                    let username_container = container(username_text)
-                        .width(Fill)
-                        .height(SERVER_LIST_BUTTON_HEIGHT)
-                        .padding(INPUT_PADDING)
-                        .align_y(alignment::Vertical::Center);
-
-                    // Build row with username and action buttons
-                    let mut user_row = Row::new()
-                        .spacing(NO_SPACING)
-                        .align_y(alignment::Vertical::Center)
-                        .push(username_container);
-
-                    // Edit button (icon style like bookmark edit)
-                    // Hidden for self (server rejects self-edit anyway)
-                    // Hidden for admin users when current user is not admin
-                    let can_edit_this_user =
-                        can_edit && !is_self && (conn.is_admin || !user.is_admin);
-                    if can_edit_this_user {
-                        let edit_btn = tooltip(
-                            transparent_edit_button(
-                                icon::edit(),
-                                Message::UserManagementEditClicked(user.id, user.username.clone()),
-                            ),
-                            container(shaped_text(t("tooltip-edit")).size(TOOLTIP_TEXT_SIZE))
-                                .padding(TOOLTIP_BACKGROUND_PADDING)
-                                .style(tooltip_container_style),
-                            tooltip::Position::Top,
-                        )
-                        .gap(TOOLTIP_GAP)
-                        .padding(TOOLTIP_PADDING);
-                        user_row = user_row.push(edit_btn);
-                    }
-
-                    // Delete button (danger style like disconnect)
-                    // Hidden for self (server rejects self-delete anyway)
-                    // Hidden for admin users when current user is not admin
-                    // Hidden for guest account (cannot be deleted)
-                    let is_guest = user.username.to_lowercase() == GUEST_USERNAME;
-                    let can_delete_this_user =
-                        can_delete && !is_self && !is_guest && (conn.is_admin || !user.is_admin);
-                    if can_delete_this_user {
-                        let delete_btn = tooltip(
-                            danger_delete_button(
-                                icon::trash(),
-                                Message::UserManagementDeleteClicked(
-                                    user.id,
-                                    user.username.clone(),
-                                ),
-                            ),
-                            container(shaped_text(t("tooltip-delete")).size(TOOLTIP_TEXT_SIZE))
-                                .padding(TOOLTIP_BACKGROUND_PADDING)
-                                .style(tooltip_container_style),
-                            tooltip::Position::Top,
-                        )
-                        .gap(TOOLTIP_GAP)
-                        .padding(TOOLTIP_PADDING);
-                        user_row = user_row.push(delete_btn);
-                    }
-
-                    // Alternating row backgrounds
-                    let is_even = index % 2 == 0;
-                    let row_container = container(user_row)
-                        .width(Fill)
-                        .style(alternating_row_style(is_even));
-
-                    user_rows = user_rows.push(row_container);
-                }
-
-                user_rows.width(Fill).into()
+                scrollable(lazy_user_table(deps)).height(Fill).into()
             }
         }
-    };
-
-    let scroll_content = scroll_content_inner;
-
-    // Create user button (icon style like add bookmark)
-    let create_btn: Option<Element<'a, Message>> = if can_create {
-        let add_icon = container(icon::user_plus().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
-            .align_x(alignment::Horizontal::Center)
-            .align_y(alignment::Vertical::Center);
-
-        Some(
-            tooltip(
-                button(add_icon)
-                    .on_press(Message::UserManagementShowCreate)
-                    .padding(ICON_BUTTON_PADDING)
-                    .style(transparent_icon_button_style),
-                container(shaped_text(t("tooltip-create-user")).size(TOOLTIP_TEXT_SIZE))
-                    .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(tooltip_container_style),
-                tooltip::Position::Top,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING)
-            .into(),
-        )
-    } else {
-        None
-    };
-
-    // Create button row (right-aligned, for tab content)
-    let button_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
-        row![Space::new().width(Fill), create_btn]
-            .align_y(Center)
-            .into()
-    } else {
-        Space::new().height(SPACER_SIZE_SMALL).into()
-    };
-
-    // Error message (shown below button row if present)
-    let error_element: Option<Element<'a, Message>> =
-        user_management.list_error.as_ref().map(|error| {
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .width(Fill)
-                .align_x(Center)
-                .style(error_text_style)
-                .into()
-        });
-
-    // Scrollable content with symmetric padding for scrollbar space
-    let scroll_inner = container(scroll_content).width(Fill);
-
-    let padded_scroll_content = row![
-        Space::new().width(SCROLLBAR_PADDING),
-        scroll_inner,
-        Space::new().width(SCROLLBAR_PADDING),
-    ];
-
-    // Return tab-suitable content (no title, no background — caller handles those)
-    column![
-        container(button_row).padding(iced::Padding {
-            top: 0.0,
-            right: SCROLLBAR_PADDING,
-            bottom: 0.0,
-            left: SCROLLBAR_PADDING,
-        }),
-        if let Some(err) = error_element {
-            Element::from(err)
-        } else {
-            Element::from(Space::new().height(SPACER_SIZE_SMALL))
-        },
-        container(scrollable(padded_scroll_content)).height(Fill),
-    ]
-    .spacing(ELEMENT_SPACING)
-    .height(Fill)
-    .into()
+    }
 }
 
 // ============================================================================
@@ -838,14 +935,6 @@ fn confirm_delete_modal<'a>(username: &'a str, error: Option<&'a String>) -> Ele
 }
 
 // ============================================================================
-// Helper for t_args
-// ============================================================================
-
-fn t_args(key: &str, args: &[(&str, &str)]) -> String {
-    crate::i18n::t_args(key, args)
-}
-
-// ============================================================================
 // Main View Function
 // ============================================================================
 
@@ -919,12 +1008,20 @@ fn tabbed_list_view<'a>(
     theme: &Theme,
 ) -> Element<'a, Message> {
     // Build tab content
-    let users_content = list_view(conn, user_management, theme, &conn.connection_info.username);
-    let groups_content = group_list_content(conn, user_management, theme);
+    let users_content = list_view(conn, user_management, theme);
+    let groups_content = group_list_content(conn, user_management);
 
-    // Tab labels
-    let users_label = t("tab-users");
-    let groups_label = t("tab-groups");
+    // Tab labels with counts
+    let users_count = match &user_management.all_users {
+        Some(Ok(users)) => users.len().to_string(),
+        _ => "…".to_string(),
+    };
+    let groups_count = match &user_management.available_groups {
+        Some(groups) => groups.len().to_string(),
+        _ => "…".to_string(),
+    };
+    let users_label = format!("{} ({})", t("tab-users"), users_count);
+    let groups_label = format!("{} ({})", t("tab-groups"), groups_count);
 
     // Create tabs widget
     let tabs = Tabs::new(Message::UserManagementTabSelected)
@@ -943,15 +1040,92 @@ fn tabbed_list_view<'a>(
         .text_size(TEXT_SIZE)
         .tab_label_padding(TAB_LABEL_PADDING);
 
-    // Title row
-    let title_row = shaped_text(t("title-user-management"))
-        .size(TITLE_SIZE)
-        .width(Fill)
-        .align_x(Center);
+    // Add user button (permission-gated)
+    let add_user_btn: Option<Element<'_, Message>> = if conn.has_permission(PERMISSION_USER_CREATE)
+    {
+        let add_icon = container(icon::user_plus().size(SIDEBAR_ACTION_ICON_SIZE))
+            .width(SIDEBAR_ACTION_ICON_SIZE)
+            .height(SIDEBAR_ACTION_ICON_SIZE)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center);
+
+        Some(
+            tooltip(
+                button(add_icon)
+                    .on_press(Message::UserManagementShowCreate)
+                    .padding(ICON_BUTTON_PADDING)
+                    .style(transparent_icon_button_style),
+                container(shaped_text(t("tooltip-create-user")).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Top,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into(),
+        )
+    } else {
+        None
+    };
+
+    // Add group button (permission-gated)
+    let add_group_btn: Option<Element<'_, Message>> =
+        if conn.has_permission(PERMISSION_GROUP_CREATE) {
+            let add_icon = container(icon::plus_circled().size(SIDEBAR_ACTION_ICON_SIZE))
+                .width(SIDEBAR_ACTION_ICON_SIZE)
+                .height(SIDEBAR_ACTION_ICON_SIZE)
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center);
+
+            Some(
+                tooltip(
+                    button(add_icon)
+                        .on_press(Message::GroupManagementShowCreate)
+                        .padding(ICON_BUTTON_PADDING)
+                        .style(transparent_icon_button_style),
+                    container(shaped_text(t("tooltip-create-group")).size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(tooltip_container_style),
+                    tooltip::Position::Top,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING)
+                .into(),
+            )
+        } else {
+            None
+        };
+
+    // Count visible buttons for balancing
+    let button_count = [add_user_btn.is_some(), add_group_btn.is_some()]
+        .iter()
+        .filter(|&&b| b)
+        .count();
+    let button_width =
+        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let total_button_width = button_width * button_count as f32;
+
+    // Title row: [scrollbar_pad][balancer]  Title  [+user][+group][scrollbar_pad]
+    let mut title_row = Row::new().align_y(Center);
+    title_row = title_row.push(Space::new().width(SCROLLBAR_PADDING));
+    title_row = title_row.push(Space::new().width(total_button_width));
+    title_row = title_row.push(
+        shaped_text(t("title-user-management"))
+            .size(TITLE_SIZE)
+            .width(Fill)
+            .align_x(Center),
+    );
+    if let Some(btn) = add_user_btn {
+        title_row = title_row.push(btn);
+    }
+    if let Some(btn) = add_group_btn {
+        title_row = title_row.push(btn);
+    }
+    title_row = title_row.push(Space::new().width(SCROLLBAR_PADDING));
 
     // Build the form with max_width constraint
     let form = column![
-        title_row,
+        Element::<'_, Message>::from(title_row),
         Space::new().height(SPACER_SIZE_LARGE - SPACER_SIZE_MEDIUM),
         container(tabs).height(Fill),
     ]

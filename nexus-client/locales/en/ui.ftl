@@ -235,7 +235,7 @@ tooltip-files-hide-hidden = Hide Hidden Files
 tooltip-files-new-directory = New Directory
 tooltip-files-paste = Paste
 tooltip-files-search = Search files
-tooltip-manage-users = Manage Users
+
 tooltip-connection-monitor = Connection Monitor
 tooltip-server-info = Server Info
 tooltip-about = About
@@ -287,7 +287,10 @@ tab-users = Users
 tab-groups = Groups
 col-nickname = Nickname
 col-username = Username
+col-group = Group
 col-ip-address = IP Address
+col-members = Members
+col-name = Name
 col-time = Time
 col-direction = Dir
 col-path = Path
@@ -313,10 +316,10 @@ user-management-loading = Loading users…
 user-management-no-users = No users found
 
 # Group Management
-group-management-name = Name
+group-form-name = Name
 group-management-no-groups = No groups configured
 group-management-loading = Loading groups…
-group-management-shared = Shared
+group-management-shared = Shared Group
 
 # Group dropdown
 user-management-group = Group

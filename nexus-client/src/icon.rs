@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// fdc09a5ea3af54e7769933bacb3b6c2c9f04ddc04e9d80dd7ee5e87fb640e099
+// 3965295b186950ea2cf50a88ac95c4dc462d7da2970f34a16c0dd9ea2c1e2949
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -168,6 +168,10 @@ pub fn play<'a>() -> Text<'a> {
 
 pub fn plus<'a>() -> Text<'a> {
     icon("\u{2B}")
+}
+
+pub fn plus_circled<'a>() -> Text<'a> {
+    icon("\u{2795}")
 }
 
 pub fn refresh<'a>() -> Text<'a> {

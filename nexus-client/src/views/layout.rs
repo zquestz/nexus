@@ -579,7 +579,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             .style(toolbar_button_style(
                                 active_panel == ActivePanel::UserManagement,
                             )),
-                        container(shaped_text(t("tooltip-manage-users")).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("title-user-management")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,
@@ -590,7 +590,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     tooltip(
                         button(icon::users().size(TOOLBAR_ICON_SIZE))
                             .style(disabled_icon_button_style),
-                        container(shaped_text(t("tooltip-manage-users")).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("title-user-management")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,

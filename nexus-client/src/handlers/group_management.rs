@@ -12,8 +12,8 @@ use nexus_common::validators::{self, GroupNameError};
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    GroupManagementMode, Message, PendingRequests, ResponseRouting, UserManagementMode,
-    UserManagementTab,
+    GroupManagementMode, GroupManagementSortColumn, Message, PendingRequests, ResponseRouting,
+    UserManagementMode, UserManagementTab,
 };
 
 impl NexusApp {
@@ -513,12 +513,10 @@ impl NexusApp {
             .map(|(name, _)| name.clone())
             .collect();
 
-        // Compare is_shared with original to determine if it changed.
-        // We need the original value from the edit state to compare.
-        let original_is_shared = match &conn.user_management.group_management.mode {
+        // Only send is_shared when it could have been toggled (member_count == 0).
+        // When member_count > 0, the UI disables the checkbox so the value is unchanged.
+        let requested_is_shared = match &conn.user_management.group_management.mode {
             GroupManagementMode::Edit { member_count, .. } => {
-                // is_shared can only be toggled when member_count == 0,
-                // so if member_count > 0, the value hasn't changed.
                 if *member_count > 0 {
                     None
                 } else {
@@ -531,7 +529,7 @@ impl NexusApp {
         let msg = ClientMessage::GroupUpdate {
             id,
             name: requested_name,
-            is_shared: original_is_shared,
+            is_shared: requested_is_shared,
             permissions: Some(requested_permissions),
         };
 
@@ -550,6 +548,28 @@ impl NexusApp {
             }
         }
 
+        Task::none()
+    }
+
+    /// Handle sort column click in the Groups table
+    ///
+    /// If clicking the same column, toggles direction. If clicking a different column,
+    /// sets it as the active column with ascending direction.
+    pub fn handle_group_management_sort_by(
+        &mut self,
+        column: GroupManagementSortColumn,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            if conn.user_management.group_management.sort_column == column {
+                conn.user_management.group_management.sort_ascending =
+                    !conn.user_management.group_management.sort_ascending;
+            } else {
+                conn.user_management.group_management.sort_column = column;
+                conn.user_management.group_management.sort_ascending = true;
+            }
+        }
         Task::none()
     }
 }

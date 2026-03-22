@@ -20,6 +20,16 @@ pub enum UserManagementTab {
     Groups,
 }
 
+/// Sort column for the Users table
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum UserManagementSortColumn {
+    /// Sort by username (default)
+    #[default]
+    Username,
+    /// Sort by group name
+    Group,
+}
+
 // =============================================================================
 // User Management State
 // =============================================================================
@@ -30,12 +40,13 @@ pub enum UserManagementTab {
 /// - `chat_receive`: Receive chat messages
 /// - `chat_send`: Send chat messages
 /// - `chat_topic`: View chat topic
+/// - `file_info`: View file information
 /// - `file_list`: Browse files and directories
 /// - `news_list`: View news posts
 /// - `user_info`: View user information
 /// - `user_list`: View connected users list
 /// - `user_message`: Send user messages
-const DEFAULT_USER_PERMISSIONS: &[&str] = &[
+pub(crate) const DEFAULT_USER_PERMISSIONS: &[&str] = &[
     "chat_receive",
     "chat_send",
     "chat_topic",
@@ -129,6 +140,10 @@ pub struct UserManagementState {
     pub list_error: Option<String>,
     /// Error message for delete confirmation dialog
     pub delete_error: Option<String>,
+    /// Current sort column for the Users table
+    pub sort_column: UserManagementSortColumn,
+    /// Whether the sort is ascending
+    pub sort_ascending: bool,
 }
 
 impl Default for UserManagementState {
@@ -154,6 +169,8 @@ impl Default for UserManagementState {
             edit_error: None,
             list_error: None,
             delete_error: None,
+            sort_column: UserManagementSortColumn::default(),
+            sort_ascending: true,
         }
     }
 }
@@ -181,6 +198,8 @@ impl std::fmt::Debug for UserManagementState {
             .field("edit_error", &self.edit_error)
             .field("list_error", &self.list_error)
             .field("delete_error", &self.delete_error)
+            .field("sort_column", &self.sort_column)
+            .field("sort_ascending", &self.sort_ascending)
             .finish()
     }
 }

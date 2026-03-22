@@ -10,6 +10,7 @@ use iced::widget::{Column, Space, button, column, pick_list, radio, row, text_in
 use iced::{Center, Element, Fill};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_KICK};
+use super::helpers::t_args;
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -156,14 +157,6 @@ pub fn disconnect_dialog_view<'a>(
         .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn t_args(key: &str, args: &[(&str, &str)]) -> String {
-    crate::i18n::t_args(key, args)
 }
 
 // ============================================================================

@@ -9,7 +9,10 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::FileSearchResult;
 use nexus_common::voice::VoiceQuality;
 
-use super::panel::{FileSortColumn, SettingsTab, TabId, UserManagementTab};
+use super::panel::{
+    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, UserManagementSortColumn,
+    UserManagementTab,
+};
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
 use crate::config::events::{EventType, NotificationContent, SoundChoice};
@@ -323,6 +326,8 @@ pub enum Message {
     UserManagementEditPermissionToggled(String, bool),
     /// User management: Update user button pressed (in edit form)
     UserManagementUpdatePressed,
+    /// User management: Sort column clicked
+    UserManagementSortBy(UserManagementSortColumn),
     /// User management: Tab selected (Users or Groups)
     UserManagementTabSelected(UserManagementTab),
     /// User management: Create form - group dropdown changed
@@ -355,6 +360,8 @@ pub enum Message {
     GroupManagementEditIsSharedToggled(bool),
     /// Group management: Edit form - permission checkbox toggled
     GroupManagementEditPermissionToggled(String, bool),
+    /// Group management: Sort column clicked
+    GroupManagementSortBy(GroupManagementSortColumn),
     /// Group management: Update button pressed (in edit form)
     GroupManagementUpdatePressed,
 

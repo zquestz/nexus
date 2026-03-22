@@ -2,6 +2,8 @@
 
 use nexus_common::ALL_PERMISSIONS;
 
+use super::users::DEFAULT_USER_PERMISSIONS;
+
 // =============================================================================
 // Group Management State
 // =============================================================================
@@ -38,6 +40,16 @@ pub enum GroupManagementMode {
     },
 }
 
+/// Sort column for the Groups table
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum GroupManagementSortColumn {
+    /// Sort by group name (default)
+    #[default]
+    Name,
+    /// Sort by member count
+    Members,
+}
+
 /// Group management state (per-connection, inside UserManagementState)
 #[derive(Debug, Clone)]
 pub struct GroupManagementState {
@@ -57,6 +69,10 @@ pub struct GroupManagementState {
     pub list_error: Option<String>,
     /// Error message for delete confirmation
     pub delete_error: Option<String>,
+    /// Current sort column for the groups table
+    pub sort_column: GroupManagementSortColumn,
+    /// Whether sorting is ascending (true) or descending (false)
+    pub sort_ascending: bool,
 }
 
 impl Default for GroupManagementState {
@@ -67,12 +83,14 @@ impl Default for GroupManagementState {
             is_shared: false,
             permissions: ALL_PERMISSIONS
                 .iter()
-                .map(|s| (s.to_string(), false))
+                .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
             create_error: None,
             edit_error: None,
             list_error: None,
             delete_error: None,
+            sort_column: GroupManagementSortColumn::default(),
+            sort_ascending: true,
         }
     }
 }
@@ -90,8 +108,8 @@ impl GroupManagementState {
     pub fn clear_create_form(&mut self) {
         self.name.clear();
         self.is_shared = false;
-        for (_perm_name, enabled) in &mut self.permissions {
-            *enabled = false;
+        for (perm_name, enabled) in &mut self.permissions {
+            *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
         self.create_error = None;
     }
