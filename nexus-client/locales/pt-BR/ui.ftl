@@ -464,6 +464,7 @@ msg-secret-set = Modo secreto habilitado por { $username }
 msg-secret-cleared = Modo secreto desabilitado por { $username }
 msg-server-info-updated = Configuração do servidor atualizada
 msg-topic-display = Tópico: { $topic }
+confirm-delete-bookmark = Excluir favorito "{ $name }"?
 confirm-delete-user = Tem certeza que deseja excluir o usuário '{ $username }'?
 confirm-delete-group = Excluir grupo "{ $name }"?
 confirm-delete-news = Tem certeza que deseja excluir esta publicação?

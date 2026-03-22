@@ -29,10 +29,10 @@ use crate::style::{
     SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SORT_ICON_LEFT_MARGIN,
     SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM,
     SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, content_background_style,
-    context_menu_container_style, error_text_style, menu_button_danger_style, menu_button_style,
-    muted_text_style, panel_title, separator_style, shaped_text, shaped_text_wrapped,
-    tooltip_container_style, transparent_icon_button_style,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, clickable_text_style,
+    content_background_style, context_menu_container_style, error_text_style,
+    menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
+    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::InputId;
 use crate::types::{
@@ -319,32 +319,31 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
             let can_delete_this =
                 can_delete && !is_self && !is_guest && (is_admin || !user.is_admin);
 
-            let text_widget = if user.is_admin {
-                shaped_text(user.username)
-                    .size(TEXT_SIZE)
-                    .wrapping(Wrapping::Glyph)
-                    .color(admin_color)
+            let username_color = if user.is_admin {
+                Some(admin_color)
             } else if user.is_shared {
-                shaped_text(user.username)
-                    .size(TEXT_SIZE)
-                    .wrapping(Wrapping::Glyph)
-                    .color(shared_color)
+                Some(shared_color)
             } else {
-                shaped_text(user.username)
-                    .size(TEXT_SIZE)
-                    .wrapping(Wrapping::Glyph)
+                None
             };
 
+            let text_widget = shaped_text(user.username)
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Glyph);
+
             let content: Element<'static, Message> = if can_edit_this {
+                // Color via button style so hover effect works
                 button(text_widget)
                     .padding(NO_SPACING)
                     .width(Fill)
-                    .style(transparent_icon_button_style)
+                    .style(clickable_text_style(username_color))
                     .on_press(Message::UserManagementEditClicked(
                         user_id,
                         username_for_menu.clone(),
                     ))
                     .into()
+            } else if let Some(color) = username_color {
+                text_widget.color(color).into()
             } else {
                 text_widget.into()
             };

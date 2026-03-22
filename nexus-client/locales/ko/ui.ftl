@@ -457,6 +457,7 @@ msg-secret-set = { $username }님이 비밀 모드를 활성화함
 msg-secret-cleared = { $username }님이 비밀 모드를 비활성화함
 msg-server-info-updated = 서버 설정이 업데이트되었습니다
 msg-topic-display = 주제: { $topic }
+confirm-delete-bookmark = 북마크 "{ $name }"을(를) 삭제하시겠습니까?
 confirm-delete-user = '{ $username }' 사용자를 삭제하시겠습니까?
 confirm-delete-group = 그룹 "{ $name }"을(를) 삭제하시겠습니까?
 confirm-delete-news = 이 게시물을 삭제하시겠습니까?

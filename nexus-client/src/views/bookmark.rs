@@ -6,7 +6,7 @@ use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
 
 use super::layout::scrollable_panel;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
@@ -24,6 +24,13 @@ use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 /// username/password/locale fields and auto-connect checkbox. Validates that required
 /// fields (name, address, port) are non-empty before enabling save button.
 pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
+    // Show confirmation modal when delete is pending
+    if state.confirm_delete
+        && let BookmarkEditMode::Edit(id) = state.mode
+    {
+        return confirm_delete_bookmark_modal(&state.bookmark.name, id);
+    }
+
     let dialog_title = match state.mode {
         BookmarkEditMode::Add => t("title-add-bookmark"),
         BookmarkEditMode::Edit(_) => t("title-edit-server"),
@@ -134,10 +141,10 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             ];
 
             // Add Delete button in middle when editing (not adding)
-            if let BookmarkEditMode::Edit(id) = state.mode {
+            if let BookmarkEditMode::Edit(_id) = state.mode {
                 buttons.push(
                     button(shaped_text(t("button-delete")).size(TEXT_SIZE))
-                        .on_press(Message::DeleteBookmark(id))
+                        .on_press(Message::DeleteBookmark)
                         .padding(BUTTON_PADDING)
                         .style(btn::danger)
                         .into(),
@@ -171,4 +178,41 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(content)
+}
+
+// ============================================================================
+// Delete Confirmation Modal
+// ============================================================================
+
+/// Confirmation modal for bookmark deletion
+fn confirm_delete_bookmark_modal(name: &str, id: uuid::Uuid) -> Element<'_, Message> {
+    let title = panel_title(t("title-confirm-delete"));
+
+    let message = shaped_text_wrapped(t_args("confirm-delete-bookmark", &[("name", name)]))
+        .size(TEXT_SIZE)
+        .width(Fill)
+        .align_x(Center);
+
+    let confirm_button = button(shaped_text(t("button-delete")).size(TEXT_SIZE))
+        .on_press(Message::ConfirmDeleteBookmark(id))
+        .padding(BUTTON_PADDING)
+        .style(btn::danger);
+
+    let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+        .on_press(Message::CancelDeleteBookmark)
+        .padding(BUTTON_PADDING)
+        .style(btn::secondary);
+
+    let form = column![
+        title,
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        message,
+        Space::new().height(SPACER_SIZE_MEDIUM),
+        row![Space::new().width(Fill), cancel_button, confirm_button].spacing(ELEMENT_SPACING),
+    ]
+    .spacing(ELEMENT_SPACING)
+    .padding(CONTENT_PADDING)
+    .max_width(CONTENT_MAX_WIDTH);
+
+    scrollable_panel(form)
 }

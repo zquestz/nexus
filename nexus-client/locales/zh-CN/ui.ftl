@@ -458,6 +458,7 @@ msg-secret-set = { $username } 启用了秘密模式
 msg-secret-cleared = { $username } 禁用了秘密模式
 msg-server-info-updated = 服务器配置已更新
 msg-topic-display = 主题：{ $topic }
+confirm-delete-bookmark = 删除书签"{ $name }"？
 confirm-delete-user = 确定要删除用户 '{ $username }' 吗？
 confirm-delete-group = 删除群组"{ $name }"？
 confirm-delete-news = 确定要删除此帖子吗？

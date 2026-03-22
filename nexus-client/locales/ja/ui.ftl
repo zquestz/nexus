@@ -457,6 +457,7 @@ msg-secret-set = { $username } によってシークレットモードが有効�
 msg-secret-cleared = { $username } によってシークレットモードが無効化されました
 msg-server-info-updated = サーバー設定が更新されました
 msg-topic-display = トピック: { $topic }
+confirm-delete-bookmark = ブックマーク「{ $name }」を削除しますか？
 confirm-delete-user = ユーザー '{ $username }' を削除してもよろしいですか？
 confirm-delete-group = グループ「{ $name }」を削除しますか？
 confirm-delete-news = この投稿を削除してもよろしいですか？

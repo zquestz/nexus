@@ -59,6 +59,8 @@ pub enum Message {
     CancelUserManagement,
     /// Bookmark editor: Cancel button pressed
     CancelBookmarkEdit,
+    /// Bookmark editor: Cancel delete confirmation
+    CancelDeleteBookmark,
     /// Broadcast panel: Cancel button pressed
     CancelBroadcast,
     /// Server info edit: Cancel button pressed (exit edit mode)
@@ -108,8 +110,10 @@ pub enum Message {
     ConnectToBookmark(Uuid),
     /// Network: Connection attempt completed
     ConnectionResult(Result<NetworkConnection, String>),
-    /// Delete a bookmark by ID
-    DeleteBookmark(Uuid),
+    /// Bookmark editor: Confirm delete after confirmation modal
+    ConfirmDeleteBookmark(Uuid),
+    /// Bookmark editor: Delete button pressed (shows confirmation modal)
+    DeleteBookmark,
     /// Disconnect from server by connection_id
     DisconnectFromServer(usize),
 

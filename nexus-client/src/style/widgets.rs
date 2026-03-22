@@ -141,17 +141,15 @@ pub fn transparent_icon_button_style(theme: &Theme, status: button::Status) -> b
     }
 }
 
-/// User list item button style - with admin color support
-pub fn user_list_item_button_style(
-    is_admin: bool,
-    admin_color: Color,
+/// Clickable text style - transparent background with optional custom text color and hover support
+pub fn clickable_text_style(
+    default_color: Option<Color>,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| button::Style {
         background: None,
         text_color: match status {
             button::Status::Hovered => theme.palette().primary,
-            _ if is_admin => admin_color,
-            _ => ui::text_color(theme),
+            _ => default_color.unwrap_or_else(|| ui::text_color(theme)),
         },
         ..Default::default()
     }

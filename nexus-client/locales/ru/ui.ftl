@@ -465,6 +465,7 @@ msg-secret-set = Секретный режим включён пользоват
 msg-secret-cleared = Секретный режим отключён пользователем { $username }
 msg-server-info-updated = Конфигурация сервера обновлена
 msg-topic-display = Тема: { $topic }
+confirm-delete-bookmark = Удалить закладку "{ $name }"?
 confirm-delete-user = Вы уверены, что хотите удалить пользователя '{ $username }'?
 confirm-delete-group = Удалить группу "{ $name }"?
 confirm-delete-news = Вы уверены, что хотите удалить эту публикацию?

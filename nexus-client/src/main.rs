@@ -608,7 +608,15 @@ impl NexusApp {
                 self.handle_bookmark_nickname_changed(nickname)
             }
             Message::CancelBookmarkEdit => self.handle_cancel_bookmark_edit(),
-            Message::DeleteBookmark(id) => self.handle_delete_bookmark(id),
+            Message::CancelDeleteBookmark => {
+                self.bookmark_edit.confirm_delete = false;
+                Task::none()
+            }
+            Message::ConfirmDeleteBookmark(id) => self.handle_delete_bookmark(id),
+            Message::DeleteBookmark => {
+                self.bookmark_edit.confirm_delete = true;
+                Task::none()
+            }
             Message::SaveBookmark => self.handle_save_bookmark(),
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(id) => self.handle_show_edit_bookmark(id),

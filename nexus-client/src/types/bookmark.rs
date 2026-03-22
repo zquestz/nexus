@@ -118,6 +118,8 @@ pub struct BookmarkEditState {
     pub error: Option<String>,
     /// Whether a save operation is in progress (double-submit prevention)
     pub is_submitting: bool,
+    /// Whether the delete confirmation modal is shown
+    pub confirm_delete: bool,
 }
 
 impl Default for BookmarkEditState {
@@ -127,6 +129,7 @@ impl Default for BookmarkEditState {
             bookmark: ServerBookmark::default(),
             error: None,
             is_submitting: false,
+            confirm_delete: false,
         }
     }
 }

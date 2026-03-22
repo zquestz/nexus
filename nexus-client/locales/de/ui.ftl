@@ -462,6 +462,7 @@ msg-secret-set = Geheimmodus aktiviert von { $username }
 msg-secret-cleared = Geheimmodus deaktiviert von { $username }
 msg-server-info-updated = Serverkonfiguration aktualisiert
 msg-topic-display = Thema: { $topic }
+confirm-delete-bookmark = Lesezeichen "{ $name }" löschen?
 confirm-delete-user = Möchten Sie den Benutzer '{ $username }' wirklich löschen?
 confirm-delete-group = Gruppe "{ $name }" löschen?
 confirm-delete-news = Möchten Sie diesen Beitrag wirklich löschen?

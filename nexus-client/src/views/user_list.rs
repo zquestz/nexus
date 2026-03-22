@@ -26,9 +26,9 @@ use crate::style::{
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
     USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
-    alternating_row_style, chat, disabled_icon_button_style, icon_button_with_hover_style,
-    muted_text_style, shaped_text, sidebar_panel_style, tooltip_container_style, ui,
-    user_list_item_button_style, user_toolbar_separator_style,
+    alternating_row_style, chat, clickable_text_style, disabled_icon_button_style,
+    icon_button_with_hover_style, muted_text_style, shaped_text, sidebar_panel_style,
+    tooltip_container_style, ui, user_toolbar_separator_style,
 };
 use crate::types::ActivePanel;
 use crate::types::{ChatTab, Message, ServerConnection, UserInfo};
@@ -369,17 +369,14 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                 };
 
             // Row with avatar and nickname (always populated; equals username for regular accounts)
-            // Apply appropriate color: admin = red, shared = muted, regular = default
-            let nickname_text = if user_is_admin {
-                shaped_text(nickname)
-                    .size(USER_LIST_TEXT_SIZE)
-                    .color(chat::admin(theme))
+            // Color is set via button style (not text) so hover effect works
+            let nickname_text = shaped_text(nickname).size(USER_LIST_TEXT_SIZE);
+            let nickname_color = if user_is_admin {
+                Some(chat::admin(theme))
             } else if user_is_shared {
-                shaped_text(nickname)
-                    .size(USER_LIST_TEXT_SIZE)
-                    .color(chat::shared(theme))
+                Some(chat::shared(theme))
             } else {
-                shaped_text(nickname).size(USER_LIST_TEXT_SIZE)
+                None
             };
 
             // Check if user is in voice for the current tab
@@ -447,10 +444,7 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                 .on_press(Message::UserListItemClicked(nickname_clone))
                 .width(Fill)
                 .padding(INPUT_PADDING)
-                .style(user_list_item_button_style(
-                    user_is_admin,
-                    chat::admin(theme),
-                ));
+                .style(clickable_text_style(nickname_color));
 
             // Tooltip: show nickname with away/status if set
             let tooltip_text = build_user_tooltip(nickname, user.is_away, user.status.as_deref());

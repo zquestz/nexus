@@ -464,6 +464,7 @@ msg-secret-set = Geheime modus ingeschakeld door { $username }
 msg-secret-cleared = Geheime modus uitgeschakeld door { $username }
 msg-server-info-updated = Serverconfiguratie bijgewerkt
 msg-topic-display = Onderwerp: { $topic }
+confirm-delete-bookmark = Bladwijzer "{ $name }" verwijderen?
 confirm-delete-user = Weet je zeker dat je gebruiker '{ $username }' wilt verwijderen?
 confirm-delete-group = Groep "{ $name }" verwijderen?
 confirm-delete-news = Weet je zeker dat je dit bericht wilt verwijderen?
