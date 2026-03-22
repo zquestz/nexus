@@ -52,7 +52,13 @@ impl NexusApp {
 
     /// Handle group dropdown selection in the user create form
     ///
-    /// Sets the `create_group_id` on the user management state.
+    /// When a group is selected or changed, applies the formula:
+    ///   new_enabled = in_new_group || (was_checked && !in_old_group)
+    ///
+    /// This ensures:
+    /// - New group permissions are checked (inherited)
+    /// - Old group's inherited permissions are cleared
+    /// - User overrides (permissions not from the old group) are preserved
     pub fn handle_user_management_group_selected(
         &mut self,
         group_id: Option<i64>,
@@ -60,6 +66,38 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
+            // Look up old group permissions before overwriting
+            let old_group_permissions: Vec<String> =
+                if let Some(old_gid) = conn.user_management.create_group_id {
+                    conn.user_management
+                        .available_groups
+                        .as_ref()
+                        .and_then(|groups| groups.iter().find(|g| g.id == old_gid))
+                        .map(|g| g.permissions.clone())
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+
+            // Look up new group permissions
+            let new_group_permissions: Vec<String> = if let Some(gid) = group_id {
+                conn.user_management
+                    .available_groups
+                    .as_ref()
+                    .and_then(|groups| groups.iter().find(|g| g.id == gid))
+                    .map(|g| g.permissions.clone())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            // Apply formula: new_enabled = in_new_group || (was_checked && !in_old_group)
+            for (perm_name, enabled) in &mut conn.user_management.permissions {
+                let in_new_group = new_group_permissions.contains(perm_name);
+                let in_old_group = old_group_permissions.contains(perm_name);
+                *enabled = in_new_group || (*enabled && !in_old_group);
+            }
+
             conn.user_management.create_group_id = group_id;
         }
         Task::none()
@@ -67,15 +105,13 @@ impl NexusApp {
 
     /// Handle group dropdown selection in the user edit form
     ///
-    /// When a new group is selected:
-    /// - Look up the group in `available_groups`
-    /// - Update `group_id`, `group_permissions`, clear `revoked_permissions`
-    /// - For each permission: if it's in the new group's permissions, set checked=true;
-    ///   otherwise keep the existing checked state (existing grants become overrides)
+    /// When a group is selected or changed, applies the formula:
+    ///   new_enabled = in_new_group || (was_checked && !in_old_group)
     ///
-    /// When None is selected (remove group):
-    /// - Set `group_id = None`, clear `group_permissions` and `revoked_permissions`
-    /// - Keep all permission checked states as-is (they become individual permissions)
+    /// This ensures:
+    /// - New group permissions are checked (inherited)
+    /// - Old group's inherited permissions are cleared
+    /// - User overrides (permissions not from the old group) are preserved
     pub fn handle_user_management_edit_group_selected(
         &mut self,
         group_id: Option<i64>,
@@ -87,7 +123,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Look up group permissions if a group was selected
+        // Look up new group permissions
         let new_group_permissions: Vec<String> = if let Some(gid) = group_id {
             conn.user_management
                 .available_groups
@@ -107,24 +143,19 @@ impl NexusApp {
             ..
         } = conn.user_management.mode
         {
+            // Capture old group permissions before modifying
+            let old_group_permissions = edit_group_perms.clone();
+
+            // Apply formula: new_enabled = in_new_group || (was_checked && !in_old_group)
+            for (perm_name, enabled) in edit_perms.iter_mut() {
+                let in_new_group = new_group_permissions.contains(perm_name);
+                let in_old_group = old_group_permissions.contains(perm_name);
+                *enabled = in_new_group || (*enabled && !in_old_group);
+            }
+
             *edit_group_id = group_id;
             *edit_revoked = Vec::new();
-
-            if group_id.is_some() {
-                // Group selected: mark group permissions as checked,
-                // keep existing state for non-group permissions
-                for (perm_name, enabled) in edit_perms.iter_mut() {
-                    if new_group_permissions.contains(perm_name) {
-                        *enabled = true;
-                    }
-                    // Otherwise keep existing checked state (becomes an override)
-                }
-                *edit_group_perms = new_group_permissions;
-            } else {
-                // Group removed: keep all permission states as-is,
-                // they become individual permissions
-                *edit_group_perms = Vec::new();
-            }
+            *edit_group_perms = new_group_permissions;
         }
 
         Task::none()
