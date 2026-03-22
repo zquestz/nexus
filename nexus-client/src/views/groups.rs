@@ -250,15 +250,28 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
             ))
             .into();
 
-        // Name column cell (with right-click context menu for actions)
+        // Name column cell (left-click to edit, right-click context menu)
         let name_column = table::column(name_header, move |group: GroupInfo| {
             let group_id = group.id;
+            let group_name_for_click = group.name.clone();
             let group_name_for_menu = group.name.clone();
 
-            let content: Element<'static, Message> = shaped_text(group.name)
+            let text_widget = shaped_text(group.name)
                 .size(TEXT_SIZE)
-                .wrapping(Wrapping::WordOrGlyph)
-                .into();
+                .wrapping(Wrapping::WordOrGlyph);
+
+            let content: Element<'static, Message> = if can_edit {
+                button(text_widget)
+                    .padding(NO_SPACING)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::GroupManagementEditClicked(
+                        group_id,
+                        group_name_for_click,
+                    ))
+                    .into()
+            } else {
+                text_widget.into()
+            };
 
             if can_edit || can_delete {
                 LazyContextMenu::new(content, move || {

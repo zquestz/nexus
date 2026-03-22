@@ -335,7 +335,19 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
                     .wrapping(Wrapping::Glyph)
             };
 
-            let content: Element<'static, Message> = text_widget.into();
+            let content: Element<'static, Message> = if can_edit_this {
+                button(text_widget)
+                    .padding(NO_SPACING)
+                    .width(Fill)
+                    .style(transparent_icon_button_style)
+                    .on_press(Message::UserManagementEditClicked(
+                        user_id,
+                        username_for_menu.clone(),
+                    ))
+                    .into()
+            } else {
+                text_widget.into()
+            };
 
             if can_edit_this || can_delete_this {
                 LazyContextMenu::new(content, move || {
