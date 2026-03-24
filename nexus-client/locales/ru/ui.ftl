@@ -896,7 +896,7 @@ settings-notifications-enabled = Включить уведомления
 
 # Sound settings
 settings-sound-enabled = Включить звук
-settings-sound-volume = Громкость
+settings-sound-volume = Громкость:
 settings-sound-play = Воспроизводить звук
 settings-sound-always-play = Всегда воспроизводить
 settings-sound-test = Тест
@@ -1092,21 +1092,21 @@ ptt-delay-300ms = 300мс
 ptt-delay-500ms = 500мс
 
 # Audio settings
-audio-output-device = Устройство вывода
-audio-input-device = Устройство ввода
+audio-output-device = Устройство вывода:
+audio-input-device = Устройство ввода:
 audio-refresh-devices = Обновить устройства
-audio-voice-quality = Качество голоса
-audio-ptt-key = Клавиша Push-to-Talk
-audio-ptt-mode = Режим PTT
-audio-ptt-release-delay = Задержка отпускания PTT
+audio-voice-quality = Качество голоса:
+audio-ptt-key = Клавиша Push-to-Talk:
+audio-ptt-mode = Режим PTT:
+audio-ptt-release-delay = Задержка отпускания PTT:
 audio-ptt-key-hint = Нажмите любую клавишу…
-audio-input-level = Уровень входа
+audio-input-level = Уровень входа:
 audio-system-default = Системное по умолчанию
 audio-test-mic = Тест микрофона
 audio-testing = Тестирование…
 audio-stop-test = Остановить тест
 # Audio processing
-audio-noise-suppression = Подавление шума
+audio-noise-suppression = Подавление шума:
 noise-level-off = Выключено
 noise-level-low = Низкий
 noise-level-moderate = Умеренный
@@ -1115,6 +1115,11 @@ noise-level-very-high = Очень высокий
 audio-echo-cancellation = Эхоподавление
 audio-agc = Автоматическая регулировка усиления
 audio-transient-suppression = Подавление шума клавиатуры
+audio-mic-boost = Усиление микрофона:
+mic-boost-off = Выкл
+mic-boost-6db = +6 дБ
+mic-boost-12db = +12 дБ
+mic-boost-18db = +18 дБ
 
 # =============================================================================
 # System Tray (Windows/Linux only)
@@ -1122,10 +1127,16 @@ audio-transient-suppression = Подавление шума клавиатуры
 
 # Settings
 settings-show-tray-icon = Показывать значок в трее
-settings-minimize-to-tray = Сворачивать в трей вместо закрытия
+settings-minimize-to-tray = Сворачивать в трей
 
 # Rendering
-settings-hardware-rendering = Аппаратный рендеринг (требуется перезапуск)
+settings-hardware-rendering = Аппаратный рендеринг
+settings-gpu-backend = Графический бэкенд:
+gpu-backend-auto = Авто
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Показать окно

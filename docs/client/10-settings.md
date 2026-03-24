@@ -75,6 +75,34 @@ Enable GPU-accelerated rendering instead of software rendering.
 
 Enable this if you experience sluggish UI performance. Disable it if you encounter graphical glitches or crashes.
 
+### GPU Backend
+
+Select which graphics API to use for hardware rendering.
+
+- Default: **Auto** (let the system choose the best backend)
+- **Requires an application restart** to take effect
+- Only has an effect when **Hardware rendering** is enabled
+
+Available backends vary by platform:
+
+| Backend    | Linux | Windows | macOS |
+| ---------- | ----- | ------- | ----- |
+| **Auto**   | ✅     | ✅       | ✅     |
+| **DX12**   | —     | ✅       | —     |
+| **Metal**  | —     | —       | ✅     |
+| **OpenGL** | ✅     | ✅       | ✅     |
+| **Vulkan** | ✅     | ✅       | ✅     |
+
+When set to **Auto**, the system picks the preferred backend:
+
+- **Linux**: Vulkan
+- **Windows**: DX12
+- **macOS**: Metal
+
+If you experience freezes or graphical glitches with hardware rendering enabled, try switching to a different backend before disabling hardware rendering entirely.
+
+You can also force a backend via the `WGPU_BACKEND` environment variable without changing the setting (e.g., `WGPU_BACKEND=gl nexus`).
+
 ### System Tray (Windows/Linux Only)
 
 These settings are only available on Windows and Linux. macOS uses dock badges instead (planned for a future release).
@@ -453,6 +481,15 @@ Check that you have write permission to the config directory:
 2. Check the address and port are correct
 3. If authentication is required, verify username/password
 4. Some servers may block proxy connections
+
+### Hardware rendering freezes or crashes
+
+1. Try switching the **GPU backend** in Settings > General (e.g., from Auto to OpenGL)
+2. You can test a backend without changing settings by launching with an environment variable:
+   - `WGPU_BACKEND=gl nexus` (OpenGL)
+   - `WGPU_BACKEND=vulkan nexus` (Vulkan)
+3. If no backend is stable, disable **Hardware rendering** — software rendering (tiny-skia) is reliable on all platforms
+4. Update your GPU drivers to the latest version
 
 ## Next Steps
 

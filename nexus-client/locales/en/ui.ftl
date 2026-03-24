@@ -877,7 +877,7 @@ settings-notifications-enabled = Enable Notifications
 
 # Sound settings
 settings-sound-enabled = Enable Sound
-settings-sound-volume = Volume
+settings-sound-volume = Volume:
 settings-sound-play = Play Sound
 settings-sound-always-play = Always Play
 settings-sound-test = Test
@@ -1105,22 +1105,22 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = Output Device
-audio-input-device = Input Device
+audio-output-device = Output Device:
+audio-input-device = Input Device:
 audio-refresh-devices = Refresh Devices
-audio-voice-quality = Voice Quality
-audio-ptt-key = Push-to-Talk Key
-audio-ptt-mode = PTT Mode
-audio-ptt-release-delay = PTT Release Delay
+audio-voice-quality = Voice Quality:
+audio-ptt-key = Push-to-Talk Key:
+audio-ptt-mode = PTT Mode:
+audio-ptt-release-delay = PTT Release Delay:
 audio-ptt-key-hint = Press any key…
-audio-input-level = Input Level
+audio-input-level = Input Level:
 audio-system-default = System Default
 audio-test-mic = Test Microphone
 audio-testing = Testing…
 audio-stop-test = Stop Test
 
 # Audio processing
-audio-noise-suppression = Noise Suppression
+audio-noise-suppression = Noise Suppression:
 noise-level-off = Off
 noise-level-low = Low
 noise-level-moderate = Moderate
@@ -1129,7 +1129,7 @@ noise-level-very-high = Very High
 audio-echo-cancellation = Echo Cancellation
 audio-agc = Automatic Gain Control
 audio-transient-suppression = Keyboard Noise Reduction
-audio-mic-boost = Microphone Boost
+audio-mic-boost = Microphone Boost:
 mic-boost-off = Off
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1140,11 +1140,17 @@ mic-boost-18db = +18 dB
 # =============================================================================
 
 # Settings
-settings-show-tray-icon = Show tray icon
-settings-minimize-to-tray = Minimize to tray instead of closing
+settings-show-tray-icon = Show Tray Icon
+settings-minimize-to-tray = Minimize to Tray
 
 # Rendering
-settings-hardware-rendering = Hardware rendering (requires restart)
+settings-hardware-rendering = Hardware Rendering
+settings-gpu-backend = GPU Backend:
+gpu-backend-auto = Auto
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Show Window

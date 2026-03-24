@@ -199,6 +199,9 @@ pub struct ViewConfig<'a> {
     // ==================== Rendering ====================
     /// Whether hardware (GPU) rendering is enabled
     pub hardware_rendering: bool,
+
+    /// GPU rendering backend selection
+    pub gpu_backend: crate::config::settings::GpuBackend,
 }
 
 /// Toolbar state configuration

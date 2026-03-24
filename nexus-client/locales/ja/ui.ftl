@@ -848,7 +848,7 @@ settings-notifications-enabled = 通知を有効にする
 
 # Sound settings
 settings-sound-enabled = サウンドを有効にする
-settings-sound-volume = 音量
+settings-sound-volume = 音量：
 settings-sound-play = サウンドを再生
 settings-sound-always-play = 常に再生
 settings-sound-test = テスト
@@ -1040,21 +1040,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = 出力デバイス
-audio-input-device = 入力デバイス
+audio-output-device = 出力デバイス：
+audio-input-device = 入力デバイス：
 audio-refresh-devices = デバイスを更新
-audio-voice-quality = 音声品質
-audio-ptt-key = プッシュトゥトークキー
-audio-ptt-mode = PTTモード
-audio-ptt-release-delay = PTTリリース遅延
+audio-voice-quality = 音声品質：
+audio-ptt-key = プッシュトゥトークキー：
+audio-ptt-mode = PTTモード：
+audio-ptt-release-delay = PTTリリース遅延：
 audio-ptt-key-hint = 任意のキーを押してください…
-audio-input-level = 入力レベル
+audio-input-level = 入力レベル：
 audio-system-default = システムデフォルト
 audio-test-mic = マイクをテスト
 audio-testing = テスト中…
 audio-stop-test = テストを停止
 # Audio processing
-audio-noise-suppression = ノイズ抑制
+audio-noise-suppression = ノイズ抑制：
 noise-level-off = オフ
 noise-level-low = 低
 noise-level-moderate = 中
@@ -1063,7 +1063,7 @@ noise-level-very-high = 最高
 audio-echo-cancellation = エコーキャンセル
 audio-agc = 自動ゲイン制御
 audio-transient-suppression = キーボードノイズ低減
-audio-mic-boost = マイクブースト
+audio-mic-boost = マイクブースト：
 mic-boost-off = オフ
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1075,10 +1075,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = トレイアイコンを表示
-settings-minimize-to-tray = 閉じる代わりにトレイに最小化
+settings-minimize-to-tray = トレイに最小化
 
 # Rendering
-settings-hardware-rendering = ハードウェアレンダリング（再起動が必要）
+settings-hardware-rendering = ハードウェアレンダリング
+settings-gpu-backend = GPUバックエンド：
+gpu-backend-auto = 自動
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = ウィンドウを表示

@@ -885,7 +885,7 @@ settings-notifications-enabled = Meldingen inschakelen
 
 # Sound settings
 settings-sound-enabled = Geluid inschakelen
-settings-sound-volume = Volume
+settings-sound-volume = Volume:
 settings-sound-play = Geluid afspelen
 settings-sound-always-play = Altijd afspelen
 settings-sound-test = Test
@@ -1080,21 +1080,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = Uitvoerapparaat
-audio-input-device = Invoerapparaat
+audio-output-device = Uitvoerapparaat:
+audio-input-device = Invoerapparaat:
 audio-refresh-devices = Apparaten vernieuwen
-audio-voice-quality = Spraakkwaliteit
-audio-ptt-key = Push-to-Talk-toets
-audio-ptt-mode = PTT-modus
-audio-ptt-release-delay = PTT-loslaat vertraging
+audio-voice-quality = Spraakkwaliteit:
+audio-ptt-key = Push-to-Talk-toets:
+audio-ptt-mode = PTT-modus:
+audio-ptt-release-delay = PTT-loslaat vertraging:
 audio-ptt-key-hint = Druk op een toets…
-audio-input-level = Ingangsniveau
+audio-input-level = Ingangsniveau:
 audio-system-default = Systeemstandaard
 audio-test-mic = Microfoon testen
 audio-testing = Testen…
 audio-stop-test = Test stoppen
 # Audio processing
-audio-noise-suppression = Ruisonderdrukking
+audio-noise-suppression = Ruisonderdrukking:
 noise-level-off = Uit
 noise-level-low = Laag
 noise-level-moderate = Gemiddeld
@@ -1103,7 +1103,7 @@ noise-level-very-high = Zeer hoog
 audio-echo-cancellation = Echo-onderdrukking
 audio-agc = Automatische versterkingsregeling
 audio-transient-suppression = Toetsenbordruisonderdrukking
-audio-mic-boost = Microfoonversterking
+audio-mic-boost = Microfoonversterking:
 mic-boost-off = Uit
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1115,10 +1115,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = Systeemvakpictogram weergeven
-settings-minimize-to-tray = Minimaliseren naar systeemvak in plaats van sluiten
+settings-minimize-to-tray = Minimaliseren naar systeemvak
 
 # Rendering
-settings-hardware-rendering = Hardwarerendering (herstart vereist)
+settings-hardware-rendering = Hardwarerendering
+settings-gpu-backend = GPU-backend:
+gpu-backend-auto = Automatisch
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Venster weergeven

@@ -223,6 +223,10 @@ pub fn main() -> iced::Result {
     // SAFETY: Called before any threads are spawned (single-threaded at this point)
     if !config.settings.hardware_rendering {
         unsafe { std::env::set_var("ICED_BACKEND", "tiny-skia") };
+    } else if let Some(backend) = config.settings.gpu_backend.env_value()
+        && config.settings.gpu_backend.is_available()
+    {
+        unsafe { std::env::set_var("WGPU_BACKEND", backend) };
     }
     let window_size = iced::Size::new(config.settings.window_width, config.settings.window_height);
     let window_position = match (config.settings.window_x, config.settings.window_y) {
@@ -1160,6 +1164,10 @@ impl NexusApp {
                 self.config.settings.hardware_rendering = enabled;
                 Task::none()
             }
+            Message::GpuBackendSelected(backend) => {
+                self.config.settings.gpu_backend = backend;
+                Task::none()
+            }
             #[cfg(not(target_os = "macos"))]
             Message::TrayServiceClosed => {
                 // Tray service died (Linux: D-Bus connection dropped; Windows: receiver disconnected)
@@ -1484,6 +1492,7 @@ impl NexusApp {
             minimize_to_tray: self.config.settings.minimize_to_tray,
             // Rendering
             hardware_rendering: self.config.settings.hardware_rendering,
+            gpu_backend: self.config.settings.gpu_backend,
         };
 
         let main_view = views::main_layout(config);

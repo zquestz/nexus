@@ -150,6 +150,8 @@ struct ServerContentContext<'a> {
     // ==================== Rendering ====================
     /// Whether hardware (GPU) rendering is enabled
     pub hardware_rendering: bool,
+    /// GPU rendering backend selection
+    pub gpu_backend: crate::config::settings::GpuBackend,
 }
 
 // ============================================================================
@@ -344,6 +346,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 show_tray_icon: config.show_tray_icon,
                 minimize_to_tray: config.minimize_to_tray,
                 hardware_rendering: config.hardware_rendering,
+                gpu_backend: config.gpu_backend,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -401,6 +404,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         show_tray_icon: config.show_tray_icon,
                         minimize_to_tray: config.minimize_to_tray,
                         hardware_rendering: config.hardware_rendering,
+                        gpu_backend: config.gpu_backend,
                     })
                 ]
                 .width(Fill)
@@ -900,6 +904,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 show_tray_icon: ctx.show_tray_icon,
                 minimize_to_tray: ctx.minimize_to_tray,
                 hardware_rendering: ctx.hardware_rendering,
+                gpu_backend: ctx.gpu_backend,
             })
         ]
         .width(Fill)

@@ -848,7 +848,7 @@ settings-notifications-enabled = 알림 활성화
 
 # Sound settings
 settings-sound-enabled = 사운드 활성화
-settings-sound-volume = 볼륨
+settings-sound-volume = 볼륨：
 settings-sound-play = 사운드 재생
 settings-sound-always-play = 항상 재생
 settings-sound-test = 테스트
@@ -1040,21 +1040,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = 출력 장치
-audio-input-device = 입력 장치
+audio-output-device = 출력 장치：
+audio-input-device = 입력 장치：
 audio-refresh-devices = 장치 새로 고침
-audio-voice-quality = 음성 품질
-audio-ptt-key = 푸시 투 토크 키
-audio-ptt-mode = PTT 모드
-audio-ptt-release-delay = PTT 릴리스 지연
+audio-voice-quality = 음성 품질：
+audio-ptt-key = 푸시 투 토크 키：
+audio-ptt-mode = PTT 모드：
+audio-ptt-release-delay = PTT 릴리스 지연：
 audio-ptt-key-hint = 아무 키나 누르세요…
-audio-input-level = 입력 레벨
+audio-input-level = 입력 레벨：
 audio-system-default = 시스템 기본값
 audio-test-mic = 마이크 테스트
 audio-testing = 테스트 중…
 audio-stop-test = 테스트 중지
 # Audio processing
-audio-noise-suppression = 노이즈 억제
+audio-noise-suppression = 노이즈 억제：
 noise-level-off = 끄기
 noise-level-low = 낮음
 noise-level-moderate = 보통
@@ -1063,7 +1063,7 @@ noise-level-very-high = 매우 높음
 audio-echo-cancellation = 에코 제거
 audio-agc = 자동 게인 제어
 audio-transient-suppression = 키보드 소음 감소
-audio-mic-boost = 마이크 부스트
+audio-mic-boost = 마이크 부스트：
 mic-boost-off = 끄기
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1075,10 +1075,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = 트레이 아이콘 표시
-settings-minimize-to-tray = 닫는 대신 트레이로 최소화
+settings-minimize-to-tray = 트레이로 최소화
 
 # Rendering
-settings-hardware-rendering = 하드웨어 렌더링 (재시작 필요)
+settings-hardware-rendering = 하드웨어 렌더링
+settings-gpu-backend = GPU 백엔드：
+gpu-backend-auto = 자동
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = 창 표시

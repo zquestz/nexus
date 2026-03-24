@@ -885,7 +885,7 @@ settings-notifications-enabled = Ativar notificações
 
 # Sound settings
 settings-sound-enabled = Ativar som
-settings-sound-volume = Volume
+settings-sound-volume = Volume:
 settings-sound-play = Reproduzir som
 settings-sound-always-play = Sempre reproduzir
 settings-sound-test = Testar
@@ -1080,21 +1080,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = Dispositivo de saída
-audio-input-device = Dispositivo de entrada
+audio-output-device = Dispositivo de saída:
+audio-input-device = Dispositivo de entrada:
 audio-refresh-devices = Atualizar dispositivos
-audio-voice-quality = Qualidade de voz
-audio-ptt-key = Tecla Push-to-Talk
-audio-ptt-mode = Modo PTT
-audio-ptt-release-delay = Atraso de liberação PTT
+audio-voice-quality = Qualidade de voz:
+audio-ptt-key = Tecla Push-to-Talk:
+audio-ptt-mode = Modo PTT:
+audio-ptt-release-delay = Atraso de liberação PTT:
 audio-ptt-key-hint = Pressione qualquer tecla…
-audio-input-level = Nível de entrada
+audio-input-level = Nível de entrada:
 audio-system-default = Padrão do sistema
 audio-test-mic = Testar microfone
 audio-testing = Testando…
 audio-stop-test = Parar teste
 # Audio processing
-audio-noise-suppression = Supressão de ruído
+audio-noise-suppression = Supressão de ruído:
 noise-level-off = Desativado
 noise-level-low = Baixo
 noise-level-moderate = Moderado
@@ -1103,7 +1103,7 @@ noise-level-very-high = Muito alto
 audio-echo-cancellation = Cancelamento de eco
 audio-agc = Controle automático de ganho
 audio-transient-suppression = Redução de ruído do teclado
-audio-mic-boost = Amplificação do microfone
+audio-mic-boost = Amplificação do microfone:
 mic-boost-off = Desativado
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1115,10 +1115,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = Mostrar ícone na bandeja
-settings-minimize-to-tray = Minimizar para a bandeja em vez de fechar
+settings-minimize-to-tray = Minimizar para a bandeja
 
 # Rendering
-settings-hardware-rendering = Renderização por hardware (requer reinício)
+settings-hardware-rendering = Renderização por hardware
+settings-gpu-backend = Backend de GPU:
+gpu-backend-auto = Automático
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Mostrar janela

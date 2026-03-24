@@ -887,7 +887,7 @@ settings-notifications-enabled = Benachrichtigungen aktivieren
 
 # Sound settings
 settings-sound-enabled = Ton aktivieren
-settings-sound-volume = Lautstärke
+settings-sound-volume = Lautstärke:
 settings-sound-play = Ton abspielen
 settings-sound-always-play = Immer abspielen
 settings-sound-test = Test
@@ -1082,21 +1082,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = Ausgabegerät
-audio-input-device = Eingabegerät
+audio-output-device = Ausgabegerät:
+audio-input-device = Eingabegerät:
 audio-refresh-devices = Geräte aktualisieren
-audio-voice-quality = Sprachqualität
-audio-ptt-key = Push-to-Talk-Taste
-audio-ptt-mode = PTT-Modus
-audio-ptt-release-delay = PTT-Verzögerung
+audio-voice-quality = Sprachqualität:
+audio-ptt-key = Push-to-Talk-Taste:
+audio-ptt-mode = PTT-Modus:
+audio-ptt-release-delay = PTT-Verzögerung:
 audio-ptt-key-hint = Drücke eine Taste…
-audio-input-level = Eingangspegel
+audio-input-level = Eingangspegel:
 audio-system-default = Systemstandard
 audio-test-mic = Mikrofon testen
 audio-testing = Testen…
 audio-stop-test = Test beenden
 # Audio processing
-audio-noise-suppression = Rauschunterdrückung
+audio-noise-suppression = Rauschunterdrückung:
 noise-level-off = Aus
 noise-level-low = Niedrig
 noise-level-moderate = Mittel
@@ -1105,7 +1105,7 @@ noise-level-very-high = Sehr hoch
 audio-echo-cancellation = Echounterdrückung
 audio-agc = Automatische Lautstärkeregelung
 audio-transient-suppression = Tastaturgeräuschunterdrückung
-audio-mic-boost = Mikrofonverstärkung
+audio-mic-boost = Mikrofonverstärkung:
 mic-boost-off = Aus
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1117,10 +1117,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = Taskleistensymbol anzeigen
-settings-minimize-to-tray = In Taskleiste minimieren statt schließen
+settings-minimize-to-tray = In Taskleiste minimieren
 
 # Rendering
-settings-hardware-rendering = Hardware-Rendering (Neustart erforderlich)
+settings-hardware-rendering = Hardware-Rendering
+settings-gpu-backend = GPU-Backend:
+gpu-backend-auto = Automatisch
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Fenster anzeigen

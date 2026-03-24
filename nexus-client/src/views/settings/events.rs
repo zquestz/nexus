@@ -116,23 +116,13 @@ pub(super) fn events_tab_content<'a>(
     items.push(show_notification_checkbox.into());
 
     // Content level picker and test button on same row
-    let content_enabled = notifications_enabled && event_config.show_notification;
     let content_levels: Vec<NotificationContent> = NotificationContent::all().to_vec();
-    let content_picker = if content_enabled {
-        pick_list(
-            content_levels,
-            Some(event_config.notification_content),
-            Message::EventNotificationContentSelected,
-        )
-        .text_size(TEXT_SIZE)
-    } else {
-        pick_list(
-            content_levels,
-            Some(event_config.notification_content),
-            |_| Message::EventNotificationContentSelected(event_config.notification_content),
-        )
-        .text_size(TEXT_SIZE)
-    };
+    let content_picker = pick_list(
+        content_levels,
+        Some(event_config.notification_content),
+        Message::EventNotificationContentSelected,
+    )
+    .text_size(TEXT_SIZE);
 
     let test_notification_button = if notifications_enabled && event_config.show_notification {
         button(shaped_text(t("settings-notification-test")).size(TEXT_SIZE))
@@ -165,21 +155,12 @@ pub(super) fn events_tab_content<'a>(
 
     // Toast content level picker and test button on same row
     let toast_content_levels: Vec<NotificationContent> = NotificationContent::all().to_vec();
-    let toast_content_picker = if event_config.show_toast {
-        pick_list(
-            toast_content_levels,
-            Some(event_config.toast_content),
-            Message::EventToastContentSelected,
-        )
-        .text_size(TEXT_SIZE)
-    } else {
-        pick_list(
-            toast_content_levels,
-            Some(event_config.toast_content),
-            |_| Message::EventToastContentSelected(event_config.toast_content),
-        )
-        .text_size(TEXT_SIZE)
-    };
+    let toast_content_picker = pick_list(
+        toast_content_levels,
+        Some(event_config.toast_content),
+        Message::EventToastContentSelected,
+    )
+    .text_size(TEXT_SIZE);
 
     let test_toast_button = if event_config.show_toast {
         button(shaped_text(t("settings-toast-test")).size(TEXT_SIZE))
@@ -203,10 +184,9 @@ pub(super) fn events_tab_content<'a>(
     items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
     // Play sound checkbox with Always Play inline
-    let play_sound_enabled = sound_enabled;
     let always_play_enabled = sound_enabled && event_config.play_sound;
 
-    let play_sound_checkbox = if play_sound_enabled {
+    let play_sound_checkbox = if sound_enabled {
         checkbox(event_config.play_sound)
             .label(t("settings-sound-play"))
             .on_toggle(Message::EventPlaySoundToggled)
@@ -241,21 +221,13 @@ pub(super) fn events_tab_content<'a>(
     items.push(sound_checkboxes_row.into());
 
     // Sound picker and test button on same row
-    let sound_picker_enabled = sound_enabled && event_config.play_sound;
     let sound_choices: Vec<SoundChoice> = SoundChoice::all().to_vec();
-    let sound_picker = if sound_picker_enabled {
-        pick_list(
-            sound_choices,
-            Some(event_config.sound.clone()),
-            Message::EventSoundSelected,
-        )
-        .text_size(TEXT_SIZE)
-    } else {
-        pick_list(sound_choices, Some(event_config.sound.clone()), |_| {
-            Message::EventSoundSelected(event_config.sound.clone())
-        })
-        .text_size(TEXT_SIZE)
-    };
+    let sound_picker = pick_list(
+        sound_choices,
+        Some(event_config.sound.clone()),
+        Message::EventSoundSelected,
+    )
+    .text_size(TEXT_SIZE);
 
     let test_sound_button = if sound_enabled && event_config.play_sound {
         button(shaped_text(t("settings-sound-test")).size(TEXT_SIZE))

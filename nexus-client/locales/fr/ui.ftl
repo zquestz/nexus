@@ -884,7 +884,7 @@ settings-notifications-enabled = Activer les notifications
 
 # Sound settings
 settings-sound-enabled = Activer le son
-settings-sound-volume = Volume
+settings-sound-volume = Volume :
 settings-sound-play = Jouer un son
 settings-sound-always-play = Toujours jouer
 settings-sound-test = Test
@@ -1079,21 +1079,21 @@ ptt-delay-300ms = 300ms
 ptt-delay-500ms = 500ms
 
 # Audio settings
-audio-output-device = Périphérique de sortie
-audio-input-device = Périphérique d'entrée
+audio-output-device = Périphérique de sortie :
+audio-input-device = Périphérique d'entrée :
 audio-refresh-devices = Actualiser les périphériques
-audio-voice-quality = Qualité vocale
-audio-ptt-key = Touche Push-to-Talk
-audio-ptt-mode = Mode PTT
-audio-ptt-release-delay = Délai de relâchement PTT
+audio-voice-quality = Qualité vocale :
+audio-ptt-key = Touche Push-to-Talk :
+audio-ptt-mode = Mode PTT :
+audio-ptt-release-delay = Délai de relâchement PTT :
 audio-ptt-key-hint = Appuyez sur une touche…
-audio-input-level = Niveau d'entrée
+audio-input-level = Niveau d'entrée :
 audio-system-default = Par défaut du système
 audio-test-mic = Tester le microphone
 audio-testing = Test en cours…
 audio-stop-test = Arrêter le test
 # Audio processing
-audio-noise-suppression = Suppression du bruit
+audio-noise-suppression = Suppression du bruit :
 noise-level-off = Désactivé
 noise-level-low = Faible
 noise-level-moderate = Modéré
@@ -1102,7 +1102,7 @@ noise-level-very-high = Très élevé
 audio-echo-cancellation = Annulation de l'écho
 audio-agc = Contrôle automatique du gain
 audio-transient-suppression = Réduction du bruit du clavier
-audio-mic-boost = Amplification du microphone
+audio-mic-boost = Amplification du microphone :
 mic-boost-off = Désactivé
 mic-boost-6db = +6 dB
 mic-boost-12db = +12 dB
@@ -1114,10 +1114,16 @@ mic-boost-18db = +18 dB
 
 # Settings
 settings-show-tray-icon = Afficher l'icône dans la barre des tâches
-settings-minimize-to-tray = Minimiser dans la barre des tâches au lieu de fermer
+settings-minimize-to-tray = Minimiser dans la barre des tâches
 
 # Rendering
-settings-hardware-rendering = Rendu matériel (nécessite un redémarrage)
+settings-hardware-rendering = Rendu matériel
+settings-gpu-backend = Backend GPU :
+gpu-backend-auto = Automatique
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = Afficher la fenêtre

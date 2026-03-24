@@ -139,6 +139,96 @@ impl std::fmt::Display for ChatHistoryRetention {
     }
 }
 
+/// GPU rendering backend selection (only used when hardware_rendering is enabled)
+///
+/// All variants exist on all platforms so that configs are portable across OSes.
+/// The `ALL` array is platform-gated to control which options appear in the picker.
+/// Use `is_available()` to check if a backend is valid on the current platform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum GpuBackend {
+    /// Let wgpu choose the best backend automatically
+    #[default]
+    Auto,
+    /// DirectX 12 backend (Windows only)
+    DX12,
+    /// Metal backend (macOS/iOS only)
+    Metal,
+    /// OpenGL/GLES backend
+    OpenGL,
+    /// Vulkan backend
+    Vulkan,
+}
+
+impl GpuBackend {
+    /// All backend options for the current platform (alphabetical after Auto)
+    #[cfg(target_os = "linux")]
+    pub const ALL: &'static [GpuBackend] =
+        &[GpuBackend::Auto, GpuBackend::OpenGL, GpuBackend::Vulkan];
+
+    #[cfg(target_os = "windows")]
+    pub const ALL: &'static [GpuBackend] = &[
+        GpuBackend::Auto,
+        GpuBackend::DX12,
+        GpuBackend::OpenGL,
+        GpuBackend::Vulkan,
+    ];
+
+    #[cfg(target_os = "macos")]
+    pub const ALL: &'static [GpuBackend] = &[
+        GpuBackend::Auto,
+        GpuBackend::Metal,
+        GpuBackend::OpenGL,
+        GpuBackend::Vulkan,
+    ];
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    pub const ALL: &'static [GpuBackend] =
+        &[GpuBackend::Auto, GpuBackend::OpenGL, GpuBackend::Vulkan];
+
+    /// Get the WGPU_BACKEND env var value for this backend, or None for Auto
+    pub fn env_value(&self) -> Option<&'static str> {
+        match self {
+            GpuBackend::Auto => None,
+            GpuBackend::DX12 => Some("dx12"),
+            GpuBackend::Metal => Some("metal"),
+            GpuBackend::OpenGL => Some("gl"),
+            GpuBackend::Vulkan => Some("vulkan"),
+        }
+    }
+
+    /// Whether this backend is available on the current platform
+    pub fn is_available(&self) -> bool {
+        match self {
+            GpuBackend::Auto | GpuBackend::OpenGL | GpuBackend::Vulkan => true,
+            #[cfg(target_os = "macos")]
+            GpuBackend::Metal => true,
+            #[cfg(not(target_os = "macos"))]
+            GpuBackend::Metal => false,
+            #[cfg(target_os = "windows")]
+            GpuBackend::DX12 => true,
+            #[cfg(not(target_os = "windows"))]
+            GpuBackend::DX12 => false,
+        }
+    }
+
+    /// Get the translation key for this backend option
+    pub fn translation_key(&self) -> &'static str {
+        match self {
+            GpuBackend::Auto => "gpu-backend-auto",
+            GpuBackend::DX12 => "gpu-backend-dx12",
+            GpuBackend::Metal => "gpu-backend-metal",
+            GpuBackend::OpenGL => "gpu-backend-opengl",
+            GpuBackend::Vulkan => "gpu-backend-vulkan",
+        }
+    }
+}
+
+impl std::fmt::Display for GpuBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", crate::i18n::t(self.translation_key()))
+    }
+}
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -306,6 +396,10 @@ pub struct Settings {
     /// Enable hardware (GPU) rendering instead of software rendering (requires restart)
     #[serde(default)]
     pub hardware_rendering: bool,
+
+    /// GPU rendering backend (requires restart, only used when hardware_rendering is enabled)
+    #[serde(default)]
+    pub gpu_backend: GpuBackend,
 }
 
 /// Default value for max_scrollback setting
@@ -346,6 +440,7 @@ impl Default for Settings {
             show_tray_icon: false,
             minimize_to_tray: false,
             hardware_rendering: false,
+            gpu_backend: GpuBackend::default(),
         }
     }
 }
@@ -376,6 +471,8 @@ impl std::fmt::Debug for Settings {
             .field("max_scrollback", &self.max_scrollback)
             .field("chat_history_retention", &self.chat_history_retention)
             .field("audio", &self.audio)
+            .field("hardware_rendering", &self.hardware_rendering)
+            .field("gpu_backend", &self.gpu_backend)
             .finish()
     }
 }

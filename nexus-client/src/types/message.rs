@@ -706,6 +706,8 @@ pub enum Message {
     MinimizeToTrayToggled(bool),
     /// Settings: Hardware rendering toggled (requires restart)
     HardwareRenderingToggled(bool),
+    /// Settings: GPU backend selected (requires restart)
+    GpuBackendSelected(crate::config::settings::GpuBackend),
     /// Tray: Service has closed (Linux: D-Bus connection dropped; Windows: tray receiver died)
     #[cfg(not(target_os = "macos"))]
     TrayServiceClosed,

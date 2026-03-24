@@ -151,6 +151,8 @@ pub struct SettingsViewData<'a> {
     pub minimize_to_tray: bool,
     /// Whether hardware (GPU) rendering is enabled
     pub hardware_rendering: bool,
+    /// GPU rendering backend selection
+    pub gpu_backend: crate::config::settings::GpuBackend,
 }
 
 // ============================================================================
@@ -189,15 +191,16 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
 
     // Build tab content
     let theme = data.current_theme.clone();
-    let general_content = general::general_tab_content(
-        data.current_theme,
+    let general_content = general::general_tab_content(general::GeneralTabData {
+        current_theme: data.current_theme,
         avatar,
         default_avatar,
-        data.nickname,
-        data.show_tray_icon,
-        data.minimize_to_tray,
-        data.hardware_rendering,
-    );
+        nickname: data.nickname,
+        show_tray_icon: data.show_tray_icon,
+        minimize_to_tray: data.minimize_to_tray,
+        hardware_rendering: data.hardware_rendering,
+        gpu_backend: data.gpu_backend,
+    });
     let chat_content = chat::chat_tab_content(
         data.chat_history_retention,
         data.max_scrollback,

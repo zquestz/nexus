@@ -848,7 +848,7 @@ settings-notifications-enabled = 啟用通知
 
 # Sound settings
 settings-sound-enabled = 啟用聲音
-settings-sound-volume = 音量
+settings-sound-volume = 音量：
 settings-sound-play = 播放聲音
 settings-sound-always-play = 始終播放
 settings-sound-test = 測試
@@ -1040,21 +1040,21 @@ ptt-delay-300ms = 300毫秒
 ptt-delay-500ms = 500毫秒
 
 # Audio settings
-audio-output-device = 輸出裝置
-audio-input-device = 輸入裝置
+audio-output-device = 輸出裝置：
+audio-input-device = 輸入裝置：
 audio-refresh-devices = 重新整理裝置
-audio-voice-quality = 語音品質
-audio-ptt-key = 按鍵說話鍵
-audio-ptt-mode = PTT 模式
-audio-ptt-release-delay = PTT 釋放延遲
+audio-voice-quality = 語音品質：
+audio-ptt-key = 按鍵說話鍵：
+audio-ptt-mode = PTT 模式：
+audio-ptt-release-delay = PTT 釋放延遲：
 audio-ptt-key-hint = 按任意鍵…
-audio-input-level = 輸入電平
+audio-input-level = 輸入電平：
 audio-system-default = 系統預設
 audio-test-mic = 測試麥克風
 audio-testing = 測試中…
 audio-stop-test = 停止測試
 # Audio processing
-audio-noise-suppression = 噪音抑制
+audio-noise-suppression = 噪音抑制：
 noise-level-off = 關閉
 noise-level-low = 低
 noise-level-moderate = 中等
@@ -1063,6 +1063,11 @@ noise-level-very-high = 最高
 audio-echo-cancellation = 回聲消除
 audio-agc = 自動增益控制
 audio-transient-suppression = 鍵盤噪音消除
+audio-mic-boost = 麥克風增益：
+mic-boost-off = 關閉
+mic-boost-6db = +6 dB
+mic-boost-12db = +12 dB
+mic-boost-18db = +18 dB
 
 # =============================================================================
 # System Tray (Windows/Linux only)
@@ -1070,10 +1075,16 @@ audio-transient-suppression = 鍵盤噪音消除
 
 # Settings
 settings-show-tray-icon = 顯示系統匣圖示
-settings-minimize-to-tray = 最小化至系統匣而非關閉
+settings-minimize-to-tray = 最小化至系統匣
 
 # Rendering
-settings-hardware-rendering = 硬體渲染（需要重新啟動）
+settings-hardware-rendering = 硬體渲染
+settings-gpu-backend = GPU後端：
+gpu-backend-auto = 自動
+gpu-backend-dx12 = DX12
+gpu-backend-metal = Metal
+gpu-backend-opengl = OpenGL
+gpu-backend-vulkan = Vulkan
 
 # Menu items
 tray-show-window = 顯示視窗

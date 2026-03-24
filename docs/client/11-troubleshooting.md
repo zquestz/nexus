@@ -85,6 +85,20 @@ This guide covers common issues and their solutions when using the Nexus BBS cli
 
 ## Display Issues
 
+### Hardware rendering freezes or crashes
+
+**Cause:** GPU driver incompatibility with the default rendering backend (typically Vulkan on Linux, DX12 on Windows).
+
+**Solutions:**
+
+1. Try switching the **GPU backend** in Settings > General (e.g., from Auto to OpenGL)
+2. You can test a backend without changing settings by launching with an environment variable:
+   - `WGPU_BACKEND=gl nexus` (OpenGL)
+   - `WGPU_BACKEND=vulkan nexus` (Vulkan)
+   - On Linux desktop files, use: `Exec=env WGPU_BACKEND=gl nexus %u`
+3. If no backend is stable, disable **Hardware rendering** in Settings > General — software rendering (tiny-skia) is reliable on all platforms
+4. Update your GPU drivers to the latest version
+
 ### Text appears garbled or boxes show instead of characters
 
 **Cause:** Missing font support for certain characters.
