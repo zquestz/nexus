@@ -17,7 +17,7 @@ use nexus_common::io::read_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::file_utils::is_cancelled;
-use super::{BUFFER_SIZE, TransferError};
+use super::{BUFFER_SIZE, IDLE_TIMEOUT, TransferError};
 
 /// Minimum interval between progress updates (250ms = 4 updates/second)
 const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
@@ -60,6 +60,44 @@ where
             Ok(Err(_)) => return Err(TransferError::ProtocolError),
             Err(_) => return Err(TransferError::ConnectionError),
         }
+    }
+}
+
+/// Read a FileData frame header, skipping any FileHashing keepalive frames
+///
+/// During download resume, the server may send `FileHashing` keepalives while it
+/// computes the partial SHA-256 hash to verify the client's resume position. This
+/// function loops over incoming frames, consuming and discarding any `FileHashing`
+/// keepalive payloads, and returns the first non-keepalive frame header.
+///
+/// Returns `TransferError::ProtocolError` if the returned frame is not `FileData`.
+pub async fn read_file_data_header_skipping_keepalives<R>(
+    reader: &mut FrameReader<R>,
+) -> Result<FrameHeader, TransferError>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    loop {
+        let header = match timeout(IDLE_TIMEOUT, reader.read_frame_header()).await {
+            Ok(Ok(Some(h))) => h,
+            Ok(Ok(None)) => return Err(TransferError::ConnectionError),
+            Ok(Err(_)) => return Err(TransferError::ProtocolError),
+            Err(_) => return Err(TransferError::ConnectionError),
+        };
+
+        if header.message_type == "FileHashing" {
+            // Server is hashing for resume verification — consume the payload and skip
+            if reader.read_payload_into_vec(&header).await.is_err() {
+                return Err(TransferError::ProtocolError);
+            }
+            continue;
+        }
+
+        if header.message_type != "FileData" {
+            return Err(TransferError::ProtocolError);
+        }
+
+        return Ok(header);
     }
 }
 

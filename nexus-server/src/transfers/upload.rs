@@ -641,6 +641,9 @@ where
 }
 
 /// Read FileData header and calculate the resume offset
+///
+/// Automatically skips `FileHashing` keepalive messages that the client sends
+/// while computing partial hashes for resume verification of large files.
 async fn read_file_data_header<R>(
     frame_reader: &mut FrameReader<R>,
     file_size: u64,
@@ -649,24 +652,39 @@ async fn read_file_data_header<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let header = match frame_reader.read_frame_header().await {
-        Ok(Some(h)) => h,
-        Ok(None) => {
-            return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+    // Loop to skip any FileHashing keepalive messages from client
+    let header = loop {
+        let h = match frame_reader.read_frame_header().await {
+            Ok(Some(h)) => h,
+            Ok(None) => {
+                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+            }
+            Err(_) => {
+                return Err(TransferError::protocol_error(err_upload_protocol_error(
+                    locale,
+                )));
+            }
+        };
+
+        if h.message_type == "FileHashing" {
+            // Keepalive message - client is hashing a large local file for resume
+            // Consume the payload and continue waiting for FileData
+            if frame_reader.read_payload_into_vec(&h).await.is_err() {
+                return Err(TransferError::protocol_error(err_upload_protocol_error(
+                    locale,
+                )));
+            }
+            continue;
         }
-        Err(_) => {
+
+        if h.message_type != "FileData" {
             return Err(TransferError::protocol_error(err_upload_protocol_error(
                 locale,
             )));
         }
-    };
 
-    // Verify it's a FileData message
-    if header.message_type != "FileData" {
-        return Err(TransferError::protocol_error(err_upload_protocol_error(
-            locale,
-        )));
-    }
+        break h;
+    };
 
     let incoming_bytes = header.payload_length;
 

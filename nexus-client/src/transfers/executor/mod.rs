@@ -33,7 +33,7 @@ use std::time::Duration;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
-use tokio::time::timeout;
+
 use uuid::Uuid;
 
 use nexus_common::framing::FrameError;
@@ -51,8 +51,8 @@ use file_utils::{
     open_file_for_upload, scan_local_files,
 };
 use streaming::{
-    StreamError, read_message_with_timeout, stream_file_to_server,
-    stream_payload_to_file_with_progress,
+    StreamError, read_file_data_header_skipping_keepalives, read_message_with_timeout,
+    stream_file_to_server, stream_payload_to_file_with_progress,
 };
 
 // =============================================================================
@@ -470,39 +470,14 @@ where
             // Calculate bytes to receive
             let bytes_to_receive = file_size - local_size;
 
-            // Read the FileData frame header first (without loading payload into memory)
-            let header = match timeout(IDLE_TIMEOUT, reader.read_frame_header()).await {
-                Ok(Ok(Some(h))) => h,
-                Ok(Ok(None)) => {
-                    return Err(send_failed_event(
-                        event_tx,
-                        id,
-                        TransferError::ConnectionError,
-                    ));
-                }
-                Ok(Err(_)) => {
-                    return Err(send_failed_event(
-                        event_tx,
-                        id,
-                        TransferError::ProtocolError,
-                    ));
-                }
-                Err(_) => {
-                    return Err(send_failed_event(
-                        event_tx,
-                        id,
-                        TransferError::ConnectionError,
-                    ));
+            // Read the FileData frame header, skipping any FileHashing keepalives
+            // The server may send FileHashing while computing partial hash for resume
+            let header = match read_file_data_header_skipping_keepalives(reader).await {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(send_failed_event(event_tx, id, e));
                 }
             };
-
-            if header.message_type != "FileData" {
-                return Err(send_failed_event(
-                    event_tx,
-                    id,
-                    TransferError::ProtocolError,
-                ));
-            }
 
             if header.payload_length != bytes_to_receive {
                 return Err(send_failed_event(
