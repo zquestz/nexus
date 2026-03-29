@@ -93,6 +93,14 @@ err-version-invalid-semver = La version doit être au format semver (MAJOR.MINOR
 # Erreurs de validation de mot de passe
 err-password-empty = Le mot de passe ne peut pas être vide
 err-password-too-long = Le mot de passe est trop long (maximum { $max_length } caractères)
+err-password-too-weak = Le mot de passe est trop faible, la force minimale est { $required ->
+    [0] Faible
+    [1] Passable
+    [2] Bon
+    [3] Fort
+    [4] Excellent
+   *[other] Inconnu
+}
 
 # Erreurs de validation de langue
 err-locale-too-long = La langue est trop longue (maximum { $max_length } caractères)

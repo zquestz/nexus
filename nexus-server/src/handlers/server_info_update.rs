@@ -31,6 +31,7 @@ pub struct ServerInfoUpdateRequest {
     pub file_reindex_interval: Option<u32>,
     pub persistent_channels: Option<String>,
     pub auto_join_channels: Option<String>,
+    pub min_password_strength: Option<u8>,
     pub session_id: Option<u32>,
 }
 
@@ -51,6 +52,7 @@ where
         file_reindex_interval,
         persistent_channels,
         auto_join_channels,
+        min_password_strength,
         session_id,
     } = request;
 
@@ -92,6 +94,7 @@ where
         && file_reindex_interval.is_none()
         && persistent_channels.is_none()
         && auto_join_channels.is_none()
+        && min_password_strength.is_none()
     {
         return ctx
             .send_error(
@@ -173,6 +176,17 @@ where
                 return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
             }
         }
+    }
+
+    // Validate min password strength if provided (must be 0-4)
+    if let Some(strength) = min_password_strength
+        && strength > validators::PasswordStrength::Excellent.score()
+    {
+        let response = ServerMessage::ServerInfoUpdateResponse {
+            success: false,
+            error: Some("Invalid password strength value".to_string()),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Apply updates to database
@@ -338,6 +352,17 @@ where
             .await;
     }
 
+    // Handle min_password_strength update
+    if let Some(score) = min_password_strength {
+        let strength = validators::PasswordStrength::from(score);
+        if let Err(e) = ctx.db.config.set_min_password_strength(strength).await {
+            eprintln!("Database error setting min_password_strength: {}", e);
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .await;
+        }
+    }
+
     // Fetch current server info for broadcast
     let current_name = ctx.db.config.get_server_name().await;
     let current_description = ctx.db.config.get_server_description().await;
@@ -347,6 +372,7 @@ where
     let current_file_reindex_interval = ctx.db.config.get_file_reindex_interval().await;
     let current_persistent_channels = ctx.db.config.get_persistent_channels().await;
     let current_auto_join_channels = ctx.db.config.get_auto_join_channels().await;
+    let current_min_password_strength = ctx.db.config.get_min_password_strength().await;
     let server_version = env!("CARGO_PKG_VERSION").to_string();
 
     // Broadcast ServerInfoUpdated to all connected users
@@ -363,6 +389,7 @@ where
             file_reindex_interval: current_file_reindex_interval,
             persistent_channels: current_persistent_channels,
             auto_join_channels: current_auto_join_channels,
+            min_password_strength: current_min_password_strength.score(),
         })
         .await;
 
@@ -394,6 +421,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: None,
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -426,6 +454,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -458,6 +487,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -490,6 +520,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -523,6 +554,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -556,6 +588,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -589,6 +622,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -625,6 +659,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -661,6 +696,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -697,6 +733,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -733,6 +770,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -784,6 +822,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -827,6 +866,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -872,6 +912,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -913,6 +954,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -948,6 +990,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -986,6 +1029,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1025,6 +1069,7 @@ mod tests {
             file_reindex_interval: Some(10),
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1062,6 +1107,7 @@ mod tests {
             file_reindex_interval: Some(0),
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1098,6 +1144,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#general #support".to_string()),
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1135,6 +1182,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#valid general".to_string()),
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1170,6 +1218,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: Some("#nexus #welcome".to_string()),
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1207,6 +1256,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: Some("#nexus #".to_string()),
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1244,6 +1294,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#my channel".to_string()),
             auto_join_channels: None,
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1281,6 +1332,7 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("".to_string()),
             auto_join_channels: Some("".to_string()),
+            min_password_strength: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1301,5 +1353,143 @@ mod tests {
         let saved_auto_join = test_ctx.db.config.get_auto_join_channels().await;
         assert_eq!(saved_persistent, "");
         assert_eq!(saved_auto_join, "");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_min_password_strength_success() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: Some(3),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify saved value
+        let saved = test_ctx.db.config.get_min_password_strength().await;
+        assert_eq!(saved, validators::PasswordStrength::Strong);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_min_password_strength_invalid() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: Some(5),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_min_password_strength_weak_allowed() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: Some(0),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        let saved = test_ctx.db.config.get_min_password_strength().await;
+        assert_eq!(saved, validators::PasswordStrength::Weak);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_min_password_strength_excellent() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: Some(4),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        let saved = test_ctx.db.config.get_min_password_strength().await;
+        assert_eq!(saved, validators::PasswordStrength::Excellent);
     }
 }

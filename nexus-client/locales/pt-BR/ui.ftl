@@ -522,6 +522,23 @@ err-passwords-do-not-match = As senhas não correspondem
 err-current-password-required = A senha atual é obrigatória
 err-new-password-required = A nova senha é obrigatória
 err-confirm-password-required = Por favor, confirme sua nova senha
+err-password-too-weak = A senha é muito fraca, a força mínima é { $required ->
+    [0] Fraca
+    [1] Razoável
+    [2] Boa
+    [3] Forte
+    [4] Excelente
+   *[other] Desconhecida
+}
+
+# Password Strength
+password-strength-weak = Fraca
+password-strength-fair = Razoável
+password-strength-good = Boa
+password-strength-strong = Forte
+password-strength-excellent = Excelente
+label-min-password-strength = Senha mín.:
+
 err-topic-too-long = O tópico é muito longo ({ $length } caracteres, máx { $max })
 err-avatar-unsupported-type = Tipo de arquivo não suportado. Use PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Ícone muito grande. O tamanho máximo é { $max_kb }KB.

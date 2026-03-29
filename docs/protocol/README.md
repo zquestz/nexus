@@ -153,7 +153,7 @@ The protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.6.1`
+Current version: `0.6.2`
 
 ## Documents
 
@@ -194,5 +194,6 @@ The `LoginResponse` includes a `ServerInfo` object with server metadata and conn
 | `file_reindex_interval`    | `u32?`    | File reindex interval in minutes, 0 = disabled (null if not set) |
 | `persistent_channels`      | `string?` | Space-separated persistent channels (admin only, null otherwise) |
 | `auto_join_channels`       | `string?` | Space-separated auto-join channels (admin only, null otherwise)  |
+| `min_password_strength`    | `u8?`    | Minimum password strength level 0-4 (null if not set)                |
 
 Clients should use `transfer_websocket_port` for file transfers when connected via WebSocket, and `transfer_port` when connected via TCP. The `persistent_channels` and `auto_join_channels` fields are only visible to admin users.

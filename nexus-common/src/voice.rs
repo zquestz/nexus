@@ -82,16 +82,6 @@ impl VoiceQuality {
         ]
     }
 
-    /// Get the translation key for this quality level
-    pub fn translation_key(self) -> &'static str {
-        match self {
-            VoiceQuality::Low => "voice-quality-low",
-            VoiceQuality::Medium => "voice-quality-medium",
-            VoiceQuality::High => "voice-quality-high",
-            VoiceQuality::VeryHigh => "voice-quality-very-high",
-        }
-    }
-
     /// Get a display string for this quality level
     fn display_string(self) -> &'static str {
         match self {

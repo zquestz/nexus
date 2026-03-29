@@ -94,6 +94,7 @@ pub(super) async fn setup_communication_channels(
         file_reindex_interval: login_info.file_reindex_interval,
         persistent_channels: login_info.persistent_channels,
         auto_join_channels: login_info.auto_join_channels,
+        min_password_strength: login_info.min_password_strength,
         locale: login_info.locale,
         connection_info,
     })

@@ -206,7 +206,8 @@ where
         }
     } else {
         // User doesn't exist - try to create as first user (atomic operation)
-        let hashed_password = match db::hash_password(&password, false) {
+        let min_strength = ctx.db.config.get_min_password_strength().await;
+        let hashed_password = match db::hash_password(&password, min_strength, false) {
             Ok(hash) => hash,
             Err(e) => {
                 eprintln!("Failed to hash password for {}: {}", username, e);
@@ -553,6 +554,9 @@ where
         None
     };
 
+    // Min password strength sent to all users (needed for client strength bar)
+    let min_password_strength = Some(ctx.db.config.get_min_password_strength().await.score());
+
     let server_info = Some(ServerInfo {
         name: Some(name),
         description: Some(description),
@@ -565,6 +569,7 @@ where
         file_reindex_interval,
         persistent_channels,
         auto_join_channels,
+        min_password_strength,
     });
 
     // Build channels field for LoginResponse (only if user joined any channels)

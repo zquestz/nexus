@@ -3,7 +3,7 @@
 use std::io;
 
 use nexus_common::validators::{
-    ChannelListError, ServerDescriptionError, ServerImageError, ServerNameError,
+    ChannelListError, PasswordStrength, ServerDescriptionError, ServerImageError, ServerNameError,
     validate_auto_join_channels, validate_persistent_channels, validate_server_description,
     validate_server_image, validate_server_name,
 };
@@ -12,9 +12,10 @@ use sqlx::SqlitePool;
 use crate::constants::{
     CONFIG_KEY_AUTO_JOIN_CHANNELS, CONFIG_KEY_FILE_REINDEX_INTERVAL,
     CONFIG_KEY_MAX_CONNECTIONS_PER_IP, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
-    CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
-    CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_FILE_REINDEX_INTERVAL,
-    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_PERSISTENT_CHANNELS,
+    CONFIG_KEY_MIN_PASSWORD_STRENGTH, CONFIG_KEY_PERSISTENT_CHANNELS,
+    CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE, CONFIG_KEY_SERVER_NAME,
+    DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
+    DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH, DEFAULT_PERSISTENT_CHANNELS,
     DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME,
     ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
     ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
@@ -330,6 +331,36 @@ impl ConfigDb {
         Ok(())
     }
 
+    /// Get the minimum password strength requirement
+    ///
+    /// Returns the configured value, or `Good` (the default) if not found or invalid.
+    pub async fn get_min_password_strength(&self) -> PasswordStrength {
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
+            .fetch_one(&self.pool)
+            .await
+            .ok()
+            .and_then(|v| v.parse::<u8>().ok())
+            .map(PasswordStrength::from)
+            .unwrap_or(DEFAULT_MIN_PASSWORD_STRENGTH)
+    }
+
+    /// Set the minimum password strength requirement
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
+        sqlx::query(sql::SQL_SET_CONFIG)
+            .bind(value.score().to_string())
+            .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Parse channel list string into a list of channel names
     ///
     /// Handles space-separated values.
@@ -614,5 +645,57 @@ mod tests {
         config_db.set_file_reindex_interval(0).await.unwrap();
         let interval = config_db.get_file_reindex_interval().await;
         assert_eq!(interval, 0);
+    }
+
+    // =========================================================================
+    // Min Password Strength Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_min_password_strength_default() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        let strength = config_db.get_min_password_strength().await;
+        assert_eq!(strength, validators::PasswordStrength::Good);
+    }
+
+    #[tokio::test]
+    async fn test_set_min_password_strength() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        config_db
+            .set_min_password_strength(validators::PasswordStrength::Strong)
+            .await
+            .unwrap();
+        let strength = config_db.get_min_password_strength().await;
+        assert_eq!(strength, validators::PasswordStrength::Strong);
+    }
+
+    #[tokio::test]
+    async fn test_set_min_password_strength_weak() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        config_db
+            .set_min_password_strength(validators::PasswordStrength::Weak)
+            .await
+            .unwrap();
+        let strength = config_db.get_min_password_strength().await;
+        assert_eq!(strength, validators::PasswordStrength::Weak);
+    }
+
+    #[tokio::test]
+    async fn test_set_min_password_strength_excellent() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        config_db
+            .set_min_password_strength(validators::PasswordStrength::Excellent)
+            .await
+            .unwrap();
+        let strength = config_db.get_min_password_strength().await;
+        assert_eq!(strength, validators::PasswordStrength::Excellent);
     }
 }

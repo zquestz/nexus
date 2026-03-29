@@ -20,6 +20,7 @@ use super::constants::{
 use super::groups::{group_form_view, group_list_content};
 use super::helpers::t_args;
 use super::layout::scrollable_panel;
+use super::password_strength::password_strength_bar;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
@@ -555,6 +556,7 @@ fn list_view<'a>(
 fn create_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
+    theme: &Theme,
 ) -> Element<'a, Message> {
     let title = panel_title(t("title-user-create"));
 
@@ -693,9 +695,20 @@ fn create_view<'a>(
         items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
+    items.push(username_input.into());
+    items.push(password_input.into());
+
+    // Password strength bar (only shown when password is non-empty)
+    if let Some(bar) = password_strength_bar(
+        &user_management.password,
+        &user_management.username,
+        conn.min_password_strength,
+        theme,
+    ) {
+        items.push(bar);
+    }
+
     items.extend([
-        username_input.into(),
-        password_input.into(),
         admin_checkbox.into(),
         shared_checkbox.into(),
         enabled_checkbox.into(),
@@ -722,7 +735,7 @@ fn create_view<'a>(
 // ============================================================================
 
 /// Build the edit user form
-fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
+fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message> {
     let title = panel_title(t("title-update-user"));
 
     let subtitle = shaped_text_wrapped(ctx.original_username)
@@ -867,9 +880,20 @@ fn edit_view<'a>(ctx: EditUserContext<'a>) -> Element<'a, Message> {
         items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
     }
 
+    items.push(username_input.into());
+    items.push(password_input.into());
+
+    // Password strength bar (only shown when password is non-empty)
+    if let Some(bar) = password_strength_bar(
+        ctx.new_password,
+        ctx.new_username,
+        ctx.conn.min_password_strength,
+        theme,
+    ) {
+        items.push(bar);
+    }
+
     items.extend([
-        username_input.into(),
-        password_input.into(),
         admin_checkbox.into(),
         shared_checkbox.into(),
         enabled_checkbox.into(),
@@ -975,7 +999,7 @@ pub fn users_view<'a>(
     // If user management is in a form mode, show the form full-panel (no tabs)
     if user_management.mode != UserManagementMode::List {
         return match &user_management.mode {
-            UserManagementMode::Create => create_view(conn, user_management),
+            UserManagementMode::Create => create_view(conn, user_management, theme),
             UserManagementMode::Edit {
                 id: _,
                 original_username,
@@ -988,20 +1012,23 @@ pub fn users_view<'a>(
                 group_id,
                 group_permissions,
                 ..
-            } => edit_view(EditUserContext {
-                conn,
-                user_management,
-                original_username,
-                new_username,
-                new_password,
-                is_admin: *is_admin,
-                is_shared: *is_shared,
-                is_guest: original_username.to_lowercase() == GUEST_USERNAME,
-                enabled: *enabled,
-                permissions,
-                group_id: *group_id,
-                group_permissions,
-            }),
+            } => edit_view(
+                EditUserContext {
+                    conn,
+                    user_management,
+                    original_username,
+                    new_username,
+                    new_password,
+                    is_admin: *is_admin,
+                    is_shared: *is_shared,
+                    is_guest: original_username.to_lowercase() == GUEST_USERNAME,
+                    enabled: *enabled,
+                    permissions,
+                    group_id: *group_id,
+                    group_permissions,
+                },
+                theme,
+            ),
             UserManagementMode::ConfirmDelete { id: _, username } => confirm_delete_modal(
                 username,
                 user_management.delete_error.as_ref(),

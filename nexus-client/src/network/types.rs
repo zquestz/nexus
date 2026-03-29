@@ -10,6 +10,7 @@ use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::protocol::ChannelJoinInfo;
+use nexus_common::validators::PasswordStrength;
 
 /// SOCKS5 proxy configuration for connections
 #[derive(Clone)]
@@ -173,6 +174,8 @@ pub struct LoginInfo {
     pub persistent_channels: Option<String>,
     /// Auto-join channels (space-separated, admin only)
     pub auto_join_channels: Option<String>,
+    /// Minimum password strength requirement from the server
+    pub min_password_strength: PasswordStrength,
     pub transfer_port: u16,
     pub locale: String,
 }

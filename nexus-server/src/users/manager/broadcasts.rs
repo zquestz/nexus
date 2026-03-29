@@ -18,6 +18,7 @@ pub struct ServerInfoBroadcastParams {
     pub file_reindex_interval: u32,
     pub persistent_channels: String,
     pub auto_join_channels: String,
+    pub min_password_strength: u8,
 }
 
 impl UserManager {
@@ -247,6 +248,9 @@ impl UserManager {
                     None
                 };
 
+                // Min password strength sent to all users (needed for client strength bar)
+                let min_password_strength = Some(params.min_password_strength);
+
                 let server_info = ServerInfo {
                     name: Some(params.name.clone()),
                     description: Some(params.description.clone()),
@@ -259,6 +263,7 @@ impl UserManager {
                     file_reindex_interval,
                     persistent_channels,
                     auto_join_channels,
+                    min_password_strength,
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

@@ -921,6 +921,7 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 persistent_channels: ctx.conn.persistent_channels.clone(),
                 auto_join_channels: ctx.conn.auto_join_channels.clone(),
                 cached_server_image: ctx.conn.cached_server_image.as_ref(),
+                min_password_strength: Some(ctx.conn.min_password_strength),
                 is_admin: ctx.conn.is_admin,
                 active_tab: ctx.conn.server_info_tab,
                 edit_state: ctx.conn.server_info_edit.as_ref(),
@@ -936,7 +937,12 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             .into(),
         ActivePanel::ChangePassword => stack![
             chat,
-            password_change_view(ctx.conn.password_change_state.as_ref())
+            password_change_view(
+                ctx.conn.password_change_state.as_ref(),
+                &ctx.conn.connection_info.username,
+                ctx.conn.min_password_strength,
+                &ctx.theme,
+            )
         ]
         .width(Fill)
         .height(Fill)

@@ -30,7 +30,13 @@ impl LocalizedVoiceQuality {
 
 impl std::fmt::Display for LocalizedVoiceQuality {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", crate::i18n::t(self.0.translation_key()))
+        let key = match self.0 {
+            VoiceQuality::Low => "voice-quality-low",
+            VoiceQuality::Medium => "voice-quality-medium",
+            VoiceQuality::High => "voice-quality-high",
+            VoiceQuality::VeryHigh => "voice-quality-very-high",
+        };
+        write!(f, "{}", crate::i18n::t(key))
     }
 }
 

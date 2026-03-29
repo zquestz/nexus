@@ -75,7 +75,12 @@ pub fn get_cached_password_hash(password: &str) -> String {
     }
 
     // Cache miss - compute hash and store it
-    let hash = crate::db::hash_password(password, true).expect("Password hashing failed in test");
+    let hash = crate::db::hash_password(
+        password,
+        nexus_common::validators::PasswordStrength::Weak,
+        true,
+    )
+    .expect("Password hashing failed in test");
 
     {
         let mut cache = PASSWORD_HASH_CACHE.write().unwrap();
@@ -151,6 +156,12 @@ pub async fn create_test_context() -> TestContext {
         .set_auto_join_channels("")
         .await
         .expect("Failed to clear auto_join_channels");
+
+    // Set min password strength to Weak so tests with simple passwords pass
+    db.config
+        .set_min_password_strength(nexus_common::validators::PasswordStrength::Weak)
+        .await
+        .expect("Failed to set min_password_strength");
     let user_manager = UserManager::new();
 
     // Create TCP listener on localhost

@@ -2,6 +2,7 @@
 
 use crate::image::{CachedImage, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
+use nexus_common::validators::PasswordStrength;
 
 // =============================================================================
 // Server Info Display Tab
@@ -30,7 +31,7 @@ pub enum ServerInfoTab {
 
 /// Parameters for creating or comparing ServerInfoEditState.
 /// Used to reduce the number of function arguments.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ServerInfoParams<'a> {
     pub name: Option<&'a str>,
     pub description: Option<&'a str>,
@@ -40,6 +41,23 @@ pub struct ServerInfoParams<'a> {
     pub file_reindex_interval: Option<u32>,
     pub persistent_channels: Option<&'a str>,
     pub auto_join_channels: Option<&'a str>,
+    pub min_password_strength: PasswordStrength,
+}
+
+impl Default for ServerInfoParams<'_> {
+    fn default() -> Self {
+        Self {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: "",
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Good,
+        }
+    }
 }
 
 /// Server info edit panel state
@@ -64,6 +82,8 @@ pub struct ServerInfoEditState {
     pub persistent_channels: String,
     /// Auto-join channels (space-separated)
     pub auto_join_channels: String,
+    /// Minimum password strength required for user accounts
+    pub min_password_strength: PasswordStrength,
     /// Cached image for preview (decoded from image field)
     pub cached_image: Option<CachedImage>,
     /// Error message to display
@@ -84,6 +104,7 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("file_reindex_interval", &self.file_reindex_interval)
             .field("persistent_channels", &self.persistent_channels)
             .field("auto_join_channels", &self.auto_join_channels)
+            .field("min_password_strength", &self.min_password_strength)
             .field(
                 "cached_image",
                 &self.cached_image.as_ref().map(|_| "<cached>"),
@@ -113,6 +134,7 @@ impl ServerInfoEditState {
             file_reindex_interval: params.file_reindex_interval,
             persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
             auto_join_channels: params.auto_join_channels.unwrap_or("").to_string(),
+            min_password_strength: params.min_password_strength,
             cached_image,
             error: None,
             is_submitting: false,
@@ -131,6 +153,8 @@ impl ServerInfoEditState {
             self.persistent_channels != original.persistent_channels.unwrap_or("");
         let auto_join_changed =
             self.auto_join_channels != original.auto_join_channels.unwrap_or("");
+        let min_password_strength_changed =
+            self.min_password_strength != original.min_password_strength;
         name_changed
             || desc_changed
             || max_conn_changed
@@ -139,5 +163,6 @@ impl ServerInfoEditState {
             || reindex_changed
             || persistent_changed
             || auto_join_changed
+            || min_password_strength_changed
     }
 }

@@ -13,11 +13,11 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_group_not_found,
     err_group_shared_mismatch, err_not_logged_in, err_password_empty, err_password_too_long,
-    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
-    err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
-    err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
-    err_username_too_long,
+    err_password_too_weak, err_permission_denied, err_permissions_contains_newlines,
+    err_permissions_empty_permission, err_permissions_invalid_characters,
+    err_permissions_permission_too_long, err_permissions_too_many, err_shared_cannot_be_admin,
+    err_shared_invalid_permissions, err_unknown_permission, err_username_empty,
+    err_username_exists, err_username_invalid, err_username_too_long,
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password};
 
@@ -109,11 +109,15 @@ where
     }
 
     // Validate password
-    if let Err(e) = validators::validate_password(&password) {
+    let min_strength = ctx.db.config.get_min_password_strength().await;
+    if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
         let error_msg = match e {
             PasswordError::Empty => err_password_empty(ctx.locale),
             PasswordError::TooLong => {
                 err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+            }
+            PasswordError::TooWeak { required, .. } => {
+                err_password_too_weak(ctx.locale, required.score())
             }
         };
         let response = ServerMessage::UserCreateResponse {
@@ -369,7 +373,7 @@ where
     }
 
     // Hash password for secure storage
-    let password_hash = match hash_password(&password, false) {
+    let password_hash = match hash_password(&password, min_strength, false) {
         Ok(hash) => hash,
         Err(e) => {
             eprintln!("Password hashing error: {}", e);

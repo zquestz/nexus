@@ -516,6 +516,23 @@ err-passwords-do-not-match = 密码不匹配
 err-current-password-required = 当前密码是必填的
 err-new-password-required = 新密码是必填的
 err-confirm-password-required = 请确认您的新密码
+err-password-too-weak = 密码强度不足，最低要求为 { $required ->
+    [0] 弱
+    [1] 一般
+    [2] 良好
+    [3] 强
+    [4] 非常强
+   *[other] 未知
+}
+
+# Password Strength
+password-strength-weak = 弱
+password-strength-fair = 一般
+password-strength-good = 良好
+password-strength-strong = 强
+password-strength-excellent = 非常强
+label-min-password-strength = 最低密码:
+
 err-topic-too-long = 主题过长（{ $length }个字符，最多{ $max }个字符）
 err-avatar-unsupported-type = 不支持的文件类型。请使用PNG、WebP、JPEG或SVG。
 err-avatar-too-large = 头像过大。最大大小为{ $max_kb }KB。

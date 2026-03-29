@@ -523,6 +523,23 @@ err-passwords-do-not-match = Las contraseñas no coinciden
 err-current-password-required = La contraseña actual es requerida
 err-new-password-required = La nueva contraseña es requerida
 err-confirm-password-required = Por favor confirme su nueva contraseña
+err-password-too-weak = La contraseña es demasiado débil, la fuerza mínima es { $required ->
+    [0] Débil
+    [1] Regular
+    [2] Buena
+    [3] Fuerte
+    [4] Excelente
+   *[other] Desconocida
+}
+
+# Password Strength
+password-strength-weak = Débil
+password-strength-fair = Regular
+password-strength-good = Buena
+password-strength-strong = Fuerte
+password-strength-excellent = Excelente
+label-min-password-strength = Contraseña mín.:
+
 err-topic-too-long = El tema es demasiado largo ({ $length } caracteres, máx { $max })
 err-avatar-unsupported-type = Tipo de archivo no soportado. Use PNG, WebP, JPEG o SVG.
 err-avatar-too-large = Icono demasiado grande. El tamaño máximo es { $max_kb }KB.

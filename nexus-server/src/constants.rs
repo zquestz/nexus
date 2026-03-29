@@ -3,6 +3,8 @@
 //! NOTE: User-facing error messages (sent to clients) are in handlers/errors.rs
 //! This file contains only server operator messages (logs, startup, diagnostics)
 
+use nexus_common::validators::PasswordStrength;
+
 // =============================================================================
 // File Area Configuration
 // =============================================================================
@@ -146,6 +148,12 @@ pub const CONFIG_KEY_AUTO_JOIN_CHANNELS: &str = "auto_join_channels";
 /// Default auto-join channels (joined on login)
 /// By default, same as persistent channels for backward compatibility
 pub const DEFAULT_AUTO_JOIN_CHANNELS: &str = nexus_common::validators::DEFAULT_CHANNEL;
+
+/// Config key for minimum password strength
+pub const CONFIG_KEY_MIN_PASSWORD_STRENGTH: &str = "min_password_strength";
+
+/// Default minimum password strength
+pub const DEFAULT_MIN_PASSWORD_STRENGTH: PasswordStrength = PasswordStrength::Good;
 
 /// Maximum number of concurrent database connections in the pool
 ///

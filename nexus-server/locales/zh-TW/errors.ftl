@@ -93,6 +93,14 @@ err-version-invalid-semver = 版本必須採用 semver 格式（MAJOR.MINOR.PATC
 # 密碼驗證錯誤
 err-password-empty = 密碼不能為空
 err-password-too-long = 密碼太長（最多{ $max_length }個字元）
+err-password-too-weak = 密碼強度不足，最低要求為 { $required ->
+    [0] 弱
+    [1] 一般
+    [2] 良好
+    [3] 強
+    [4] 非常強
+   *[other] 未知
+}
 
 # 地區設定驗證錯誤
 err-locale-too-long = 地區設定太長（最多{ $max_length }個字元）

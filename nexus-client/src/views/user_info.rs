@@ -6,9 +6,11 @@ use iced::widget::button as btn;
 use iced::widget::{Id, Space, button, column, row, text_input};
 use iced::{Center, Color, Element, Fill, Theme};
 use nexus_common::protocol::UserInfoDetailed;
+use nexus_common::validators::PasswordStrength;
 
 use super::constants::PERMISSION_USER_EDIT;
 use super::layout::scrollable_panel;
+use super::password_strength::password_strength_bar;
 use crate::avatar::{avatar_cache_key, generate_identicon};
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::format_duration;
@@ -115,7 +117,12 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
 }
 
 /// Render the password change panel
-pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, Message> {
+pub fn password_change_view<'a>(
+    state: Option<&'a PasswordChangeState>,
+    username: &str,
+    min_strength: PasswordStrength,
+    theme: &Theme,
+) -> Element<'a, Message> {
     let Some(state) = state else {
         // Should not happen, but handle gracefully
         return column![].into();
@@ -160,6 +167,11 @@ pub fn password_change_view(state: Option<&PasswordChangeState>) -> Element<'_, 
         .padding(BUTTON_PADDING)
         .width(Fill);
     content = content.push(new_password_input);
+
+    // Password strength bar (only shown when new password is non-empty)
+    if let Some(bar) = password_strength_bar(&state.new_password, username, min_strength, theme) {
+        content = content.push(bar);
+    }
 
     // Confirm password field
     let confirm_password_input =

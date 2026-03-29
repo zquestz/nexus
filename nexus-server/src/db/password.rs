@@ -15,7 +15,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use nexus_common::validators;
+use nexus_common::validators::{self, PasswordStrength};
 use std::fmt;
 
 /// Prefix for fast (test-only) password hashes
@@ -52,6 +52,7 @@ impl From<argon2::password_hash::Error> for PasswordError {
 /// # Arguments
 ///
 /// * `password` - The plaintext password to hash
+/// * `min_strength` - Minimum password strength for defense-in-depth validation
 /// * `fast` - If true, use simple hash for testing. If false, use Argon2id.
 ///
 /// # Returns
@@ -66,10 +67,14 @@ impl From<argon2::password_hash::Error> for PasswordError {
 /// **Never use `fast: true` in production** - it stores the password in plaintext.
 /// Fast mode exists solely to speed up test suites by avoiding Argon2's
 /// intentionally slow computation.
-pub fn hash_password(password: &str, fast: bool) -> Result<String, PasswordError> {
+pub fn hash_password(
+    password: &str,
+    min_strength: PasswordStrength,
+    fast: bool,
+) -> Result<String, PasswordError> {
     // Validate password format (failsafe - handlers should also validate)
     // If this fails, it indicates a bug or attack bypassing handler validation
-    if let Err(e) = validators::validate_password(password) {
+    if let Err(e) = validators::validate_password(password, min_strength, &[]) {
         return Err(PasswordError::Validation(e));
     }
 
@@ -134,7 +139,7 @@ mod tests {
     #[test]
     fn test_argon2_hash_and_verify() {
         let password = "my_secure_password";
-        let hash = hash_password(password, false).unwrap();
+        let hash = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
         // Should be Argon2 format
         assert!(hash.starts_with("$argon2"), "Should be Argon2 hash");
@@ -149,8 +154,8 @@ mod tests {
     #[test]
     fn test_argon2_different_salts() {
         let password = "same_password";
-        let hash1 = hash_password(password, false).unwrap();
-        let hash2 = hash_password(password, false).unwrap();
+        let hash1 = hash_password(password, PasswordStrength::Weak, false).unwrap();
+        let hash2 = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
         // Hashes should be different due to different salts
         assert_ne!(hash1, hash2);
@@ -163,7 +168,7 @@ mod tests {
     #[test]
     fn test_fast_hash_and_verify() {
         let password = "test_password";
-        let hash = hash_password(password, true).unwrap();
+        let hash = hash_password(password, PasswordStrength::Weak, true).unwrap();
 
         // Should be fast format
         assert_eq!(hash, "$FAST$test_password");
@@ -178,8 +183,8 @@ mod tests {
     #[test]
     fn test_fast_hash_same_every_time() {
         let password = "same_password";
-        let hash1 = hash_password(password, true).unwrap();
-        let hash2 = hash_password(password, true).unwrap();
+        let hash1 = hash_password(password, PasswordStrength::Weak, true).unwrap();
+        let hash2 = hash_password(password, PasswordStrength::Weak, true).unwrap();
 
         // Fast hashes should be identical (no salt)
         assert_eq!(hash1, hash2);
@@ -190,8 +195,8 @@ mod tests {
         let password = "test_password";
 
         // Create both hash types
-        let fast_hash = hash_password(password, true).unwrap();
-        let argon2_hash = hash_password(password, false).unwrap();
+        let fast_hash = hash_password(password, PasswordStrength::Weak, true).unwrap();
+        let argon2_hash = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
         // verify_password should handle both
         assert!(verify_password(password, &fast_hash).unwrap());

@@ -77,7 +77,12 @@ fn translate_with_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String
     if let Some(msg) = bundle.get_message(key).and_then(|m| m.value()) {
         let mut fluent_args = FluentArgs::new();
         for (k, v) in args {
-            fluent_args.set(*k, FluentValue::from(*v));
+            // Try parsing as integer first so Fluent numeric selectors match correctly
+            if let Ok(n) = v.parse::<i64>() {
+                fluent_args.set(*k, FluentValue::from(n));
+            } else {
+                fluent_args.set(*k, FluentValue::from(*v));
+            }
         }
 
         let mut errors = vec![];

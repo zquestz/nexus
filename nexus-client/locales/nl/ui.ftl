@@ -522,6 +522,23 @@ err-passwords-do-not-match = Wachtwoorden komen niet overeen
 err-current-password-required = Huidig wachtwoord is vereist
 err-new-password-required = Nieuw wachtwoord is vereist
 err-confirm-password-required = Bevestig uw nieuwe wachtwoord
+err-password-too-weak = Wachtwoord is te zwak, minimale sterkte is { $required ->
+    [0] Zwak
+    [1] Matig
+    [2] Goed
+    [3] Sterk
+    [4] Uitstekend
+   *[other] Onbekend
+}
+
+# Password Strength
+password-strength-weak = Zwak
+password-strength-fair = Matig
+password-strength-good = Goed
+password-strength-strong = Sterk
+password-strength-excellent = Uitstekend
+label-min-password-strength = Min. wachtwoord:
+
 err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
 err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP, JPEG of SVG.
 err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.

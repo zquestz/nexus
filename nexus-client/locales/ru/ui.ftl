@@ -523,6 +523,23 @@ err-passwords-do-not-match = Пароли не совпадают
 err-current-password-required = Текущий пароль обязателен
 err-new-password-required = Новый пароль обязателен
 err-confirm-password-required = Пожалуйста, подтвердите новый пароль
+err-password-too-weak = Пароль слишком слабый, минимальная надёжность — { $required ->
+    [0] Слабый
+    [1] Средний
+    [2] Хороший
+    [3] Сильный
+    [4] Отличный
+   *[other] Неизвестно
+}
+
+# Password Strength
+password-strength-weak = Слабый
+password-strength-fair = Средний
+password-strength-good = Хороший
+password-strength-strong = Сильный
+password-strength-excellent = Отличный
+label-min-password-strength = Мин. пароль:
+
 err-topic-too-long = Тема слишком длинная ({ $length } символов, макс { $max })
 err-avatar-unsupported-type = Неподдерживаемый тип файла. Используйте PNG, WebP, JPEG или SVG.
 err-avatar-too-large = Аватар слишком большой. Максимальный размер { $max_kb }КБ.

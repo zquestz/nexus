@@ -461,6 +461,15 @@ pub fn err_password_too_long(locale: &str, max_length: usize) -> String {
     )
 }
 
+/// Get translated "password too weak" error
+pub fn err_password_too_weak(locale: &str, required: u8) -> String {
+    t_args(
+        locale,
+        "err-password-too-weak",
+        &[("required", &required.to_string())],
+    )
+}
+
 /// Get translated "permission denied" error
 pub fn err_permission_denied(locale: &str) -> String {
     t(locale, "err-permission-denied")

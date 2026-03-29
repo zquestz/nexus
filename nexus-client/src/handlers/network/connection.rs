@@ -448,6 +448,7 @@ impl NexusApp {
             file_reindex_interval: conn.file_reindex_interval,
             persistent_channels: conn.persistent_channels,
             auto_join_channels: conn.auto_join_channels,
+            min_password_strength: conn.min_password_strength,
             tx: conn.tx,
             shutdown_handle,
         });

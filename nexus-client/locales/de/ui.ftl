@@ -520,6 +520,23 @@ err-passwords-do-not-match = Passwörter stimmen nicht überein
 err-current-password-required = Aktuelles Passwort ist erforderlich
 err-new-password-required = Neues Passwort ist erforderlich
 err-confirm-password-required = Bitte bestätigen Sie Ihr neues Passwort
+err-password-too-weak = Passwort ist zu schwach, Mindeststärke ist { $required ->
+    [0] Schwach
+    [1] Mäßig
+    [2] Gut
+    [3] Stark
+    [4] Ausgezeichnet
+   *[other] Unbekannt
+}
+
+# Password Strength
+password-strength-weak = Schwach
+password-strength-fair = Mäßig
+password-strength-good = Gut
+password-strength-strong = Stark
+password-strength-excellent = Ausgezeichnet
+label-min-password-strength = Min. Passwort:
+
 err-topic-too-long = Thema ist zu lang ({ $length } Zeichen, max { $max })
 err-avatar-unsupported-type = Nicht unterstützter Dateityp. Verwenden Sie PNG, WebP, JPEG oder SVG.
 err-avatar-too-large = Avatar zu groß. Maximale Größe ist { $max_kb }KB.

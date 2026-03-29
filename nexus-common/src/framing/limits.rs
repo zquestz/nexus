@@ -24,6 +24,9 @@ use crate::validators::{
 /// Maximum JSON representation of a boolean: `false` (5 chars)
 const MAX_JSON_BOOL: usize = 5;
 
+/// Maximum JSON representation of a u8: `255` (3 digits)
+const MAX_JSON_U8: usize = 3;
+
 /// Maximum JSON representation of a u16: `65535` (5 digits)
 const MAX_JSON_U16: usize = 5;
 
@@ -79,6 +82,13 @@ const fn json_bool_field(key: &str) -> usize {
     // ,"key":false
     // 1 + 1 + len + 1 + 1 + 5 = len + 9
     key.len() + 4 + MAX_JSON_BOOL
+}
+
+/// Size of a u8 field: `,"key":255`
+const fn json_u8_field(key: &str) -> usize {
+    // ,"key":255
+    // 1 + 1 + len + 1 + 1 + 3 = len + 7
+    key.len() + 4 + MAX_JSON_U8
 }
 
 /// Size of a u16 field: `,"key":65535`
@@ -822,9 +832,10 @@ const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVE
     + json_u32_field("file_reindex_interval")
     + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
     + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
+    + json_u8_field("min_password_strength")
     + 2; // {} braces
 
-/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512..."}
+/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","min_password_strength":u8}
 const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
     + json_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
@@ -833,7 +844,8 @@ const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
     + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
     + json_u32_field("file_reindex_interval")
     + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
-    + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH);
+    + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
+    + json_u8_field("min_password_strength");
 
 /// ServerInfoUpdated: {"type":"ServerInfoUpdated","server_info":{...}}
 const SERVER_INFO_UPDATED_SIZE: usize = json_type_base("ServerInfoUpdated")
@@ -2282,6 +2294,7 @@ mod tests {
             file_reindex_interval: Some(u32::MAX),
             persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+            min_password_strength: Some(u8::MAX),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("ServerInfoUpdate") as usize,
@@ -2601,6 +2614,7 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                min_password_strength: Some(u8::MAX),
             }),
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
             channels: Some(channels),
@@ -2637,6 +2651,7 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                min_password_strength: Some(u8::MAX),
             }),
             group_id: Some(i64::MAX),
             group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
@@ -2666,6 +2681,7 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                min_password_strength: Some(u8::MAX),
             },
         };
         assert!(

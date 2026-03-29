@@ -368,12 +368,18 @@ impl NexusApp {
 
         // Validate password
         let password = &conn.user_management.password;
-        if let Err(e) = validators::validate_password(password) {
+        let min_strength = conn.min_password_strength;
+        if let Err(e) = validators::validate_password(password, min_strength, &[username.as_str()])
+        {
             conn.user_management.create_error = Some(match e {
                 PasswordError::Empty => t("err-password-required"),
                 PasswordError::TooLong => t_args(
                     "err-password-too-long",
                     &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                ),
+                PasswordError::TooWeak { required, .. } => t_args(
+                    "err-password-too-weak",
+                    &[("required", &required.score().to_string())],
                 ),
             });
             return Task::none();
@@ -472,13 +478,21 @@ impl NexusApp {
                     ),
                     UsernameError::InvalidCharacters => t("err-username-invalid"),
                 });
-            } else if let Err(e) = validators::validate_password(&conn.user_management.password) {
+            } else if let Err(e) = validators::validate_password(
+                &conn.user_management.password,
+                conn.min_password_strength,
+                &[conn.user_management.username.as_str()],
+            ) {
                 // Username is valid, check password
                 conn.user_management.create_error = Some(match e {
                     PasswordError::Empty => t("err-password-required"),
                     PasswordError::TooLong => t_args(
                         "err-password-too-long",
                         &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                    PasswordError::TooWeak { required, .. } => t_args(
+                        "err-password-too-weak",
+                        &[("required", &required.score().to_string())],
                     ),
                 });
             }
@@ -641,14 +655,20 @@ impl NexusApp {
         }
 
         // Validate new password if provided
+        let min_strength = conn.min_password_strength;
         if !new_password.is_empty()
-            && let Err(e) = validators::validate_password(&new_password)
+            && let Err(e) =
+                validators::validate_password(&new_password, min_strength, &[new_username.as_str()])
         {
             conn.user_management.edit_error = Some(match e {
                 PasswordError::Empty => t("err-password-required"),
                 PasswordError::TooLong => t_args(
                     "err-password-too-long",
                     &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                ),
+                PasswordError::TooWeak { required, .. } => t_args(
+                    "err-password-too-weak",
+                    &[("required", &required.score().to_string())],
                 ),
             });
             return Task::none();
@@ -1142,13 +1162,21 @@ impl NexusApp {
         }
 
         // Validate: new password format
-        if let Err(e) = validators::validate_password(&new_password) {
+        let min_strength = conn.min_password_strength;
+        let username = &conn.connection_info.username;
+        if let Err(e) =
+            validators::validate_password(&new_password, min_strength, &[username.as_str()])
+        {
             if let Some(state) = &mut conn.password_change_state {
                 state.error = Some(match e {
                     PasswordError::Empty => t("err-new-password-required"),
                     PasswordError::TooLong => t_args(
                         "err-password-too-long",
                         &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                    ),
+                    PasswordError::TooWeak { required, .. } => t_args(
+                        "err-password-too-weak",
+                        &[("required", &required.score().to_string())],
                     ),
                 });
             }

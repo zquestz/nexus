@@ -44,7 +44,7 @@ Click **Create User** to open the creation form. Requires `user_create` permissi
 | Field           | Description                                      |
 | --------------- | ------------------------------------------------ |
 | Username        | Account identifier (1–32 characters)             |
-| Password        | Account password (1–256 characters)              |
+| Password        | Account password (must meet server's minimum strength)   |
 | Admin           | Toggle admin privileges                          |
 | Shared Account  | Toggle shared account mode                       |
 | Enabled         | Toggle account access                            |
@@ -60,7 +60,7 @@ Right-click a username → Edit to modify their account. The edit form shows the
 | Field           | Description                                                    |
 | --------------- | -------------------------------------------------------------- |
 | Username        | Editable (disabled for guest account)                          |
-| Password        | Leave blank to keep current (disabled for guest account)       |
+| Password        | Leave blank to keep current, new password must meet minimum strength (disabled for guest) |
 | Admin           | Toggle admin privileges (disabled for shared accounts)         |
 | Shared Account  | Shows shared status (always disabled — cannot change in edit)  |
 | Enabled         | Toggle account access                                          |

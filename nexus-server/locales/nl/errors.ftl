@@ -93,6 +93,14 @@ err-version-invalid-semver = De versie moet in semver-formaat zijn (MAJOR.MINOR.
 # Wachtwoordvalidatiefouten
 err-password-empty = Het wachtwoord mag niet leeg zijn
 err-password-too-long = Het wachtwoord is te lang (maximaal { $max_length } tekens)
+err-password-too-weak = Wachtwoord is te zwak, minimale sterkte is { $required ->
+    [0] Zwak
+    [1] Matig
+    [2] Goed
+    [3] Sterk
+    [4] Uitstekend
+   *[other] Onbekend
+}
 
 # Taalvalidatiefouten
 err-locale-too-long = De taal is te lang (maximaal { $max_length } tekens)

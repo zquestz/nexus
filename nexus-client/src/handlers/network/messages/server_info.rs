@@ -3,6 +3,8 @@
 use iced::Task;
 use nexus_common::protocol::ServerInfo;
 
+use nexus_common::validators::PasswordStrength;
+
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
@@ -52,6 +54,10 @@ impl NexusApp {
         // auto_join_channels is only sent to admins
         if server_info.auto_join_channels.is_some() {
             conn.auto_join_channels = server_info.auto_join_channels;
+        }
+        // min_password_strength is sent to all users
+        if let Some(score) = server_info.min_password_strength {
+            conn.min_password_strength = PasswordStrength::from(score);
         }
         // Update server image and cached version if provided
         if let Some(image) = server_info.image {

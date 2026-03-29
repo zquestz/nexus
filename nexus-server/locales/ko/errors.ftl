@@ -93,6 +93,14 @@ err-version-invalid-semver = 버전은 semver 형식이어야 합니다 (MAJOR.M
 # 비밀번호 검증 오류
 err-password-empty = 비밀번호는 비어 있을 수 없습니다
 err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max_length }자)
+err-password-too-weak = 비밀번호가 너무 약합니다. 최소 강도는 { $required ->
+    [0] 약함
+    [1] 보통
+    [2] 양호
+    [3] 강함
+    [4] 매우 강함
+   *[other] 알 수 없음
+}입니다
 
 # 로케일 검증 오류
 err-locale-too-long = 로케일이 너무 깁니다 (최대 { $max_length }자)

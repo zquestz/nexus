@@ -515,6 +515,23 @@ err-passwords-do-not-match = パスワードが一致しません
 err-current-password-required = 現在のパスワードは必須です
 err-new-password-required = 新しいパスワードは必須です
 err-confirm-password-required = 新しいパスワードを確認してください
+err-password-too-weak = パスワードが弱すぎます。最低強度は { $required ->
+    [0] 弱い
+    [1] やや弱い
+    [2] 良好
+    [3] 強い
+    [4] 非常に強い
+   *[other] 不明
+} です
+
+# Password Strength
+password-strength-weak = 弱い
+password-strength-fair = やや弱い
+password-strength-good = 良好
+password-strength-strong = 強い
+password-strength-excellent = 非常に強い
+label-min-password-strength = 最低パスワード:
+
 err-topic-too-long = トピックが長すぎます（{ $length }文字、最大{ $max }文字）
 err-avatar-unsupported-type = サポートされていないファイル形式です。PNG、WebP、JPEG、またはSVGを使用してください。
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。

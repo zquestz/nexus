@@ -521,6 +521,23 @@ err-passwords-do-not-match = Les mots de passe ne correspondent pas
 err-current-password-required = Le mot de passe actuel est requis
 err-new-password-required = Le nouveau mot de passe est requis
 err-confirm-password-required = Veuillez confirmer votre nouveau mot de passe
+err-password-too-weak = Le mot de passe est trop faible, la force minimale est { $required ->
+    [0] Faible
+    [1] Passable
+    [2] Bon
+    [3] Fort
+    [4] Excellent
+   *[other] Inconnu
+}
+
+# Password Strength
+password-strength-weak = Faible
+password-strength-fair = Passable
+password-strength-good = Bon
+password-strength-strong = Fort
+password-strength-excellent = Excellent
+label-min-password-strength = Mot de passe min. :
+
 err-topic-too-long = Le sujet est trop long ({ $length } caractères, max { $max })
 err-avatar-unsupported-type = Type de fichier non pris en charge. Utilisez PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Icône trop grande. La taille maximale est de { $max_kb }Ko.

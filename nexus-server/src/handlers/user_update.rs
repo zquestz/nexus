@@ -18,12 +18,13 @@ use super::{
     err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
     err_current_password_incorrect, err_current_password_required, err_database,
     err_group_not_found, err_group_shared_mismatch, err_not_logged_in, err_password_empty,
-    err_password_too_long, err_permission_denied, err_permissions_contains_newlines,
-    err_permissions_empty_permission, err_permissions_invalid_characters,
-    err_permissions_permission_too_long, err_permissions_too_many,
-    err_shared_cannot_change_password, err_shared_invalid_permissions, err_unknown_permission,
-    err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
-    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
+    err_password_too_long, err_password_too_weak, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_permissions_invalid_characters, err_permissions_permission_too_long,
+    err_permissions_too_many, err_shared_cannot_change_password, err_shared_invalid_permissions,
+    err_unknown_permission, err_update_failed, err_user_not_found, err_username_empty,
+    err_username_exists, err_username_invalid, err_username_too_long,
+    remove_user_with_voice_cleanup,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Permission, Permissions, UpdateUserParams, hash_password, verify_password};
@@ -698,11 +699,17 @@ where
             None
         } else {
             // Validate password format
-            if let Err(e) = validators::validate_password(password) {
+            let min_strength = ctx.db.config.get_min_password_strength().await;
+            if let Err(e) =
+                validators::validate_password(password, min_strength, &[&target_username])
+            {
                 let error_msg = match e {
                     PasswordError::Empty => err_password_empty(ctx.locale),
                     PasswordError::TooLong => {
                         err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+                    }
+                    PasswordError::TooWeak { required, .. } => {
+                        err_password_too_weak(ctx.locale, required.score())
                     }
                 };
                 let response = ServerMessage::UserUpdateResponse {
@@ -713,7 +720,7 @@ where
                 };
                 return ctx.send_message(&response).await;
             }
-            match hash_password(password, false) {
+            match hash_password(password, min_strength, false) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
                     eprintln!("Database error updating user {}: {}", target_username, e);
@@ -3351,7 +3358,12 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password, true).expect("hash should work");
+        let hashed = hash_password(
+            password,
+            nexus_common::validators::PasswordStrength::Weak,
+            true,
+        )
+        .expect("hash should work");
         test_ctx
             .db
             .users
@@ -3441,7 +3453,12 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password, true).expect("hash should work");
+        let hashed = hash_password(
+            password,
+            nexus_common::validators::PasswordStrength::Weak,
+            true,
+        )
+        .expect("hash should work");
         test_ctx
             .db
             .users
@@ -3527,7 +3544,12 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password, true).expect("hash should work");
+        let hashed = hash_password(
+            password,
+            nexus_common::validators::PasswordStrength::Weak,
+            true,
+        )
+        .expect("hash should work");
         test_ctx
             .db
             .users
@@ -3616,7 +3638,12 @@ mod tests {
 
         // Create admin user
         let password = "password";
-        let hashed = hash_password(password, true).expect("hash should work");
+        let hashed = hash_password(
+            password,
+            nexus_common::validators::PasswordStrength::Weak,
+            true,
+        )
+        .expect("hash should work");
         test_ctx
             .db
             .users

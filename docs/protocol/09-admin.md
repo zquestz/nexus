@@ -94,7 +94,7 @@ Create a new user account.
 | Field         | Type    | Required | Description                                       |
 | ------------- | ------- | -------- | ------------------------------------------------- |
 | `username`    | string  | Yes      | Account username (1-32 characters)                |
-| `password`    | string  | Yes      | Account password (1-256 characters)               |
+| `password`    | string  | Yes      | Account password (1-256 characters, must meet server's min password strength) |
 | `is_admin`    | boolean | Yes      | Whether user has admin privileges                 |
 | `is_shared`   | boolean | No       | Whether this is a shared account (default: false) |
 | `enabled`     | boolean | Yes      | Whether account is enabled                        |
@@ -267,7 +267,7 @@ Update an existing user account.
 | `id`               | integer | Yes      | Account ID to update                       |
 | `current_password` | string  | No       | Current password (required for self-update) |
 | `username`         | string  | No       | New username                               |
-| `password`         | string  | No       | New password                               |
+| `password`         | string  | No       | New password (must meet server's min password strength)              |
 | `is_admin`         | boolean | No       | New admin status                           |
 | `enabled`          | boolean | No       | New enabled status                         |
 | `permissions`      | array   | No       | New permissions list                       |
@@ -450,6 +450,7 @@ Update server configuration.
 | `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)          |
 | `persistent_channels`    | string  | No       | Space-separated persistent channel names                 |
 | `auto_join_channels`     | string  | No       | Space-separated channels users auto-join on login        |
+| `min_password_strength`  | integer | No       | Minimum password strength level (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
 Only include fields you want to change.
 
@@ -536,7 +537,8 @@ Broadcast to all users when server info changes.
     "image": null,
     "file_reindex_interval": 60,
     "persistent_channels": "#general #support",
-    "auto_join_channels": "#general"
+    "auto_join_channels": "#general",
+    "min_password_strength": 2
   }
 }
 ```
@@ -581,7 +583,8 @@ Sent to a user when their permissions change.
     "image": "data:image/png;base64,...",
     "file_reindex_interval": 60,
     "persistent_channels": "#general",
-    "auto_join_channels": "#general"
+    "auto_join_channels": "#general",
+    "min_password_strength": 2
   },
   "group_id": null,
   "group_name": null
@@ -745,6 +748,7 @@ Users can change their own password using `UserUpdate`:
 
 - `current_password` is required for self-updates
 - Admins updating other users don't need `current_password`
+- New password must meet the server's minimum password strength requirement
 
 ### Restrictions
 
@@ -763,6 +767,7 @@ Users cannot:
 | `image`                  | Max 700KB data URI, PNG/WebP/JPEG/SVG formats        |
 | `max_connections_per_ip` | Positive integer                                     |
 | `max_transfers_per_ip`   | Positive integer                                     |
+| `min_password_strength`  | Integer 0-4 (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent)  |
 
 ## Username Validation
 
@@ -787,6 +792,7 @@ Users cannot:
 | Username already exists | Account with that name exists    |
 | Password is empty       | Empty password provided          |
 | Password too long       | Exceeds 256 characters           |
+| Password too weak         | Does not meet minimum strength requirement |
 
 ### UserUpdate Errors
 
@@ -799,6 +805,7 @@ Users cannot:
 | Username already exists                  | New username conflicts          |
 | Cannot rename the guest account          | Attempted guest rename          |
 | Cannot change the guest account password | Attempted guest password change |
+| Password too weak                        | Does not meet minimum strength requirement |
 
 ### UserDelete Errors
 
@@ -829,6 +836,7 @@ Users cannot:
 | Description too long        | Exceeds 512 characters     |
 | Image too large             | Exceeds 700KB              |
 | Invalid image format        | Not PNG/WebP/JPEG/SVG      |
+| Invalid password strength value | Value not in range 0-4            |
 
 ## Kick Behavior
 

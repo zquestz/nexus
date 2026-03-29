@@ -415,6 +415,7 @@ where
             file_reindex_interval,
             persistent_channels,
             auto_join_channels,
+            min_password_strength,
         } => {
             let request = handlers::ServerInfoUpdateRequest {
                 name,
@@ -425,6 +426,7 @@ where
                 file_reindex_interval,
                 persistent_channels,
                 auto_join_channels,
+                min_password_strength,
                 session_id: conn_state.session_id,
             };
             handlers::handle_server_info_update(request, ctx).await?;

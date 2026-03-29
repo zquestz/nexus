@@ -93,6 +93,14 @@ err-version-invalid-semver = 版本必须是semver格式（MAJOR.MINOR.PATCH）
 # 密码验证错误
 err-password-empty = 密码不能为空
 err-password-too-long = 密码太长（最多{ $max_length }个字符）
+err-password-too-weak = 密码强度不足，最低要求为 { $required ->
+    [0] 弱
+    [1] 一般
+    [2] 良好
+    [3] 强
+    [4] 非常强
+   *[other] 未知
+}
 
 # 区域设置验证错误
 err-locale-too-long = 区域设置太长（最多{ $max_length }个字符）

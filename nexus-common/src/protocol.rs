@@ -298,6 +298,9 @@ pub enum ClientMessage {
         /// Auto-join channels (space-separated, joined on login)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auto_join_channels: Option<String>,
+        /// Minimum password strength level (0-4)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_password_strength: Option<u8>,
     },
     /// Add an IP to the trusted list (bypasses ban checks)
     TrustCreate {
@@ -1132,6 +1135,9 @@ pub struct ServerInfo {
     /// Auto-join channels (space-separated, admin only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_join_channels: Option<String>,
+    /// Minimum password strength level (0-4, admin only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_password_strength: Option<u8>,
 }
 
 /// Channel info returned when joining a channel (in LoginResponse or ChatJoinResponse)
@@ -1610,6 +1616,7 @@ impl std::fmt::Debug for ClientMessage {
                 image,
                 persistent_channels,
                 auto_join_channels,
+                min_password_strength,
             } => {
                 let mut s = f.debug_struct("ServerInfoUpdate");
                 s.field("name", name)
@@ -1618,7 +1625,8 @@ impl std::fmt::Debug for ClientMessage {
                     .field("max_transfers_per_ip", max_transfers_per_ip)
                     .field("file_reindex_interval", file_reindex_interval)
                     .field("persistent_channels", persistent_channels)
-                    .field("auto_join_channels", auto_join_channels);
+                    .field("auto_join_channels", auto_join_channels)
+                    .field("min_password_strength", min_password_strength);
                 if let Some(img) = image {
                     if img.len() > 100 {
                         s.field(
@@ -2698,6 +2706,7 @@ mod tests {
             file_reindex_interval: Some(5),
             persistent_channels: None,
             auto_join_channels: None,
+            min_password_strength: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"max_transfers_per_ip\":3"));

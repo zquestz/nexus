@@ -515,6 +515,23 @@ err-passwords-do-not-match = 비밀번호가 일치하지 않습니다
 err-current-password-required = 현재 비밀번호는 필수입니다
 err-new-password-required = 새 비밀번호는 필수입니다
 err-confirm-password-required = 새 비밀번호를 확인해 주세요
+err-password-too-weak = 비밀번호가 너무 약합니다. 최소 강도는 { $required ->
+    [0] 약함
+    [1] 보통
+    [2] 양호
+    [3] 강함
+    [4] 매우 강함
+   *[other] 알 수 없음
+}입니다
+
+# Password Strength
+password-strength-weak = 약함
+password-strength-fair = 보통
+password-strength-good = 양호
+password-strength-strong = 강함
+password-strength-excellent = 매우 강함
+label-min-password-strength = 최소 비밀번호:
+
 err-topic-too-long = 주제가 너무 깁니다 ({ $length }자, 최대 { $max }자)
 err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, WebP, JPEG 또는 SVG를 사용하세요.
 err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
+use nexus_common::validators::PasswordStrength;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
@@ -135,6 +136,8 @@ pub struct ServerConnectionParams {
     pub persistent_channels: Option<String>,
     /// Auto-join channels (space-separated, admin only)
     pub auto_join_channels: Option<String>,
+    /// Minimum password strength requirement from the server
+    pub min_password_strength: PasswordStrength,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -198,6 +201,8 @@ pub struct ServerConnection {
     pub persistent_channels: Option<String>,
     /// Auto-join channels (space-separated, admin only)
     pub auto_join_channels: Option<String>,
+    /// Minimum password strength requirement from the server
+    pub min_password_strength: PasswordStrength,
     /// Active chat tab (Console, Channel, or UserMessage)
     pub active_chat_tab: ChatTab,
     /// Console messages (system, error, info, broadcast messages)
@@ -354,6 +359,7 @@ impl ServerConnection {
             file_reindex_interval: params.file_reindex_interval,
             persistent_channels: params.persistent_channels,
             auto_join_channels: params.auto_join_channels,
+            min_password_strength: params.min_password_strength,
             active_chat_tab: ChatTab::Console,
             console_messages: Vec::new(),
             channel_tabs: Vec::new(),
@@ -438,6 +444,8 @@ pub struct NetworkConnection {
     pub persistent_channels: Option<String>,
     /// Auto-join channels (space-separated, admin only)
     pub auto_join_channels: Option<String>,
+    /// Minimum password strength requirement from the server
+    pub min_password_strength: PasswordStrength,
     /// Locale accepted by the server
     pub locale: String,
     /// Connection info (address, port, auth info)

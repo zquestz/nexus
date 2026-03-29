@@ -93,6 +93,14 @@ err-version-invalid-semver = A versão deve estar no formato semver (MAJOR.MINOR
 # Erros de validação de senha
 err-password-empty = A senha não pode estar vazia
 err-password-too-long = A senha é muito longa (máximo { $max_length } caracteres)
+err-password-too-weak = A senha é muito fraca, a força mínima é { $required ->
+    [0] Fraca
+    [1] Razoável
+    [2] Boa
+    [3] Forte
+    [4] Excelente
+   *[other] Desconhecida
+}
 
 # Erros de validação de localidade
 err-locale-too-long = A localidade é muito longa (máximo { $max_length } caracteres)

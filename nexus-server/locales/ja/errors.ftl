@@ -93,6 +93,14 @@ err-version-invalid-semver = バージョンはsemver形式（MAJOR.MINOR.PATCH�
 # パスワード検証のエラー
 err-password-empty = パスワードを空にすることはできません
 err-password-too-long = パスワードが長すぎます（最大{ $max_length }文字）
+err-password-too-weak = パスワードが弱すぎます。最低強度は { $required ->
+    [0] 弱い
+    [1] やや弱い
+    [2] 良好
+    [3] 強い
+    [4] 非常に強い
+   *[other] 不明
+} です
 
 # ロケール検証のエラー
 err-locale-too-long = ロケールが長すぎます（最大{ $max_length }文字）

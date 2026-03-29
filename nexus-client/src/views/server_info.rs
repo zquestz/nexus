@@ -1,11 +1,13 @@
 //! Server info panel view
 
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, container, image, row, svg, text_input};
+use iced::widget::{Id, Space, button, container, image, pick_list, row, svg, text_input};
 use iced::{Center, Element, Fill, Length};
 use iced_aw::{NumberInput, TabLabel, Tabs};
+use nexus_common::validators::PasswordStrength;
 
 use super::layout::scrollable_panel;
+use super::password_strength::{LocalizedPasswordStrength, strength_translation_key};
 use crate::i18n::{t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
@@ -36,6 +38,8 @@ pub struct ServerInfoData<'a> {
     pub auto_join_channels: Option<String>,
     /// Cached server image for display (None if no image set)
     pub cached_server_image: Option<&'a CachedImage>,
+    /// Minimum password strength requirement (if provided by server)
+    pub min_password_strength: Option<PasswordStrength>,
     /// Whether the current user is an admin
     pub is_admin: bool,
     /// Active tab in display mode (shown based on available data)
@@ -104,7 +108,9 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
     }
 
     // Determine which tabs to show based on available data
-    let has_limits = data.max_connections_per_ip.is_some() || data.max_transfers_per_ip.is_some();
+    let has_limits = data.max_connections_per_ip.is_some()
+        || data.max_transfers_per_ip.is_some()
+        || data.min_password_strength.is_some();
     let has_files = data.file_reindex_interval.is_some();
     let has_channels = data.persistent_channels.is_some() || data.auto_join_channels.is_some();
 
@@ -134,6 +140,17 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                         shaped_text(t("label-transfers-short")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
                         shaped_text(max_xfer.to_string()).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            if let Some(strength) = data.min_password_strength {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-min-password-strength")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(t(strength_translation_key(strength))).size(TEXT_SIZE),
                     ]
                     .align_y(Center)
                     .into(),
@@ -440,6 +457,28 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             xfer_label,
             Space::new().width(ELEMENT_SPACING),
             max_xfer_input,
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Min password strength picker
+    let strength_label = shaped_text(t("label-min-password-strength")).size(TEXT_SIZE);
+    let strength_picker: Element<'static, Message> = pick_list(
+        LocalizedPasswordStrength::all(),
+        Some(LocalizedPasswordStrength::from(
+            edit_state.min_password_strength,
+        )),
+        |ls| Message::EditServerInfoMinPasswordStrengthChanged(ls.into()),
+    )
+    .text_size(TEXT_SIZE)
+    .into();
+
+    form_items.push(
+        row![
+            strength_label,
+            Space::new().width(ELEMENT_SPACING),
+            strength_picker
         ]
         .align_y(Center)
         .into(),

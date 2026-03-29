@@ -920,6 +920,9 @@ impl NexusApp {
             Message::EditServerInfoAutoJoinChannelsChanged(channels) => {
                 self.handle_edit_server_info_auto_join_channels_changed(channels)
             }
+            Message::EditServerInfoMinPasswordStrengthChanged(strength) => {
+                self.handle_edit_server_info_min_password_strength_changed(strength)
+            }
             Message::EditServerInfoPressed => self.handle_edit_server_info_pressed(),
             Message::ServerInfoTabChanged(tab) => self.handle_server_info_tab_changed(tab),
             Message::PickServerImagePressed => self.handle_pick_server_image_pressed(),

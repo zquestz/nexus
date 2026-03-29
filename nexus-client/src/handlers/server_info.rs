@@ -59,6 +59,7 @@ impl NexusApp {
             file_reindex_interval: conn.file_reindex_interval,
             persistent_channels: conn.persistent_channels.as_deref(),
             auto_join_channels: conn.auto_join_channels.as_deref(),
+            min_password_strength: conn.min_password_strength,
         }));
 
         // Focus the name input
@@ -163,6 +164,7 @@ impl NexusApp {
             file_reindex_interval: conn.file_reindex_interval,
             persistent_channels: conn.persistent_channels.as_deref(),
             auto_join_channels: conn.auto_join_channels.as_deref(),
+            min_password_strength: conn.min_password_strength,
         }) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -224,6 +226,13 @@ impl NexusApp {
                 None
             };
 
+        let min_password_strength =
+            if edit_state.min_password_strength != conn.min_password_strength {
+                Some(edit_state.min_password_strength.score())
+            } else {
+                None
+            };
+
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
@@ -233,6 +242,7 @@ impl NexusApp {
             file_reindex_interval,
             persistent_channels,
             auto_join_channels,
+            min_password_strength,
         };
 
         // Mark as submitting to prevent double-submit
@@ -351,6 +361,20 @@ impl NexusApp {
             && let Some(edit_state) = &mut conn.server_info_edit
         {
             edit_state.auto_join_channels = auto_join_channels;
+        }
+        Task::none()
+    }
+
+    /// Handle server info min password strength field change
+    pub fn handle_edit_server_info_min_password_strength_changed(
+        &mut self,
+        strength: nexus_common::validators::PasswordStrength,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.min_password_strength = strength;
         }
         Task::none()
     }

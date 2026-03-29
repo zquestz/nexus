@@ -121,7 +121,8 @@ The `group_id` and `group_name` fields identify the user's account group (if any
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
-    "image": null
+    "image": null,
+    "min_password_strength": 2
   },
   "locale": "en",
   "channels": [
@@ -165,6 +166,7 @@ Included in successful login responses.
 | `file_reindex_interval`    | integer | File reindex interval in minutes, 0 = disabled (null if not set) |
 | `persistent_channels`      | string  | Space-separated persistent channels (admin only, null otherwise)  |
 | `auto_join_channels`       | string  | Space-separated auto-join channels (admin only, null otherwise)   |
+| `min_password_strength`    | integer | Minimum password strength level 0-4 (null if not set)        |
 
 ## Channel Join Info Object
 

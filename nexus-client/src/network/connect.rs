@@ -170,6 +170,11 @@ async fn perform_login(
             auto_join_channels: server_info
                 .as_ref()
                 .and_then(|info| info.auto_join_channels.clone()),
+            min_password_strength: server_info
+                .as_ref()
+                .and_then(|info| info.min_password_strength)
+                .map(nexus_common::validators::PasswordStrength::from)
+                .unwrap_or(nexus_common::validators::PasswordStrength::Good),
             transfer_port: server_info
                 .map(|info| info.transfer_port)
                 .unwrap_or(DEFAULT_TRANSFER_PORT),

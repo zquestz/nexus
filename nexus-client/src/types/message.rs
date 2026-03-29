@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::FileSearchResult;
+use nexus_common::validators::PasswordStrength;
 use nexus_common::voice::VoiceQuality;
 
 use super::panel::{
@@ -133,6 +134,8 @@ pub enum Message {
     EditServerInfoPersistentChannelsChanged(String),
     /// Server info edit: Auto-join channels field changed
     EditServerInfoAutoJoinChannelsChanged(String),
+    /// Server info edit: Min password strength changed
+    EditServerInfoMinPasswordStrengthChanged(PasswordStrength),
     /// Server info edit: Edit button pressed (enter edit mode)
     EditServerInfoPressed,
     /// Server info display: Tab changed (tabs shown based on available data)

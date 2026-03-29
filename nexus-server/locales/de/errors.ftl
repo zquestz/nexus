@@ -95,6 +95,14 @@ err-version-client-too-new = Die Client-Version { $client_version } ist neuer al
 # Passwortvalidierungsfehler
 err-password-empty = Das Passwort darf nicht leer sein
 err-password-too-long = Das Passwort ist zu lang (maximal { $max_length } Zeichen)
+err-password-too-weak = Passwort ist zu schwach, Mindeststärke ist { $required ->
+    [0] Schwach
+    [1] Mäßig
+    [2] Gut
+    [3] Stark
+    [4] Ausgezeichnet
+   *[other] Unbekannt
+}
 
 # Gebietsschema-Validierungsfehler
 err-locale-too-long = Das Gebietsschema ist zu lang (maximal { $max_length } Zeichen)

@@ -14,6 +14,7 @@ pub(crate) mod groups;
 pub(crate) mod helpers;
 mod layout;
 mod news;
+pub(crate) mod password_strength;
 mod server_info;
 mod server_list;
 mod settings;

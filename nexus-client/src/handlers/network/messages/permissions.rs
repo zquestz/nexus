@@ -2,6 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::{ClientMessage, ServerInfo};
+use nexus_common::validators::PasswordStrength;
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -83,6 +84,9 @@ impl NexusApp {
                 } else {
                     decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
                 };
+            }
+            if let Some(score) = info.min_password_strength {
+                conn.min_password_strength = PasswordStrength::from(score);
             }
         }
 

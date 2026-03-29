@@ -109,3 +109,32 @@ pub fn icon_disabled_color(theme: &Theme) -> Color {
 pub fn danger_color(theme: &Theme) -> Color {
     theme.palette().danger
 }
+
+// ============================================================================
+// Password Strength Colors
+// ============================================================================
+
+/// Password strength: Weak (theme danger)
+pub fn password_strength_weak(theme: &Theme) -> Color {
+    theme.extended_palette().danger.base.color
+}
+
+/// Password strength: Fair (theme danger weak — softer red/orange)
+pub fn password_strength_fair(theme: &Theme) -> Color {
+    theme.extended_palette().danger.weak.color
+}
+
+/// Password strength: Good (theme warning — yellow/amber)
+pub fn password_strength_good(theme: &Theme) -> Color {
+    theme.extended_palette().warning.base.color
+}
+
+/// Password strength: Strong (theme success)
+pub fn password_strength_strong(theme: &Theme) -> Color {
+    theme.extended_palette().success.base.color
+}
+
+/// Password strength: Excellent (theme success strong — vivid green)
+pub fn password_strength_excellent(theme: &Theme) -> Color {
+    theme.extended_palette().success.strong.color
+}

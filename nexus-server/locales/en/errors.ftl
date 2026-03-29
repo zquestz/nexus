@@ -93,6 +93,14 @@ err-version-invalid-semver = Version must be in semver format (MAJOR.MINOR.PATCH
 # Password Validation Errors
 err-password-empty = Password cannot be empty
 err-password-too-long = Password is too long (max { $max_length } characters)
+err-password-too-weak = Password is too weak, minimum strength is { $required ->
+    [0] Weak
+    [1] Fair
+    [2] Good
+    [3] Strong
+    [4] Excellent
+   *[other] Unknown
+}
 
 # Locale Validation Errors
 err-locale-too-long = Locale is too long (max { $max_length } characters)

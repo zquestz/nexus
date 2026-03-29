@@ -27,7 +27,7 @@ Admins manage users through the client's **User Management** panel (accessible f
 2. Click **Create User**
 3. Fill in the details:
    - **Username** — Account identifier (1-32 characters)
-   - **Password** — Account password (1-256 characters)
+   - **Password** — Account password (1-256 characters, must meet minimum strength)
    - **Admin** — Toggle admin privileges
    - **Shared Account** — Toggle shared account mode
    - **Enabled** — Toggle account access
@@ -338,6 +338,8 @@ The guest account is a special pre-configured shared account.
 | Deletable | No                  |
 | Renamable | No                  |
 
+> **Note:** The guest account is exempt from password strength requirements.
+
 ### Enabling Guest Access
 
 The guest account is disabled by default. To enable:
@@ -381,6 +383,7 @@ Admins can configure server-wide settings through the **Server Info** panel:
 | File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)      |
 | Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`) |
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)       |
+| Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 ### Connection Limits
 
@@ -399,6 +402,10 @@ Set to 0 for unlimited (not recommended).
 2. Check if the account is enabled
 3. Verify the password is correct
 4. For shared accounts, ensure the nickname is unique
+
+### Password rejected as too weak
+
+The server enforces a minimum password strength. The admin can configure this in Server Info > Limits. Try a longer password with mixed character types.
 
 ### User missing permissions
 

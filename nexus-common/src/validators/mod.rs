@@ -64,7 +64,8 @@ pub use news_body::{MAX_NEWS_BODY_LENGTH, NewsBodyError, validate_news_body};
 pub use news_image::{MAX_NEWS_IMAGE_DATA_URI_LENGTH, NewsImageError, validate_news_image};
 pub use nickname::{MAX_NICKNAME_LENGTH, NicknameError, validate_nickname};
 pub use password::{
-    MAX_PASSWORD_LENGTH, PasswordError, validate_password, validate_password_input,
+    MAX_PASSWORD_LENGTH, PasswordError, PasswordStrength, password_strength, validate_password,
+    validate_password_input,
 };
 pub use permissions::{MAX_PERMISSION_LENGTH, PermissionsError, validate_permissions};
 pub use search_query::{
