@@ -6,14 +6,14 @@
 |---|---------|--------|--------|
 | 1 | Account groups | Low | ✅ Done |
 | 2 | Password strength | Low | ✅ Done |
-| 3 | Boards | High | Planned |
-| 4 | File previews | Low | Planned |
-| 5 | Trackers | Medium | Planned |
-| 6 | Speed limiting | Medium | Planned |
-| 7 | Flood protection | Medium | Planned |
-| 8 | Server logs | Medium | Planned |
-| 9 | Auto-away | Low | Planned |
-| 10 | Streaming hash transfers | Medium | Planned |
+| 3 | Streaming hash transfers | Medium | Planned |
+| 4 | Boards | High | Planned |
+| 5 | File previews | Low | Planned |
+| 6 | Trackers | Medium | Planned |
+| 7 | Speed limiting | Medium | Planned |
+| 8 | Flood protection | Medium | Planned |
+| 9 | Server logs | Medium | Planned |
+| 10 | Auto-away | Low | Planned |
 
 **Post-launch:** IRC gateway (if demand exists)
 
