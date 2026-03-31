@@ -2,6 +2,8 @@
 //!
 //! Shared types, protocols, and utilities for the Nexus BBS system.
 
+use std::time::Duration;
+
 mod error_kind;
 pub mod framing;
 pub mod hash;
@@ -19,7 +21,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.6.2";
+pub const PROTOCOL_VERSION: &str = "0.7.0";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;
@@ -35,6 +37,23 @@ pub const DEFAULT_TRANSFER_WEBSOCKET_PORT: u16 = 7503;
 
 /// Buffer size for SHA-256 hashing operations (1MB for fewer syscalls)
 pub const HASH_BUFFER_SIZE: usize = 1024 * 1024;
+
+/// How often to send keepalive notifications during transfers.
+///
+/// This interval (10 seconds) is chosen to be well under the typical idle timeout
+/// (30 seconds) while not overwhelming the network with keepalive messages.
+/// At 500 MB/s, a 100GB file takes ~200 seconds, generating ~20 keepalive messages.
+pub const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Suffix for incomplete transfer files (.part)
+pub const PART_SUFFIX: &str = ".part";
+
+/// Fallback file name for keepalive messages when path has no file name
+pub const FALLBACK_FILE_NAME: &str = "file";
+
+/// Fallback file name for keepalive messages when .part path has no file name
+/// This is `FALLBACK_FILE_NAME` + `PART_SUFFIX`.
+pub const FALLBACK_PART_FILE_NAME: &str = "file.part";
 
 /// Default port as a string for form fields and display.
 ///
@@ -211,6 +230,15 @@ pub fn is_shared_account_permission(permission: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fallback_part_file_name_consistency() {
+        let expected = format!("{}{}", FALLBACK_FILE_NAME, PART_SUFFIX);
+        assert_eq!(
+            FALLBACK_PART_FILE_NAME, expected,
+            "FALLBACK_PART_FILE_NAME must equal FALLBACK_FILE_NAME + PART_SUFFIX"
+        );
+    }
 
     #[test]
     fn test_protocol_version() {

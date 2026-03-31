@@ -347,14 +347,12 @@ fn test_file_start_message() {
     let msg = ServerMessage::FileStart {
         path: "Documents/readme.txt".to_string(),
         size: 1024,
-        sha256: "abc123".to_string(),
     };
 
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"type\":\"FileStart\""));
     assert!(json.contains("\"path\":\"Documents/readme.txt\""));
     assert!(json.contains("\"size\":1024"));
-    assert!(json.contains("\"sha256\":\"abc123\""));
 }
 
 #[test]
@@ -407,6 +405,55 @@ fn test_transfer_complete_failure() {
     assert!(json.contains("\"success\":false"));
     assert!(json.contains("\"error\":\"File deleted during transfer\""));
     assert!(json.contains("\"error_kind\":\"io_error\""));
+}
+
+#[test]
+fn test_server_file_hash_message() {
+    // Server sends FileHash after streaming download data (or alone if file was skipped)
+    let msg = ServerMessage::FileHash {
+        sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
+    };
+
+    let json = serde_json::to_string(&msg).unwrap();
+    assert!(json.contains("\"type\":\"FileHash\""));
+    assert!(json.contains(
+        "\"sha256\":\"dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f\""
+    ));
+}
+
+#[test]
+fn test_client_file_hash_message() {
+    // Client sends FileHash after streaming upload data (or alone if file was skipped)
+    let msg = ClientMessage::FileHash {
+        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+    };
+
+    let json = serde_json::to_string(&msg).unwrap();
+    assert!(json.contains("\"type\":\"FileHash\""));
+    assert!(json.contains(
+        "\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""
+    ));
+}
+
+#[test]
+fn test_file_hash_deserialization() {
+    let json = r#"{"type":"FileHash","sha256":"abc123def456"}"#;
+
+    let server_msg: ServerMessage = serde_json::from_str(json).unwrap();
+    match server_msg {
+        ServerMessage::FileHash { sha256 } => {
+            assert_eq!(sha256, "abc123def456");
+        }
+        _ => panic!("Expected FileHash"),
+    }
+
+    let client_msg: ClientMessage = serde_json::from_str(json).unwrap();
+    match client_msg {
+        ClientMessage::FileHash { sha256 } => {
+            assert_eq!(sha256, "abc123def456");
+        }
+        _ => panic!("Expected FileHash"),
+    }
 }
 
 // ============================================================================
@@ -778,14 +825,12 @@ fn test_client_file_start_message() {
     let msg = ClientMessage::FileStart {
         path: "documents/report.pdf".to_string(),
         size: 2048,
-        sha256: "abc123def456".to_string(),
     };
     let json = serde_json::to_string(&msg).unwrap();
 
     assert!(json.contains("\"type\":\"FileStart\""));
     assert!(json.contains("\"path\":\"documents/report.pdf\""));
     assert!(json.contains("\"size\":2048"));
-    assert!(json.contains("\"sha256\":\"abc123def456\""));
 }
 
 #[test]
@@ -871,7 +916,6 @@ async fn test_frame_roundtrip_client_file_start() {
     let msg = ClientMessage::FileStart {
         path: "subdir/file.txt".to_string(),
         size: 4096,
-        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
     };
     let payload = serde_json::to_vec(&msg).unwrap();
     let id = MessageId::new();
@@ -895,12 +939,58 @@ async fn test_frame_roundtrip_client_file_start() {
 
     let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
     match parsed {
-        ClientMessage::FileStart { path, size, sha256 } => {
+        ClientMessage::FileStart { path, size } => {
             assert_eq!(path, "subdir/file.txt");
             assert_eq!(size, 4096);
+        }
+        _ => panic!("Wrong message type"),
+    }
+}
+
+#[tokio::test]
+async fn test_frame_roundtrip_file_hash() {
+    // Test both server and client FileHash variants survive a frame roundtrip
+    let server_msg = ServerMessage::FileHash {
+        sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
+    };
+    let payload = serde_json::to_vec(&server_msg).unwrap();
+    let id = MessageId::new();
+
+    // Write frame
+    let mut buffer = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buffer);
+        let mut writer = FrameWriter::new(cursor);
+        let frame = RawFrame::new(id, "FileHash".to_string(), payload.clone());
+        writer.write_frame(&frame).await.unwrap();
+    }
+
+    // Read frame back
+    let cursor = Cursor::new(buffer);
+    let buf_reader = BufReader::new(cursor);
+    let mut reader = FrameReader::new(buf_reader);
+
+    let frame = reader.read_frame().await.unwrap().unwrap();
+    assert_eq!(frame.message_type, "FileHash");
+
+    let parsed: ServerMessage = serde_json::from_slice(&frame.payload).unwrap();
+    match parsed {
+        ServerMessage::FileHash { sha256 } => {
             assert_eq!(
                 sha256,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            );
+        }
+        _ => panic!("Wrong message type"),
+    }
+
+    // Also verify client variant deserializes from the same payload
+    let client_parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
+    match client_parsed {
+        ClientMessage::FileHash { sha256 } => {
+            assert_eq!(
+                sha256,
+                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
             );
         }
         _ => panic!("Wrong message type"),
@@ -1282,17 +1372,11 @@ fn test_upload_zero_byte_file_start() {
     let msg = ClientMessage::FileStart {
         path: "empty.txt".to_string(),
         size: 0,
-        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(), // SHA-256 of empty
     };
 
     match msg {
-        ClientMessage::FileStart { size, sha256, .. } => {
+        ClientMessage::FileStart { size, .. } => {
             assert_eq!(size, 0);
-            // Empty file has a well-known SHA-256
-            assert_eq!(
-                sha256,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-            );
         }
         _ => panic!("Wrong message type"),
     }

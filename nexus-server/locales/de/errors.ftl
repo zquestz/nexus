@@ -91,6 +91,7 @@ err-version-too-long = Die Version ist zu lang (maximal { $max_length } Zeichen)
 err-version-invalid-semver = Die Version muss im Semver-Format vorliegen (MAJOR.MINOR.PATCH)
 err-version-major-mismatch = Inkompatible Protokollversion: Server ist Version { $server_major }.x, Client ist Version { $client_major }.x
 err-version-client-too-new = Die Client-Version { $client_version } ist neuer als die Server-Version { $server_version }. Bitte aktualisieren Sie den Server oder verwenden Sie einen älteren Client.
+err-version-minor-mismatch = Inkompatible Protokollversion. Server: { $server_version }, Client: { $client_version }. Beide müssen dieselbe Nebenversion verwenden.
 
 # Passwortvalidierungsfehler
 err-password-empty = Das Passwort darf nicht leer sein

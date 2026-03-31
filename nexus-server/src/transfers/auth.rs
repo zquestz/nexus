@@ -20,7 +20,7 @@ use crate::handlers::{
     err_account_disabled, err_authentication, err_database, err_guest_disabled,
     err_handshake_required, err_invalid_credentials, err_message_not_supported, err_not_logged_in,
     err_version_client_too_new, err_version_empty, err_version_invalid_semver,
-    err_version_major_mismatch, err_version_too_long,
+    err_version_major_mismatch, err_version_minor_mismatch, err_version_too_long,
 };
 
 use super::helpers::{login_error_response, send_error_and_close};
@@ -105,6 +105,24 @@ where
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other("Major version mismatch"))
+        }
+        CompatibilityResult::MinorMismatch {
+            server_minor,
+            client_minor: _,
+        } => {
+            let response = ServerMessage::HandshakeResponse {
+                success: false,
+                version: Some(server_version_str.to_string()),
+                error: Some(err_version_minor_mismatch(
+                    locale,
+                    server_version_str,
+                    &version,
+                )),
+            };
+            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            Err(io::Error::other(format!(
+                "Minor version mismatch, pre-1.0 (server minor: {server_minor})"
+            )))
         }
         CompatibilityResult::ClientTooNew {
             server_minor,

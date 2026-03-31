@@ -3,14 +3,12 @@
 //! Contains functions for handling download requests, scanning files,
 //! checking dropbox access, and streaming files to clients.
 //!
-//! For large files, sends FileHashing keepalive messages periodically during
-//! hash computation to prevent client timeouts.
+//! Uses StreamingHasher for single-pass hashing during file transfers.
+//! For resume verification, computes intermediate hashes via clone-and-finalize.
+//! Sends FileHashing keepalive messages during hash-only phases to prevent timeouts.
 
 use std::io;
 use std::path::Path;
-
-/// Fallback file name for keepalive messages when path has no file name
-const FALLBACK_FILE_NAME: &str = "file";
 
 use tokio::fs::File;
 use tokio::io::{
@@ -19,6 +17,7 @@ use tokio::io::{
 
 use nexus_common::ERROR_KIND_IO_ERROR;
 use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_client_message_with_full_timeout;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
@@ -30,7 +29,7 @@ use crate::handlers::{
     err_transfer_access_denied, err_transfer_file_failed, err_transfer_read_failed,
 };
 
-use super::hash::{compute_file_sha256_with_keepalive, compute_partial_sha256_with_keepalive};
+use super::hashing::{FALLBACK_FILE_NAME, HashingReader, hash_file_with_keepalives};
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
@@ -150,31 +149,9 @@ where
             }
         };
 
-        // Compute SHA-256 for this file, sending keepalives to prevent client timeout
-        let sha256 = match compute_file_sha256_with_keepalive(
-            &canonical_path,
-            file_info.relative_path.clone(),
-            transfer.writer(),
-        )
-        .await
-        {
-            Ok(hash) => hash,
-            Err(e) => {
-                success = false;
-                error = Some(err_transfer_file_failed(
-                    &locale,
-                    &file_info.relative_path,
-                    &e.to_string(),
-                ));
-                error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
-                break;
-            }
-        };
-
         match stream_file_with_hash(
             transfer,
             file_info,
-            &sha256,
             &canonical_path,
             debug,
             &log_transfer_id,
@@ -191,6 +168,22 @@ where
                 }
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
+            }
+            Err(StreamFileError::HashMismatch) => {
+                if debug {
+                    eprintln!(
+                        "Download {log_transfer_id}: Resume hash mismatch for {}",
+                        file_info.relative_path
+                    );
+                }
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    "resume hash mismatch",
+                ));
+                error_kind = Some(nexus_common::ERROR_KIND_HASH_MISMATCH.to_string());
+                break;
             }
             Err(StreamFileError::Io(e)) => {
                 if debug {
@@ -237,6 +230,7 @@ where
 enum StreamFileError {
     Io(io::Error),
     Banned,
+    HashMismatch,
 }
 
 impl From<io::Error> for StreamFileError {
@@ -451,13 +445,19 @@ fn scan_directory_recursive<'a>(
     })
 }
 
-/// Stream a single file to the client (with pre-computed hash)
+/// Stream a file to the client with single-pass hashing
+///
+/// For each file:
+/// 1. Send FileStart (path, size — no hash)
+/// 2. Read FileStartResponse (for resume negotiation)
+/// 3. Hash 0..offset for resume verification (returns hasher with state)
+/// 4. Stream FileData from offset, feeding bytes to hasher
+/// 5. Send FileHash with full file hash
 ///
 /// Uses Transfer's ban-checked streaming to allow mid-transfer termination.
 async fn stream_file_with_hash<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     file_info: &FileInfo,
-    sha256: &str,
     canonical_path: &Path,
     debug: bool,
     transfer_id: &str,
@@ -466,25 +466,26 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    // Send FileStart with ban checking
+    // Send FileStart — no sha256, hash will be sent in FileHash after data
     let file_start = ServerMessage::FileStart {
         path: file_info.relative_path.clone(),
         size: file_info.size,
-        sha256: sha256.to_string(),
     };
     transfer.send(&file_start).await?;
 
-    // Read FileStartResponse to determine resume offset
-    // Get reader/writer for the response exchange
+    // Read FileStartResponse and determine resume offset
+    // Returns hasher pre-fed with 0..offset bytes for single-pass hashing
     let (frame_reader, frame_writer) = transfer.reader_writer();
-    let offset = read_file_start_response(
-        frame_reader,
-        frame_writer,
-        sha256,
-        file_info.size,
-        canonical_path,
-    )
-    .await?;
+    let (offset, mut hasher) =
+        match read_file_start_response(frame_reader, frame_writer, file_info.size, canonical_path)
+            .await
+        {
+            Ok(result) => result,
+            Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+                return Err(StreamFileError::HashMismatch);
+            }
+            Err(e) => return Err(StreamFileError::Io(e)),
+        };
 
     if debug {
         if offset > 0 {
@@ -502,7 +503,7 @@ where
         }
     }
 
-    // If offset equals file size, file is already complete - skip streaming
+    // If offset equals file size, file is already complete — send FileHash only
     if offset >= file_info.size {
         if debug && file_info.size > 0 {
             eprintln!(
@@ -510,6 +511,10 @@ where
                 file_info.relative_path
             );
         }
+        let file_hash = ServerMessage::FileHash {
+            sha256: hasher.finalize(),
+        };
+        transfer.send(&file_hash).await?;
         return Ok(());
     }
 
@@ -523,33 +528,53 @@ where
         reader.seek(SeekFrom::Start(offset)).await?;
     }
 
+    // Wrap reader with HashingReader to feed bytes to hasher during streaming.
+    // Each chunk read from disk is hashed before being sent to the client.
+    let mut hashing_reader = HashingReader::new(reader, &mut hasher);
+
     // Stream file data with ban checking between chunks
-    let bytes_written = transfer
-        .stream_file_to_client("FileData", &mut reader, bytes_to_send)
-        .await?;
+    let result = transfer
+        .stream_file_to_client("FileData", &mut hashing_reader, bytes_to_send)
+        .await;
+
+    // Drop hashing_reader to release the borrow on hasher before finalizing
+    drop(hashing_reader);
+
+    let bytes_written = result?;
 
     // Check if we were banned mid-stream (frame was finished but short)
     if bytes_written < bytes_to_send || transfer.is_banned() {
         return Err(StreamFileError::Banned);
     }
 
+    // Send FileHash with the full file hash (hasher consumed 0..offset + offset..end)
+    let file_hash = ServerMessage::FileHash {
+        sha256: hasher.finalize(),
+    };
+    transfer.send(&file_hash).await?;
+
     Ok(())
 }
 
-/// Read FileStartResponse and calculate resume offset
+/// Read FileStartResponse and compute resume offset with single-pass hasher
 ///
-/// Verifies that the client's reported partial file hash matches the hash of
-/// the first N bytes of the server's file before allowing resume.
+/// If the client reports an existing file (partial or complete), this function:
+/// 1. Creates a StreamingHasher
+/// 2. Reads 0..client_size bytes of the server's file into the hasher
+/// 3. Verifies the hash against the client's reported hash
+/// 4. Returns (offset, hasher) — the hasher retains its state for continued use
 ///
-/// Automatically skips FileHashing keepalive messages that the client sends
-/// while computing hashes for large local files.
+/// The caller continues feeding offset..end into the returned hasher during
+/// streaming, then finalizes it to get the full file hash for FileHash.
+///
+/// Sends FileHashing keepalives during hash computation to prevent client timeout.
+/// Automatically skips FileHashing keepalives from the client.
 async fn read_file_start_response<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
-    server_sha256: &str,
     server_size: u64,
     file_path: &Path,
-) -> io::Result<u64>
+) -> io::Result<(u64, StreamingHasher)>
 where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
@@ -575,8 +600,7 @@ where
                 break (size, sha256);
             }
             ClientMessage::FileHashing { .. } => {
-                // Keepalive message - client is hashing a large local file
-                // Continue waiting for FileStartResponse
+                // Keepalive — client is hashing a large local file
                 continue;
             }
             _ => {
@@ -585,49 +609,43 @@ where
         }
     };
 
-    // Process the FileStartResponse
-
     // If client has no local file, start from beginning
     if size == 0 {
-        return Ok(0);
+        return Ok((0, StreamingHasher::new()));
     }
 
     // If client reports size > server size, start from beginning
     if size > server_size {
-        return Ok(0);
+        return Ok((0, StreamingHasher::new()));
     }
 
-    // Client must provide hash for resume
+    // Client must provide hash for resume verification
     let Some(client_hash) = sha256 else {
-        // No hash provided - start from beginning
-        return Ok(0);
+        return Ok((0, StreamingHasher::new()));
     };
 
-    // If sizes match, verify against complete file hash
-    if size == server_size {
-        if client_hash == server_sha256 {
-            // File is already complete
-            return Ok(server_size);
-        }
-        // Hash mismatch - start from beginning
-        return Ok(0);
-    }
-
-    // Client has partial file - verify hash of first N bytes
-    // Use keepalive version to prevent client timeout during large file hashing
+    // Hash 0..size bytes of the server's file using StreamingHasher
+    // Sends FileHashing keepalives to prevent client timeout during large file hashing
     let file_name = file_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(FALLBACK_FILE_NAME)
         .to_string();
-    let partial_hash =
-        compute_partial_sha256_with_keepalive(file_path, size, file_name, frame_writer).await?;
-    if client_hash == partial_hash {
-        // Hash matches - resume from client's position
-        Ok(size)
+
+    let hasher = hash_file_with_keepalives(file_path, size, &file_name, frame_writer).await?;
+
+    // Verify: clone+finalize to get hash of 0..size without consuming hasher
+    let server_hash = hasher.partial_hash();
+
+    if client_hash == server_hash {
+        // Hash matches — resume from client's position (hasher retains 0..size state)
+        Ok((size, hasher))
     } else {
-        // Hash mismatch - start from beginning
-        Ok(0)
+        // Hash mismatch — client's partial file doesn't match server's file
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "resume hash mismatch",
+        ))
     }
 }
 

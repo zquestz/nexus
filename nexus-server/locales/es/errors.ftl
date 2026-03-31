@@ -131,6 +131,7 @@ err-chat-too-long = Mensaje demasiado largo (máx. { $max_length } caracteres)
 err-topic-too-long = El tema no puede exceder { $max_length } caracteres
 err-version-major-mismatch = Versión de protocolo incompatible: el servidor es versión { $server_major }.x, el cliente es versión { $client_major }.x
 err-version-client-too-new = La versión del cliente { $client_version } es más nueva que la versión del servidor { $server_version }. Por favor actualice el servidor o use un cliente más antiguo.
+err-version-minor-mismatch = Versión de protocolo incompatible. Servidor: { $server_version }, Cliente: { $client_version }. Ambos deben usar la misma versión menor.
 err-kicked-by = Has sido expulsado por { $username }
 err-kicked-by-reason = Has sido expulsado por { $username }: { $reason }
 err-username-exists = El nombre de usuario '{ $username }' ya existe

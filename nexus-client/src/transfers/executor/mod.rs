@@ -37,21 +37,22 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use nexus_common::framing::FrameError;
+use nexus_common::hash::StreamingHasher;
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::{FALLBACK_FILE_NAME, PART_SUFFIX};
 
 use super::types::{Transfer, TransferDirection, TransferError};
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::network::ProxyConfig;
 
 use connection::connect_and_authenticate;
 use file_utils::{
-    check_local_file_with_keepalive, compute_file_sha256, compute_file_sha256_with_keepalive,
-    compute_partial_sha256_with_keepalive, generate_unique_path, is_cancelled, is_safe_path,
+    generate_unique_path, hash_file_with_keepalives, is_cancelled, is_safe_path,
     open_file_for_upload, scan_local_files,
 };
 use streaming::{
-    StreamError, read_file_data_header_skipping_keepalives, read_message_with_timeout,
+    ServerFileFrame, StreamError, read_file_data_or_file_hash, read_message_with_timeout,
     stream_file_to_server, stream_payload_to_file_with_progress,
 };
 
@@ -70,9 +71,6 @@ const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Buffer size for file I/O operations (streaming)
 const BUFFER_SIZE: usize = 64 * 1024; // 64KB
-
-/// Suffix for incomplete downloads
-const PART_SUFFIX: &str = ".part";
 
 // =============================================================================
 // Progress Events
@@ -291,10 +289,9 @@ where
 
     // Process each file (loop doesn't run if file_count == 0)
     let mut transferred_bytes: u64 = 0;
-    let mut files_completed: u64 = 0;
     let base_path = &transfer.local_path;
 
-    for _file_index in 0..file_count {
+    for file_index in 0..file_count {
         // Check for cancellation before each file
         if is_cancelled(cancel_flag) {
             let _ = event_tx.send(TransferEvent::Paused { id });
@@ -304,8 +301,8 @@ where
         // Read FileStart
         let file_start = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
 
-        let (file_path, file_size, file_sha256) = match file_start {
-            ServerMessage::FileStart { path, size, sha256 } => (path, size, sha256),
+        let (file_path, file_size) = match file_start {
+            ServerMessage::FileStart { path, size } => (path, size),
             ServerMessage::TransferComplete { .. } => {
                 // Early completion (error case)
                 return handle_transfer_complete(file_start, id, event_tx);
@@ -328,7 +325,7 @@ where
         let _ = event_tx.send(TransferEvent::Progress {
             id,
             transferred_bytes,
-            files_completed,
+            files_completed: file_index,
             current_file: Some(file_path.clone()),
         });
 
@@ -341,44 +338,16 @@ where
             base_path.clone()
         };
 
-        // Check if a COMPLETE file exists at the destination with DIFFERENT content.
-        // This is separate from resume logic - we only auto-rename if:
-        // 1. A complete file (not .part) exists at the destination
-        // 2. Its content differs from the server's file (different size or hash)
+        // Check if a COMPLETE file exists at the destination with DIFFERENT size.
+        // Without the server hash upfront, we can only auto-rename based on size difference.
+        // If sizes match, we use the original path — the server will verify via FileHash.
         //
-        // If a .part file exists, that's a partial download - we'll resume it.
-        // If a complete file exists with the SAME hash, we skip the download.
+        // If a .part file exists, that's a partial download — we'll resume it.
         let local_file_path = if let Ok(metadata) = tokio::fs::metadata(&local_file_path).await
             && metadata.is_file()
         {
             let existing_size = metadata.len();
-            if existing_size == file_size && file_size > 0 {
-                // Same size, non-zero — hash to determine if content differs
-                if let Ok(existing_hash) = compute_file_sha256(&local_file_path).await {
-                    if existing_hash != file_sha256 {
-                        // Different content, same size — auto-rename
-                        match generate_unique_path(&local_file_path).await {
-                            Ok(path) => path,
-                            Err(_) => {
-                                return Err(send_failed_event(
-                                    event_tx,
-                                    id,
-                                    TransferError::IoError,
-                                ));
-                            }
-                        }
-                    } else {
-                        // Same content — will be skipped by the "already complete" check below
-                        local_file_path
-                    }
-                } else {
-                    // Couldn't hash existing file — just use original path
-                    local_file_path
-                }
-            } else if existing_size == file_size {
-                // Both zero bytes — same content, no rename needed
-                local_file_path
-            } else {
+            if existing_size != file_size {
                 // Different sizes — definitely different file, auto-rename
                 match generate_unique_path(&local_file_path).await {
                     Ok(path) => path,
@@ -386,180 +355,261 @@ where
                         return Err(send_failed_event(event_tx, id, TransferError::IoError));
                     }
                 }
+            } else {
+                // Same size — will be verified by hash later
+                local_file_path
             }
         } else {
             local_file_path
         };
         let part_path = PathBuf::from(format!("{}{}", local_file_path.display(), PART_SUFFIX));
 
-        // Check for existing partial/complete file for resume
-        // Use keepalive version to prevent server timeout during large file hashing
-        // Pass cancel_flag to allow cancellation during large file hash computation
-        let (local_size, local_hash) = match check_local_file_with_keepalive(
-            &local_file_path,
-            &part_path,
-            writer,
-            cancel_flag,
-        )
-        .await
+        // Check for existing partial/complete file and create StreamingHasher
+        // The hasher is pre-fed with existing file content for single-pass hashing.
+        // Sends FileHashing keepalives to server while hashing large existing files.
+        let (local_size, mut hasher) = if let Ok(metadata) =
+            tokio::fs::metadata(&local_file_path).await
+            && metadata.is_file()
+            && metadata.len() > 0
         {
-            Ok(result) => result,
-            Err(e) => {
-                return Err(handle_possible_cancellation(event_tx, id, e));
+            let size = metadata.len();
+            let file_name = local_file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(FALLBACK_FILE_NAME)
+                .to_string();
+            match hash_file_with_keepalives(&local_file_path, size, file_name, writer, cancel_flag)
+                .await
+            {
+                Ok(h) => (size, h),
+                Err(TransferError::Cancelled) => {
+                    return Err(handle_possible_cancellation(
+                        event_tx,
+                        id,
+                        TransferError::Cancelled,
+                    ));
+                }
+                Err(_) => (0, StreamingHasher::new()),
             }
+        } else if let Ok(metadata) = tokio::fs::metadata(&part_path).await
+            && metadata.is_file()
+            && metadata.len() > 0
+        {
+            let size = metadata.len();
+            let file_name = part_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(FALLBACK_FILE_NAME)
+                .to_string();
+            match hash_file_with_keepalives(&part_path, size, file_name, writer, cancel_flag).await
+            {
+                Ok(h) => (size, h),
+                Err(TransferError::Cancelled) => {
+                    return Err(handle_possible_cancellation(
+                        event_tx,
+                        id,
+                        TransferError::Cancelled,
+                    ));
+                }
+                Err(_) => (0, StreamingHasher::new()),
+            }
+        } else {
+            (0, StreamingHasher::new())
+        };
+
+        // Build hash for FileStartResponse (clone+finalize, hasher not consumed)
+        let local_hash = if local_size > 0 {
+            Some(hasher.partial_hash())
+        } else {
+            None
         };
 
         // Send FileStartResponse
         let start_response = ClientMessage::FileStartResponse {
             size: local_size,
-            sha256: local_hash.clone(),
+            sha256: local_hash,
         };
         send_client_message(writer, &start_response)
             .await
             .map_err(|_| TransferError::ConnectionError)?;
 
-        // If file is already complete (sizes and hashes match), server skips FileData
-        if local_size == file_size && local_size > 0 {
-            // File already complete, no FileData expected
-            transferred_bytes += file_size;
-            files_completed += 1;
-
-            let _ = event_tx.send(TransferEvent::FileCompleted {
-                id,
-                path: file_path.clone(),
-            });
-
-            let _ = event_tx.send(TransferEvent::Progress {
-                id,
-                transferred_bytes,
-                files_completed,
-                current_file: None,
-            });
-
-            continue;
-        }
-
-        // Receive FileData and write to .part file
-        if file_size > 0 {
-            // Create parent directories if needed
-            if let Some(parent) = local_file_path.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|_| TransferError::IoError)?;
+        // Read next frame from server: FileData or FileHash
+        // FileHashing keepalives are skipped automatically
+        let server_frame = match read_file_data_or_file_hash(reader).await {
+            Ok(f) => f,
+            Err(e) => {
+                return Err(send_failed_event(event_tx, id, e));
             }
+        };
 
-            // Open/create .part file for writing (append if resuming)
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(local_size == 0) // Truncate only if starting fresh
-                .open(&part_path)
-                .await
-                .map_err(|_| TransferError::IoError)?;
-
-            // Seek to end if resuming
-            if local_size > 0 {
-                file.seek(SeekFrom::End(0))
-                    .await
-                    .map_err(|_| TransferError::IoError)?;
-
-                // Account for already-downloaded bytes in progress
-                transferred_bytes += local_size;
-            }
-
-            // Calculate bytes to receive
-            let bytes_to_receive = file_size - local_size;
-
-            // Read the FileData frame header, skipping any FileHashing keepalives
-            // The server may send FileHashing while computing partial hash for resume
-            let header = match read_file_data_header_skipping_keepalives(reader).await {
-                Ok(h) => h,
-                Err(e) => {
-                    return Err(send_failed_event(event_tx, id, e));
-                }
-            };
-
-            if header.payload_length != bytes_to_receive {
-                return Err(send_failed_event(
-                    event_tx,
+        match server_frame {
+            ServerFileFrame::TransferComplete { error_kind, .. } => {
+                // Server terminated the transfer early (e.g., resume hash mismatch)
+                let err_kind = error_kind
+                    .as_deref()
+                    .map(TransferError::from_server_error_kind)
+                    .unwrap_or(TransferError::Unknown);
+                let error_msg = if err_kind == TransferError::HashMismatch {
+                    t_args("transfer-error-hash-mismatch-file", &[("file", &file_path)])
+                } else {
+                    t(err_kind.to_i18n_key())
+                };
+                let _ = event_tx.send(TransferEvent::Failed {
                     id,
-                    TransferError::ProtocolError,
-                ));
+                    error: error_msg,
+                    error_kind: Some(err_kind.clone()),
+                });
+                return Err(err_kind);
             }
-
-            // Stream FileData payload directly to file with progress-based timeout
-            // and cancellation support
-            let stream_result = stream_payload_to_file_with_progress(
-                reader,
-                &header,
-                &mut file,
-                PROGRESS_TIMEOUT,
-                cancel_flag,
-                |bytes_written| {
-                    // Send progress update
-                    let _ = event_tx.send(TransferEvent::Progress {
-                        id,
-                        transferred_bytes: transferred_bytes + bytes_written,
-                        files_completed,
-                        current_file: Some(file_path.clone()),
-                    });
-                },
-            )
-            .await;
-
-            match stream_result {
-                Ok(bytes_written) => {
-                    transferred_bytes += bytes_written;
+            ServerFileFrame::FileHash {
+                sha256: server_hash,
+            } => {
+                // Server says: file is already complete or zero-byte — no FileData
+                if file_size == 0 {
+                    // Zero-byte file — create it
+                    if let Some(parent) = local_file_path.parent() {
+                        tokio::fs::create_dir_all(parent)
+                            .await
+                            .map_err(|_| TransferError::IoError)?;
+                    }
+                    File::create(&local_file_path)
+                        .await
+                        .map_err(|_| TransferError::IoError)?;
                 }
-                Err(StreamError::Cancelled) => {
-                    file.flush().await.ok();
-                    let _ = event_tx.send(TransferEvent::Paused { id });
-                    return Ok(());
+
+                // Independent verification: compare our hash against server's FileHash
+                // For zero-byte: hasher is fresh, finalize = empty hash
+                // For already-complete: hasher consumed full file during resume verification
+                let computed_hash = hasher.finalize();
+                if computed_hash != server_hash {
+                    return Err(send_failed_event(event_tx, id, TransferError::HashMismatch));
                 }
-                Err(StreamError::Frame(FrameError::FrameTimeout)) => {
+
+                // Account for the full file size in progress
+                transferred_bytes += file_size;
+            }
+            ServerFileFrame::FileData(header) => {
+                // Server is sending file data — stream to .part file
+
+                // Create parent directories if needed
+                if let Some(parent) = local_file_path.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .map_err(|_| TransferError::IoError)?;
+                }
+
+                // Open/create .part file for writing (append if resuming)
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(local_size == 0) // Truncate only if starting fresh
+                    .open(&part_path)
+                    .await
+                    .map_err(|_| TransferError::IoError)?;
+
+                // Seek to end if resuming
+                if local_size > 0 {
+                    file.seek(SeekFrom::End(0))
+                        .await
+                        .map_err(|_| TransferError::IoError)?;
+
+                    // Account for already-downloaded bytes in progress
+                    transferred_bytes += local_size;
+                }
+
+                // Calculate bytes to receive
+                let bytes_to_receive = file_size - local_size;
+
+                if header.payload_length != bytes_to_receive {
                     return Err(send_failed_event(
                         event_tx,
                         id,
-                        TransferError::ConnectionError,
+                        TransferError::ProtocolError,
                     ));
                 }
-                Err(StreamError::Frame(_)) => {
-                    return Err(send_failed_event(event_tx, id, TransferError::IoError));
+
+                // Stream FileData payload directly to file with progress-based timeout
+                // and cancellation support
+                let stream_result = stream_payload_to_file_with_progress(
+                    reader,
+                    &header,
+                    &mut file,
+                    PROGRESS_TIMEOUT,
+                    cancel_flag,
+                    Some(&mut hasher),
+                    |bytes_written| {
+                        // Send progress update
+                        let _ = event_tx.send(TransferEvent::Progress {
+                            id,
+                            transferred_bytes: transferred_bytes + bytes_written,
+                            files_completed: file_index,
+                            current_file: Some(file_path.clone()),
+                        });
+                    },
+                )
+                .await;
+
+                match stream_result {
+                    Ok(bytes_written) => {
+                        transferred_bytes += bytes_written;
+                    }
+                    Err(StreamError::Cancelled) => {
+                        file.flush().await.ok();
+                        let _ = event_tx.send(TransferEvent::Paused { id });
+                        return Ok(());
+                    }
+                    Err(StreamError::Frame(FrameError::FrameTimeout)) => {
+                        return Err(send_failed_event(
+                            event_tx,
+                            id,
+                            TransferError::ConnectionError,
+                        ));
+                    }
+                    Err(StreamError::Frame(_)) => {
+                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                    }
+                    Err(StreamError::Io) => {
+                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                    }
                 }
-                Err(StreamError::Io) => {
-                    return Err(send_failed_event(event_tx, id, TransferError::IoError));
+
+                // Flush and close file
+                file.flush().await.map_err(|_| TransferError::IoError)?;
+                drop(file);
+
+                // Read FileHash from server (sent after FileData)
+                let hash_frame = match read_file_data_or_file_hash(reader).await {
+                    Ok(f) => f,
+                    Err(e) => {
+                        return Err(send_failed_event(event_tx, id, e));
+                    }
+                };
+                let server_hash = match hash_frame {
+                    ServerFileFrame::FileHash { sha256 } => sha256,
+                    _ => {
+                        return Err(send_failed_event(
+                            event_tx,
+                            id,
+                            TransferError::ProtocolError,
+                        ));
+                    }
+                };
+
+                // Verify: client-computed hash (StreamingHasher) must match server's FileHash
+                // Hasher consumed existing .part bytes (0..local_size) + received bytes
+                let computed_hash = hasher.finalize();
+                if computed_hash != server_hash {
+                    // Delete the corrupt .part file
+                    let _ = tokio::fs::remove_file(&part_path).await;
+                    return Err(send_failed_event(event_tx, id, TransferError::HashMismatch));
                 }
-            }
 
-            // Flush and close file
-            file.flush().await.map_err(|_| TransferError::IoError)?;
-            drop(file);
-
-            // Verify SHA-256 hash
-            let computed_hash = compute_file_sha256(&part_path).await?;
-            if computed_hash != file_sha256 {
-                // Delete the corrupt .part file
-                let _ = tokio::fs::remove_file(&part_path).await;
-                return Err(send_failed_event(event_tx, id, TransferError::HashMismatch));
-            }
-
-            // Rename .part to final filename
-            tokio::fs::rename(&part_path, &local_file_path)
-                .await
-                .map_err(|_| TransferError::IoError)?;
-        } else {
-            // 0-byte file - just create it
-            if let Some(parent) = local_file_path.parent() {
-                tokio::fs::create_dir_all(parent)
+                // Rename .part to final filename
+                tokio::fs::rename(&part_path, &local_file_path)
                     .await
                     .map_err(|_| TransferError::IoError)?;
             }
-            File::create(&local_file_path)
-                .await
-                .map_err(|_| TransferError::IoError)?;
         }
-
-        files_completed += 1;
 
         let _ = event_tx.send(TransferEvent::FileCompleted {
             id,
@@ -569,7 +619,7 @@ where
         let _ = event_tx.send(TransferEvent::Progress {
             id,
             transferred_bytes,
-            files_completed,
+            files_completed: file_index + 1,
             current_file: None,
         });
     }
@@ -691,27 +741,10 @@ where
             current_file: Some(file_info.relative_path.clone()),
         });
 
-        // Compute SHA-256 for this file, sending keepalives to prevent server timeout
-        // Pass cancel_flag to allow cancellation during large file hash computation
-        let file_sha256 = match compute_file_sha256_with_keepalive(
-            &file_info.absolute_path,
-            file_info.relative_path.clone(),
-            writer,
-            cancel_flag,
-        )
-        .await
-        {
-            Ok(hash) => hash,
-            Err(e) => {
-                return Err(handle_possible_cancellation(event_tx, id, e));
-            }
-        };
-
-        // Send FileStart
+        // Send FileStart — no sha256, hash will be sent in FileHash after data
         let file_start = ClientMessage::FileStart {
             path: file_info.relative_path.clone(),
             size: file_info.size,
-            sha256: file_sha256.clone(),
         };
         send_client_message(writer, &file_start)
             .await
@@ -735,34 +768,69 @@ where
             }
         };
 
-        // Determine upload offset based on server's response
-        let offset = if server_size == 0 {
-            // Server has no file - upload from beginning
-            0
-        } else if server_size == file_info.size && server_hash.as_ref() == Some(&file_sha256) {
-            // File already complete on server - skip upload
-            transferred_bytes += file_info.size;
-            files_completed += 1;
+        // Determine upload offset and create StreamingHasher
+        // The hasher is used for single-pass hashing: resume verification via
+        // clone+finalize, then continued during streaming, then finalized for FileHash.
+        let (offset, mut hasher) = if server_size == 0 {
+            // Server has no file — upload from beginning
+            (0, StreamingHasher::new())
+        } else if server_size == file_info.size {
+            // Server has same size file — check if already complete
+            if let Some(ref server_hash_val) = server_hash {
+                // Hash our full file to compare (on-demand, not upfront)
+                let h = match hash_file_with_keepalives(
+                    &file_info.absolute_path,
+                    file_info.size,
+                    file_info.relative_path.clone(),
+                    writer,
+                    cancel_flag,
+                )
+                .await
+                {
+                    Ok(h) => h,
+                    Err(e) => {
+                        return Err(handle_possible_cancellation(event_tx, id, e));
+                    }
+                };
+                let our_hash = h.partial_hash();
+                if &our_hash == server_hash_val {
+                    // File already complete on server — send FileHash only, skip FileData
+                    let file_hash = ClientMessage::FileHash {
+                        sha256: h.finalize(),
+                    };
+                    send_client_message(writer, &file_hash)
+                        .await
+                        .map_err(|_| TransferError::ConnectionError)?;
 
-            let _ = event_tx.send(TransferEvent::FileCompleted {
-                id,
-                path: file_info.relative_path.clone(),
-            });
+                    transferred_bytes += file_info.size;
+                    files_completed += 1;
 
-            let _ = event_tx.send(TransferEvent::Progress {
-                id,
-                transferred_bytes,
-                files_completed,
-                current_file: None,
-            });
+                    let _ = event_tx.send(TransferEvent::FileCompleted {
+                        id,
+                        path: file_info.relative_path.clone(),
+                    });
 
-            continue;
+                    let _ = event_tx.send(TransferEvent::Progress {
+                        id,
+                        transferred_bytes,
+                        files_completed,
+                        current_file: None,
+                    });
+
+                    continue;
+                } else {
+                    // Hash mismatch — different file with same size, start over
+                    (0, StreamingHasher::new())
+                }
+            } else {
+                // No server hash — start over
+                (0, StreamingHasher::new())
+            }
         } else if server_size < file_info.size {
-            // Server has partial file - verify hash and resume
-            // Use keepalive version to prevent server timeout during large file hashing
+            // Server has partial file — verify hash and resume
             if let Some(ref server_partial_hash) = server_hash {
-                // Pass cancel_flag to allow cancellation during large file hash computation
-                let local_partial_hash = match compute_partial_sha256_with_keepalive(
+                // Hash 0..server_size of our file using StreamingHasher
+                let h = match hash_file_with_keepalives(
                     &file_info.absolute_path,
                     server_size,
                     file_info.relative_path.clone(),
@@ -771,25 +839,26 @@ where
                 )
                 .await
                 {
-                    Ok(hash) => hash,
+                    Ok(h) => h,
                     Err(e) => {
                         return Err(handle_possible_cancellation(event_tx, id, e));
                     }
                 };
-                if &local_partial_hash == server_partial_hash {
-                    // Hashes match - resume from server_size
-                    server_size
+                let partial = h.partial_hash();
+                if &partial == server_partial_hash {
+                    // Hashes match — resume from server_size (hasher retains 0..server_size)
+                    (server_size, h)
                 } else {
-                    // Hash mismatch - upload from beginning
-                    0
+                    // Hash mismatch — upload from beginning
+                    (0, StreamingHasher::new())
                 }
             } else {
-                // No server hash - upload from beginning
-                0
+                // No server hash — upload from beginning
+                (0, StreamingHasher::new())
             }
         } else {
-            // Server file is larger than ours - something is wrong, start over
-            0
+            // Server file is larger than ours — something is wrong, start over
+            (0, StreamingHasher::new())
         };
 
         // Upload file data if needed
@@ -804,13 +873,14 @@ where
                 transferred_bytes += offset;
             }
 
-            // Stream file data to server
+            // Stream file data to server with integrated hasher
             let stream_result = stream_file_to_server(
                 writer,
                 &mut file,
                 bytes_to_send,
                 PROGRESS_TIMEOUT,
                 cancel_flag,
+                Some(&mut hasher),
                 |bytes_written| {
                     // Send progress update
                     let _ = event_tx.send(TransferEvent::Progress {
@@ -846,7 +916,16 @@ where
                 }
             }
         }
-        // 0-byte files: no FileData sent per protocol spec, just proceed to mark complete
+
+        // Send FileHash with full file hash
+        // Hasher consumed 0..offset (from resume verification) + offset..end (from streaming)
+        // For zero-byte files: hasher is fresh, finalize = hash of empty content
+        let file_hash = ClientMessage::FileHash {
+            sha256: hasher.finalize(),
+        };
+        send_client_message(writer, &file_hash)
+            .await
+            .map_err(|_| TransferError::ConnectionError)?;
 
         files_completed += 1;
 

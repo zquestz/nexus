@@ -8,7 +8,7 @@
 //! 1. Client: Handshake → Server: HandshakeResponse
 //! 2. Client: Login → Server: LoginResponse (simplified: just success/error)
 //! 3. Client: FileDownload → Server: FileDownloadResponse
-//! 4. For each file: Server: FileStart → Client: FileStartResponse → Server: FileData
+//! 4. For each file: Server: FileStart → Client: FileStartResponse → Server: FileData → Server: FileHash
 //! 5. Server: TransferComplete
 //! 6. Server closes connection
 //!
@@ -16,13 +16,13 @@
 //! 1. Client: Handshake → Server: HandshakeResponse
 //! 2. Client: Login → Server: LoginResponse (simplified: just success/error)
 //! 3. Client: FileUpload → Server: FileUploadResponse
-//! 4. For each file: Client: FileStart → Server: FileStartResponse → Client: FileData
+//! 4. For each file: Client: FileStart → Server: FileStartResponse → Client: FileData → Client: FileHash
 //! 5. Server: TransferComplete
 //! 6. Server closes connection
 
 mod auth;
 mod download;
-mod hash;
+mod hashing;
 mod helpers;
 pub mod registry;
 mod transfer;

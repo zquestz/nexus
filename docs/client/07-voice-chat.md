@@ -429,7 +429,7 @@ Actual usage includes packet overhead.
 Typical voice latency: 40-100ms depending on:
 
 - Network latency to server
-- Jitter buffer size (20-200ms adaptive, reduced from 40-200ms in v0.5.7)
+- Jitter buffer size (20-200ms adaptive)
 - Audio device latency
 - Resampling (adds ~10-20ms if device doesn't support 48kHz)
 

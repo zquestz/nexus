@@ -21,6 +21,11 @@ pub enum CompatibilityResult {
         server_minor: u64,
         client_minor: u64,
     },
+    /// Minor version mismatch during pre-1.0 development (0.x)
+    MinorMismatch {
+        server_minor: u64,
+        client_minor: u64,
+    },
 }
 
 impl CompatibilityResult {
@@ -47,8 +52,10 @@ pub fn protocol_version() -> Version {
 /// Check if a client version is compatible with the server's protocol version.
 ///
 /// Compatibility rules:
-/// - Major versions must match (breaking changes)
-/// - Client minor version must be ≤ server minor version
+/// - Major versions must match
+/// - **Pre-1.0 (`0.x`):** Minor versions must match exactly. Each minor bump
+///   can be a breaking change per semver (e.g., `0.5` and `0.7` are incompatible)
+/// - **Post-1.0 (`1.x+`):** Client minor version must be ≤ server minor version
 ///   (server can have features client doesn't know about)
 /// - Patch versions do not affect compatibility
 /// - Pre-release versions are compared based on their base version
@@ -68,6 +75,15 @@ pub fn check_compatibility(client: &Version) -> CompatibilityResult {
         };
     }
 
+    // Pre-1.0: minor versions must match exactly (each minor bump can break)
+    if server.major == 0 && client.minor != server.minor {
+        return CompatibilityResult::MinorMismatch {
+            server_minor: server.minor,
+            client_minor: client.minor,
+        };
+    }
+
+    // Post-1.0: client minor must be ≤ server minor
     if client.minor > server.minor {
         return CompatibilityResult::ClientTooNew {
             server_minor: server.minor,
@@ -98,11 +114,26 @@ mod tests {
     }
 
     #[test]
-    fn test_compatibility_older_client_minor() {
+    fn test_pre_1_0_rejects_older_client_minor() {
         let server = protocol_version();
-        if server.minor > 0 {
-            let client = Version::new(server.major, server.minor - 1, 0);
-            assert!(check_compatibility(&client).is_compatible());
+        // During 0.x, older minor versions are incompatible
+        if server.major == 0 && server.minor > 0 {
+            let client = Version::new(0, server.minor - 1, 0);
+            let result = check_compatibility(&client);
+            assert!(!result.is_compatible());
+            assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
+        }
+    }
+
+    #[test]
+    fn test_pre_1_0_rejects_newer_client_minor() {
+        let server = protocol_version();
+        // During 0.x, newer minor versions are also incompatible
+        if server.major == 0 {
+            let client = Version::new(0, server.minor + 1, 0);
+            let result = check_compatibility(&client);
+            assert!(!result.is_compatible());
+            assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
         }
     }
 
@@ -128,11 +159,16 @@ mod tests {
 
     #[test]
     fn test_incompatibility_client_minor_too_new() {
+        // This tests the post-1.0 path; for 0.x, MinorMismatch fires first
         let server = protocol_version();
         let client = Version::new(server.major, server.minor + 1, 0);
         let result = check_compatibility(&client);
         assert!(!result.is_compatible());
-        assert!(matches!(result, CompatibilityResult::ClientTooNew { .. }));
+        if server.major == 0 {
+            assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
+        } else {
+            assert!(matches!(result, CompatibilityResult::ClientTooNew { .. }));
+        }
     }
 
     #[test]
@@ -149,6 +185,13 @@ mod tests {
             !CompatibilityResult::ClientTooNew {
                 server_minor: 1,
                 client_minor: 2
+            }
+            .is_compatible()
+        );
+        assert!(
+            !CompatibilityResult::MinorMismatch {
+                server_minor: 7,
+                client_minor: 5
             }
             .is_compatible()
         );

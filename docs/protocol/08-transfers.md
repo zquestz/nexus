@@ -39,13 +39,16 @@ Client                                        Server
    │                                             │
    │  ┌──── For each file: ──────────────────┐   │
    │  │                                      │   │
-   │  │     FileStart { path, size, sha256 } │   │
+   │  │     FileStart { path, size }         │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  │  FileStartResponse { size, sha256 }  │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
    │  │     FileData [raw bytes]             │   │
+   │  │ ◄────────────────────────────────────│   │
+   │  │                                      │   │
+   │  │     FileHash { sha256 }              │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  └──────────────────────────────────────┘   │
@@ -80,13 +83,16 @@ Client                                        Server
    │                                             │
    │  ┌──── For each file: ──────────────────┐   │
    │  │                                      │   │
-   │  │  FileStart { path, size, sha256 }    │   │
+   │  │  FileStart { path, size }            │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
    │  │    FileStartResponse { size, sha256 }│   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  │  FileData [raw bytes]                │   │
+   │  │ ────────────────────────────────────►│   │
+   │  │                                      │   │
+   │  │  FileHash { sha256 }                 │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
    │  └──────────────────────────────────────┘   │
@@ -231,21 +237,19 @@ Response to upload request.
 
 ### FileStart (Bidirectional)
 
-Announces a file to transfer. Sent by server for downloads, by client for uploads.
+Announces a file to transfer. Sent by server for downloads, by client for uploads. The file hash is not included here — it is sent separately in `FileHash` after the data (or alone if no data is sent).
 
-| Field    | Type    | Required | Description                               |
-| -------- | ------- | -------- | ----------------------------------------- |
-| `path`   | string  | Yes      | Relative path (e.g., `"subdir/file.txt"`) |
-| `size`   | integer | Yes      | File size in bytes                        |
-| `sha256` | string  | Yes      | SHA-256 hash of complete file             |
+| Field  | Type    | Required | Description                               |
+| ------ | ------- | -------- | ----------------------------------------- |
+| `path` | string  | Yes      | Relative path (e.g., `"subdir/file.txt"`) |
+| `size` | integer | Yes      | File size in bytes                        |
 
 **Example:**
 
 ```json
 {
   "path": "Games/app.zip",
-  "size": 1048576,
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "size": 1048576
 }
 ```
 
@@ -253,7 +257,7 @@ Announces a file to transfer. Sent by server for downloads, by client for upload
 
 - Path is relative (no leading slash)
 - Path uses forward slashes regardless of OS
-- 0-byte files are valid (sha256 is the empty file hash)
+- 0-byte files are valid (`size: 0`)
 
 ### FileStartResponse (Bidirectional)
 
@@ -307,7 +311,7 @@ NX|8|FileData|a1b2c3d4e5f6|65536|[binary data]
 
 ### FileHashing (Bidirectional)
 
-Keepalive sent while computing SHA-256 hash for large files.
+Keepalive sent while computing SHA-256 hash for large files (e.g., during resume verification of existing data).
 
 | Field  | Type   | Required | Description                     |
 | ------ | ------ | -------- | ------------------------------- |
@@ -321,7 +325,43 @@ Keepalive sent while computing SHA-256 hash for large files.
 }
 ```
 
-This message is sent every 10 seconds during hash computation to prevent idle timeouts. Receivers should reset their idle timer but otherwise ignore it.
+This message is sent every 10 seconds during hash computation to prevent idle timeouts. Receivers should reset their idle timer but otherwise ignore it. Multiple consecutive `FileHashing` frames may arrive if the hash computation takes a long time.
+
+### FileHash (Bidirectional)
+
+Carries the sender's SHA-256 hash of the complete file. Sent after `FileData` (normal transfer) or alone without `FileData` (file already complete or zero-byte).
+
+| Field    | Type   | Required | Description                        |
+| -------- | ------ | -------- | ---------------------------------- |
+| `sha256` | string | Yes      | SHA-256 hash of the complete file  |
+
+**Example:**
+
+```json
+{
+  "sha256": "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+}
+```
+
+**Notes:**
+
+- Both sides independently compute the hash during streaming (single-pass)
+- The receiver compares its own computed hash against the sender's `FileHash`
+- A mismatch means data corruption — the receiver should delete the `.part` file and report an error
+- For zero-byte files, the hash is the SHA-256 of empty input (`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
+
+**Per-file frame dispatch after `FileStartResponse`:**
+
+The receiver reads the next frame and dispatches based on type:
+
+| Frame Type         | Meaning                                                    |
+| ------------------ | ---------------------------------------------------------- |
+| `FileHashing`      | Keepalive — consume payload, skip, continue reading        |
+| `FileData`         | Data transfer — stream to disk, then read `FileHash` next  |
+| `FileHash`         | File was skipped (already complete or zero-byte)           |
+| `TransferComplete` | Transfer terminated early (error during resume, etc.)      |
+
+After `FileData` is received and streamed, the very next meaningful frame MUST be `FileHash`. Any other frame type is a protocol error.
 
 ### TransferComplete (Server → Client)
 
@@ -353,37 +393,43 @@ Signals transfer completion.
 
 ## Resume Logic
 
+Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_hash()`) without consuming the hasher. This enables single-pass hashing: the hasher accumulates bytes during resume verification, provides an intermediate hash for comparison, and then continues accumulating bytes during streaming. When the transfer completes, the same hasher is finalized to produce the full file hash for `FileHash`.
+
 ### Download Resume
 
-1. Server sends `FileStart` with file metadata
+1. Server sends `FileStart { path, size }` (no hash)
 2. Client checks local `.part` file (or completed file)
-3. Client responds with `FileStartResponse`:
-   - `size: 0` if no local file
-   - `size: N, sha256: "..."` if partial/complete file exists
-4. Server computes offset:
-   - If `size: 0` → send entire file
-   - If hash matches first N bytes → resume from offset N
-   - If hash mismatch → send entire file (start over)
-5. If file already complete, `FileData` is skipped
+3. Client hashes its local data into a `StreamingHasher`, sends `FileHashing` keepalives during hashing
+4. Client responds with `FileStartResponse { size: N, sha256: partial_hash }` (clone-and-finalize)
+5. Server hashes first N bytes of its file into a `StreamingHasher`, sends `FileHashing` keepalives
+6. Server compares via `partial_hash()`:
+   - Hash match → resume from offset N. Hasher retains 0..N state for continued use
+   - Hash mismatch → send `TransferComplete { success: false, error_kind: "hash_mismatch" }`
+   - `size: 0` → send entire file (fresh hasher)
+7. Server streams `FileData` from offset, feeding bytes to hasher via `HashingReader`
+8. Server sends `FileHash { sha256: hasher.finalize() }` — full file hash (0..end)
+9. Client compares its independently computed hash against server's `FileHash`
 
 ### Upload Resume
 
-1. Client sends `FileStart` with file metadata
+1. Client sends `FileStart { path, size }` (no hash)
 2. Server checks local `.part` file (or completed file)
-3. Server responds with `FileStartResponse`:
-   - `size: 0` if no server file
-   - `size: N, sha256: "..."` if partial/complete file exists
-4. Client computes offset:
-   - If `size: 0` → send entire file
-   - If hash matches first N bytes → resume from offset N
-   - If hash mismatch → send entire file (start over)
-5. If file already complete, `FileData` is skipped
+3. Server hashes its local data into a `StreamingHasher`, sends `FileHashing` keepalives during hashing
+4. Server responds with `FileStartResponse { size: N, sha256: partial_hash }` (clone-and-finalize)
+5. Client hashes first N bytes of its file into a `StreamingHasher`, sends `FileHashing` keepalives
+6. Client compares via `partial_hash()`:
+   - Hash match → resume from offset N. Hasher retains 0..N state for continued use
+   - Hash mismatch → reset to offset 0 (send full file). Server detects concurrent upload conflict and rejects
+   - `size: 0` → send entire file (fresh hasher)
+7. Client streams `FileData` from offset, feeding bytes to hasher
+8. Client sends `FileHash { sha256: hasher.finalize() }` — full file hash (0..end)
+9. Server compares its independently computed hash against client's `FileHash`. Mismatch → delete `.part`, return error
 
 ### Partial Files
 
 - Downloads use `.part` suffix until complete
 - Uploads use `.part` suffix on server until verified
-- After successful SHA-256 verification, `.part` is renamed to final name
+- After successful SHA-256 verification via `FileHash`, `.part` is renamed to final name
 
 ## Error Kinds
 
@@ -463,9 +509,10 @@ No `session_id`, `permissions`, `server_info`, or `chat_info` is returned on the
 
 ### Zero-Byte Files
 
-- `FileStart` sent with `size: 0` and empty-file SHA-256
+- `FileStart` sent with `size: 0`
 - `FileStartResponse` sent as normal
 - No `FileData` message (nothing to transfer)
+- `FileHash` sent with SHA-256 of empty input
 - Proceed to next file
 
 ### No Overwrite
@@ -478,7 +525,9 @@ If a file already exists with different content:
 ## Notes
 
 - Transfer port is communicated in `LoginResponse.server_info.transfer_port` (always present)
-- SHA-256 is computed with hardware acceleration when available
+- SHA-256 is computed inline during streaming (single-pass, no post-transfer re-read)
+- Both sides independently maintain a `StreamingHasher` — the sender hashes while reading from disk, the receiver hashes while writing to disk
+- Hardware-accelerated SHA-256 when available (SHA-NI on x86_64, crypto extensions on ARM64)
 - Large files use streaming (64KB buffers)
 - Symlinks are followed transparently
 - Directories are downloaded recursively

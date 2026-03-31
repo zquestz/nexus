@@ -10,7 +10,8 @@ use nexus_common::version::{self, CompatibilityResult};
 
 use super::{
     HandlerContext, err_handshake_already_completed, err_version_client_too_new, err_version_empty,
-    err_version_invalid_semver, err_version_major_mismatch, err_version_too_long,
+    err_version_invalid_semver, err_version_major_mismatch, err_version_minor_mismatch,
+    err_version_too_long,
 };
 
 /// Handle a handshake request from the client
@@ -89,6 +90,26 @@ where
             ctx.send_message(&response).await?;
             Err(io::Error::other("Major version mismatch"))
         }
+        CompatibilityResult::MinorMismatch {
+            server_minor,
+            client_minor,
+        } => {
+            eprintln!(
+                "Handshake from {} failed: minor version mismatch (client: {}, server: {})",
+                ctx.peer_addr, client_minor, server_minor
+            );
+            let response = ServerMessage::HandshakeResponse {
+                success: false,
+                version: Some(server_version_str.to_string()),
+                error: Some(err_version_minor_mismatch(
+                    ctx.locale,
+                    server_version_str,
+                    &version,
+                )),
+            };
+            ctx.send_message(&response).await?;
+            Err(io::Error::other("Minor version mismatch (pre-1.0)"))
+        }
         CompatibilityResult::ClientTooNew {
             server_minor,
             client_minor,
@@ -158,27 +179,134 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_compatible_older_minor_version() {
+    async fn test_pre_1_0_rejects_older_minor_version() {
         let mut test_ctx = create_test_context().await;
         let mut handshake_complete = false;
 
-        // Parse the server version to create a compatible older minor version
+        // During pre-1.0, older minor versions are incompatible (breaking changes)
         let server_ver = version::protocol_version();
-        // Only test if server minor version > 0 (otherwise we can't go lower)
-        if server_ver.minor > 0 {
-            let client_version = format!("{}.{}.0", server_ver.major, server_ver.minor - 1);
-            let result = handle_handshake(
-                client_version,
-                &mut handshake_complete,
-                &mut test_ctx.handler_context(),
-            )
-            .await;
+        // Precondition: we must be in pre-1.0 with minor > 0 for this test to be meaningful
+        assert_eq!(server_ver.major, 0, "This test requires pre-1.0 protocol");
+        assert!(
+            server_ver.minor > 0,
+            "This test requires minor > 0 to test older minor"
+        );
 
-            assert!(
-                result.is_ok(),
-                "Handshake should succeed with older compatible minor version"
-            );
-            assert!(handshake_complete, "Handshake flag should be set to true");
+        let client_version = format!("{}.{}.0", server_ver.major, server_ver.minor - 1);
+        let result = handle_handshake(
+            client_version.clone(),
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "Handshake should fail with older minor version during pre-1.0"
+        );
+        assert!(
+            !handshake_complete,
+            "Handshake flag should not be set on minor mismatch"
+        );
+
+        // Verify error is specifically about minor mismatch
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Minor version mismatch"),
+            "Error should be minor version mismatch, got: {}",
+            err
+        );
+
+        // Verify response message
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::HandshakeResponse {
+                success,
+                error,
+                version: resp_version,
+            } => {
+                assert!(!success, "Response should indicate failure");
+                assert_eq!(
+                    resp_version,
+                    Some(nexus_common::PROTOCOL_VERSION.to_string())
+                );
+                let error_msg = error.expect("Should have error message");
+                assert!(
+                    error_msg.contains("same minor version"),
+                    "Error should mention same minor version requirement, got: {}",
+                    error_msg
+                );
+                assert!(
+                    error_msg.contains(&client_version),
+                    "Error should include client version, got: {}",
+                    error_msg
+                );
+            }
+            _ => panic!("Expected HandshakeResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pre_1_0_rejects_newer_minor_version() {
+        let mut test_ctx = create_test_context().await;
+        let mut handshake_complete = false;
+
+        // During pre-1.0, newer minor versions are also incompatible
+        // (this is different from post-1.0 where client_minor <= server_minor is OK)
+        let server_ver = version::protocol_version();
+        assert_eq!(server_ver.major, 0, "This test requires pre-1.0 protocol");
+
+        let client_version = format!("{}.{}.0", server_ver.major, server_ver.minor + 1);
+        let result = handle_handshake(
+            client_version.clone(),
+            &mut handshake_complete,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "Handshake should fail with newer minor version during pre-1.0"
+        );
+        assert!(
+            !handshake_complete,
+            "Handshake flag should not be set on minor mismatch"
+        );
+
+        // During pre-1.0, newer minor should be MinorMismatch (not ClientTooNew)
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Minor version mismatch"),
+            "Error should be minor version mismatch (not client-too-new), got: {}",
+            err
+        );
+
+        // Verify response message
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::HandshakeResponse {
+                success,
+                error,
+                version: resp_version,
+            } => {
+                assert!(!success, "Response should indicate failure");
+                assert_eq!(
+                    resp_version,
+                    Some(nexus_common::PROTOCOL_VERSION.to_string())
+                );
+                let error_msg = error.expect("Should have error message");
+                assert!(
+                    error_msg.contains("same minor version"),
+                    "Error should mention same minor version requirement, got: {}",
+                    error_msg
+                );
+                assert!(
+                    error_msg.contains(&client_version),
+                    "Error should include client version, got: {}",
+                    error_msg
+                );
+            }
+            _ => panic!("Expected HandshakeResponse"),
         }
     }
 

@@ -25,20 +25,20 @@ Sent immediately after TLS connection is established.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `version` | string | Yes      | Client's protocol version (e.g., `"0.6.0"`) |
+| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.0"`) |
 
 **Example:**
 
 ```json
 {
-  "version": "0.6.0"
+  "version": "0.7.0"
 }
 ```
 
 **Full frame:**
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.6.0"}
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.0"}
 ```
 
 ### HandshakeResponse (Server → Client)
@@ -56,7 +56,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": true,
-  "version": "0.6.0"
+  "version": "0.7.0"
 }
 ```
 
@@ -65,7 +65,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": false,
-  "error": "Unsupported protocol version. Server: 0.6.0, Client: 0.3.0"
+  "error": "Unsupported protocol version. Server: 0.7.0, Client: 0.3.0"
 }
 ```
 
@@ -73,22 +73,24 @@ Server's response indicating whether the handshake succeeded.
 
 The protocol uses [Semantic Versioning](https://semver.org/) for compatibility checks:
 
-| Component | Rule               |
-| --------- | ------------------ |
-| Major     | Must match exactly |
-| Minor     | Client ≤ Server    |
-| Patch     | Ignored            |
+| Component | Rule                                                        |
+| --------- | ----------------------------------------------------------- |
+| Major     | Must match exactly                                          |
+| Minor     | **Pre-1.0 (`0.x`):** Must match exactly. **Post-1.0:** Client ≤ Server |
+| Patch     | Ignored                                                     |
 
-**Examples:**
+During pre-1.0 development, each minor version bump can introduce breaking protocol changes (per semver convention). After 1.0, minor bumps are backward-compatible and only major bumps break compatibility.
 
-| Client | Server | Compatible | Reason                      |
-| ------ | ------ | ---------- | --------------------------- |
-| 0.6.0  | 0.6.0  | ✅ Yes     | Exact match                 |
-| 0.6.0  | 0.6.1  | ✅ Yes     | Patch difference ignored    |
-| 0.5.0  | 0.6.0  | ✅ Yes     | Client minor ≤ server minor |
-| 0.6.0  | 0.5.0  | ❌ No      | Client minor > server minor |
-| 1.0.0  | 0.6.0  | ❌ No      | Major version mismatch      |
-| 0.6.0  | 1.0.0  | ❌ No      | Major version mismatch      |
+**Examples (pre-1.0):**
+
+| Client | Server | Compatible | Reason                          |
+| ------ | ------ | ---------- | ------------------------------- |
+| 0.7.0  | 0.7.0  | ✅ Yes     | Exact match                     |
+| 0.7.0  | 0.7.1  | ✅ Yes     | Patch difference ignored        |
+| 0.5.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0)        |
+| 0.7.0  | 0.5.0  | ❌ No      | Minor mismatch (pre-1.0)        |
+| 1.0.0  | 0.7.0  | ❌ No      | Major version mismatch          |
+| 0.7.0  | 1.0.0  | ❌ No      | Major version mismatch          |
 
 ## Error Handling
 

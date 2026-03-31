@@ -123,6 +123,12 @@ pub enum ClientMessage {
         /// File being hashed (for logging/debugging)
         file: String,
     },
+    /// Per-file hash sent after FileData (or alone if file was skipped).
+    /// Contains the full SHA-256 hash computed by the sender during streaming.
+    FileHash {
+        /// SHA-256 hash of the complete file
+        sha256: String,
+    },
     FileInfo {
         /// Path to the file or directory to get info for
         path: String,
@@ -179,8 +185,6 @@ pub enum ClientMessage {
         path: String,
         /// File size in bytes
         size: u64,
-        /// SHA-256 hash of complete file
-        sha256: String,
     },
     /// Client response to FileStart - reports local file state for resume (downloads)
     FileStartResponse {
@@ -655,6 +659,12 @@ pub enum ServerMessage {
         /// File being hashed (for logging/debugging)
         file: String,
     },
+    /// Per-file hash sent after FileData (or alone if file was skipped).
+    /// Contains the full SHA-256 hash computed by the sender during streaming.
+    FileHash {
+        /// SHA-256 hash of the complete file
+        sha256: String,
+    },
     FileInfoResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -708,8 +718,6 @@ pub enum ServerMessage {
         path: String,
         /// File size in bytes
         size: u64,
-        /// SHA-256 hash of complete file
-        sha256: String,
     },
     /// Server response to client FileStart - reports server file state for resume (uploads)
     FileStartResponse {
@@ -1442,6 +1450,9 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::FileHashing { file } => {
                 f.debug_struct("FileHashing").field("file", file).finish()
             }
+            ClientMessage::FileHash { sha256 } => {
+                f.debug_struct("FileHash").field("sha256", sha256).finish()
+            }
             ClientMessage::FileInfo { path, root } => f
                 .debug_struct("FileInfo")
                 .field("path", path)
@@ -1487,11 +1498,10 @@ impl std::fmt::Debug for ClientMessage {
                 .field("query", query)
                 .field("root", root)
                 .finish(),
-            ClientMessage::FileStart { path, size, sha256 } => f
+            ClientMessage::FileStart { path, size } => f
                 .debug_struct("FileStart")
                 .field("path", path)
                 .field("size", size)
-                .field("sha256", sha256)
                 .finish(),
             ClientMessage::FileStartResponse { size, sha256 } => f
                 .debug_struct("FileStartResponse")
@@ -2549,24 +2559,21 @@ mod tests {
         let msg = ServerMessage::FileStart {
             path: "Games/app.zip".to_string(),
             size: 1048576,
-            sha256: "abc123def456".to_string(),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"FileStart\""));
         assert!(json.contains("\"path\":\"Games/app.zip\""));
         assert!(json.contains("\"size\":1048576"));
-        assert!(json.contains("\"sha256\":\"abc123def456\""));
     }
 
     #[test]
     fn test_deserialize_file_start() {
-        let json = r#"{"type":"FileStart","path":"Documents/readme.txt","size":256,"sha256":"fedcba987654"}"#;
+        let json = r#"{"type":"FileStart","path":"Documents/readme.txt","size":256}"#;
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ServerMessage::FileStart { path, size, sha256 } => {
+            ServerMessage::FileStart { path, size } => {
                 assert_eq!(path, "Documents/readme.txt");
                 assert_eq!(size, 256);
-                assert_eq!(sha256, "fedcba987654");
             }
             _ => panic!("Expected FileStart"),
         }
@@ -3035,12 +3042,10 @@ mod tests {
             ClientMessage::FileStart {
                 path: "test/file.txt".to_string(),
                 size: 12345,
-                sha256: "abcdef123456".to_string(),
             },
             ServerMessage::FileStart {
                 path: "test/file.txt".to_string(),
                 size: 12345,
-                sha256: "abcdef123456".to_string(),
             }
         );
 
@@ -3072,6 +3077,30 @@ mod tests {
 
         // FileData
         assert_mirror!("FileData", ClientMessage::FileData, ServerMessage::FileData);
+
+        // FileHashing
+        assert_mirror!(
+            "FileHashing",
+            ClientMessage::FileHashing {
+                file: "large-archive.zip".to_string(),
+            },
+            ServerMessage::FileHashing {
+                file: "large-archive.zip".to_string(),
+            }
+        );
+
+        // FileHash
+        assert_mirror!(
+            "FileHash",
+            ClientMessage::FileHash {
+                sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                    .to_string(),
+            },
+            ServerMessage::FileHash {
+                sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                    .to_string(),
+            }
+        );
     }
 
     #[test]

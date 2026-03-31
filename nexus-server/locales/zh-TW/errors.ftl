@@ -130,6 +130,7 @@ err-chat-too-long = 訊息太長（最多{ $max_length }個字元）
 err-topic-too-long = 主題不能超過{ $max_length }個字元
 err-version-major-mismatch = 不相容的協定版本：伺服器是版本{ $server_major }.x，客戶端是版本{ $client_major }.x
 err-version-client-too-new = 客戶端版本{ $client_version }比伺服器版本{ $server_version }更新。請更新伺服器或使用較舊的客戶端。
+err-version-minor-mismatch = 不相容的協定版本。伺服器: { $server_version }，客戶端: { $client_version }。雙方必須使用相同的次要版本。
 err-kicked-by = 您已被{ $username }踢出
 err-kicked-by-reason = 您已被{ $username }踢出: { $reason }
 err-username-exists = 使用者名稱「{ $username }」已存在

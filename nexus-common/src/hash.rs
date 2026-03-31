@@ -11,19 +11,19 @@
 //! - **Non-blocking**: Uses `spawn_blocking` to avoid blocking async workers
 //! - **Cancellation granularity**: Checked every buffer read (~1MB), sub-second response
 //!
-//! ## Keepalive Support
-//!
-//! For large files, use `compute_sha256_with_keepalive` which sends notifications
-//! through a channel every [`KEEPALIVE_INTERVAL`] (10 seconds). This allows the
-//! caller to send keepalive messages to prevent connection timeouts during
-//! multi-gigabyte file transfers.
-//!
 //! ## Cancellation Support
 //!
-//! All keepalive variants support cancellation via an `AtomicBool` flag. The hash
+//! The core hash function supports cancellation via an `AtomicBool` flag. The hash
 //! computation checks this flag before each buffer read and returns
 //! `ErrorKind::Interrupted` if cancellation is requested. This enables responsive
 //! cancellation even for very large files.
+//!
+//! ## Streaming Support
+//!
+//! [`StreamingHasher`] provides incremental hashing for streaming transfers.
+//! It supports computing intermediate hashes via clone-and-finalize (`partial_hash`)
+//! without losing state, enabling single-pass hashing across resume verification
+//! and streaming phases.
 //!
 //! ## Security Considerations
 //!
@@ -36,19 +36,11 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use sha2::{Digest, Sha256};
-use tokio::sync::mpsc;
 
-use crate::HASH_BUFFER_SIZE;
-
-/// How often to send keepalive notifications during hashing.
-///
-/// This interval (10 seconds) is chosen to be well under the typical idle timeout
-/// (30 seconds) while not overwhelming the network with keepalive messages.
-/// At 500 MB/s, a 100GB file takes ~200 seconds, generating ~20 keepalive messages.
-pub const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+use crate::{HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
 
 /// Compute SHA-256 hash of an entire file
 ///
@@ -73,72 +65,6 @@ pub async fn compute_partial_sha256(path: &Path, max_bytes: u64) -> io::Result<S
         .map_err(|e| io::Error::other(format!("hash task failed: {e}")))?
 }
 
-/// Compute SHA-256 hash with periodic keepalive notifications and cancellation support
-///
-/// Returns a receiver that will receive the file name periodically (every
-/// `KEEPALIVE_INTERVAL`) while hashing is in progress. The caller should send a
-/// keepalive message each time a notification is received to prevent connection timeouts.
-///
-/// If `cancel_flag` is set to `true`, the hash computation will stop and return
-/// an error with `ErrorKind::Interrupted`.
-///
-/// Returns (hash_result, keepalive_receiver).
-///
-/// Runs on a blocking thread pool to avoid blocking async workers.
-pub async fn compute_sha256_with_keepalive(
-    path: &Path,
-    file_name: String,
-    cancel_flag: Option<Arc<AtomicBool>>,
-) -> (
-    tokio::task::JoinHandle<io::Result<String>>,
-    mpsc::UnboundedReceiver<String>,
-) {
-    compute_partial_sha256_with_keepalive(path, u64::MAX, file_name, cancel_flag).await
-}
-
-/// Compute partial SHA-256 hash with periodic keepalive notifications and cancellation support
-///
-/// Like `compute_sha256_with_keepalive` but only hashes the first `max_bytes` of the file.
-/// Used for resume verification where we need to hash a partial file. Sends keepalive
-/// notifications every `KEEPALIVE_INTERVAL`.
-///
-/// If `cancel_flag` is set to `true`, the hash computation will stop and return
-/// an error with `ErrorKind::Interrupted`.
-///
-/// Returns (hash_result, keepalive_receiver).
-///
-/// Runs on a blocking thread pool to avoid blocking async workers.
-pub async fn compute_partial_sha256_with_keepalive(
-    path: &Path,
-    max_bytes: u64,
-    file_name: String,
-    cancel_flag: Option<Arc<AtomicBool>>,
-) -> (
-    tokio::task::JoinHandle<io::Result<String>>,
-    mpsc::UnboundedReceiver<String>,
-) {
-    let path = path.to_path_buf();
-
-    // Channel for keepalive notifications from blocking task
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
-
-    // Spawn blocking task for hashing
-    let handle = tokio::task::spawn_blocking(move || {
-        let file_name_clone = file_name.clone();
-        compute_partial_sha256_sync_with_keepalive_cancellable(
-            &path,
-            max_bytes,
-            cancel_flag.as_ref(),
-            move || {
-                // Send keepalive notification (ignore errors if receiver dropped)
-                let _ = tx.send(file_name_clone.clone());
-            },
-        )
-    });
-
-    (handle, rx)
-}
-
 /// Synchronous SHA-256 computation (full file)
 pub fn compute_sha256_sync(path: &Path) -> io::Result<String> {
     compute_partial_sha256_sync(path, u64::MAX)
@@ -147,6 +73,53 @@ pub fn compute_sha256_sync(path: &Path) -> io::Result<String> {
 /// Synchronous partial SHA-256 computation
 pub fn compute_partial_sha256_sync(path: &Path, max_bytes: u64) -> io::Result<String> {
     compute_partial_sha256_sync_with_keepalive_cancellable(path, max_bytes, None, || {})
+}
+
+/// Incremental SHA-256 hasher for streaming transfers.
+///
+/// Supports computing intermediate hashes via clone-and-finalize without losing
+/// state, enabling single-pass hashing across resume verification and streaming
+/// phases.
+pub struct StreamingHasher {
+    hasher: Sha256,
+}
+
+impl std::fmt::Debug for StreamingHasher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamingHasher").finish_non_exhaustive()
+    }
+}
+
+impl Default for StreamingHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StreamingHasher {
+    /// Creates a new incremental SHA-256 hasher.
+    pub fn new() -> Self {
+        Self {
+            hasher: Sha256::new(),
+        }
+    }
+
+    /// Feeds data into the hasher.
+    pub fn update(&mut self, data: &[u8]) {
+        self.hasher.update(data);
+    }
+
+    /// Clones the internal hasher, finalizes the clone, and returns the hex
+    /// string. The original hasher is **not** consumed.
+    pub fn partial_hash(&self) -> String {
+        let cloned = self.hasher.clone();
+        hex::encode(cloned.finalize())
+    }
+
+    /// Consumes the hasher and returns the final hex-encoded SHA-256 hash.
+    pub fn finalize(self) -> String {
+        hex::encode(self.hasher.finalize())
+    }
 }
 
 /// Synchronous partial SHA-256 with periodic keepalive callback and cancellation support
@@ -442,79 +415,9 @@ mod tests {
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
     }
 
-    #[tokio::test]
-    async fn test_async_keepalive_returns_correct_hash() {
-        // Test the async keepalive version returns correct hash
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"async keepalive test").unwrap();
-        file.flush().unwrap();
-
-        let (handle, mut rx) =
-            compute_sha256_with_keepalive(file.path(), "test.txt".to_string(), None).await;
-
-        // Drain any keepalive messages (there shouldn't be any for small file)
-        let mut keepalive_count = 0;
-        while rx.try_recv().is_ok() {
-            keepalive_count += 1;
-        }
-
-        let result = handle.await.unwrap().unwrap();
-
-        // Verify hash is correct
-        let expected = compute_sha256_sync(file.path()).unwrap();
-        assert_eq!(result, expected);
-
-        // Small file shouldn't trigger keepalives
-        assert_eq!(keepalive_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_async_partial_keepalive_returns_correct_hash() {
-        // Test the async partial keepalive version returns correct hash
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"partial async keepalive test data")
-            .unwrap();
-        file.flush().unwrap();
-
-        let partial_bytes = 10;
-
-        let (handle, _rx) = compute_partial_sha256_with_keepalive(
-            file.path(),
-            partial_bytes,
-            "test.txt".to_string(),
-            None,
-        )
-        .await;
-
-        let result = handle.await.unwrap().unwrap();
-
-        // Verify hash matches non-keepalive version
-        let expected = compute_partial_sha256_sync(file.path(), partial_bytes).unwrap();
-        assert_eq!(result, expected);
-    }
-
-    #[tokio::test]
-    async fn test_async_keepalive_channel_receives_filename() {
-        // Verify keepalive messages contain the correct filename
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"test content").unwrap();
-        file.flush().unwrap();
-
-        let filename = "my_special_file.dat".to_string();
-        let (handle, mut rx) =
-            compute_sha256_with_keepalive(file.path(), filename.clone(), None).await;
-
-        // Even if no keepalives are sent, the channel should be valid
-        // Just ensure the hash completes successfully
-        let result = handle.await.unwrap();
-        assert!(result.is_ok());
-
-        // Channel should be closed after task completes (no more messages)
-        assert!(rx.try_recv().is_err());
-    }
-
     #[test]
     fn test_keepalive_interval_constant() {
+        use std::time::Duration;
         // Verify KEEPALIVE_INTERVAL is a reasonable value
         assert!(KEEPALIVE_INTERVAL >= Duration::from_secs(1));
         assert!(KEEPALIVE_INTERVAL <= Duration::from_secs(60));
@@ -621,43 +524,57 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_async_cancellation() {
-        // Test async version with cancellation
-        let mut file = NamedTempFile::new().unwrap();
-        let data = vec![0xAB; 1024 * 1024]; // 1MB
-        file.write_all(&data).unwrap();
-        file.flush().unwrap();
-
-        let cancel_flag = Arc::new(AtomicBool::new(true)); // Pre-cancelled
-
-        let (handle, _rx) =
-            compute_sha256_with_keepalive(file.path(), "test.txt".to_string(), Some(cancel_flag))
-                .await;
-
-        let result = handle.await.unwrap();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Interrupted);
+    #[test]
+    fn test_streaming_hasher_basic() {
+        let mut hasher = StreamingHasher::new();
+        hasher.update(b"Hello, World!");
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
     }
 
-    #[tokio::test]
-    async fn test_async_no_cancellation() {
-        // Test async version without cancellation completes normally
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"async no cancel test").unwrap();
-        file.flush().unwrap();
+    #[test]
+    fn test_streaming_hasher_incremental() {
+        let mut hasher = StreamingHasher::new();
+        hasher.update(b"Hello");
+        hasher.update(b", ");
+        hasher.update(b"World!");
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
+    }
 
-        let cancel_flag = Arc::new(AtomicBool::new(false));
+    #[test]
+    fn test_streaming_hasher_partial_hash() {
+        let mut hasher = StreamingHasher::new();
+        hasher.update(b"Hello");
+        let partial = hasher.partial_hash();
+        // partial_hash should not consume the hasher
+        hasher.update(b", World!");
+        let full = hasher.finalize();
+        // Partial should be hash of "Hello"
+        assert_eq!(
+            partial,
+            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+        );
+        // Full should be hash of "Hello, World!"
+        assert_eq!(
+            full,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
+    }
 
-        let (handle, _rx) =
-            compute_sha256_with_keepalive(file.path(), "test.txt".to_string(), Some(cancel_flag))
-                .await;
-
-        let result = handle.await.unwrap();
-        assert!(result.is_ok());
-
-        // Verify hash is correct
-        let expected = compute_sha256_sync(file.path()).unwrap();
-        assert_eq!(result.unwrap(), expected);
+    #[test]
+    fn test_streaming_hasher_empty() {
+        let hasher = StreamingHasher::new();
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 }

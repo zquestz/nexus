@@ -130,6 +130,7 @@ err-chat-too-long = メッセージが長すぎます（最大{ $max_length }文
 err-topic-too-long = トピックは{ $max_length }文字を超えることはできません
 err-version-major-mismatch = 互換性のないプロトコルバージョン：サーバーはバージョン{ $server_major }.x、クライアントはバージョン{ $client_major }.x
 err-version-client-too-new = クライアントバージョン{ $client_version }はサーバーバージョン{ $server_version }より新しいです。サーバーを更新するか、古いクライアントを使用してください。
+err-version-minor-mismatch = 互換性のないプロトコルバージョンです。サーバー: { $server_version }、クライアント: { $client_version }。両方とも同じマイナーバージョンを使用する必要があります。
 err-kicked-by = { $username }によってキックされました
 err-kicked-by-reason = { $username }によってキックされました: { $reason }
 err-username-exists = ユーザー名「{ $username }」は既に存在します

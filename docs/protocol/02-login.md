@@ -82,12 +82,12 @@ Server's response to the login attempt.
 | `user_id`     | integer | If success | Unique user account ID                       |
 | `group_id`    | integer | If success | User's group ID (null if no group)           |
 | `group_name`  | string  | If success | User's group name (null if no group)         |
-| `is_admin`    | boolean | If success | Whether user has admin privileges             |
+| `is_admin`    | boolean | If success | Whether user has admin privileges            |
 | `permissions` | array   | If success | List of permission strings                   |
 | `server_info` | object  | If success | Server information (see below)               |
 | `locale`      | string  | If success | Confirmed locale                             |
 | `channels`    | array   | If success | Channels auto-joined on login (see below)    |
-| `nickname`    | string  | If success | Server-confirmed display name (v0.5.2+)      |
+| `nickname`    | string  | If success | Server-confirmed display name                |
 
 The `nickname` field contains the user's actual display name as confirmed by the server:
 
@@ -117,7 +117,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,

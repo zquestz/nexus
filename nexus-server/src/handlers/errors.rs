@@ -613,6 +613,22 @@ pub fn err_version_client_too_new(
     )
 }
 
+/// Get translated "minor version mismatch" error (pre-1.0)
+pub fn err_version_minor_mismatch(
+    locale: &str,
+    server_version: &str,
+    client_version: &str,
+) -> String {
+    t_args(
+        locale,
+        "err-version-minor-mismatch",
+        &[
+            ("server_version", server_version),
+            ("client_version", client_version),
+        ],
+    )
+}
+
 /// Get translated "version too long" error
 pub fn err_version_too_long(locale: &str, max_length: usize) -> String {
     t_args(

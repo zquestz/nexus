@@ -450,11 +450,10 @@ const PONG_SIZE: usize = json_type_base("Pong");
 // Transfer messages (shared between client and server)
 // -----------------------------------------------------------------------------
 
-/// FileStart: {"type":"FileStart","path":"...4096...","size":18446744073709551615,"sha256":"...64..."}
+/// FileStart: {"type":"FileStart","path":"...4096...","size":18446744073709551615}
 const FILE_START_SIZE: usize = json_type_base("FileStart")
     + json_string_field("path", MAX_FILE_PATH_LENGTH)
-    + json_u64_field("size")
-    + json_string_field("sha256", SHA256_HEX_LENGTH);
+    + json_u64_field("size");
 
 /// FileStartResponse: {"type":"FileStartResponse","size":18446744073709551615,"sha256":"...64..."}
 const FILE_START_RESPONSE_SIZE: usize = json_type_base("FileStartResponse")
@@ -464,6 +463,10 @@ const FILE_START_RESPONSE_SIZE: usize = json_type_base("FileStartResponse")
 /// FileHashing: {"type":"FileHashing","file":"...4096..."}
 const FILE_HASHING_SIZE: usize =
     json_type_base("FileHashing") + json_string_field("file", MAX_FILE_PATH_LENGTH);
+
+/// FileHash: {"type":"FileHash","sha256":"...64..."}
+const FILE_HASH_SIZE: usize =
+    json_type_base("FileHash") + json_string_field("sha256", SHA256_HEX_LENGTH);
 
 /// TransferComplete: {"type":"TransferComplete","success":false,"error":"...2048...","error_kind":"...16..."}
 const TRANSFER_COMPLETE_SIZE: usize = json_type_base("TransferComplete")
@@ -1400,6 +1403,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileData", 0); // unlimited - streaming binary data
     m.insert("TransferComplete", pad_limit(TRANSFER_COMPLETE_SIZE as u64));
     m.insert("FileHashing", pad_limit(FILE_HASHING_SIZE as u64));
+    m.insert("FileHash", pad_limit(FILE_HASH_SIZE as u64));
 
     m
 });
@@ -1858,22 +1862,23 @@ mod tests {
         assert!(!is_known_message_type("FakeMessage"));
     }
 
+    // Message type counts for protocol completeness tests.
+    // If you add a new message type to ClientMessage or ServerMessage:
+    // 1. Add a payload limit to MESSAGE_TYPE_LIMITS
+    // 2. Update the relevant count below
+    //
+    // Note: Some type names are shared between client and server enums
+    // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash),
+    // so they're only counted once in the HashMap.
+    const CLIENT_MESSAGE_COUNT: usize = 58; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 2 Voice client messages + 1 Ping
+    const SERVER_MESSAGE_COUNT: usize = 73; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 4 Voice server messages + 1 Pong
+    const SHARED_MESSAGE_COUNT: usize = 6; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash
+
     #[test]
     fn test_all_protocol_types_have_limits() {
-        // This test verifies that MESSAGE_TYPE_LIMITS has the expected number of entries.
-        // If you add a new message type to ClientMessage or ServerMessage:
-        // 1. Add a payload limit to MESSAGE_TYPE_LIMITS
-        // 2. Update CLIENT_MESSAGE_COUNT or SERVER_MESSAGE_COUNT below
-        //
         // The exhaustive match in io.rs (client_message_type/server_message_type)
         // will cause a compile error if you add a variant there, reminding you to
         // also add the limit here.
-        //
-        // Note: Some type names are shared between client and server enums
-        // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing), so they're only counted once in the HashMap.
-        const CLIENT_MESSAGE_COUNT: usize = 57; // Added 6 News + 7 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 2 Voice client messages + 1 Ping
-        const SERVER_MESSAGE_COUNT: usize = 72; // Added 7 News + 8 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 4 Voice server messages + 1 Pong
-        const SHARED_MESSAGE_COUNT: usize = 5; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing
         const TOTAL_MESSAGE_COUNT: usize =
             CLIENT_MESSAGE_COUNT + SERVER_MESSAGE_COUNT - SHARED_MESSAGE_COUNT;
 
@@ -1905,6 +1910,7 @@ mod tests {
             "FileStartResponse", // True mirror - identical fields
             "FileData",    // True mirror - no fields (raw bytes)
             "FileHashing", // True mirror - identical fields (keepalive during hash)
+            "FileHash",    // True mirror - identical fields (per-file hash after streaming)
         ];
 
         for type_name in &shared_type_names {
@@ -1915,10 +1921,10 @@ mod tests {
             );
         }
 
-        // Verify count matches SHARED_MESSAGE_COUNT constant in test_all_protocol_types_have_limits
+        // Verify count matches SHARED_MESSAGE_COUNT
         assert_eq!(
             shared_type_names.len(),
-            5, // Must match SHARED_MESSAGE_COUNT
+            SHARED_MESSAGE_COUNT,
             "Update SHARED_MESSAGE_COUNT if shared type names change"
         );
     }
@@ -3307,7 +3313,6 @@ mod tests {
         let msg = ServerMessage::FileStart {
             path: str_of_len(MAX_FILE_PATH_LENGTH),
             size: u64::MAX,
-            sha256: str_of_len(64),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("FileStart") as usize;
@@ -3367,6 +3372,35 @@ mod tests {
         assert!(
             server_size <= limit,
             "ServerMessage::FileHashing size {} exceeds limit {}",
+            server_size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_file_hash() {
+        // FileHash message (per-file hash sent after streaming)
+        // Test with ClientMessage variant
+        let client_msg = ClientMessage::FileHash {
+            sha256: str_of_len(64),
+        };
+        let client_size = json_size(&client_msg);
+        let limit = max_payload_for_type("FileHash") as usize;
+        assert!(
+            client_size <= limit,
+            "ClientMessage::FileHash size {} exceeds limit {}",
+            client_size,
+            limit
+        );
+
+        // Test with ServerMessage variant
+        let server_msg = ServerMessage::FileHash {
+            sha256: str_of_len(64),
+        };
+        let server_size = json_size(&server_msg);
+        assert!(
+            server_size <= limit,
+            "ServerMessage::FileHash size {} exceeds limit {}",
             server_size,
             limit
         );

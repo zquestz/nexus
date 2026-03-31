@@ -4,6 +4,7 @@
 //! file data directly to disk (downloads), and streaming file data to
 //! the server (uploads) with progress tracking and cancellation support.
 
+use nexus_common::hash::StreamingHasher;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
@@ -63,17 +64,28 @@ where
     }
 }
 
-/// Read a FileData frame header, skipping any FileHashing keepalive frames
+/// Dispatch result from reading the next server frame after FileStartResponse
+#[derive(Debug)]
+pub enum ServerFileFrame {
+    /// Server is sending file data
+    FileData(FrameHeader),
+    /// Server says file is already complete (or zero-byte) — no FileData
+    FileHash { sha256: String },
+    /// Server terminated the transfer early (error during resume verification, etc.)
+    TransferComplete { error_kind: Option<String> },
+}
+
+/// Read the next server frame: FileData, FileHash, or TransferComplete
 ///
-/// During download resume, the server may send `FileHashing` keepalives while it
-/// computes the partial SHA-256 hash to verify the client's resume position. This
-/// function loops over incoming frames, consuming and discarding any `FileHashing`
-/// keepalive payloads, and returns the first non-keepalive frame header.
+/// After the FileStartResponse exchange, the server sends one of:
+/// - `FileData` then `FileHash` — data transfer with post-hash verification
+/// - `FileHash` alone — file was already complete or zero-byte
+/// - `TransferComplete` — transfer terminated early (e.g., resume hash mismatch)
 ///
-/// Returns `TransferError::ProtocolError` if the returned frame is not `FileData`.
-pub async fn read_file_data_header_skipping_keepalives<R>(
+/// Automatically skips `FileHashing` keepalive messages.
+pub async fn read_file_data_or_file_hash<R>(
     reader: &mut FrameReader<R>,
-) -> Result<FrameHeader, TransferError>
+) -> Result<ServerFileFrame, TransferError>
 where
     R: tokio::io::AsyncBufRead + Unpin,
 {
@@ -85,19 +97,53 @@ where
             Err(_) => return Err(TransferError::ConnectionError),
         };
 
-        if header.message_type == "FileHashing" {
-            // Server is hashing for resume verification — consume the payload and skip
-            if reader.read_payload_into_vec(&header).await.is_err() {
+        match header.message_type.as_str() {
+            "FileHashing" => {
+                // Keepalive — consume payload and continue
+                if reader.read_payload_into_vec(&header).await.is_err() {
+                    return Err(TransferError::ProtocolError);
+                }
+                continue;
+            }
+            "FileData" => {
+                return Ok(ServerFileFrame::FileData(header));
+            }
+            "FileHash" => {
+                let payload = reader
+                    .read_payload_into_vec(&header)
+                    .await
+                    .map_err(|_| TransferError::ProtocolError)?;
+                let msg: ServerMessage =
+                    serde_json::from_slice(&payload).map_err(|_| TransferError::ProtocolError)?;
+                match msg {
+                    ServerMessage::FileHash { sha256 } => {
+                        return Ok(ServerFileFrame::FileHash { sha256 });
+                    }
+                    _ => {
+                        return Err(TransferError::ProtocolError);
+                    }
+                }
+            }
+            "TransferComplete" => {
+                let payload = reader
+                    .read_payload_into_vec(&header)
+                    .await
+                    .map_err(|_| TransferError::ProtocolError)?;
+                let msg: ServerMessage =
+                    serde_json::from_slice(&payload).map_err(|_| TransferError::ProtocolError)?;
+                match msg {
+                    ServerMessage::TransferComplete { error_kind, .. } => {
+                        return Ok(ServerFileFrame::TransferComplete { error_kind });
+                    }
+                    _ => {
+                        return Err(TransferError::ProtocolError);
+                    }
+                }
+            }
+            _ => {
                 return Err(TransferError::ProtocolError);
             }
-            continue;
         }
-
-        if header.message_type != "FileData" {
-            return Err(TransferError::ProtocolError);
-        }
-
-        return Ok(header);
     }
 }
 
@@ -114,6 +160,7 @@ pub async fn stream_payload_to_file_with_progress<R, F>(
     file: &mut File,
     progress_timeout: Duration,
     cancel_flag: &Option<Arc<AtomicBool>>,
+    mut hasher: Option<&mut StreamingHasher>,
     mut on_progress: F,
 ) -> Result<u64, StreamError>
 where
@@ -152,6 +199,10 @@ where
         file.write_all(&buffer[..bytes_read])
             .await
             .map_err(|_| StreamError::Io)?;
+
+        if let Some(ref mut h) = hasher {
+            h.update(&buffer[..bytes_read]);
+        }
 
         remaining -= bytes_read as u64;
         total_written += bytes_read as u64;
@@ -208,6 +259,7 @@ where
 /// * `bytes_to_send` - Number of bytes to send from the current position
 /// * `progress_timeout` - Timeout for progress (must make progress within this time)
 /// * `cancel_flag` - Optional flag to check for cancellation
+/// * `hasher` - Optional StreamingHasher to feed bytes for single-pass hashing
 /// * `on_progress` - Callback called with bytes sent so far
 ///
 /// # Returns
@@ -219,6 +271,7 @@ pub async fn stream_file_to_server<W, F>(
     bytes_to_send: u64,
     progress_timeout: Duration,
     cancel_flag: &Option<Arc<AtomicBool>>,
+    mut hasher: Option<&mut StreamingHasher>,
     mut on_progress: F,
 ) -> Result<u64, StreamError>
 where
@@ -286,6 +339,10 @@ where
             Err(_) => return Err(StreamError::Frame(FrameError::FrameTimeout)),
         };
 
+        if let Some(ref mut h) = hasher {
+            h.update(&buffer[..bytes_read]);
+        }
+
         // Write to server
         let write_result = timeout(
             progress_timeout,
@@ -331,4 +388,134 @@ where
     on_progress(total_sent);
 
     Ok(total_sent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nexus_common::framing::FrameReader;
+
+    /// Helper: build a raw protocol frame from type name and payload bytes
+    fn build_frame(type_name: &str, payload: &[u8]) -> Vec<u8> {
+        let header = format!(
+            "NX|{}|{}|a1b2c3d4e5f6|{}|",
+            type_name.len(),
+            type_name,
+            payload.len()
+        );
+        let mut frame = header.into_bytes();
+        frame.extend_from_slice(payload);
+        frame.push(b'\n');
+        frame
+    }
+
+    #[tokio::test]
+    async fn test_read_dispatches_file_data() {
+        let frame = build_frame("FileData", b"hello");
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ServerFileFrame::FileData(header) => {
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, 5);
+            }
+            _ => panic!("Expected FileData"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_dispatches_file_hash() {
+        let payload = br#"{"type":"FileHash","sha256":"abc123def456"}"#;
+        let frame = build_frame("FileHash", payload);
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ServerFileFrame::FileHash { sha256 } => {
+                assert_eq!(sha256, "abc123def456");
+            }
+            _ => panic!("Expected FileHash"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_dispatches_transfer_complete() {
+        let payload =
+            br#"{"type":"TransferComplete","success":false,"error":"resume hash mismatch","error_kind":"hash_mismatch"}"#;
+        let frame = build_frame("TransferComplete", payload);
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ServerFileFrame::TransferComplete { error_kind } => {
+                assert_eq!(error_kind.unwrap(), "hash_mismatch");
+            }
+            _ => panic!("Expected TransferComplete"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_skips_file_hashing_keepalive() {
+        let hashing_payload = br#"{"type":"FileHashing","file":"test.txt"}"#;
+        let mut data = build_frame("FileHashing", hashing_payload);
+        data.extend_from_slice(&build_frame("FileData", b"world"));
+
+        let cursor = std::io::Cursor::new(data);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ServerFileFrame::FileData(header) => {
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, 5);
+            }
+            _ => panic!("Expected FileData after skip"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_skips_multiple_keepalives() {
+        let hashing_payload = br#"{"type":"FileHashing","file":"big.zip"}"#;
+        let hash_payload = br#"{"type":"FileHash","sha256":"deadbeef"}"#;
+        let mut data = build_frame("FileHashing", hashing_payload);
+        data.extend_from_slice(&build_frame("FileHashing", hashing_payload));
+        data.extend_from_slice(&build_frame("FileHash", hash_payload));
+
+        let cursor = std::io::Cursor::new(data);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ServerFileFrame::FileHash { sha256 } => {
+                assert_eq!(sha256, "deadbeef");
+            }
+            _ => panic!("Expected FileHash"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_rejects_unexpected_message_type() {
+        let payload = br#"{"type":"ChatSend","message":"hello"}"#;
+        let frame = build_frame("ChatSend", payload);
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader).await;
+        assert!(result.is_err());
+    }
 }

@@ -2,6 +2,10 @@
 //!
 //! Contains functions for handling upload requests and receiving files
 //! from clients with resume support and conflict detection.
+//!
+//! Uses StreamingHasher for single-pass hashing during file reception.
+//! The server independently verifies uploaded data by maintaining its own
+//! hasher fed with existing .part content + received FileData chunks.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -9,6 +13,7 @@ use std::path::{Path, PathBuf};
 use nexus_common::framing::{
     DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
 };
+use nexus_common::hash::StreamingHasher;
 use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators;
@@ -23,7 +28,11 @@ use crate::handlers::{
     err_upload_protocol_error, err_upload_write_failed,
 };
 
-use super::hash::{compute_file_sha256, compute_file_sha256_with_keepalive};
+use nexus_common::PART_SUFFIX;
+
+use super::hashing::{
+    FALLBACK_FILE_NAME, FALLBACK_PART_FILE_NAME, HashingWriter, hash_file_with_keepalives,
+};
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
@@ -31,12 +40,6 @@ use super::helpers::{
 };
 use super::transfer::{StreamError, Transfer};
 use super::types::{ReceiveFileParams, UploadParams};
-
-/// Fallback file name for keepalive messages when path has no file name
-const FALLBACK_FILE_NAME: &str = "file";
-
-/// Fallback file name for keepalive messages when .part path has no file name
-const FALLBACK_PART_FILE_NAME: &str = "file.part";
 
 // =============================================================================
 // Main Handler
@@ -222,9 +225,8 @@ where
         file_index,
     } = params;
 
-    // Read FileStart from client
-    let (relative_path, file_size, client_sha256) =
-        read_client_file_start(transfer.reader(), locale).await?;
+    // Read FileStart from client (no sha256 — hash arrives later in FileHash)
+    let (relative_path, file_size) = read_client_file_start(transfer.reader(), locale).await?;
 
     if debug {
         eprintln!(
@@ -237,79 +239,139 @@ where
     let (target_path, part_path) =
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
 
-    // Check for conflicts and get existing file state
-    // Sends FileHashing keepalives to client while hashing large existing files
-    let (existing_size, existing_hash) = check_upload_conflicts_and_get_state(
-        transfer.writer(),
-        &target_path,
-        &part_path,
-        file_size,
-        &client_sha256,
-        locale,
-    )
-    .await?;
+    // Check for conflicts and get existing file state with StreamingHasher
+    // The hasher is pre-fed with existing .part content for single-pass hashing.
+    // Sends FileHashing keepalives to client while hashing large existing files.
+    let (existing_size, existing_hash, mut hasher, complete_file_exists) =
+        check_upload_conflicts_and_get_state(
+            transfer.writer(),
+            &target_path,
+            &part_path,
+            file_size,
+            locale,
+        )
+        .await?;
 
     // Send FileStartResponse with our current state
-    send_file_start_response(
-        transfer.writer(),
-        existing_size,
-        existing_hash.clone(),
-        locale,
-    )
-    .await?;
+    send_file_start_response(transfer.writer(), existing_size, existing_hash, locale).await?;
 
-    // Handle zero-byte files - NO FileData frame expected
-    if file_size == 0 {
-        create_empty_file(&target_path, locale).await?;
-        if debug {
-            eprintln!("Upload {transfer_id}: Created empty file {}", relative_path);
+    // Read next frame from client: FileData (data transfer) or FileHash (skip)
+    // FileHashing keepalives are skipped automatically
+    let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
+
+    match client_frame {
+        ClientFileFrame::FileHash {
+            sha256: client_hash,
+        } => {
+            // Client says: zero-byte or already complete — no FileData
+            if file_size == 0 {
+                // Zero-byte file
+                create_empty_file(&target_path, locale).await?;
+                if debug {
+                    eprintln!("Upload {transfer_id}: Created empty file {}", relative_path);
+                }
+            } else {
+                // Already complete — verify hashes match
+                let server_hash = hasher.finalize();
+                if server_hash != client_hash {
+                    return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
+                        err_upload_hash_mismatch(locale),
+                    )));
+                }
+                // No-op when complete file already exists at target_path (no .part to rename).
+                // Handles the edge case where a .part file was left behind alongside the complete file.
+                finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
+                if debug {
+                    eprintln!("Upload {transfer_id}: {} already complete", relative_path);
+                }
+            }
         }
-        return Ok(());
-    }
+        ClientFileFrame::FileData(header) => {
+            // Client is sending file data
 
-    // Check if file is already complete (sizes and hashes match) - NO FileData expected
-    if is_file_already_complete(&existing_hash, &client_sha256, existing_size, file_size) {
-        if debug {
-            eprintln!("Upload {transfer_id}: {} already complete", relative_path);
+            // If a complete file already exists, reject — client should have sent FileHash
+            if complete_file_exists {
+                return Err(ReceiveFileError::Transfer(TransferError::exists(
+                    err_upload_file_exists(locale),
+                )));
+            }
+
+            // Calculate offset from FileData payload size
+            let incoming_bytes = header.payload_length;
+            if incoming_bytes > file_size {
+                return Err(ReceiveFileError::Transfer(TransferError::protocol_error(
+                    err_upload_protocol_error(locale),
+                )));
+            }
+            let offset = file_size - incoming_bytes;
+
+            // Check for concurrent upload conflict
+            check_resume_conflict(offset, existing_size, locale)?;
+
+            if debug && offset > 0 {
+                eprintln!(
+                    "Upload {transfer_id}: Resuming {} from offset {} ({}%)",
+                    relative_path,
+                    offset,
+                    (offset * 100) / file_size
+                );
+            }
+
+            // Stream file data to .part file with ban checking and hasher
+            let bytes_written = stream_to_part_file(
+                transfer,
+                &header,
+                &target_path,
+                &part_path,
+                offset,
+                &mut hasher,
+                locale,
+            )
+            .await?;
+
+            if debug {
+                eprintln!(
+                    "Upload {transfer_id}: Received {} bytes for {}",
+                    bytes_written, relative_path
+                );
+            }
+
+            // Read FileHash from client (sent after FileData)
+            let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
+            let client_hash = match client_frame {
+                ClientFileFrame::FileHash { sha256 } => sha256,
+                _ => {
+                    return Err(ReceiveFileError::Transfer(TransferError::protocol_error(
+                        err_upload_protocol_error(locale),
+                    )));
+                }
+            };
+
+            // Verify: server-computed hash must match client's FileHash
+            let server_hash = hasher.finalize();
+            if server_hash != client_hash {
+                let _ = tokio::fs::remove_file(&part_path).await;
+                return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
+                    err_upload_hash_mismatch(locale),
+                )));
+            }
+
+            // Rename .part to final destination
+            tokio::fs::rename(&part_path, &target_path)
+                .await
+                .map_err(|_| {
+                    ReceiveFileError::Transfer(TransferError::io_error(err_upload_write_failed(
+                        locale,
+                    )))
+                })?;
+
+            if debug {
+                eprintln!(
+                    "Upload {transfer_id}: Completed {} ({} bytes, hash verified)",
+                    relative_path, file_size
+                );
+            }
         }
-        finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
-        return Ok(());
-    }
-
-    // Read FileData header and calculate offset
-    let (header, offset) = read_file_data_header(transfer.reader(), file_size, locale).await?;
-
-    // Check for concurrent upload conflict
-    check_resume_conflict(offset, existing_size, locale)?;
-
-    if debug && offset > 0 {
-        eprintln!(
-            "Upload {transfer_id}: Resuming {} from offset {} ({}%)",
-            relative_path,
-            offset,
-            (offset * 100) / file_size
-        );
-    }
-
-    // Stream file data to .part file with ban checking
-    let bytes_written =
-        stream_to_part_file(transfer, &header, &target_path, &part_path, offset, locale).await?;
-
-    if debug {
-        eprintln!(
-            "Upload {transfer_id}: Received {} bytes for {}",
-            bytes_written, relative_path
-        );
-    }
-
-    // Verify hash and finalize
-    verify_and_finalize_upload(&part_path, &target_path, &client_sha256, locale).await?;
-
-    if debug {
-        eprintln!(
-            "Upload {transfer_id}: Completed {} ({} bytes, hash verified)",
-            relative_path, file_size
-        );
     }
 
     Ok(())
@@ -431,12 +493,7 @@ fn validate_and_build_upload_paths(
 
     // Build the target path
     let target_path = destination.join(relative_path);
-    let part_path = target_path.with_extension(
-        target_path
-            .extension()
-            .map(|e| format!("{}.part", e.to_string_lossy()))
-            .unwrap_or_else(|| "part".to_string()),
-    );
+    let part_path = PathBuf::from(format!("{}{}", target_path.display(), PART_SUFFIX));
 
     // Compute the path relative to area_root for validation
     // destination is already validated to be under area_root, so we can strip_prefix
@@ -475,9 +532,8 @@ async fn check_upload_conflicts_and_get_state<W>(
     target_path: &Path,
     part_path: &Path,
     file_size: u64,
-    client_sha256: &str,
     locale: &str,
-) -> Result<(u64, Option<String>), TransferError>
+) -> Result<(u64, Option<String>, StreamingHasher, bool), TransferError>
 where
     W: AsyncWriteExt + Unpin,
 {
@@ -486,70 +542,53 @@ where
         let existing_metadata = tokio::fs::metadata(target_path).await.ok();
         let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
 
-        let same_content = if existing_len == file_size && file_size > 0 {
-            // Use keepalive version for large files - client is waiting for FileStartResponse
-            let file_name = target_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(FALLBACK_FILE_NAME)
-                .to_string();
-            if let Ok(existing_hash) =
-                compute_file_sha256_with_keepalive(target_path, file_name, frame_writer).await
-            {
-                existing_hash == client_sha256
-            } else {
-                false
-            }
-        } else if existing_len == 0 && file_size == 0 {
-            // Both are empty files - same content
-            true
-        } else {
-            false
-        };
+        if existing_len == 0 && file_size == 0 {
+            // Both are empty files — "already complete"
+            return Ok((0, None, StreamingHasher::new(), true));
+        }
 
-        if !same_content {
-            // Different content - return error, don't auto-rename
+        if existing_len != file_size {
+            // Different sizes — definitely different file, reject
             return Err(TransferError::exists(err_upload_file_exists(locale)));
         }
-        // Same content - will be handled as "already complete" by caller
+
+        // Same size — hash the existing file into a StreamingHasher
+        // Client will compare and decide (already complete or conflict)
+        let file_name = target_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(FALLBACK_FILE_NAME)
+            .to_string();
+        let hasher = hash_file_with_keepalives(target_path, file_size, &file_name, frame_writer)
+            .await
+            .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
+        let hash = hasher.partial_hash();
+        return Ok((file_size, Some(hash), hasher, true));
     }
 
     // Check for existing .part file for resume
-    let (existing_size, existing_hash) = if part_path.exists() {
-        // Use keepalive version for large files - client is waiting for FileStartResponse
+    if part_path.exists() {
+        let metadata = tokio::fs::metadata(part_path)
+            .await
+            .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
+        let part_size = metadata.len();
         let file_name = part_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(FALLBACK_PART_FILE_NAME)
             .to_string();
-        match compute_file_sha256_with_keepalive(part_path, file_name, frame_writer).await {
-            Ok(hash) => {
-                let metadata = tokio::fs::metadata(part_path)
-                    .await
-                    .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
-                (metadata.len(), Some(hash))
+        match hash_file_with_keepalives(part_path, part_size, &file_name, frame_writer).await {
+            Ok(hasher) => {
+                let hash = hasher.partial_hash();
+                return Ok((part_size, Some(hash), hasher, false));
             }
-            Err(_) => (0, None),
+            Err(_) => {
+                return Ok((0, None, StreamingHasher::new(), false));
+            }
         }
-    } else {
-        (0, None)
-    };
-
-    Ok((existing_size, existing_hash))
-}
-
-/// Check if file is already complete based on hash and size
-fn is_file_already_complete(
-    existing_hash: &Option<String>,
-    client_sha256: &str,
-    existing_size: u64,
-    file_size: u64,
-) -> bool {
-    if let Some(hash) = existing_hash {
-        hash == client_sha256 && existing_size == file_size
-    } else {
-        false
     }
+
+    Ok((0, None, StreamingHasher::new(), false))
 }
 
 /// Check for concurrent upload conflict (different uploader) and offset mismatch
@@ -586,7 +625,7 @@ fn check_resume_conflict(
 async fn read_client_file_start<R>(
     frame_reader: &mut FrameReader<R>,
     locale: &str,
-) -> Result<(String, u64, String), TransferError>
+) -> Result<(String, u64), TransferError>
 where
     R: AsyncReadExt + Unpin,
 {
@@ -605,8 +644,8 @@ where
         };
 
         match received.message {
-            ClientMessage::FileStart { path, size, sha256 } => {
-                return Ok((path, size, sha256));
+            ClientMessage::FileStart { path, size } => {
+                return Ok((path, size));
             }
             ClientMessage::FileHashing { .. } => {
                 // Keepalive message - ignore and continue waiting for FileStart
@@ -640,20 +679,30 @@ where
         .map_err(|_| TransferError::io_error(err_upload_connection_lost(locale)))
 }
 
-/// Read FileData header and calculate the resume offset
+/// Result of reading the next client frame after FileStartResponse
+#[derive(Debug)]
+enum ClientFileFrame {
+    /// Client is sending file data
+    FileData(FrameHeader),
+    /// Client says file is already complete (or zero-byte) — no FileData
+    FileHash { sha256: String },
+}
+
+/// Read the next client frame: FileData or FileHash
 ///
-/// Automatically skips `FileHashing` keepalive messages that the client sends
-/// while computing partial hashes for resume verification of large files.
-async fn read_file_data_header<R>(
+/// After the FileStartResponse exchange, the client sends one of:
+/// - `FileData` then `FileHash` — data transfer with post-hash verification
+/// - `FileHash` alone — file was already complete or zero-byte
+///
+/// Automatically skips `FileHashing` keepalive messages.
+async fn read_file_data_or_file_hash<R>(
     frame_reader: &mut FrameReader<R>,
-    file_size: u64,
     locale: &str,
-) -> Result<(FrameHeader, u64), TransferError>
+) -> Result<ClientFileFrame, TransferError>
 where
     R: AsyncReadExt + Unpin,
 {
-    // Loop to skip any FileHashing keepalive messages from client
-    let header = loop {
+    loop {
         let h = match frame_reader.read_frame_header().await {
             Ok(Some(h)) => h,
             Ok(None) => {
@@ -666,40 +715,45 @@ where
             }
         };
 
-        if h.message_type == "FileHashing" {
-            // Keepalive message - client is hashing a large local file for resume
-            // Consume the payload and continue waiting for FileData
-            if frame_reader.read_payload_into_vec(&h).await.is_err() {
+        match h.message_type.as_str() {
+            "FileHashing" => {
+                // Keepalive — consume payload and continue
+                if frame_reader.read_payload_into_vec(&h).await.is_err() {
+                    return Err(TransferError::protocol_error(err_upload_protocol_error(
+                        locale,
+                    )));
+                }
+                continue;
+            }
+            "FileData" => {
+                return Ok(ClientFileFrame::FileData(h));
+            }
+            "FileHash" => {
+                // Read payload and deserialize
+                let payload = frame_reader.read_payload_into_vec(&h).await.map_err(|_| {
+                    TransferError::protocol_error(err_upload_protocol_error(locale))
+                })?;
+                let msg: ClientMessage = serde_json::from_slice(&payload).map_err(|_| {
+                    TransferError::protocol_error(err_upload_protocol_error(locale))
+                })?;
+                match msg {
+                    ClientMessage::FileHash { sha256 } => {
+                        return Ok(ClientFileFrame::FileHash { sha256 });
+                    }
+                    _ => {
+                        return Err(TransferError::protocol_error(err_upload_protocol_error(
+                            locale,
+                        )));
+                    }
+                }
+            }
+            _ => {
                 return Err(TransferError::protocol_error(err_upload_protocol_error(
                     locale,
                 )));
             }
-            continue;
         }
-
-        if h.message_type != "FileData" {
-            return Err(TransferError::protocol_error(err_upload_protocol_error(
-                locale,
-            )));
-        }
-
-        break h;
-    };
-
-    let incoming_bytes = header.payload_length;
-
-    // Reject if client is sending more data than declared file size
-    if incoming_bytes > file_size {
-        return Err(TransferError::protocol_error(err_upload_protocol_error(
-            locale,
-        )));
     }
-
-    // Calculate offset: offset = total_size - incoming_bytes
-    // Safe now since we verified incoming_bytes <= file_size
-    let offset = file_size - incoming_bytes;
-
-    Ok((header, offset))
 }
 
 // =============================================================================
@@ -734,13 +788,13 @@ async fn finalize_part_file_if_exists(
     Ok(())
 }
 
-/// Stream file data from client to .part file with ban checking
 async fn stream_to_part_file<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     header: &FrameHeader,
     target_path: &Path,
     part_path: &Path,
     offset: u64,
+    hasher: &mut StreamingHasher,
     locale: &str,
 ) -> Result<u64, ReceiveFileError>
 where
@@ -771,7 +825,7 @@ where
             .await
     };
 
-    let mut file = match file_result {
+    let file = match file_result {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             // Race condition: another uploader created the .part file
@@ -786,10 +840,18 @@ where
         }
     };
 
-    // Stream data from client to .part file with ban checking
-    let bytes_written = transfer
-        .stream_file_from_client(header, &mut file, DEFAULT_PROGRESS_TIMEOUT)
-        .await?;
+    // Wrap file with HashingWriter to feed received bytes to hasher
+    let mut hashing_writer = HashingWriter::new(file, hasher);
+
+    // Stream data from client to .part file with ban checking and hashing
+    let result = transfer
+        .stream_file_from_client(header, &mut hashing_writer, DEFAULT_PROGRESS_TIMEOUT)
+        .await;
+
+    // Extract the inner file for flushing/syncing
+    let file = hashing_writer.into_inner();
+
+    let bytes_written = result?;
 
     // Check if we were banned mid-stream
     if transfer.is_banned() {
@@ -802,32 +864,6 @@ where
     })?;
 
     Ok(bytes_written)
-}
-
-/// Verify the completed file hash and rename from .part to final destination
-async fn verify_and_finalize_upload(
-    part_path: &Path,
-    target_path: &Path,
-    expected_sha256: &str,
-    locale: &str,
-) -> Result<(), TransferError> {
-    // Verify the complete file hash
-    let actual_hash = compute_file_sha256(part_path)
-        .await
-        .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
-
-    if actual_hash != expected_sha256 {
-        // Hash mismatch - delete the .part file
-        let _ = tokio::fs::remove_file(part_path).await;
-        return Err(TransferError::hash_mismatch(err_upload_hash_mismatch(
-            locale,
-        )));
-    }
-
-    // Rename .part to final destination
-    tokio::fs::rename(part_path, target_path)
-        .await
-        .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))
 }
 
 // =============================================================================
@@ -1032,33 +1068,6 @@ mod tests {
     }
 
     // =========================================================================
-    // is_file_already_complete tests
-    // =========================================================================
-
-    #[test]
-    fn test_file_complete_matching_hash_and_size() {
-        let hash = Some("abc123".to_string());
-        assert!(is_file_already_complete(&hash, "abc123", 1000, 1000));
-    }
-
-    #[test]
-    fn test_file_not_complete_different_hash() {
-        let hash = Some("abc123".to_string());
-        assert!(!is_file_already_complete(&hash, "def456", 1000, 1000));
-    }
-
-    #[test]
-    fn test_file_not_complete_different_size() {
-        let hash = Some("abc123".to_string());
-        assert!(!is_file_already_complete(&hash, "abc123", 500, 1000));
-    }
-
-    #[test]
-    fn test_file_not_complete_no_existing_hash() {
-        assert!(!is_file_already_complete(&None, "abc123", 0, 1000));
-    }
-
-    // =========================================================================
     // check_resume_conflict tests
     // =========================================================================
 
@@ -1119,20 +1128,15 @@ mod tests {
         let part = temp_dir.path().join("newfile.txt.part");
         let mut writer = mock_writer();
 
-        let result = check_upload_conflicts_and_get_state(
-            &mut writer,
-            &target,
-            &part,
-            100,
-            "somehash",
-            TEST_LOCALE,
-        )
-        .await;
+        let result =
+            check_upload_conflicts_and_get_state(&mut writer, &target, &part, 100, TEST_LOCALE)
+                .await;
 
         assert!(result.is_ok());
-        let (size, hash) = result.unwrap();
+        let (size, hash, _hasher, complete_exists) = result.unwrap();
         assert_eq!(size, 0);
         assert!(hash.is_none());
+        assert!(!complete_exists);
     }
 
     #[tokio::test]
@@ -1145,18 +1149,13 @@ mod tests {
         // Create an empty file (same content as empty upload)
         fs::write(&target, &[]).await.unwrap();
 
-        let result = check_upload_conflicts_and_get_state(
-            &mut writer,
-            &target,
-            &part,
-            0,
-            "anyhash",
-            TEST_LOCALE,
-        )
-        .await;
+        let result =
+            check_upload_conflicts_and_get_state(&mut writer, &target, &part, 0, TEST_LOCALE).await;
 
         // Empty file uploading empty file = same content, should succeed
         assert!(result.is_ok());
+        let (_size, _hash, _hasher, complete_exists) = result.unwrap();
+        assert!(complete_exists);
     }
 
     #[tokio::test]
@@ -1170,15 +1169,9 @@ mod tests {
         fs::write(&target, b"existing content").await.unwrap();
 
         // Try to upload different content (different size)
-        let result = check_upload_conflicts_and_get_state(
-            &mut writer,
-            &target,
-            &part,
-            100,
-            "newhash",
-            TEST_LOCALE,
-        )
-        .await;
+        let result =
+            check_upload_conflicts_and_get_state(&mut writer, &target, &part, 100, TEST_LOCALE)
+                .await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1195,20 +1188,15 @@ mod tests {
         // Create a .part file with some content
         fs::write(&part, b"partial data").await.unwrap();
 
-        let result = check_upload_conflicts_and_get_state(
-            &mut writer,
-            &target,
-            &part,
-            1000,
-            "somehash",
-            TEST_LOCALE,
-        )
-        .await;
+        let result =
+            check_upload_conflicts_and_get_state(&mut writer, &target, &part, 1000, TEST_LOCALE)
+                .await;
 
         assert!(result.is_ok());
-        let (size, hash) = result.unwrap();
+        let (size, hash, _hasher, complete_exists) = result.unwrap();
         assert_eq!(size, 12); // "partial data".len()
         assert!(hash.is_some());
+        assert!(!complete_exists);
     }
 
     // =========================================================================
@@ -1258,44 +1246,166 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verify_and_finalize_success() {
+    async fn test_hash_file_with_keepalives_basic() {
         let temp_dir = TempDir::new().unwrap();
-        let target = temp_dir.path().join("verified.txt");
-        let part = temp_dir.path().join("verified.txt.part");
+        let file_path = temp_dir.path().join("test.txt");
 
-        let content = b"test content for hashing";
-        fs::write(&part, content).await.unwrap();
+        let content = b"Hello, World!";
+        fs::write(&file_path, content).await.unwrap();
 
-        // Compute the actual hash
-        let expected_hash = super::super::hash::compute_file_sha256(&part)
-            .await
-            .unwrap();
+        let mut writer = mock_writer();
+        let hasher =
+            hash_file_with_keepalives(&file_path, content.len() as u64, "test.txt", &mut writer)
+                .await
+                .unwrap();
 
-        let result = verify_and_finalize_upload(&part, &target, &expected_hash, TEST_LOCALE).await;
-        assert!(result.is_ok());
-        assert!(target.exists());
-        assert!(!part.exists());
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
     }
 
     #[tokio::test]
-    async fn test_verify_and_finalize_hash_mismatch() {
-        use nexus_common::ERROR_KIND_HASH_MISMATCH;
-
+    async fn test_hash_file_with_keepalives_partial_then_finalize() {
         let temp_dir = TempDir::new().unwrap();
-        let target = temp_dir.path().join("verified.txt");
-        let part = temp_dir.path().join("verified.txt.part");
+        let file_path = temp_dir.path().join("test.txt");
 
-        fs::write(&part, b"some content").await.unwrap();
+        // Write "Hello, World!" but only hash first 5 bytes via hash_file_with_keepalives
+        let content = b"Hello, World!";
+        fs::write(&file_path, content).await.unwrap();
 
-        let result =
-            verify_and_finalize_upload(&part, &target, "wrong_hash_value", TEST_LOCALE).await;
+        let mut writer = mock_writer();
+        let hasher = hash_file_with_keepalives(&file_path, 5, "test.txt", &mut writer)
+            .await
+            .unwrap();
 
+        // partial_hash should be hash of "Hello"
+        let partial = hasher.partial_hash();
+        assert_eq!(
+            partial,
+            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+        );
+
+        // finalize should also be hash of first 5 bytes (that's all we fed)
+        let full = hasher.finalize();
+        assert_eq!(partial, full);
+    }
+
+    // =========================================================================
+    // read_file_data_or_file_hash tests
+    // =========================================================================
+
+    /// Helper: build a raw protocol frame from type name and payload bytes
+    fn build_frame(type_name: &str, payload: &[u8]) -> Vec<u8> {
+        let header = format!(
+            "NX|{}|{}|a1b2c3d4e5f6|{}|",
+            type_name.len(),
+            type_name,
+            payload.len()
+        );
+        let mut frame = header.into_bytes();
+        frame.extend_from_slice(payload);
+        frame.push(b'\n');
+        frame
+    }
+
+    #[tokio::test]
+    async fn test_read_dispatches_file_data() {
+        // FileData frame with 5-byte payload
+        let frame = build_frame("FileData", b"hello");
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader, "en").await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ClientFileFrame::FileData(header) => {
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, 5);
+            }
+            ClientFileFrame::FileHash { .. } => panic!("Expected FileData, got FileHash"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_dispatches_file_hash() {
+        // FileHash frame with JSON payload
+        let payload = br#"{"type":"FileHash","sha256":"abc123def456"}"#;
+        let frame = build_frame("FileHash", payload);
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader, "en").await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ClientFileFrame::FileHash { sha256 } => {
+                assert_eq!(sha256, "abc123def456");
+            }
+            ClientFileFrame::FileData(_) => panic!("Expected FileHash, got FileData"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_skips_file_hashing_keepalive() {
+        // FileHashing frame followed by FileData frame
+        // The function should skip the keepalive and return the FileData
+        let hashing_payload = br#"{"type":"FileHashing","file":"test.txt"}"#;
+        let mut data = build_frame("FileHashing", hashing_payload);
+        data.extend_from_slice(&build_frame("FileData", b"world"));
+
+        let cursor = std::io::Cursor::new(data);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader, "en").await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ClientFileFrame::FileData(header) => {
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, 5);
+            }
+            ClientFileFrame::FileHash { .. } => panic!("Expected FileData after skip"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_skips_multiple_keepalives() {
+        // Two FileHashing keepalives followed by FileHash
+        let hashing_payload = br#"{"type":"FileHashing","file":"big.zip"}"#;
+        let hash_payload = br#"{"type":"FileHash","sha256":"deadbeef"}"#;
+        let mut data = build_frame("FileHashing", hashing_payload);
+        data.extend_from_slice(&build_frame("FileHashing", hashing_payload));
+        data.extend_from_slice(&build_frame("FileHash", hash_payload));
+
+        let cursor = std::io::Cursor::new(data);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader, "en").await;
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ClientFileFrame::FileHash { sha256 } => {
+                assert_eq!(sha256, "deadbeef");
+            }
+            ClientFileFrame::FileData(_) => panic!("Expected FileHash"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_rejects_unexpected_message_type() {
+        // A ChatSend frame — valid frame type but wrong context
+        let payload = br#"{"type":"ChatSend","message":"hello"}"#;
+        let frame = build_frame("ChatSend", payload);
+        let cursor = std::io::Cursor::new(frame);
+        let buf_reader = tokio::io::BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_file_data_or_file_hash(&mut reader, "en").await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.kind, ERROR_KIND_HASH_MISMATCH);
-
-        // .part file should be deleted on hash mismatch
-        assert!(!part.exists());
-        assert!(!target.exists());
+        assert_eq!(err.kind, nexus_common::ERROR_KIND_PROTOCOL_ERROR);
     }
 }

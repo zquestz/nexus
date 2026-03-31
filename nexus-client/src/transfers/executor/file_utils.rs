@@ -1,26 +1,22 @@
 //! File utility functions for the transfer executor
 //!
-//! Provides helpers for checking local files, generating unique paths,
-//! computing SHA-256 hashes, scanning directories, and validating paths.
+//! Provides helpers for generating unique paths, scanning directories,
+//! validating paths, and hashing files with keepalive support.
 //!
-//! Hash computation uses the high-performance module from nexus-common,
-//! which uses hardware acceleration and supports keepalive callbacks for
-//! large files.
+//! Uses `StreamingHasher` from nexus-common for single-pass hashing
+//! during file transfers, with periodic `FileHashing` keepalive messages
+//! to prevent server timeouts on large files.
 
 use std::path::{Path, PathBuf};
-
-/// Fallback file name for keepalive messages when path has no file name
-const FALLBACK_FILE_NAME: &str = "file";
-
-/// Fallback file name for keepalive messages when .part path has no file name
-const FALLBACK_PART_FILE_NAME: &str = "file.part";
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, SeekFrom};
 
+use nexus_common::FALLBACK_FILE_NAME;
 use nexus_common::framing::FrameWriter;
+use nexus_common::hash::StreamingHasher;
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::ClientMessage;
 
@@ -39,71 +35,6 @@ pub struct LocalFileInfo {
     pub absolute_path: std::path::PathBuf,
     /// File size in bytes
     pub size: u64,
-}
-
-/// Check for existing local file (complete or .part)
-///
-/// Sends FileHashing keepalive messages to the server while computing hashes
-/// for large local files to prevent server timeout.
-///
-/// Supports cancellation via the optional `cancel_flag`. If the flag is set to true
-/// during hash computation, returns `Err(TransferError::Cancelled)`.
-///
-/// Returns `Ok((size, Option<sha256_hash>))` on success, or `Err` on failure/cancellation.
-pub async fn check_local_file_with_keepalive<W>(
-    complete_path: &Path,
-    part_path: &Path,
-    writer: &mut FrameWriter<W>,
-    cancel_flag: &Option<Arc<AtomicBool>>,
-) -> Result<(u64, Option<String>), TransferError>
-where
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    // First check for complete file
-    if let Ok(metadata) = tokio::fs::metadata(complete_path).await
-        && metadata.is_file()
-    {
-        let size = metadata.len();
-        if size > 0 {
-            let file_name = complete_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(FALLBACK_FILE_NAME)
-                .to_string();
-            match compute_file_sha256_with_keepalive(complete_path, file_name, writer, cancel_flag)
-                .await
-            {
-                Ok(hash) => return Ok((size, Some(hash))),
-                Err(TransferError::Cancelled) => return Err(TransferError::Cancelled),
-                Err(_) => return Ok((size, None)), // Other errors: proceed without hash
-            }
-        }
-        return Ok((size, None));
-    }
-
-    // Check for .part file
-    if let Ok(metadata) = tokio::fs::metadata(part_path).await
-        && metadata.is_file()
-    {
-        let size = metadata.len();
-        if size > 0 {
-            let file_name = part_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(FALLBACK_PART_FILE_NAME)
-                .to_string();
-            match compute_file_sha256_with_keepalive(part_path, file_name, writer, cancel_flag)
-                .await
-            {
-                Ok(hash) => return Ok((size, Some(hash))),
-                Err(TransferError::Cancelled) => return Err(TransferError::Cancelled),
-                Err(_) => return Ok((size, None)), // Other errors: proceed without hash
-            }
-        }
-        return Ok((size, None));
-    }
-
-    Ok((0, None))
 }
 
 /// Generate a unique file path by appending (1), (2), etc.
@@ -149,108 +80,64 @@ pub async fn generate_unique_path(original: &Path) -> Result<PathBuf, TransferEr
     Err(TransferError::IoError)
 }
 
-/// Compute SHA-256 hash of a file
+/// Hash a file into a StreamingHasher, sending FileHashing keepalives periodically
 ///
-/// Uses hardware acceleration and runs on a blocking thread pool.
-pub async fn compute_file_sha256(path: &Path) -> Result<String, TransferError> {
-    nexus_common::hash::compute_sha256(path)
-        .await
-        .map_err(|_| TransferError::IoError)
-}
-
-/// Compute SHA-256 hash of a file, sending FileHashing keepalives periodically
+/// Reads the file from the beginning up to `byte_count` bytes, feeding each chunk
+/// into the hasher. Sends ClientMessage::FileHashing keepalive messages to the server
+/// periodically to prevent timeout during large file hashing.
 ///
-/// This prevents server timeouts when hashing large files. Keepalives are sent
-/// periodically during hashing (see `KEEPALIVE_INTERVAL` in nexus-common).
-///
-/// Supports cancellation via the optional `cancel_flag`. If cancelled, returns
-/// `TransferError::IoError`.
-pub async fn compute_file_sha256_with_keepalive<W>(
-    path: &Path,
-    file_name: String,
-    writer: &mut FrameWriter<W>,
-    cancel_flag: &Option<Arc<AtomicBool>>,
-) -> Result<String, TransferError>
-where
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    let (handle, keepalive_rx) =
-        nexus_common::hash::compute_sha256_with_keepalive(path, file_name, cancel_flag.clone())
-            .await;
-    poll_hash_with_keepalives(handle, keepalive_rx, writer).await
-}
-
-/// Compute SHA-256 hash of the first N bytes of a file, sending FileHashing keepalives periodically
-///
-/// This prevents server timeouts when hashing large partial files for resume verification.
-/// Keepalives are sent periodically during hashing (see `KEEPALIVE_INTERVAL` in nexus-common).
-///
-/// Supports cancellation via the optional `cancel_flag`. If cancelled, returns
-/// `TransferError::IoError`.
-pub async fn compute_partial_sha256_with_keepalive<W>(
+/// Supports cancellation via the optional `cancel_flag`.
+pub async fn hash_file_with_keepalives<W>(
     path: &Path,
     byte_count: u64,
     file_name: String,
     writer: &mut FrameWriter<W>,
     cancel_flag: &Option<Arc<AtomicBool>>,
-) -> Result<String, TransferError>
+) -> Result<StreamingHasher, TransferError>
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    let (handle, keepalive_rx) = nexus_common::hash::compute_partial_sha256_with_keepalive(
-        path,
-        byte_count,
-        file_name,
-        cancel_flag.clone(),
-    )
-    .await;
-    poll_hash_with_keepalives(handle, keepalive_rx, writer).await
-}
+    use nexus_common::{HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
+    use std::time::Instant;
+    use tokio::io::AsyncReadExt;
 
-/// Poll a hash computation task while sending keepalive messages to the server
-///
-/// This is the common implementation for both full and partial hash computation.
-/// Sends `ClientMessage::FileHashing` keepalives when notified by the hash task.
-///
-/// If the hash computation is cancelled (via cancel_flag), returns `TransferError::Cancelled`.
-async fn poll_hash_with_keepalives<W>(
-    handle: tokio::task::JoinHandle<std::io::Result<String>>,
-    mut keepalive_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
-    writer: &mut FrameWriter<W>,
-) -> Result<String, TransferError>
-where
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    // Use tokio::pin! to allow polling the handle multiple times
-    tokio::pin!(handle);
+    let mut hasher = StreamingHasher::new();
+    let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
+    let mut reader = tokio::io::BufReader::new(file);
+    let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
+    let mut remaining = byte_count;
+    let mut last_keepalive = Instant::now();
 
-    // Poll for keepalive notifications while waiting for hash to complete
-    loop {
-        tokio::select! {
-            biased;
-            // Send keepalive when notified
-            Some(file) = keepalive_rx.recv() => {
-                let msg = ClientMessage::FileHashing { file };
-                if let Err(e) = send_client_message(writer, &msg).await {
-                    eprintln!("[HASH] Failed to send keepalive: {:?}", e);
-                    // Continue anyway - hash might complete before timeout
-                }
+    while remaining > 0 {
+        // Check for cancellation
+        if is_cancelled(cancel_flag) {
+            return Err(TransferError::Cancelled);
+        }
+
+        let to_read = (remaining as usize).min(buffer.len());
+        let bytes_read = reader
+            .read(&mut buffer[..to_read])
+            .await
+            .map_err(|_| TransferError::IoError)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+        remaining -= bytes_read as u64;
+
+        // Send keepalive periodically to prevent server timeout
+        if last_keepalive.elapsed() >= KEEPALIVE_INTERVAL {
+            let msg = ClientMessage::FileHashing {
+                file: file_name.clone(),
+            };
+            if let Err(e) = send_client_message(writer, &msg).await {
+                eprintln!("[HASH] Failed to send keepalive: {:?}", e);
             }
-            // Check if hash task is done
-            result = &mut handle => {
-                return result
-                    .map_err(|_| TransferError::IoError)?
-                    .map_err(|e| {
-                        // Check if the error was due to cancellation
-                        if e.kind() == std::io::ErrorKind::Interrupted {
-                            TransferError::Cancelled
-                        } else {
-                            TransferError::IoError
-                        }
-                    });
-            }
+            last_keepalive = Instant::now();
         }
     }
+
+    Ok(hasher)
 }
 
 // =============================================================================
@@ -261,8 +148,7 @@ where
 ///
 /// For a single file, returns one entry with the filename as the relative path.
 /// For a directory, recursively scans and returns all files with relative paths.
-///
-/// Computes SHA-256 hash for each file.
+/// Returns paths and sizes only — hashes are computed lazily during transfer.
 pub async fn scan_local_files(
     local_path: &Path,
     is_directory: bool,
@@ -426,6 +312,10 @@ pub fn is_safe_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexus_common::framing::FrameWriter;
+    use std::io::Cursor;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use tokio::io::AsyncReadExt;
 
     #[test]
@@ -571,5 +461,97 @@ mod tests {
         let mut buf = vec![0u8; 5];
         file.read_exact(&mut buf).await.expect("read");
         assert_eq!(&buf, b"world");
+    }
+
+    #[tokio::test]
+    async fn test_hash_file_with_keepalives_basic() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("hello.txt");
+        tokio::fs::write(&file_path, "Hello, World!")
+            .await
+            .expect("write file");
+
+        let mut writer = FrameWriter::new(Cursor::new(Vec::new()));
+        let hasher =
+            hash_file_with_keepalives(&file_path, 13, "hello.txt".to_string(), &mut writer, &None)
+                .await
+                .expect("hash file");
+
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hash_file_with_keepalives_partial_then_continue() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("hello.txt");
+        tokio::fs::write(&file_path, "Hello, World!")
+            .await
+            .expect("write file");
+
+        let mut writer = FrameWriter::new(Cursor::new(Vec::new()));
+        let mut hasher =
+            hash_file_with_keepalives(&file_path, 5, "hello.txt".to_string(), &mut writer, &None)
+                .await
+                .expect("hash file");
+
+        // Partial hash should equal SHA-256 of "Hello"
+        let partial = hasher.partial_hash();
+        assert_eq!(
+            partial,
+            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+        );
+
+        // Feed the remaining bytes and verify the full hash
+        hasher.update(b", World!");
+        let full_hash = hasher.finalize();
+        assert_eq!(
+            full_hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hash_file_with_keepalives_empty() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("empty.txt");
+        tokio::fs::write(&file_path, "").await.expect("write file");
+
+        let mut writer = FrameWriter::new(Cursor::new(Vec::new()));
+        let hasher =
+            hash_file_with_keepalives(&file_path, 0, "empty.txt".to_string(), &mut writer, &None)
+                .await
+                .expect("hash file");
+
+        let hash = hasher.finalize();
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hash_file_with_keepalives_cancellation() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = temp_dir.path().join("cancel.txt");
+        tokio::fs::write(&file_path, "some content to hash")
+            .await
+            .expect("write file");
+
+        let cancel_flag = Arc::new(AtomicBool::new(true));
+        let mut writer = FrameWriter::new(Cursor::new(Vec::new()));
+        let result = hash_file_with_keepalives(
+            &file_path,
+            20,
+            "cancel.txt".to_string(),
+            &mut writer,
+            &Some(cancel_flag),
+        )
+        .await;
+
+        assert_eq!(result.unwrap_err(), TransferError::Cancelled);
     }
 }

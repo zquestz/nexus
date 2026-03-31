@@ -513,7 +513,8 @@ where
         | ClientMessage::FileUpload { .. }
         | ClientMessage::FileStart { .. }
         | ClientMessage::FileData
-        | ClientMessage::FileHashing { .. } => {
+        | ClientMessage::FileHashing { .. }
+        | ClientMessage::FileHash { .. } => {
             // These messages are only valid on the transfer port (7501), not the main BBS port
             eprintln!(
                 "Transfer message received on main port from {}",
