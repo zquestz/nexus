@@ -102,6 +102,13 @@ chat-history-30-days = 30 Tage
 chat-history-14-days = 14 Tage
 chat-history-7-days = 7 Tage
 chat-history-disabled = Deaktiviert
+label-auto-away = Auto-Abwesend:
+label-auto-away-message = Auto-Abwesend Nachricht:
+auto-away-off = Aus
+auto-away-5min = 5 Minuten
+auto-away-10min = 10 Minuten
+auto-away-15min = 15 Minuten
+auto-away-30min = 30 Minuten
 label-max-scrollback = Max. Verlauf:
 label-chat-font-size = Schriftgröße:
 label-show-connection-events = Verbindungsereignisse anzeigen
@@ -626,6 +633,7 @@ user-info-end = Ende der Benutzerinformationen
 user-info-unknown = Unbekannt
 user-info-loading = Benutzerinformationen werden geladen…
 user-info-status = Status:
+user-info-idle-since = Inaktiv seit:
 user-info-channels = Kanäle:
 
 # =============================================================================

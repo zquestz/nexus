@@ -3,6 +3,8 @@
 use iced_toasts::{ToastLevel, toast};
 
 use crate::config::audio::PttReleaseDelay;
+use nexus_common::protocol::ClientMessage;
+use nexus_common::validators;
 
 #[cfg(all(unix, not(target_os = "macos")))]
 use std::time::Instant;
@@ -21,7 +23,10 @@ use crate::config::settings::{
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
-use crate::types::{ActivePanel, ChatMessage, InputId, Message, SettingsFormState, SettingsTab};
+use crate::types::{
+    ActivePanel, ChatMessage, InputId, Message, PendingRequests, ResponseRouting,
+    SettingsFormState, SettingsTab,
+};
 use crate::voice::audio::AudioDevice;
 
 impl NexusApp {
@@ -90,6 +95,42 @@ impl NexusApp {
 
     /// Save settings to disk and close panel
     pub fn handle_save_settings(&mut self) -> Task<Message> {
+        // Validate nickname (if not empty)
+        if let Some(ref nickname) = self.config.settings.nickname
+            && let Err(e) = validators::validate_nickname(nickname)
+        {
+            let error_msg = match e {
+                validators::NicknameError::Empty => unreachable!(),
+                validators::NicknameError::TooLong => t_args(
+                    "err-nickname-too-long",
+                    &[("max", &validators::MAX_NICKNAME_LENGTH.to_string())],
+                ),
+                validators::NicknameError::InvalidCharacters => t("err-nickname-invalid"),
+            };
+            if let Some(form) = &mut self.settings_form {
+                form.error = Some(error_msg);
+            }
+            return Task::none();
+        }
+
+        // Validate auto-away message (if not empty)
+        if !self.config.settings.auto_away_message.is_empty()
+            && let Err(e) = validators::validate_status(&self.config.settings.auto_away_message)
+        {
+            let error_msg = match e {
+                validators::StatusError::TooLong => t_args(
+                    "err-status-too-long",
+                    &[("max", &validators::MAX_STATUS_LENGTH.to_string())],
+                ),
+                validators::StatusError::ContainsNewlines => t("err-status-contains-newlines"),
+                validators::StatusError::InvalidCharacters => t("err-status-invalid-characters"),
+            };
+            if let Some(form) = &mut self.settings_form {
+                form.error = Some(error_msg);
+            }
+            return Task::none();
+        }
+
         // Clear the snapshot (no need to restore)
         self.settings_form = None;
 
@@ -102,6 +143,57 @@ impl NexusApp {
         }
 
         self.handle_show_chat_view()
+    }
+
+    // ==================== Auto-Away ====================
+
+    /// Handle auto-away timer tick (fires every 30s when auto-away is enabled)
+    ///
+    /// For each connection that has been idle long enough, sends UserAway
+    /// with the configured message. Checks: elapsed >= timeout, not already away,
+    /// not already auto-awayed, no pending auto-away request.
+    pub fn handle_auto_away_tick(&mut self) -> Task<Message> {
+        let Some(timeout) = self.config.settings.auto_away_timeout.as_duration() else {
+            return Task::none();
+        };
+
+        let message = if self.config.settings.auto_away_message.is_empty() {
+            None
+        } else {
+            Some(self.config.settings.auto_away_message.clone())
+        };
+
+        // Collect connection IDs that need auto-away
+        let conn_ids: Vec<usize> = self
+            .connections
+            .values()
+            .filter(|conn| {
+                conn.last_activity.elapsed() >= timeout
+                    && !conn.is_away
+                    && !conn.is_auto_away
+                    && !conn
+                        .pending_requests
+                        .values()
+                        .any(|r| matches!(r, ResponseRouting::AutoAwayResult(_)))
+            })
+            .map(|conn| conn.connection_id)
+            .collect();
+
+        for conn_id in conn_ids {
+            let Some(conn) = self.connections.get_mut(&conn_id) else {
+                continue;
+            };
+
+            let client_msg = ClientMessage::UserAway {
+                message: message.clone(),
+            };
+            if let Ok(message_id) = conn.send(client_msg) {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::AutoAwayResult(message.clone()));
+            }
+        }
+
+        Task::none()
     }
 
     /// Handle settings tab selection

@@ -273,6 +273,13 @@ async fn handle_client_message<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
+    // Update last_activity for non-passive messages (used for idle tracking)
+    if let Some(session_id) = conn_state.session_id
+        && !is_passive_message(&msg)
+    {
+        ctx.user_manager.update_last_activity(session_id).await;
+    }
+
     match msg {
         ClientMessage::ChatSend {
             message,
@@ -606,4 +613,47 @@ where
     }
 
     Ok(())
+}
+
+/// Check if a client message is passive (should not reset idle tracking).
+///
+/// Passive messages don't count as user activity for idle time calculation:
+/// - `Ping`: keepalive, not user-initiated
+/// - `UserAway`: setting away status shouldn't reset idle timer
+fn is_passive_message(msg: &ClientMessage) -> bool {
+    matches!(msg, ClientMessage::Ping | ClientMessage::UserAway { .. })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nexus_common::protocol::ChatAction;
+
+    #[test]
+    fn test_passive_messages() {
+        assert!(is_passive_message(&ClientMessage::Ping));
+        assert!(is_passive_message(&ClientMessage::UserAway {
+            message: None
+        }));
+        assert!(is_passive_message(&ClientMessage::UserAway {
+            message: Some("brb".to_string()),
+        }));
+    }
+
+    #[test]
+    fn test_non_passive_messages() {
+        assert!(!is_passive_message(&ClientMessage::UserBack));
+        assert!(!is_passive_message(&ClientMessage::UserList { all: false }));
+        assert!(!is_passive_message(&ClientMessage::ChatSend {
+            message: "hello".to_string(),
+            action: ChatAction::Normal,
+            channel: "#test".to_string(),
+        }));
+        assert!(!is_passive_message(&ClientMessage::UserInfo {
+            nickname: "alice".to_string(),
+        }));
+        assert!(!is_passive_message(&ClientMessage::UserStatus {
+            status: Some("busy".to_string()),
+        }));
+    }
 }

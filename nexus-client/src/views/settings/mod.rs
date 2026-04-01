@@ -153,6 +153,10 @@ pub struct SettingsViewData<'a> {
     pub hardware_rendering: bool,
     /// GPU rendering backend selection
     pub gpu_backend: crate::config::settings::GpuBackend,
+    /// Auto-away timeout setting
+    pub auto_away_timeout: crate::config::settings::AutoAwayTimeout,
+    /// Auto-away message
+    pub auto_away_message: &'a str,
 }
 
 // ============================================================================
@@ -201,14 +205,16 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         hardware_rendering: data.hardware_rendering,
         gpu_backend: data.gpu_backend,
     });
-    let chat_content = chat::chat_tab_content(
-        data.chat_history_retention,
-        data.max_scrollback,
-        data.chat_font_size,
-        data.show_connection_events,
-        data.show_join_leave_events,
-        data.timestamp_settings,
-    );
+    let chat_content = chat::chat_tab_content(chat::ChatTabData {
+        chat_history_retention: data.chat_history_retention,
+        max_scrollback: data.max_scrollback,
+        chat_font_size: data.chat_font_size,
+        show_connection_events: data.show_connection_events,
+        show_join_leave_events: data.show_join_leave_events,
+        timestamp_settings: data.timestamp_settings,
+        auto_away_timeout: data.auto_away_timeout,
+        auto_away_message: data.auto_away_message,
+    });
     let network_content = network::network_tab_content(data.proxy);
 
     let files_content = files::files_tab_content(

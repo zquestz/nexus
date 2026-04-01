@@ -116,7 +116,8 @@ where
         .min()
         .expect("target_sessions is non-empty");
     let locale = target_sessions
-        .first()
+        .iter()
+        .max_by_key(|s| s.login_time)
         .map(|s| s.locale.clone())
         .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
@@ -135,12 +136,20 @@ where
         .max_by_key(|s| s.login_time)
         .and_then(|s| s.avatar.clone());
 
-    // Get away status from most recent login session ("latest login wins")
-    let (is_away, status) = target_sessions
+    // Get away status and idle time from most recently active session
+    // Regular accounts: most recently active session wins (accurate presence)
+    // Shared accounts: per-session (only one session per nickname)
+    let (is_away, status, idle_seconds) = target_sessions
         .iter()
-        .max_by_key(|s| s.login_time)
-        .map(|s| (s.is_away, s.status.clone()))
-        .unwrap_or((false, None));
+        .max_by_key(|s| s.last_activity)
+        .map(|s| {
+            (
+                s.is_away,
+                s.status.clone(),
+                Some(s.last_activity.elapsed().as_secs()),
+            )
+        })
+        .unwrap_or((false, None, None));
 
     // Get group info from most recent login session ("latest login wins"),
     // falling back to account group_id + DB lookup if no session has it
@@ -220,6 +229,7 @@ where
             channels,
             group_id,
             group_name: group_name.clone(),
+            idle_seconds,
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -241,6 +251,7 @@ where
             channels,
             group_id,
             group_name,
+            idle_seconds,
         }
     };
 
@@ -318,6 +329,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -388,6 +400,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -500,6 +513,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -525,6 +539,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -643,6 +658,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -668,6 +684,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -790,6 +807,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -815,6 +833,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -959,6 +978,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -1037,6 +1057,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -1065,6 +1086,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -1602,6 +1624,85 @@ mod tests {
                     user.group_name,
                     Some("Staff".to_string()),
                     "Should include group_name"
+                );
+            }
+            other => panic!("Expected UserInfoResponse, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_includes_idle_seconds() {
+        use crate::handlers::testing::read_server_message;
+        use crate::users::user::NewSessionParams;
+
+        let mut test_ctx = create_test_context().await;
+
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.permissions.insert(db::Permission::UserInfo);
+        let account = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+            })
+            .await
+            .unwrap();
+
+        let session_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: account.id,
+                username: "alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: perms.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: account.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![FEATURE_CHAT.to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("Failed to add user");
+
+        let result = handle_user_info(
+            "alice".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserInfoResponse { success, user, .. } => {
+                assert!(success);
+                let user = user.expect("Should return user info");
+                assert!(
+                    user.idle_seconds.is_some(),
+                    "idle_seconds should be populated"
+                );
+                // Just created, so idle time should be very low
+                assert!(
+                    user.idle_seconds.unwrap() < 5,
+                    "idle_seconds should be near zero for a just-created session"
                 );
             }
             other => panic!("Expected UserInfoResponse, got: {other:?}"),

@@ -69,13 +69,13 @@ where
     ctx.send_message(&response).await?;
 
     // Broadcast UserUpdated
-    // For regular accounts with multiple sessions, use aggregated data with "latest login wins"
+    // For regular accounts with multiple sessions, use aggregated data with split selection
     // For shared accounts, each session is separate (use single session data)
     let user_info = if session.is_shared {
         // Shared account: use this session's data directly
         UserManager::build_user_info_from_session(&session)
     } else {
-        // Regular account: aggregate all sessions, using "latest login wins" for avatar/away/status
+        // Regular account: aggregate all sessions (latest login for avatar, most recently active for away/status)
         let all_sessions = ctx
             .user_manager
             .get_sessions_by_username(&session.username)

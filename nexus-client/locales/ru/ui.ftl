@@ -102,6 +102,13 @@ chat-history-30-days = 30 дней
 chat-history-14-days = 14 дней
 chat-history-7-days = 7 дней
 chat-history-disabled = Отключено
+label-auto-away = Авто-отсутствие:
+label-auto-away-message = Сообщение авто-отсутствия:
+auto-away-off = Выкл
+auto-away-5min = 5 Минут
+auto-away-10min = 10 Минут
+auto-away-15min = 15 Минут
+auto-away-30min = 30 Минут
 label-max-scrollback = Макс. история:
 label-chat-font-size = Размер шрифта:
 label-show-connection-events = Показывать события подключения/отключения
@@ -630,6 +637,7 @@ user-info-end = Конец информации о пользователе
 user-info-unknown = Неизвестно
 user-info-loading = Загрузка информации о пользователе…
 user-info-status = Статус:
+user-info-idle-since = Неактивен с:
 user-info-channels = Каналы:
 
 # =============================================================================

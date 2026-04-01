@@ -406,6 +406,7 @@ where
             status: inherited_status,
             group_id,
             group_name: group_name.clone(),
+            last_activity: std::time::Instant::now(),
         })
         .await
     {
@@ -2984,6 +2985,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_inherits_away_status_from_existing_session() {
         use crate::users::user::NewSessionParams;
+        use std::time::Instant;
 
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
@@ -3029,6 +3031,7 @@ mod tests {
                 status: Some("grabbing lunch".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add first session");
@@ -3073,6 +3076,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_no_inheritance_for_shared_accounts() {
         use crate::users::user::NewSessionParams;
+        use std::time::Instant;
 
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
@@ -3117,6 +3121,7 @@ mod tests {
                 status: Some("away message".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add first session");
@@ -3160,6 +3165,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_inherits_from_latest_session() {
         use crate::users::user::NewSessionParams;
+        use std::time::Instant;
 
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
@@ -3204,6 +3210,7 @@ mod tests {
                 status: Some("old status".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add first session");
@@ -3232,6 +3239,7 @@ mod tests {
                 status: Some("new status".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add second session");

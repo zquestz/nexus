@@ -280,6 +280,7 @@ mod tests {
     ) -> u32 {
         use crate::users::user::NewSessionParams;
         use std::collections::HashSet;
+        use std::time::Instant;
 
         let perms: HashSet<Permission> = permissions.iter().copied().collect();
 
@@ -303,6 +304,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add second session")
@@ -318,6 +320,7 @@ mod tests {
     ) -> u32 {
         use crate::users::user::NewSessionParams;
         use std::collections::HashSet;
+        use std::time::Instant;
 
         let perms: HashSet<Permission> = permissions.iter().copied().collect();
 
@@ -341,6 +344,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: Instant::now(),
             })
             .await
             .expect("Failed to add shared session")

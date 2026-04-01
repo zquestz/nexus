@@ -34,6 +34,8 @@ pub struct NewSessionParams {
     pub group_id: Option<i64>,
     /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
+    /// Last meaningful activity time (for idle tracking)
+    pub last_activity: std::time::Instant,
 }
 
 /// Represents a logged-in user session
@@ -79,6 +81,8 @@ pub struct UserSession {
     pub group_id: Option<i64>,
     /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
+    /// Last meaningful activity time (for idle tracking, excludes passive messages like Ping/UserAway)
+    pub last_activity: std::time::Instant,
 }
 
 impl UserSession {
@@ -103,6 +107,7 @@ impl UserSession {
             status: params.status,
             group_id: params.group_id,
             group_name: params.group_name,
+            last_activity: params.last_activity,
         }
     }
 

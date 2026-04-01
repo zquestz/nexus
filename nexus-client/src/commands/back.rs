@@ -29,6 +29,16 @@ pub fn execute(
         return Task::none();
     };
 
+    // Skip if a back request is already pending (prevents double "Welcome back")
+    if conn.pending_requests.values().any(|r| {
+        matches!(
+            r,
+            ResponseRouting::BackResult | ResponseRouting::AutoBackResult
+        )
+    }) {
+        return Task::none();
+    }
+
     // Send the back message
     let msg = ClientMessage::UserBack;
     match conn.send(msg) {

@@ -76,6 +76,73 @@ fn default_proxy_port() -> u16 {
 }
 
 // =============================================================================
+// Auto-Away Timeout
+// =============================================================================
+
+/// Auto-away timeout duration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum AutoAwayTimeout {
+    /// Disabled - no auto-away
+    #[default]
+    Off,
+    /// 5 minutes
+    Min5,
+    /// 10 minutes
+    Min10,
+    /// 15 minutes
+    Min15,
+    /// 30 minutes
+    Min30,
+}
+
+impl AutoAwayTimeout {
+    /// All timeout options for the picker
+    pub const ALL: &'static [AutoAwayTimeout] = &[
+        AutoAwayTimeout::Off,
+        AutoAwayTimeout::Min5,
+        AutoAwayTimeout::Min10,
+        AutoAwayTimeout::Min15,
+        AutoAwayTimeout::Min30,
+    ];
+
+    /// Get the translation key for this timeout
+    pub fn translation_key(self) -> &'static str {
+        match self {
+            AutoAwayTimeout::Off => "auto-away-off",
+            AutoAwayTimeout::Min5 => "auto-away-5min",
+            AutoAwayTimeout::Min10 => "auto-away-10min",
+            AutoAwayTimeout::Min15 => "auto-away-15min",
+            AutoAwayTimeout::Min30 => "auto-away-30min",
+        }
+    }
+
+    /// Get the duration, or None if disabled
+    pub fn as_duration(self) -> Option<std::time::Duration> {
+        match self {
+            AutoAwayTimeout::Off => None,
+            AutoAwayTimeout::Min5 => Some(std::time::Duration::from_secs(5 * 60)),
+            AutoAwayTimeout::Min10 => Some(std::time::Duration::from_secs(10 * 60)),
+            AutoAwayTimeout::Min15 => Some(std::time::Duration::from_secs(15 * 60)),
+            AutoAwayTimeout::Min30 => Some(std::time::Duration::from_secs(30 * 60)),
+        }
+    }
+
+    /// Whether auto-away is enabled
+    pub fn is_enabled(self) -> bool {
+        self != AutoAwayTimeout::Off
+    }
+}
+
+impl std::fmt::Display for AutoAwayTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", crate::i18n::t(self.translation_key()))
+    }
+}
+
+/// Default auto-away message
+pub const DEFAULT_AUTO_AWAY_MESSAGE: &str = "AFK";
+
+// =============================================================================
 // Chat History Retention
 // =============================================================================
 
@@ -400,6 +467,14 @@ pub struct Settings {
     /// GPU rendering backend (requires restart, only used when hardware_rendering is enabled)
     #[serde(default)]
     pub gpu_backend: GpuBackend,
+
+    /// Auto-away timeout (how long before automatically setting away)
+    #[serde(default)]
+    pub auto_away_timeout: AutoAwayTimeout,
+
+    /// Auto-away status message (sent when auto-away triggers)
+    #[serde(default = "default_auto_away_message")]
+    pub auto_away_message: String,
 }
 
 /// Default value for max_scrollback setting
@@ -441,6 +516,8 @@ impl Default for Settings {
             minimize_to_tray: false,
             hardware_rendering: false,
             gpu_backend: GpuBackend::default(),
+            auto_away_timeout: AutoAwayTimeout::default(),
+            auto_away_message: default_auto_away_message(),
         }
     }
 }
@@ -473,6 +550,8 @@ impl std::fmt::Debug for Settings {
             .field("audio", &self.audio)
             .field("hardware_rendering", &self.hardware_rendering)
             .field("gpu_backend", &self.gpu_backend)
+            .field("auto_away_timeout", &self.auto_away_timeout)
+            .field("auto_away_message", &self.auto_away_message)
             .finish()
     }
 }
@@ -514,6 +593,10 @@ fn default_upload_limit() -> u8 {
 
 fn default_sound_volume() -> f32 {
     DEFAULT_SOUND_VOLUME
+}
+
+fn default_auto_away_message() -> String {
+    DEFAULT_AUTO_AWAY_MESSAGE.to_string()
 }
 
 // =============================================================================

@@ -782,6 +782,15 @@ impl NexusApp {
             Message::ChatHistoryRetentionSelected(retention) => {
                 self.handle_chat_history_retention_selected(retention)
             }
+            Message::AutoAwayTick => self.handle_auto_away_tick(),
+            Message::AutoAwayTimeoutSelected(timeout) => {
+                self.config.settings.auto_away_timeout = timeout;
+                Task::none()
+            }
+            Message::AutoAwayMessageChanged(message) => {
+                self.config.settings.auto_away_message = message;
+                Task::none()
+            }
             Message::ClearAvatarPressed => self.handle_clear_avatar_pressed(),
             Message::ConnectionNotificationsToggled(enabled) => {
                 self.handle_connection_notifications_toggled(enabled)
@@ -1238,6 +1247,14 @@ impl NexusApp {
         #[cfg(target_os = "macos")]
         subscriptions.push(Subscription::run(macos_url::url_stream));
 
+        // Auto-away timer: check idle connections every 30 seconds
+        if self.config.settings.auto_away_timeout.is_enabled() && !self.connections.is_empty() {
+            subscriptions.push(
+                iced::time::every(std::time::Duration::from_secs(30))
+                    .map(|_| Message::AutoAwayTick),
+            );
+        }
+
         // Subscribe to all active connections
         for conn in self.connections.values() {
             subscriptions.push(Subscription::run_with(
@@ -1496,6 +1513,8 @@ impl NexusApp {
             // Rendering
             hardware_rendering: self.config.settings.hardware_rendering,
             gpu_backend: self.config.settings.gpu_backend,
+            auto_away_timeout: self.config.settings.auto_away_timeout,
+            auto_away_message: &self.config.settings.auto_away_message,
         };
 
         let main_view = views::main_layout(config);

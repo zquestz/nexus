@@ -13,7 +13,7 @@
 | 7 | Speed limiting | Medium | Planned |
 | 8 | Flood protection | Medium | Planned |
 | 9 | Server logs | Medium | Planned |
-| 10 | Auto-away | Low | Planned |
+| 10 | Auto-away | Low | ✅ Done |
 
 **Post-launch:** IRC gateway (if demand exists)
 

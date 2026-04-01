@@ -199,6 +199,12 @@ pub enum Message {
     MaxScrollbackChanged(usize),
     /// Settings panel: Chat history retention selected from picker
     ChatHistoryRetentionSelected(crate::config::settings::ChatHistoryRetention),
+    /// Auto-away: periodic timer tick (every 30s when auto-away enabled)
+    AutoAwayTick,
+    /// Settings panel: Auto-away timeout selected from picker
+    AutoAwayTimeoutSelected(crate::config::settings::AutoAwayTimeout),
+    /// Settings panel: Auto-away message changed
+    AutoAwayMessageChanged(String),
     /// Settings panel: Clear avatar button pressed
     ClearAvatarPressed,
     /// Settings panel: Connection notifications checkbox toggled

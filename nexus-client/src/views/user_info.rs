@@ -60,7 +60,8 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
         }
         Some(Ok(user)) => {
             // User info display with avatar + username header
-            content = build_user_info_content(content, user, &theme, avatar_cache);
+            content =
+                build_user_info_content(content, user, &theme, avatar_cache, conn.idle_since_epoch);
         }
     }
 
@@ -245,6 +246,7 @@ fn build_user_info_content<'a>(
     user: &UserInfoDetailed,
     theme: &Theme,
     avatar_cache: &'a HashMap<String, CachedImage>,
+    idle_since_epoch: Option<u64>,
 ) -> iced::widget::Column<'a, Message> {
     // Header: Avatar + Nickname (always populated; equals username for regular accounts)
     // For shared accounts, also show the account name below
@@ -361,6 +363,14 @@ fn build_user_info_content<'a>(
     // Status (if set) - away is shown via 💤 in header
     if let Some(status) = &user.status {
         content = content.push(info_row(t("user-info-status"), status.clone(), None));
+    }
+
+    // Idle since (pre-computed epoch timestamp, converted from idle_seconds when response was received)
+    if let Some(idle_since_epoch) = idle_since_epoch {
+        let idle_since = chrono::DateTime::from_timestamp(idle_since_epoch as i64, 0)
+            .map(|dt| dt.format(DATETIME_FORMAT).to_string())
+            .unwrap_or_else(|| t("user-info-unknown"));
+        content = content.push(info_row(t("user-info-idle-since"), idle_since, None));
     }
 
     // Channels (if present and not empty)

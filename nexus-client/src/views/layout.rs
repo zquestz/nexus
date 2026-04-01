@@ -152,6 +152,11 @@ struct ServerContentContext<'a> {
     pub hardware_rendering: bool,
     /// GPU rendering backend selection
     pub gpu_backend: crate::config::settings::GpuBackend,
+    // ==================== Auto-Away ====================
+    /// Auto-away timeout setting
+    pub auto_away_timeout: crate::config::settings::AutoAwayTimeout,
+    /// Auto-away message
+    pub auto_away_message: &'a str,
 }
 
 // ============================================================================
@@ -347,6 +352,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 minimize_to_tray: config.minimize_to_tray,
                 hardware_rendering: config.hardware_rendering,
                 gpu_backend: config.gpu_backend,
+                auto_away_timeout: config.auto_away_timeout,
+                auto_away_message: config.auto_away_message,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -405,6 +412,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         minimize_to_tray: config.minimize_to_tray,
                         hardware_rendering: config.hardware_rendering,
                         gpu_backend: config.gpu_backend,
+                        auto_away_timeout: config.auto_away_timeout,
+                        auto_away_message: config.auto_away_message,
                     })
                 ]
                 .width(Fill)
@@ -905,6 +914,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 minimize_to_tray: ctx.minimize_to_tray,
                 hardware_rendering: ctx.hardware_rendering,
                 gpu_backend: ctx.gpu_backend,
+                auto_away_timeout: ctx.auto_away_timeout,
+                auto_away_message: ctx.auto_away_message,
             })
         ]
         .width(Fill)

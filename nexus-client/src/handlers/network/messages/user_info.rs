@@ -60,9 +60,20 @@ impl NexusApp {
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
                     if success {
                         if let Some(user_data) = user {
+                            // Convert idle_seconds (relative duration) to epoch timestamp (absolute)
+                            // so the display doesn't drift on re-render. Stored separately to
+                            // avoid mutating the protocol struct's semantics.
+                            conn.idle_since_epoch = user_data.idle_seconds.map(|idle_secs| {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .expect("System time is after Unix epoch")
+                                    .as_secs();
+                                now.saturating_sub(idle_secs)
+                            });
                             conn.user_info_data = Some(Ok(user_data));
                         }
                     } else {
+                        conn.idle_since_epoch = None;
                         conn.user_info_data = Some(Err(error.unwrap_or_default()));
                     }
                 }
@@ -152,6 +163,17 @@ impl NexusApp {
                 "{INFO_INDENT}{} {}",
                 t("user-info-status").to_lowercase(),
                 status
+            ));
+        }
+
+        // Idle since (if available)
+        if let Some(idle_secs) = user.idle_seconds {
+            let clamped = idle_secs.min(i64::MAX as u64) as i64;
+            let idle_since = chrono::Utc::now() - chrono::Duration::seconds(clamped);
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-idle-since").to_lowercase(),
+                idle_since.format(DATETIME_FORMAT)
             ));
         }
 

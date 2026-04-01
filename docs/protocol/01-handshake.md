@@ -25,20 +25,20 @@ Sent immediately after TLS connection is established.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.0"`) |
+| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.1"`) |
 
 **Example:**
 
 ```json
 {
-  "version": "0.7.0"
+  "version": "0.7.1"
 }
 ```
 
 **Full frame:**
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.0"}
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.1"}
 ```
 
 ### HandshakeResponse (Server → Client)
@@ -56,7 +56,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": true,
-  "version": "0.7.0"
+  "version": "0.7.1"
 }
 ```
 
@@ -65,7 +65,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": false,
-  "error": "Unsupported protocol version. Server: 0.7.0, Client: 0.3.0"
+  "error": "Unsupported protocol version. Server: 0.7.1, Client: 0.3.0"
 }
 ```
 

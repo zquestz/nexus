@@ -202,6 +202,12 @@ pub struct ViewConfig<'a> {
 
     /// GPU rendering backend selection
     pub gpu_backend: crate::config::settings::GpuBackend,
+
+    // ==================== Auto-Away ====================
+    /// Auto-away timeout setting
+    pub auto_away_timeout: crate::config::settings::AutoAwayTimeout,
+    /// Auto-away message
+    pub auto_away_message: &'a str,
 }
 
 /// Toolbar state configuration

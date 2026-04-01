@@ -102,6 +102,13 @@ chat-history-30-days = 30天
 chat-history-14-days = 14天
 chat-history-7-days = 7天
 chat-history-disabled = 禁用
+label-auto-away = 自动离开:
+label-auto-away-message = 自动离开消息:
+auto-away-off = 关闭
+auto-away-5min = 5 分钟
+auto-away-10min = 10 分钟
+auto-away-15min = 15 分钟
+auto-away-30min = 30 分钟
 label-max-scrollback = 最大历史记录：
 label-chat-font-size = 字体大小：
 label-show-connection-events = 显示连接/断开事件
@@ -619,6 +626,7 @@ user-info-end = 用户信息结束
 user-info-unknown = 未知
 user-info-loading = 正在加载用户信息…
 user-info-status = 状态:
+user-info-idle-since = 空闲始于:
 user-info-channels = 频道:
 
 # =============================================================================

@@ -168,6 +168,27 @@ Limits how many messages are displayed in each chat tab. When the limit is reach
 
 This affects all chat tabs: Console, channels, and user messages. Note that user message history saved to disk is not affected by this limit.
 
+### Auto-Away
+
+Automatically sets you as away after a period of inactivity. When you interact with the client again (keyboard input), your away status is automatically cleared.
+
+| Setting              | Description                          |
+| -------------------- | ------------------------------------ |
+| **Off**              | Disabled (default)                   |
+| **5 Minutes**        | Set away after 5 minutes idle        |
+| **10 Minutes**       | Set away after 10 minutes idle       |
+| **15 Minutes**       | Set away after 15 minutes idle       |
+| **30 Minutes**       | Set away after 30 minutes idle       |
+
+**Auto-Away Message** sets the status message sent when auto-away triggers. Default: "AFK". Leave empty for no message.
+
+**Notes:**
+
+- If you manually use `/away`, auto-away will not override it — you must manually `/back`
+- The server tracks idle time per session, so multiple connections are handled independently
+- If you're logged in from two computers, the server ensures the user list accurately reflects your most recently active session
+- Only keyboard input counts as activity — mouse movement and clicks do not reset the idle timer
+
 ### Font Size
 
 Adjust the chat message font size (9–16 points). Default is 13.

@@ -102,6 +102,13 @@ chat-history-30-days = 30일
 chat-history-14-days = 14일
 chat-history-7-days = 7일
 chat-history-disabled = 비활성화
+label-auto-away = 자동 자리비움:
+label-auto-away-message = 자동 자리비움 메시지:
+auto-away-off = 끄기
+auto-away-5min = 5분
+auto-away-10min = 10분
+auto-away-15min = 15분
+auto-away-30min = 30분
 label-max-scrollback = 최대 스크롤백:
 label-chat-font-size = 글꼴 크기:
 label-show-connection-events = 연결/연결 해제 이벤트 표시
@@ -618,6 +625,7 @@ user-info-end = 사용자 정보 끝
 user-info-unknown = 알 수 없음
 user-info-loading = 사용자 정보 로드 중…
 user-info-status = 상태:
+user-info-idle-since = 유휴 시작:
 user-info-channels = 채널:
 
 # =============================================================================

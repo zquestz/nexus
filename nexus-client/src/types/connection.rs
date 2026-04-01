@@ -244,6 +244,10 @@ pub struct ServerConnection {
     pub user_management: UserManagementState,
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
+    /// Pre-computed "idle since" epoch timestamp (set when user info response is received,
+    /// converted from the server's relative `idle_seconds` to an absolute timestamp so the
+    /// display doesn't drift on re-render)
+    pub idle_since_epoch: Option<u64>,
     /// Panel to return to when closing User Info (e.g., ConnectionMonitor)
     pub user_info_return_panel: Option<ActivePanel>,
     /// Password change form state (Some when changing password, None otherwise)
@@ -277,6 +281,13 @@ pub struct ServerConnection {
     /// Nicknames currently in voice per channel (lowercase channel name -> set of nicknames)
     /// Tracked even when we're not in voice, so we can show voice indicators in user list
     pub channel_voiced: HashMap<String, HashSet<String>>,
+    /// Last known activity time for this connection (reset on keyboard events only)
+    pub last_activity: std::time::Instant,
+    /// Our session's away state — updated only from our own AwayResponse/BackResponse,
+    /// never from UserUpdated (avoids aggregated vs per-session mismatch)
+    pub is_away: bool,
+    /// Whether we set this away via auto-away (controls auto-back on activity)
+    pub is_auto_away: bool,
 }
 
 impl ServerConnection {
@@ -380,6 +391,7 @@ impl ServerConnection {
             broadcast_error: None,
             user_management: UserManagementState::default(),
             user_info_data: None,
+            idle_since_epoch: None,
             user_info_return_panel: None,
             password_change_state: None,
             avatar_cache: HashMap::new(),
@@ -396,6 +408,9 @@ impl ServerConnection {
             disconnect_dialog: None,
             voice_session: None,
             channel_voiced: HashMap::new(),
+            last_activity: std::time::Instant::now(),
+            is_away: false,
+            is_auto_away: false,
         }
     }
 }

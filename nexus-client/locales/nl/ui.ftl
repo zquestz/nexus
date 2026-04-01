@@ -103,6 +103,13 @@ chat-history-30-days = 30 dagen
 chat-history-14-days = 14 dagen
 chat-history-7-days = 7 dagen
 chat-history-disabled = Uitgeschakeld
+label-auto-away = Auto-Afwezig:
+label-auto-away-message = Auto-Afwezig Bericht:
+auto-away-off = Uit
+auto-away-5min = 5 Minuten
+auto-away-10min = 10 Minuten
+auto-away-15min = 15 Minuten
+auto-away-30min = 30 Minuten
 label-max-scrollback = Max. scrollback:
 label-chat-font-size = Lettergrootte:
 label-show-connection-events = Verbindings-/verbrekingsgebeurtenissen weergeven
@@ -628,6 +635,7 @@ user-info-end = Einde gebruikersinformatie
 user-info-unknown = Onbekend
 user-info-loading = Gebruikersinformatie laden…
 user-info-status = Status:
+user-info-idle-since = Inactief sinds:
 user-info-channels = Kanalen:
 
 # =============================================================================

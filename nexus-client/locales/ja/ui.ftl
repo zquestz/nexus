@@ -102,6 +102,13 @@ chat-history-30-days = 30日
 chat-history-14-days = 14日
 chat-history-7-days = 7日
 chat-history-disabled = 無効
+label-auto-away = 自動離席:
+label-auto-away-message = 自動離席メッセージ:
+auto-away-off = オフ
+auto-away-5min = 5分
+auto-away-10min = 10分
+auto-away-15min = 15分
+auto-away-30min = 30分
 label-max-scrollback = 最大履歴:
 label-chat-font-size = フォントサイズ:
 label-show-connection-events = 接続/切断イベントを表示
@@ -618,6 +625,7 @@ user-info-end = ユーザー情報の終わり
 user-info-unknown = 不明
 user-info-loading = ユーザー情報を読み込み中…
 user-info-status = ステータス:
+user-info-idle-since = 待機開始:
 user-info-channels = チャンネル:
 
 # =============================================================================

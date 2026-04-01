@@ -300,6 +300,7 @@ pub async fn login_user_from_ip(
             status: None,
             group_id: None,
             group_name: None,
+            last_activity: std::time::Instant::now(),
         })
         .await
         .expect("Failed to add user to UserManager")
@@ -363,6 +364,7 @@ pub async fn login_user_with_features(
             status: None,
             group_id: None,
             group_name: None,
+            last_activity: std::time::Instant::now(),
         })
         .await
         .expect("Failed to add user to UserManager")
@@ -425,6 +427,7 @@ pub async fn login_shared_user(
             status: None,
             group_id: None,
             group_name: None,
+            last_activity: std::time::Instant::now(),
         })
         .await
         .expect("Failed to add shared user to UserManager")

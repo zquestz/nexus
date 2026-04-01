@@ -236,8 +236,11 @@ Response containing detailed user information.
     "avatar": "data:image/png;base64,...",
     "is_away": true,
     "status": "in a meeting",
+    "is_admin": false,
+    "channels": ["#general"],
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "idle_seconds": 342
   }
 }
 ```
@@ -264,12 +267,13 @@ Response containing detailed user information.
     "addresses": ["192.168.1.100", "10.0.0.5"],
     "channels": ["#general", "#support"],
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "idle_seconds": 15
   }
 }
 ```
 
-Note: `is_admin`, `addresses`, and `channels` are only included when an admin is requesting information. Secret channels are only visible to admins.
+Note: `addresses` are only included when an admin is requesting information. Secret channels are only visible to admins.
 
 **Failure example:**
 
@@ -450,6 +454,7 @@ Extended user information for individual queries.
 | `channels`    | array   | Channels the user is in (secret channels only visible to admins) |
 | `group_id`    | integer | User's group ID (null if no group)                               |
 | `group_name`  | string  | User's group name (null if no group)                             |
+| `idle_seconds`| integer | Seconds since last meaningful activity                           |
 
 ## Permissions
 

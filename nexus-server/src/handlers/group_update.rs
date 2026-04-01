@@ -483,6 +483,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
@@ -1297,6 +1299,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -1415,6 +1418,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -1585,6 +1589,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -1681,6 +1686,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Listeners".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -1791,6 +1797,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -1909,6 +1916,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -2013,6 +2021,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();
@@ -2149,6 +2158,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: Instant::now(),
             })
             .await
             .unwrap();

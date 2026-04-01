@@ -566,6 +566,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");

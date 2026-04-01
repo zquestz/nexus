@@ -1031,17 +1031,20 @@ where
                             .min()
                             .unwrap_or(0);
 
-                        let locale = user_sessions
-                            .first()
+                        // Avatar, locale: latest login wins (stable)
+                        let latest_login = user_sessions.iter().max_by_key(|u| u.login_time);
+
+                        let locale = latest_login
                             .map(|u| u.locale.clone())
                             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
-                        // Avatar, is_away, status from most recent login
-                        let latest = user_sessions.iter().max_by_key(|u| u.login_time);
+                        let avatar = latest_login.and_then(|u| u.avatar.clone());
 
-                        let avatar = latest.and_then(|u| u.avatar.clone());
-                        let is_away = latest.is_some_and(|u| u.is_away);
-                        let status = latest.and_then(|u| u.status.clone());
+                        // Away/status: most recently active wins (accurate presence)
+                        let most_active = user_sessions.iter().max_by_key(|u| u.last_activity);
+
+                        let is_away = most_active.is_some_and(|u| u.is_away);
+                        let status = most_active.and_then(|u| u.status.clone());
 
                         (login_time, locale, avatar, is_away, status)
                     } else {
@@ -2712,6 +2715,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -2984,6 +2988,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -3008,6 +3013,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -3401,6 +3407,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3496,6 +3503,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3587,6 +3595,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3681,6 +3690,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3768,6 +3778,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3858,6 +3869,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -3959,6 +3971,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -4046,6 +4059,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -4145,6 +4159,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -4247,6 +4262,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .unwrap();
@@ -4339,6 +4355,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add voice user session");
@@ -4465,6 +4482,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add voice user session");

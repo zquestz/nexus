@@ -96,8 +96,12 @@ pub enum ResponseRouting {
     FileSearchResult { tab_id: TabId },
     /// Away command result - contains optional status message for display
     AwayResult(Option<String>),
+    /// Auto-away result - set by auto-away timer, tracks is_auto_away on success
+    AutoAwayResult(Option<String>),
     /// Back command result
     BackResult,
+    /// Auto-back result - set by auto-back on activity, retries on error
+    AutoBackResult,
     /// Status command result - contains optional status message for display
     StatusResult(Option<String>),
     /// Secret command result - contains channel name and new secret value

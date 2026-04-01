@@ -5,10 +5,12 @@ use iced::widget::{Id, operation};
 use iced::window;
 use iced::{Event, Task};
 
+use nexus_common::protocol::ClientMessage;
+
 use crate::NexusApp;
 use crate::types::{
-    ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode,
-    UserManagementMode,
+    ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode, PendingRequests,
+    ResponseRouting, UserManagementMode,
 };
 use crate::voice::ptt::build_hotkey_string;
 
@@ -110,6 +112,40 @@ impl NexusApp {
             // While capturing, consume all key events to prevent other actions
             if matches!(event, Event::Keyboard(keyboard::Event::KeyPressed { .. })) {
                 return Task::none();
+            }
+        }
+
+        // Auto-away: bump last_activity on key releases only
+        // - Excludes ModifiersChanged (fires on window focus, would falsely trigger auto-back)
+        // - KeyReleased isn't consumed by PTT capture (which only intercepts KeyPressed)
+        if matches!(event, Event::Keyboard(keyboard::Event::KeyReleased { .. })) {
+            let now = std::time::Instant::now();
+            for conn in self.connections.values_mut() {
+                conn.last_activity = now;
+            }
+
+            // Auto-back: send UserBack for connections that were auto-awayed
+            let auto_away_conn_ids: Vec<usize> = self
+                .connections
+                .values()
+                .filter(|conn| {
+                    conn.is_auto_away
+                        && !conn
+                            .pending_requests
+                            .values()
+                            .any(|r| matches!(r, ResponseRouting::AutoBackResult))
+                })
+                .map(|conn| conn.connection_id)
+                .collect();
+
+            for conn_id in auto_away_conn_ids {
+                if let Some(conn) = self.connections.get_mut(&conn_id) {
+                    let msg = ClientMessage::UserBack;
+                    if let Ok(message_id) = conn.send(msg) {
+                        conn.pending_requests
+                            .track(message_id, ResponseRouting::AutoBackResult);
+                    }
+                }
             }
         }
 

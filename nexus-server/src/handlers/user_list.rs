@@ -3,23 +3,25 @@
 use std::collections::HashMap;
 use std::io;
 
-/// Aggregated user data for deduplication
-/// Fields: (login_time, is_admin, is_shared, session_ids, locale, avatar, latest_session_login_time, is_away, status, group_id, group_name, user_id)
-/// Note: avatar, is_away, status, group_id, and group_name all use "latest login wins" - tracked via latest_session_login_time
-type UserAggregateData = (
-    i64,
-    bool,
-    bool,
-    Vec<u32>,
-    String,
-    Option<String>,
-    i64,
-    bool,
-    Option<String>,
-    Option<i64>,
-    Option<String>,
-    i64,
-);
+/// Aggregated user data for deduplication of regular (non-shared) accounts.
+///
+/// Avatar/locale/group use latest login (stable selection).
+/// Away/status use most recently active session (accurate presence).
+struct UserAggregateData {
+    login_time: i64,
+    is_admin: bool,
+    is_shared: bool,
+    session_ids: Vec<u32>,
+    locale: String,
+    avatar: Option<String>,
+    latest_session_login_time: i64,
+    is_away: bool,
+    status: Option<String>,
+    group_id: Option<i64>,
+    group_name: Option<String>,
+    user_id: i64,
+    most_recent_activity: std::time::Instant,
+}
 
 use tokio::io::AsyncWrite;
 
@@ -174,94 +176,65 @@ where
         } else {
             // Regular accounts: deduplicate by username and aggregate sessions
             // Use is_admin from UserManager instead of querying DB for each user
-            // Avatar uses "latest login wins" - track login_time for avatar selection
+            // Avatar: latest login wins (stable). Away/status: most recently active wins (accurate presence).
             user_map
                 .entry(user.username.clone())
-                .and_modify(
-                    |(
-                        login_time,
-                        _,
-                        _,
-                        session_ids,
-                        _,
-                        avatar,
-                        latest_session_login_time,
-                        is_away,
-                        status,
-                        group_id,
-                        group_name,
-                        _,
-                    )| {
-                        // Keep earliest login time for display
-                        *login_time = (*login_time).min(user.login_time);
-                        session_ids.push(user.session_id);
-                        // Avatar, away status, status message, group info: latest login wins
-                        if user.login_time > *latest_session_login_time {
-                            *avatar = user.avatar.clone();
-                            *latest_session_login_time = user.login_time;
-                            *is_away = user.is_away;
-                            *status = user.status.clone();
-                            *group_id = user.group_id;
-                            *group_name = user.group_name.clone();
-                        }
-                    },
-                )
-                .or_insert((
-                    user.login_time,
-                    user.is_admin, // Use is_admin from UserManager
-                    false,         // Regular accounts are not shared
-                    vec![user.session_id],
-                    user.locale.clone(),
-                    user.avatar.clone(),
-                    user.login_time, // Track login time for avatar selection
-                    user.is_away,
-                    user.status.clone(),
-                    user.group_id,
-                    user.group_name.clone(),
-                    user.user_id,
-                ));
+                .and_modify(|agg| {
+                    // Keep earliest login time for display
+                    agg.login_time = agg.login_time.min(user.login_time);
+                    agg.session_ids.push(user.session_id);
+                    // Avatar, locale, group info: latest login wins (stable)
+                    if user.login_time > agg.latest_session_login_time {
+                        agg.avatar = user.avatar.clone();
+                        agg.locale = user.locale.clone();
+                        agg.latest_session_login_time = user.login_time;
+                        agg.group_id = user.group_id;
+                        agg.group_name = user.group_name.clone();
+                    }
+                    // Away/status: most recently active wins (accurate presence)
+                    if user.last_activity > agg.most_recent_activity {
+                        agg.is_away = user.is_away;
+                        agg.status = user.status.clone();
+                        agg.most_recent_activity = user.last_activity;
+                    }
+                })
+                .or_insert(UserAggregateData {
+                    login_time: user.login_time,
+                    is_admin: user.is_admin,
+                    is_shared: false, // Regular accounts are not shared
+                    session_ids: vec![user.session_id],
+                    locale: user.locale.clone(),
+                    avatar: user.avatar.clone(),
+                    latest_session_login_time: user.login_time,
+                    is_away: user.is_away,
+                    status: user.status.clone(),
+                    group_id: user.group_id,
+                    group_name: user.group_name.clone(),
+                    user_id: user.user_id,
+                    most_recent_activity: user.last_activity,
+                });
         }
     }
 
     // Build user info list from aggregated online users
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
-        .map(
-            |(
-                username,
-                (
-                    login_time,
-                    is_admin,
-                    is_shared,
-                    session_ids,
-                    locale,
-                    avatar,
-                    _,
-                    is_away,
-                    status,
-                    group_id,
-                    group_name,
-                    user_id,
-                ),
-            )| {
-                UserInfo {
-                    id: user_id,
-                    // For regular accounts, nickname == username
-                    nickname: username.clone(),
-                    username,
-                    login_time,
-                    is_admin,
-                    is_shared,
-                    session_ids,
-                    locale,
-                    avatar,
-                    is_away,
-                    status,
-                    group_id,
-                    group_name,
-                }
-            },
-        )
+        .map(|(username, agg)| UserInfo {
+            id: agg.user_id,
+            // For regular accounts, nickname == username
+            nickname: username.clone(),
+            username,
+            login_time: agg.login_time,
+            is_admin: agg.is_admin,
+            is_shared: agg.is_shared,
+            session_ids: agg.session_ids,
+            locale: agg.locale,
+            avatar: agg.avatar,
+            is_away: agg.is_away,
+            status: agg.status,
+            group_id: agg.group_id,
+            group_name: agg.group_name,
+        })
         .collect();
 
     // Add shared account sessions (each session is a separate entry)
@@ -470,6 +443,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -546,6 +520,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -574,6 +549,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -647,6 +623,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add user");
@@ -1230,7 +1207,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_userlist_away_status_latest_login_wins() {
+    async fn test_userlist_away_status_most_recently_active_wins() {
         use crate::handlers::testing::read_server_message;
         use crate::users::user::NewSessionParams;
 
@@ -1257,8 +1234,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Add first session (older) with is_away=true and old status
-        let _session1 = test_ctx
+        // Add first session (older login) with is_away=true
+        let session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
                 session_id: 1,
@@ -1275,9 +1252,10 @@ mod tests {
                 avatar: None,
                 nickname: "alice".to_string(),
                 is_away: true,
-                status: Some("old status".to_string()),
+                status: Some("session1 status".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add first session");
@@ -1285,7 +1263,7 @@ mod tests {
         // Delay to ensure different login timestamps (timestamps are in seconds)
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
-        // Add second session (newer) with is_away=false and new status
+        // Add second session (newer login) with is_away=false
         let session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1303,12 +1281,16 @@ mod tests {
                 avatar: None,
                 nickname: "alice".to_string(),
                 is_away: false,
-                status: Some("new status".to_string()),
+                status: Some("session2 status".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add second session");
+
+        // Make session1 the most recently active (simulates typing on an older session)
+        test_ctx.user_manager.update_last_activity(session1).await;
 
         // Get user list
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
@@ -1321,13 +1303,13 @@ mod tests {
                 assert_eq!(users.len(), 1);
                 assert_eq!(users[0].session_ids.len(), 2, "Should have 2 sessions");
                 assert!(
-                    !users[0].is_away,
-                    "is_away should be from latest login (false)"
+                    users[0].is_away,
+                    "is_away should be from most recently active session (session1, true)"
                 );
                 assert_eq!(
                     users[0].status,
-                    Some("new status".to_string()),
-                    "status should be from latest login"
+                    Some("session1 status".to_string()),
+                    "status should be from most recently active session"
                 );
             }
             _ => panic!("Expected UserListResponse"),
@@ -1383,6 +1365,7 @@ mod tests {
                 status: Some("user one away".to_string()),
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add first session");
@@ -1408,6 +1391,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add second session");
@@ -1515,6 +1499,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                last_activity: std::time::Instant::now(),
             })
             .await
             .expect("Failed to add bob");

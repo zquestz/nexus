@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::net::IpAddr;
 
 use ipnet::IpNet;
-use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::protocol::ServerMessage;
 
 use super::UserManager;
 use crate::db::Permission;
@@ -107,39 +107,19 @@ impl UserManager {
             .await;
 
             // For regular accounts, check if there are remaining sessions
-            // If so, broadcast UserUpdated with the newest session's info (for avatar sync)
+            // If so, broadcast UserUpdated with aggregated info (split selection:
+            // latest login for avatar/locale, most recently active for away/status)
             if !user.is_shared {
                 let remaining_sessions = self.get_sessions_by_username(&user.username).await;
-                if !remaining_sessions.is_empty() {
-                    // Find the newest remaining session (by login_time)
-                    if let Some(newest) = remaining_sessions.iter().max_by_key(|s| s.login_time) {
-                        // Collect all session IDs for this user
-                        let session_ids: Vec<u32> =
-                            remaining_sessions.iter().map(|s| s.session_id).collect();
-
-                        self.broadcast_user_event(
-                            ServerMessage::UserUpdated {
-                                previous_username: user.username.clone(),
-                                user: UserInfo {
-                                    id: newest.user_id,
-                                    username: newest.username.clone(),
-                                    nickname: newest.nickname.clone(),
-                                    is_admin: newest.is_admin,
-                                    is_shared: newest.is_shared,
-                                    login_time: newest.login_time,
-                                    session_ids,
-                                    locale: newest.locale.clone(),
-                                    avatar: newest.avatar.clone(),
-                                    is_away: newest.is_away,
-                                    status: newest.status.clone(),
-                                    group_id: newest.group_id,
-                                    group_name: newest.group_name.clone(),
-                                },
-                            },
-                            Some(session_id),
-                        )
-                        .await;
-                    }
+                if let Some(user_info) = Self::build_aggregated_user_info(&remaining_sessions) {
+                    self.broadcast_user_event(
+                        ServerMessage::UserUpdated {
+                            previous_username: user.username.clone(),
+                            user: user_info,
+                        },
+                        Some(session_id),
+                    )
+                    .await;
                 }
             }
 
@@ -265,6 +245,16 @@ impl UserManager {
             Some(user.clone())
         } else {
             None
+        }
+    }
+
+    /// Update last_activity timestamp for a session (for idle tracking)
+    ///
+    /// Called on every non-passive ClientMessage to track when the user was last active.
+    pub async fn update_last_activity(&self, session_id: u32) {
+        let mut users = self.users.write().await;
+        if let Some(user) = users.get_mut(&session_id) {
+            user.last_activity = std::time::Instant::now();
         }
     }
 

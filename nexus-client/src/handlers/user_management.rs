@@ -960,6 +960,7 @@ impl NexusApp {
 
             // Clear previous data and password change state, then open the panel (shows loading state)
             conn.user_info_data = None;
+            conn.idle_since_epoch = None;
             conn.password_change_state = None;
             conn.user_info_return_panel = None; // Return to chat when closed
             conn.active_panel = ActivePanel::UserInfo;

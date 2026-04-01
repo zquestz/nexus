@@ -91,15 +91,15 @@ impl UserManager {
         }
     }
 
-    /// Build aggregated UserInfo for a regular account using "latest login wins" for avatar/away/status
+    /// Build aggregated UserInfo for a regular account with split selection
     ///
     /// For regular accounts with multiple sessions, we need to aggregate data:
     /// - username, is_admin, is_shared: same for all sessions
     /// - nickname: equals username for regular accounts
     /// - login_time: earliest session's login time (for "connected since" display)
     /// - session_ids: all session IDs
-    /// - locale: from latest session
-    /// - avatar, is_away, status: from latest session ("latest login wins")
+    /// - avatar, locale: from latest login session (stable, no flickering)
+    /// - is_away, status: from most recently active session (accurate presence)
     ///
     /// For shared accounts (is_shared=true), this method should NOT be used - each session
     /// is a separate entry with its own nickname.
@@ -108,10 +108,16 @@ impl UserManager {
             return None;
         }
 
-        // Find the session with the latest login time
-        let latest_session = sessions
+        // Latest login: used for avatar, locale, and identity fields (stable)
+        let latest_login = sessions
             .iter()
             .max_by_key(|s| s.login_time)
+            .expect("sessions is not empty");
+
+        // Most recently active: used for is_away, status (accurate presence)
+        let most_active = sessions
+            .iter()
+            .max_by_key(|s| s.last_activity)
             .expect("sessions is not empty");
 
         // Find the earliest login time for display
@@ -125,19 +131,19 @@ impl UserManager {
         let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
 
         Some(UserInfo {
-            id: latest_session.user_id,
-            username: latest_session.username.clone(),
-            nickname: latest_session.nickname.clone(), // For regular accounts, nickname == username
+            id: latest_login.user_id,
+            username: latest_login.username.clone(),
+            nickname: latest_login.nickname.clone(), // For regular accounts, nickname == username
             login_time: earliest_login_time,
-            is_admin: latest_session.is_admin,
-            is_shared: latest_session.is_shared,
+            is_admin: latest_login.is_admin,
+            is_shared: latest_login.is_shared,
             session_ids,
-            locale: latest_session.locale.clone(),
-            avatar: latest_session.avatar.clone(),
-            is_away: latest_session.is_away,
-            status: latest_session.status.clone(),
-            group_id: latest_session.group_id,
-            group_name: latest_session.group_name.clone(),
+            locale: latest_login.locale.clone(),
+            avatar: latest_login.avatar.clone(),
+            is_away: most_active.is_away,
+            status: most_active.status.clone(),
+            group_id: latest_login.group_id,
+            group_name: latest_login.group_name.clone(),
         })
     }
 }

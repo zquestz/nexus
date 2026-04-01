@@ -103,7 +103,7 @@ Start the server with default settings:
 You'll see output like:
 
 ```
-Nexus BBS Server v0.7.0
+Nexus BBS Server v0.7.1
 Database: ~/.local/share/nexusd/nexus.db
 File area: ~/.local/share/nexusd/files
 Certificate fingerprint (SHA-256): AB:CD:12:34:...

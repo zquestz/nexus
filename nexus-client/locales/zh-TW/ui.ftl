@@ -102,6 +102,13 @@ chat-history-30-days = 30天
 chat-history-14-days = 14天
 chat-history-7-days = 7天
 chat-history-disabled = 停用
+label-auto-away = 自動離開:
+label-auto-away-message = 自動離開訊息:
+auto-away-off = 關閉
+auto-away-5min = 5 分鐘
+auto-away-10min = 10 分鐘
+auto-away-15min = 15 分鐘
+auto-away-30min = 30 分鐘
 label-max-scrollback = 最大歷史記錄：
 label-chat-font-size = 字型大小：
 label-show-connection-events = 顯示連線/斷線事件
@@ -618,6 +625,7 @@ user-info-end = 使用者資訊結束
 user-info-unknown = 未知
 user-info-loading = 正在載入使用者資訊…
 user-info-status = 狀態:
+user-info-idle-since = 閒置始於:
 user-info-channels = 頻道:
 
 # =============================================================================
