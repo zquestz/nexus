@@ -800,7 +800,6 @@ const USER_INFO_DETAILED_SIZE: usize = json_first_i64_field("id")
     + json_string_array_field("channels", MAX_CHANNELS_PER_USER, MAX_CHANNEL_LENGTH)
     + json_i64_field("group_id")
     + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
-    + json_u64_field("idle_seconds")
     + 2; // {} braces
 
 /// UserInfoResponse: {"type":"UserInfoResponse","success":false,"error":"...2048...","user":{...}}
@@ -2897,7 +2896,6 @@ mod tests {
                 channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
                 group_id: Some(i64::MAX),
                 group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                idle_seconds: Some(u64::MAX),
             }),
         };
         assert!(

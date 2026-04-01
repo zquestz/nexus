@@ -609,6 +609,7 @@ user-info-role-admin = 管理員
 user-info-role-guest = 訪客
 user-info-role-shared = 共享
 user-info-role-user = 使用者
+user-info-group = 群組：
 user-info-nickname = 暱稱：
 user-info-account = 帳戶：{ $username }
 user-info-connected = 已連線：
@@ -625,7 +626,6 @@ user-info-end = 使用者資訊結束
 user-info-unknown = 未知
 user-info-loading = 正在載入使用者資訊…
 user-info-status = 狀態:
-user-info-idle-since = 閒置始於:
 user-info-channels = 頻道:
 
 # =============================================================================

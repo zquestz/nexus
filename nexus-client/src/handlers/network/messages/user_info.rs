@@ -60,20 +60,9 @@ impl NexusApp {
                 if let Some(conn) = self.connections.get_mut(&connection_id) {
                     if success {
                         if let Some(user_data) = user {
-                            // Convert idle_seconds (relative duration) to epoch timestamp (absolute)
-                            // so the display doesn't drift on re-render. Stored separately to
-                            // avoid mutating the protocol struct's semantics.
-                            conn.idle_since_epoch = user_data.idle_seconds.map(|idle_secs| {
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .expect("System time is after Unix epoch")
-                                    .as_secs();
-                                now.saturating_sub(idle_secs)
-                            });
                             conn.user_info_data = Some(Ok(user_data));
                         }
                     } else {
-                        conn.idle_since_epoch = None;
                         conn.user_info_data = Some(Err(error.unwrap_or_default()));
                     }
                 }
@@ -122,7 +111,16 @@ impl NexusApp {
             lines.push(format!("[{}]", user.nickname));
         }
 
-        // Role (only visible to admins)
+        // Username (only shown for shared accounts where nickname differs from account name)
+        if user.is_shared {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-username").to_lowercase(),
+                user.username
+            ));
+        }
+
+        // Role (only shown if is_admin field is present)
         if let Some(is_admin) = user.is_admin {
             let role_value = if is_admin {
                 t("user-info-role-admin")
@@ -135,6 +133,35 @@ impl NexusApp {
                 "{INFO_INDENT}{} {}",
                 t("user-info-role").to_lowercase(),
                 role_value
+            ));
+        }
+
+        // Group (if user belongs to a group)
+        if let Some(group_name) = &user.group_name {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-group").to_lowercase(),
+                group_name
+            ));
+        }
+
+        // Status (if set) - away is shown via 💤 in header
+        if let Some(status) = &user.status {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-status").to_lowercase(),
+                status
+            ));
+        }
+
+        // Channels (if present and not empty)
+        if let Some(channels) = &user.channels
+            && !channels.is_empty()
+        {
+            lines.push(format!(
+                "{INFO_INDENT}{} {}",
+                t("user-info-channels").to_lowercase(),
+                channels.join(", ")
             ));
         }
 
@@ -156,26 +183,6 @@ impl NexusApp {
             t("user-info-connected").to_lowercase(),
             connected_value
         ));
-
-        // Status (if set) - away is shown via 💤 in header
-        if let Some(status) = &user.status {
-            lines.push(format!(
-                "{INFO_INDENT}{} {}",
-                t("user-info-status").to_lowercase(),
-                status
-            ));
-        }
-
-        // Idle since (if available)
-        if let Some(idle_secs) = user.idle_seconds {
-            let clamped = idle_secs.min(i64::MAX as u64) as i64;
-            let idle_since = chrono::Utc::now() - chrono::Duration::seconds(clamped);
-            lines.push(format!(
-                "{INFO_INDENT}{} {}",
-                t("user-info-idle-since").to_lowercase(),
-                idle_since.format(DATETIME_FORMAT)
-            ));
-        }
 
         // Features
         let features_value = if user.features.is_empty() {
@@ -218,17 +225,6 @@ impl NexusApp {
                     lines.push(format!("{INFO_INDENT}  - {}", addr));
                 }
             }
-        }
-
-        // Channels (if present and not empty)
-        if let Some(channels) = &user.channels
-            && !channels.is_empty()
-        {
-            lines.push(format!(
-                "{INFO_INDENT}{} {}",
-                t("user-info-channels").to_lowercase(),
-                channels.join(", ")
-            ));
         }
 
         // Account created (last field)

@@ -115,7 +115,6 @@ impl NexusApp {
 
             // Clear previous data and password change state, set return panel, then open
             conn.user_info_data = None;
-            conn.idle_since_epoch = None;
             conn.password_change_state = None;
             conn.user_info_return_panel = Some(ActivePanel::ConnectionMonitor);
             conn.active_panel = ActivePanel::UserInfo;

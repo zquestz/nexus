@@ -617,6 +617,7 @@ user-info-role-admin = Admin
 user-info-role-guest = Gast
 user-info-role-shared = geteilt
 user-info-role-user = Benutzer
+user-info-group = Gruppe:
 user-info-nickname = Spitzname:
 user-info-account = Konto: { $username }
 user-info-connected = Verbunden:
@@ -633,7 +634,6 @@ user-info-end = Ende der Benutzerinformationen
 user-info-unknown = Unbekannt
 user-info-loading = Benutzerinformationen werden geladen…
 user-info-status = Status:
-user-info-idle-since = Inaktiv seit:
 user-info-channels = Kanäle:
 
 # =============================================================================

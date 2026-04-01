@@ -295,7 +295,7 @@ impl VoiceUdpServer {
 
         // Update idle tracking on speaking transitions (not every 10ms VoiceData packet).
         // Client-side auto-away skips connections in voice entirely, so this is only
-        // for UserInfo idle_seconds accuracy — no need for high-frequency updates.
+        // for server-side idle accuracy — no need for high-frequency updates.
         if matches!(
             packet.msg_type,
             VoiceMessageType::SpeakingStarted | VoiceMessageType::SpeakingStopped

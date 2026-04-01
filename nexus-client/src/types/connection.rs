@@ -244,10 +244,7 @@ pub struct ServerConnection {
     pub user_management: UserManagementState,
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
     pub user_info_data: Option<Result<UserInfoDetailed, String>>,
-    /// Pre-computed "idle since" epoch timestamp (set when user info response is received,
-    /// converted from the server's relative `idle_seconds` to an absolute timestamp so the
-    /// display doesn't drift on re-render)
-    pub idle_since_epoch: Option<u64>,
+
     /// Panel to return to when closing User Info (e.g., ConnectionMonitor)
     pub user_info_return_panel: Option<ActivePanel>,
     /// Password change form state (Some when changing password, None otherwise)
@@ -391,7 +388,7 @@ impl ServerConnection {
             broadcast_error: None,
             user_management: UserManagementState::default(),
             user_info_data: None,
-            idle_since_epoch: None,
+
             user_info_return_panel: None,
             password_change_state: None,
             avatar_cache: HashMap::new(),

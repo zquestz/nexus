@@ -239,8 +239,7 @@ Response containing detailed user information.
     "is_admin": false,
     "channels": ["#general"],
     "group_id": null,
-    "group_name": null,
-    "idle_seconds": 342
+    "group_name": null
   }
 }
 ```
@@ -267,8 +266,7 @@ Response containing detailed user information.
     "addresses": ["192.168.1.100", "10.0.0.5"],
     "channels": ["#general", "#support"],
     "group_id": null,
-    "group_name": null,
-    "idle_seconds": 15
+    "group_name": null
   }
 }
 ```
@@ -454,7 +452,6 @@ Extended user information for individual queries.
 | `channels`    | array   | Channels the user is in (secret channels only visible to admins) |
 | `group_id`    | integer | User's group ID (null if no group)                               |
 | `group_name`  | string  | User's group name (null if no group)                             |
-| `idle_seconds`| integer | Seconds since last meaningful activity                           |
 
 ## Permissions
 

@@ -609,6 +609,7 @@ user-info-role-admin = 관리자
 user-info-role-guest = 게스트
 user-info-role-shared = 공유
 user-info-role-user = 사용자
+user-info-group = 그룹:
 user-info-nickname = 별명:
 user-info-account = 계정: { $username }
 user-info-connected = 연결됨:
@@ -625,7 +626,6 @@ user-info-end = 사용자 정보 끝
 user-info-unknown = 알 수 없음
 user-info-loading = 사용자 정보 로드 중…
 user-info-status = 상태:
-user-info-idle-since = 유휴 시작:
 user-info-channels = 채널:
 
 # =============================================================================

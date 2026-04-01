@@ -609,6 +609,7 @@ user-info-role-admin = 管理者
 user-info-role-guest = ゲスト
 user-info-role-shared = 共有
 user-info-role-user = ユーザー
+user-info-group = グループ:
 user-info-nickname = ニックネーム:
 user-info-account = アカウント: { $username }
 user-info-connected = 接続:
@@ -625,7 +626,6 @@ user-info-end = ユーザー情報の終わり
 user-info-unknown = 不明
 user-info-loading = ユーザー情報を読み込み中…
 user-info-status = ステータス:
-user-info-idle-since = 待機開始:
 user-info-channels = チャンネル:
 
 # =============================================================================

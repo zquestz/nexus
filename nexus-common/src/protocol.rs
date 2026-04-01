@@ -1350,9 +1350,6 @@ pub struct UserInfoDetailed {
     /// Group name (if user belongs to a group)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_name: Option<String>,
-    /// Seconds since last meaningful activity (excludes passive messages like Ping, UserAway)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub idle_seconds: Option<u64>,
 }
 
 /// Information about an account group
@@ -2005,7 +2002,6 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            idle_seconds: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -2196,7 +2192,6 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            idle_seconds: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -3799,7 +3794,6 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            idle_seconds: None,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"id\":77"));

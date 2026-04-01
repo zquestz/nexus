@@ -610,6 +610,7 @@ user-info-role-admin = 管理员
 user-info-role-guest = 访客
 user-info-role-shared = 共享
 user-info-role-user = 用户
+user-info-group = 群组：
 user-info-nickname = 昵称：
 user-info-account = 账户：{ $username }
 user-info-connected = 已连接：
@@ -626,7 +627,6 @@ user-info-end = 用户信息结束
 user-info-unknown = 未知
 user-info-loading = 正在加载用户信息…
 user-info-status = 状态:
-user-info-idle-since = 空闲始于:
 user-info-channels = 频道:
 
 # =============================================================================

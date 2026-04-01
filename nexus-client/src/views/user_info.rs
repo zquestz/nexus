@@ -60,8 +60,7 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
         }
         Some(Ok(user)) => {
             // User info display with avatar + username header
-            content =
-                build_user_info_content(content, user, &theme, avatar_cache, conn.idle_since_epoch);
+            content = build_user_info_content(content, user, &theme, avatar_cache);
         }
     }
 
@@ -246,7 +245,6 @@ fn build_user_info_content<'a>(
     user: &UserInfoDetailed,
     theme: &Theme,
     avatar_cache: &'a HashMap<String, CachedImage>,
-    idle_since_epoch: Option<u64>,
 ) -> iced::widget::Column<'a, Message> {
     // Header: Avatar + Nickname (always populated; equals username for regular accounts)
     // For shared accounts, also show the account name below
@@ -292,6 +290,15 @@ fn build_user_info_content<'a>(
     content = content.push(header_row);
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
 
+    // Username (only shown for shared accounts - shows the underlying account name)
+    if user.is_shared {
+        content = content.push(info_row(
+            t("user-info-username"),
+            user.username.clone(),
+            None,
+        ));
+    }
+
     // Role (only shown if is_admin field is present)
     if user.is_admin.is_some() {
         let is_guest = user.username.to_lowercase() == "guest";
@@ -305,6 +312,24 @@ fn build_user_info_content<'a>(
             t("user-info-role-user")
         };
         content = content.push(info_row(t("user-info-role"), role_value, None));
+    }
+
+    // Group (only shown if user has a group assigned)
+    if let Some(group_name) = &user.group_name {
+        content = content.push(info_row(t("user-info-group"), group_name.clone(), None));
+    }
+
+    // Status (if set) - away is shown via 💤 in header
+    if let Some(status) = &user.status {
+        content = content.push(info_row(t("user-info-status"), status.clone(), None));
+    }
+
+    // Channels (if present and not empty)
+    if let Some(channels) = &user.channels
+        && !channels.is_empty()
+    {
+        let channels_value = channels.join(", ");
+        content = content.push(info_row(t("user-info-channels"), channels_value, None));
     }
 
     // Session duration
@@ -358,27 +383,6 @@ fn build_user_info_content<'a>(
                 content = content.push(info_row(String::from("  "), addr.clone(), None));
             }
         }
-    }
-
-    // Status (if set) - away is shown via 💤 in header
-    if let Some(status) = &user.status {
-        content = content.push(info_row(t("user-info-status"), status.clone(), None));
-    }
-
-    // Idle since (pre-computed epoch timestamp, converted from idle_seconds when response was received)
-    if let Some(idle_since_epoch) = idle_since_epoch {
-        let idle_since = chrono::DateTime::from_timestamp(idle_since_epoch as i64, 0)
-            .map(|dt| dt.format(DATETIME_FORMAT).to_string())
-            .unwrap_or_else(|| t("user-info-unknown"));
-        content = content.push(info_row(t("user-info-idle-since"), idle_since, None));
-    }
-
-    // Channels (if present and not empty)
-    if let Some(channels) = &user.channels
-        && !channels.is_empty()
-    {
-        let channels_value = channels.join(", ");
-        content = content.push(info_row(t("user-info-channels"), channels_value, None));
     }
 
     // Account created

@@ -621,6 +621,7 @@ user-info-role-admin = админ
 user-info-role-guest = гость
 user-info-role-shared = общий
 user-info-role-user = пользователь
+user-info-group = Группа:
 user-info-nickname = Псевдоним:
 user-info-account = Аккаунт: { $username }
 user-info-connected = Подключён:
@@ -637,7 +638,6 @@ user-info-end = Конец информации о пользователе
 user-info-unknown = Неизвестно
 user-info-loading = Загрузка информации о пользователе…
 user-info-status = Статус:
-user-info-idle-since = Неактивен с:
 user-info-channels = Каналы:
 
 # =============================================================================
