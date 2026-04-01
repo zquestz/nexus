@@ -171,6 +171,7 @@ impl NexusApp {
                 conn.last_activity.elapsed() >= timeout
                     && !conn.is_away
                     && !conn.is_auto_away
+                    && conn.voice_session.is_none()
                     && !conn
                         .pending_requests
                         .values()

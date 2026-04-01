@@ -293,6 +293,16 @@ impl VoiceUdpServer {
             self.registry.set_udp_addr(packet.token, addr).await;
         }
 
+        // Update idle tracking on speaking transitions (not every 10ms VoiceData packet).
+        // Client-side auto-away skips connections in voice entirely, so this is only
+        // for UserInfo idle_seconds accuracy — no need for high-frequency updates.
+        if matches!(
+            packet.msg_type,
+            VoiceMessageType::SpeakingStarted | VoiceMessageType::SpeakingStopped
+        ) {
+            self.user_manager.update_last_activity(session_id).await;
+        }
+
         // Handle based on message type
         match packet.msg_type {
             VoiceMessageType::Keepalive => {

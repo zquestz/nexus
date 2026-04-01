@@ -188,6 +188,7 @@ Automatically sets you as away after a period of inactivity. When you interact w
 - The server tracks idle time per session, so multiple connections are handled independently
 - If you're logged in from two computers, the server ensures the user list accurately reflects your most recently active session
 - Only keyboard input counts as activity — mouse movement and clicks do not reset the idle timer
+- Active voice sessions prevent auto-away entirely — you won't be marked idle while in voice chat
 
 ### Font Size
 
