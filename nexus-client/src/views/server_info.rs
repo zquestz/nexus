@@ -547,27 +547,6 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             .into(),
     );
 
-    // Persistent channels input with inline label
-    let persistent_label = shaped_text(t("label-persistent-short")).size(TEXT_SIZE);
-    let persistent_input = text_input(
-        &t("placeholder-persistent-channels"),
-        &edit_state.persistent_channels,
-    )
-    .on_input(Message::EditServerInfoPersistentChannelsChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
-    .padding(INPUT_PADDING)
-    .size(TEXT_SIZE)
-    .width(Fill);
-    form_items.push(
-        row![
-            persistent_label,
-            Space::new().width(ELEMENT_SPACING),
-            persistent_input
-        ]
-        .align_y(Center)
-        .into(),
-    );
-
     // Auto-join channels input with inline label
     let auto_join_label = shaped_text(t("label-auto-join-short")).size(TEXT_SIZE);
     let auto_join_input = text_input(
@@ -584,6 +563,27 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             auto_join_label,
             Space::new().width(ELEMENT_SPACING),
             auto_join_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Persistent channels input with inline label
+    let persistent_label = shaped_text(t("label-persistent-short")).size(TEXT_SIZE);
+    let persistent_input = text_input(
+        &t("placeholder-persistent-channels"),
+        &edit_state.persistent_channels,
+    )
+    .on_input(Message::EditServerInfoPersistentChannelsChanged)
+    .on_submit(Message::UpdateServerInfoPressed)
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![
+            persistent_label,
+            Space::new().width(ELEMENT_SPACING),
+            persistent_input
         ]
         .align_y(Center)
         .into(),

@@ -159,7 +159,7 @@ where
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
-            error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_ERROR);
+            error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                 .await;
@@ -178,7 +178,7 @@ where
             match db::verify_password(&password, &account.hashed_password) {
                 Ok(valid) => valid,
                 Err(e) => {
-                    error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
+                    error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
                     return ctx
                         .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
                         .await;
@@ -213,7 +213,7 @@ where
         let hashed_password = match db::hash_password(&password, min_strength, false) {
             Ok(hash) => hash,
             Err(e) => {
-                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
+                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -231,7 +231,7 @@ where
             .await
         {
             Ok(Some(account)) => {
-                info!(ip = %ctx.peer_addr, user = %username, "{}", LOG_LOGIN_FIRST_ADMIN);
+                info!(user = %username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_FIRST_ADMIN);
                 account
             }
             Ok(None) => {
@@ -242,7 +242,7 @@ where
                     .await;
             }
             Err(e) => {
-                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
+                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -287,7 +287,7 @@ where
             }
             Ok(false) => {}
             Err(e) => {
-                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
+                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
                 return ctx
                     .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                     .await;

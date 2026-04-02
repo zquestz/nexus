@@ -108,6 +108,9 @@ Log level: info
 Log directory: ~/.local/share/nexusd/logs
 Database: ~/.local/share/nexusd/nexus.db
 File area: ~/.local/share/nexusd/files
+Generating self-signed TLS certificate...
+Certificate generated: ~/.local/share/nexusd/cert.pem
+Private key generated: ~/.local/share/nexusd/key.pem
 Certificate fingerprint (SHA-256): AB:CD:12:34:...
 Certificates: ~/.local/share/nexusd
 BBS port: 0.0.0.0:7500

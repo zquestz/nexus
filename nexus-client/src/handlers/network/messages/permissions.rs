@@ -86,12 +86,13 @@ impl NexusApp {
                 conn.auto_join_channels = info.auto_join_channels;
             }
             if let Some(image) = info.image {
-                conn.server_image = image.clone();
+                // Decode first using reference, then move (avoids clone)
                 conn.cached_server_image = if image.is_empty() {
                     None
                 } else {
                     decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
                 };
+                conn.server_image = image;
             }
             if let Some(score) = info.min_password_strength {
                 conn.min_password_strength = PasswordStrength::from(score);
